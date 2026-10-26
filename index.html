@@ -7,9 +7,129 @@
       content="width=device-width, initial-scale=1, shrink-to-fit=no"
     />
     <link rel="icon" href="data:," />
-    <title>iwsdkmetaoct2026pub</title>
+    <title>Breath &amp; Gaze Rest</title>
+    <style>
+      :root {
+        color: #f7fbff;
+        background: #081019;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+      }
+
+      body {
+        overflow: hidden;
+      }
+
+      #scene-container {
+        width: 100vw;
+        height: 100vh;
+      }
+
+      .sensor-card {
+        position: fixed;
+        z-index: 10;
+        top: 18px;
+        left: 50%;
+        width: min(520px, calc(100vw - 36px));
+        transform: translateX(-50%);
+        box-sizing: border-box;
+        padding: 18px;
+        border: 1px solid rgb(157 219 255 / 35%);
+        border-radius: 18px;
+        background: rgb(5 14 24 / 88%);
+        backdrop-filter: blur(16px);
+        box-shadow: 0 14px 48px rgb(0 0 0 / 35%);
+      }
+
+      .sensor-card h1 {
+        margin: 0 0 6px;
+        font-size: 21px;
+      }
+
+      .sensor-card p {
+        margin: 0 0 14px;
+        color: #b9cada;
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .readouts {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+
+      .readout {
+        padding: 10px 12px;
+        border-radius: 12px;
+        background: rgb(142 209 255 / 9%);
+      }
+
+      .readout span {
+        display: block;
+        margin-bottom: 4px;
+        color: #8ea5b8;
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      output {
+        color: #f7fbff;
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      output[data-state="probably_closed"] {
+        color: #a9d6ff;
+      }
+
+      output[data-state="open"] {
+        color: #9ff5ca;
+      }
+
+      #start-guided-sensing {
+        width: 100%;
+        padding: 11px 16px;
+        border: 0;
+        border-radius: 12px;
+        color: #041019;
+        background: #9edcff;
+        font: inherit;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      #start-guided-sensing:disabled {
+        cursor: wait;
+        opacity: 0.6;
+      }
+    </style>
   </head>
   <body style="margin: 0">
+    <section class="sensor-card" aria-label="Experimental sensing status">
+      <h1>Breath &amp; Gaze Rest</h1>
+      <p>
+        Experimental estimates only. Audio stays on this device. Start sensing,
+        then enter XR and establish a steady gaze.
+      </p>
+      <div class="readouts">
+        <div class="readout">
+          <span>Eyes</span>
+          <output id="eye-estimate">waiting for XR</output>
+        </div>
+        <div class="readout">
+          <span>Breath</span>
+          <output id="breath-estimate">off</output>
+        </div>
+      </div>
+      <p><output id="sensor-status">Sensors stopped</output></p>
+      <button id="start-guided-sensing" type="button">
+        Start guided sensing
+      </button>
+    </section>
     <div id="scene-container"></div>
     <script type="module" src="/src/index.ts"></script>
   </body>
