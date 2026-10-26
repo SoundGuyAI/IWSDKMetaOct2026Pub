@@ -4,22 +4,22 @@
  * WebXR exposes a combined gaze ray, not eyelid state. A missing gaze pose is
  * therefore only evidence for "probably closed" after a healthy gaze baseline.
  */
-import { createSystem, Vector3 } from '@iwsdk/core';
+import { createSystem, Vector3 } from "@iwsdk/core";
 
 type EyeEstimate =
-  | 'waiting_for_xr'
-  | 'calibrating_gaze'
-  | 'open'
-  | 'blink_or_uncertain'
-  | 'probably_closed'
-  | 'unavailable';
+  | "waiting_for_xr"
+  | "calibrating_gaze"
+  | "open"
+  | "blink_or_uncertain"
+  | "probably_closed"
+  | "unavailable";
 
 type BreathEstimate =
-  | 'off'
-  | 'calibrating'
-  | 'inhale_estimate'
-  | 'exhale_estimate'
-  | 'quiet_or_uncertain';
+  | "off"
+  | "calibrating"
+  | "inhale_estimate"
+  | "exhale_estimate"
+  | "quiet_or_uncertain";
 
 const GAZE_BASELINE_SECONDS = 1;
 const PROBABLY_CLOSED_SECONDS = 0.65;
@@ -83,7 +83,7 @@ class MicrophoneEnergySensor {
 
 function findGazeSource(session: XRSession): XRInputSource | null {
   for (const source of session.inputSources) {
-    if (source.targetRayMode === 'gaze') {
+    if (source.targetRayMode === "gaze") {
       return source;
     }
   }
@@ -91,7 +91,7 @@ function findGazeSource(session: XRSession): XRInputSource | null {
     session as XRSession & { trackedSources?: readonly XRInputSource[] }
   ).trackedSources;
   for (const source of trackedSources ?? []) {
-    if (source.targetRayMode === 'gaze') {
+    if (source.targetRayMode === "gaze") {
       return source;
     }
   }
@@ -108,27 +108,25 @@ export class GuidedSensingSystem extends createSystem({}) {
   private gazeInvalidSince = -1;
   private gazeRestoredSince = -1;
   private hasGazeBaseline = false;
-  private eyeEstimate: EyeEstimate = 'waiting_for_xr';
-  private breathEstimate: BreathEstimate = 'off';
+  private eyeEstimate: EyeEstimate = "waiting_for_xr";
+  private breathEstimate: BreathEstimate = "off";
   private noiseFloor = 0.002;
   private noiseSamples = 0;
   private previousHeadY = 0;
   private filteredHeadVelocity = 0;
   private lastUiUpdate = 0;
   private instructionPlayed = false;
+  private breathAwaitingViewerPose = false;
 
   private readonly startButton = document.querySelector<HTMLButtonElement>(
-    '#start-guided-sensing',
+    "#start-guided-sensing",
   );
-  private readonly eyeOutput = document.querySelector<HTMLOutputElement>(
-    '#eye-estimate',
-  );
-  private readonly breathOutput = document.querySelector<HTMLOutputElement>(
-    '#breath-estimate',
-  );
-  private readonly sensorOutput = document.querySelector<HTMLOutputElement>(
-    '#sensor-status',
-  );
+  private readonly eyeOutput =
+    document.querySelector<HTMLOutputElement>("#eye-estimate");
+  private readonly breathOutput =
+    document.querySelector<HTMLOutputElement>("#breath-estimate");
+  private readonly sensorOutput =
+    document.querySelector<HTMLOutputElement>("#sensor-status");
 
   init(): void {
     if (
@@ -137,7 +135,7 @@ export class GuidedSensingSystem extends createSystem({}) {
       this.breathOutput == null ||
       this.sensorOutput == null
     ) {
-      throw new Error('Guided sensing controls are missing from index.html');
+      throw new Error("Guided sensing controls are missing from index.html");
     }
 
     const toggle = () => {
@@ -147,9 +145,9 @@ export class GuidedSensingSystem extends createSystem({}) {
         void this.startMonitoring();
       }
     };
-    this.startButton.addEventListener('click', toggle);
+    this.startButton.addEventListener("click", toggle);
     this.cleanupFuncs.push(() => {
-      this.startButton?.removeEventListener('click', toggle);
+      this.startButton?.removeEventListener("click", toggle);
       this.stopMonitoring();
     });
     this.renderStatus();
@@ -172,19 +170,19 @@ export class GuidedSensingSystem extends createSystem({}) {
       return;
     }
     this.startButton.disabled = true;
-    this.sensorOutput.value = 'Requesting microphone permission…';
+    this.sensorOutput.value = "Requesting microphone permission…";
     try {
       await this.microphone.start();
       this.microphoneAvailable = true;
       this.armMonitoring();
       this.sensorOutput.value =
-        'Sensors armed; enter XR and establish a steady gaze';
+        "Sensors armed; enter XR and establish a steady gaze";
     } catch (error) {
-      console.warn('[guided-sensing] microphone unavailable', error);
+      console.warn("[guided-sensing] microphone unavailable", error);
       this.microphoneAvailable = false;
       this.armMonitoring();
       this.sensorOutput.value =
-        'Microphone unavailable; gaze cues and head-motion estimate remain active';
+        "Microphone unavailable; gaze cues and head-motion estimate remain active";
     } finally {
       this.startButton.disabled = false;
       this.renderStatus();
@@ -197,13 +195,13 @@ export class GuidedSensingSystem extends createSystem({}) {
     this.instructionPlayed = false;
     this.microphone.stop();
     globalThis.speechSynthesis?.cancel();
-    this.breathEstimate = 'off';
+    this.breathEstimate = "off";
     if (this.startButton != null) {
       this.startButton.disabled = false;
-      this.startButton.textContent = 'Start guided sensing';
+      this.startButton.textContent = "Start guided sensing";
     }
     if (this.sensorOutput != null) {
-      this.sensorOutput.value = 'Sensors stopped';
+      this.sensorOutput.value = "Sensors stopped";
     }
   }
 
@@ -216,10 +214,12 @@ export class GuidedSensingSystem extends createSystem({}) {
     this.previousHeadY = this.headPosition.y;
     this.filteredHeadVelocity = 0;
     this.instructionPlayed = false;
-    this.breathEstimate = 'calibrating';
+    this.breathAwaitingViewerPose = true;
+    this.breathEstimate = "calibrating";
     if (this.startButton != null) {
-      this.startButton.textContent = 'Stop sensing';
+      this.startButton.textContent = "Stop sensing";
     }
+    this.playMonitoringInstructionIfNeeded();
   }
 
   private updateEyeEstimate(now: number): void {
@@ -230,15 +230,15 @@ export class GuidedSensingSystem extends createSystem({}) {
       session == null ||
       frame == null ||
       referenceSpace == null ||
-      session.visibilityState !== 'visible'
+      session.visibilityState !== "visible"
     ) {
-      this.resetGazeTracking('waiting_for_xr');
+      this.resetGazeTracking("waiting_for_xr");
       return;
     }
 
     const viewerPose = frame.getViewerPose(referenceSpace);
     if (viewerPose == null) {
-      this.resetGazeTracking('unavailable');
+      this.resetGazeTracking("unavailable");
       return;
     }
 
@@ -249,7 +249,7 @@ export class GuidedSensingSystem extends createSystem({}) {
         gazeValid =
           frame.getPose(gazeSource.targetRaySpace, referenceSpace) != null;
       } catch (error) {
-        console.warn('[guided-sensing] unable to sample gaze pose', error);
+        console.warn("[guided-sensing] unable to sample gaze pose", error);
       }
     }
 
@@ -259,35 +259,26 @@ export class GuidedSensingSystem extends createSystem({}) {
         this.gazeValidSince = now;
       }
       if (!this.hasGazeBaseline) {
-        this.eyeEstimate = 'calibrating_gaze';
+        this.eyeEstimate = "calibrating_gaze";
         if (now - this.gazeValidSince >= GAZE_BASELINE_SECONDS) {
           this.hasGazeBaseline = true;
-          this.eyeEstimate = 'open';
-          if (this.monitoring && !this.instructionPlayed) {
-            this.instructionPlayed = true;
-            this.speak('Take a slow breath, then close your eyes.');
-            if (this.sensorOutput != null) {
-              this.sensorOutput.value =
-                this.microphoneAvailable
-                  ? 'Gaze established; listening for breath and gaze loss'
-                  : 'Gaze established; microphone unavailable, using head motion only';
-            }
-          }
+          this.eyeEstimate = "open";
+          this.playMonitoringInstructionIfNeeded();
         }
         return;
       }
 
-      if (this.eyeEstimate === 'probably_closed') {
+      if (this.eyeEstimate === "probably_closed") {
         if (this.gazeRestoredSince < 0) {
           this.gazeRestoredSince = now;
         }
         if (now - this.gazeRestoredSince >= REOPEN_SECONDS) {
-          this.eyeEstimate = 'open';
-          this.playTransitionTone('open');
+          this.eyeEstimate = "open";
+          this.playTransitionTone("open");
         }
       } else {
         this.gazeRestoredSince = -1;
-        this.eyeEstimate = 'open';
+        this.eyeEstimate = "open";
       }
       return;
     }
@@ -295,7 +286,7 @@ export class GuidedSensingSystem extends createSystem({}) {
     this.gazeValidSince = -1;
     this.gazeRestoredSince = -1;
     if (!this.hasGazeBaseline) {
-      this.eyeEstimate = 'calibrating_gaze';
+      this.eyeEstimate = "calibrating_gaze";
       return;
     }
     if (this.gazeInvalidSince < 0) {
@@ -303,18 +294,33 @@ export class GuidedSensingSystem extends createSystem({}) {
     }
     const invalidFor = now - this.gazeInvalidSince;
     if (invalidFor >= PROBABLY_CLOSED_SECONDS) {
-      if (this.eyeEstimate !== 'probably_closed') {
-        this.eyeEstimate = 'probably_closed';
+      if (this.eyeEstimate !== "probably_closed") {
+        this.eyeEstimate = "probably_closed";
         if (this.monitoring) {
-          this.playTransitionTone('closed');
+          this.playTransitionTone("closed");
         }
       }
-    } else {
-      this.eyeEstimate = 'blink_or_uncertain';
+    } else if (this.eyeEstimate !== "probably_closed") {
+      this.eyeEstimate = "blink_or_uncertain";
     }
   }
 
   private updateBreathEstimate(delta: number, now: number): void {
+    if (!this.viewerPoseReadyForBreath()) {
+      this.breathAwaitingViewerPose = true;
+      this.breathEstimate = "calibrating";
+      return;
+    }
+    if (this.breathAwaitingViewerPose) {
+      this.breathAwaitingViewerPose = false;
+      this.startedAt = now;
+      this.noiseFloor = 0.002;
+      this.noiseSamples = 0;
+      this.player.head.getWorldPosition(this.headPosition);
+      this.previousHeadY = this.headPosition.y;
+      this.filteredHeadVelocity = 0;
+    }
+
     const rms = this.microphone.sampleRms();
     this.player.head.getWorldPosition(this.headPosition);
     const safeDelta = Math.max(delta, 1 / 120);
@@ -326,20 +332,52 @@ export class GuidedSensingSystem extends createSystem({}) {
     if (now - this.startedAt < BREATH_CALIBRATION_SECONDS) {
       this.noiseSamples += 1;
       this.noiseFloor += (rms - this.noiseFloor) / this.noiseSamples;
-      this.breathEstimate = 'calibrating';
+      this.breathEstimate = "calibrating";
       return;
     }
 
     const airflowActive = rms > Math.max(0.004, this.noiseFloor * 1.8);
     const motionThreshold = 0.0025;
-    if (!airflowActive && Math.abs(this.filteredHeadVelocity) < motionThreshold) {
-      this.breathEstimate = 'quiet_or_uncertain';
-    } else if (this.filteredHeadVelocity > motionThreshold) {
-      this.breathEstimate = 'inhale_estimate';
-    } else if (this.filteredHeadVelocity < -motionThreshold) {
-      this.breathEstimate = 'exhale_estimate';
+    const motionMagnitude = Math.abs(this.filteredHeadVelocity);
+    const motionActive = motionMagnitude >= motionThreshold;
+    if (!airflowActive && !motionActive) {
+      this.breathEstimate = "quiet_or_uncertain";
+    } else if (motionActive && (!this.microphoneAvailable || airflowActive)) {
+      if (this.filteredHeadVelocity > motionThreshold) {
+        this.breathEstimate = "inhale_estimate";
+      } else {
+        this.breathEstimate = "exhale_estimate";
+      }
     } else {
-      this.breathEstimate = 'quiet_or_uncertain';
+      this.breathEstimate = "quiet_or_uncertain";
+    }
+  }
+
+  private viewerPoseReadyForBreath(): boolean {
+    const session = this.xrManager.getSession();
+    const frame = this.xrManager.getFrame();
+    const referenceSpace = this.xrManager.getReferenceSpace();
+    if (
+      session == null ||
+      frame == null ||
+      referenceSpace == null ||
+      session.visibilityState !== "visible"
+    ) {
+      return false;
+    }
+    return frame.getViewerPose(referenceSpace) != null;
+  }
+
+  private playMonitoringInstructionIfNeeded(): void {
+    if (!this.monitoring || this.instructionPlayed || !this.hasGazeBaseline) {
+      return;
+    }
+    this.instructionPlayed = true;
+    this.speak("Take a slow breath, then close your eyes.");
+    if (this.sensorOutput != null) {
+      this.sensorOutput.value = this.microphoneAvailable
+        ? "Gaze established; listening for breath and gaze loss"
+        : "Gaze established; microphone unavailable, using head motion only";
     }
   }
 
@@ -351,7 +389,7 @@ export class GuidedSensingSystem extends createSystem({}) {
     this.eyeEstimate = state;
   }
 
-  private playTransitionTone(kind: 'closed' | 'open'): void {
+  private playTransitionTone(kind: "closed" | "open"): void {
     const context = this.microphone.audioContext;
     if (context == null) {
       return;
@@ -359,9 +397,9 @@ export class GuidedSensingSystem extends createSystem({}) {
     const oscillator = context.createOscillator();
     const gain = context.createGain();
     const start = context.currentTime;
-    const startFrequency = kind === 'closed' ? 392 : 523.25;
-    const endFrequency = kind === 'closed' ? 261.63 : 783.99;
-    oscillator.type = 'sine';
+    const startFrequency = kind === "closed" ? 392 : 523.25;
+    const endFrequency = kind === "closed" ? 261.63 : 783.99;
+    oscillator.type = "sine";
     oscillator.frequency.setValueAtTime(startFrequency, start);
     oscillator.frequency.exponentialRampToValueAtTime(
       endFrequency,
@@ -377,7 +415,7 @@ export class GuidedSensingSystem extends createSystem({}) {
   }
 
   private speak(message: string): void {
-    if (!('speechSynthesis' in globalThis)) {
+    if (!("speechSynthesis" in globalThis)) {
       return;
     }
     globalThis.speechSynthesis.cancel();
@@ -396,10 +434,9 @@ export class GuidedSensingSystem extends createSystem({}) {
     ) {
       return;
     }
-    this.eyeOutput.value = this.eyeEstimate.replace(/_/gu, ' ');
+    this.eyeOutput.value = this.eyeEstimate.replace(/_/gu, " ");
     this.eyeOutput.dataset.state = this.eyeEstimate;
-    this.breathOutput.value = this.breathEstimate.replace(/_/gu, ' ');
+    this.breathOutput.value = this.breathEstimate.replace(/_/gu, " ");
     this.breathOutput.dataset.state = this.breathEstimate;
   }
 }
-
