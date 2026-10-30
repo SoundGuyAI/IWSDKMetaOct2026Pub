@@ -363,9 +363,23 @@
         "asset": "welcome-panel"
       },
       "transform": {
-        "position": [0, 2.3, -5.15],
-        "rotationDeg": [-6, 0, 0],
-        "scale": 0.46
+        "position": [-1, 1.85, -3.6],
+        "scale": 0.36
+      },
+      "components": {
+        "RayInteractable": {}
+      }
+    },
+    {
+      "id": "gaze-debug-panel",
+      "name": "Gaze Debug Panel",
+      "content": {
+        "type": "asset",
+        "asset": "gaze-debug-panel"
+      },
+      "transform": {
+        "position": [1.15, 1.8, -3.6],
+        "scale": 0.3
       },
       "components": {
         "RayInteractable": {}
