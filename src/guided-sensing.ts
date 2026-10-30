@@ -4,7 +4,7 @@
  * WebXR exposes a combined gaze ray, not eyelid state. A missing gaze pose is
  * therefore only evidence for "probably closed" after a healthy gaze baseline.
  */
-import { createSystem, Vector3 } from "@iwsdk/core";
+import { createSystem, UIKit, UIKitMLAsset, Vector3 } from "@iwsdk/core";
 
 type EyeEstimate =
   | "waiting_for_xr"
@@ -117,6 +117,11 @@ export class GuidedSensingSystem extends createSystem({}) {
   private lastUiUpdate = 0;
   private instructionPlayed = false;
   private breathAwaitingViewerPose = false;
+  private requestInFlight = false;
+  private renderSpatialStatus: (() => void) | null = null;
+  private spatialButtonHovered = false;
+  private activeSession: XRSession | null = null;
+  private lastSpatialActivationAt = -1;
 
   private readonly startButton = document.querySelector<HTMLButtonElement>(
     "#start-guided-sensing",
@@ -129,31 +134,61 @@ export class GuidedSensingSystem extends createSystem({}) {
     document.querySelector<HTMLOutputElement>("#sensor-status");
 
   init(): void {
-    if (
-      this.startButton == null ||
-      this.eyeOutput == null ||
-      this.breathOutput == null ||
-      this.sensorOutput == null
-    ) {
-      throw new Error("Guided sensing controls are missing from index.html");
-    }
-
-    const toggle = () => {
-      if (this.monitoring) {
-        this.stopMonitoring();
-      } else {
-        void this.startMonitoring();
-      }
+    const toggle = () => this.toggleMonitoring();
+    const markSpatialHover = () => {
+      this.spatialButtonHovered = true;
     };
-    this.startButton.addEventListener("click", toggle);
+    const clearSpatialHover = () => {
+      this.spatialButtonHovered = false;
+    };
+
+    const panel = this.world.requireSceneObject<UIKitMLAsset>("welcome-panel");
+    const spatialButton = panel.requireElementById("guided-sensing-button");
+    const spatialButtonLabel = panel.requireElementById<UIKit.Text>(
+      "guided-sensing-button-label",
+    );
+    const spatialEyeOutput = panel.requireElementById<UIKit.Text>(
+      "spatial-eye-status",
+    );
+    const spatialBreathOutput = panel.requireElementById<UIKit.Text>(
+      "spatial-breath-status",
+    );
+    const spatialSensorOutput = panel.requireElementById<UIKit.Text>(
+      "spatial-sensor-status",
+    );
+    spatialButton.name = "Btn_GuidedSensing";
+    spatialButton.addEventListener("click", toggle);
+    spatialButton.addEventListener("pointerenter", markSpatialHover);
+    spatialButton.addEventListener("pointerleave", clearSpatialHover);
+    this.renderSpatialStatus = () => {
+      spatialButtonLabel.setProperties({
+        text: this.monitoring ? "Stop sensing" : "Start guided sensing",
+      });
+      spatialEyeOutput.setProperties({
+        text: this.eyeEstimate.replace(/_/gu, " "),
+      });
+      spatialBreathOutput.setProperties({
+        text: this.breathEstimate.replace(/_/gu, " "),
+      });
+      spatialSensorOutput.setProperties({
+        text: this.sensorOutput?.value || "Sensors stopped",
+      });
+    };
+
+    this.startButton?.addEventListener("click", toggle);
     this.cleanupFuncs.push(() => {
       this.startButton?.removeEventListener("click", toggle);
+      spatialButton.removeEventListener("click", toggle);
+      spatialButton.removeEventListener("pointerenter", markSpatialHover);
+      spatialButton.removeEventListener("pointerleave", clearSpatialHover);
+      this.setActiveSession(null);
       this.stopMonitoring();
     });
     this.renderStatus();
   }
 
   update(delta: number): void {
+    this.setActiveSession(this.xrManager.getSession());
     const now = performance.now() / 1000;
     this.updateEyeEstimate(now);
     if (this.monitoring) {
@@ -165,26 +200,60 @@ export class GuidedSensingSystem extends createSystem({}) {
     }
   }
 
-  private async startMonitoring(): Promise<void> {
-    if (this.startButton == null || this.sensorOutput == null) {
+  private toggleMonitoring(): void {
+    const now = performance.now();
+    if (this.requestInFlight || now - this.lastSpatialActivationAt < 300) {
       return;
     }
-    this.startButton.disabled = true;
-    this.sensorOutput.value = "Requesting microphone permission…";
+    this.lastSpatialActivationAt = now;
+    if (this.monitoring) {
+      this.stopMonitoring();
+    } else {
+      void this.startMonitoring();
+    }
+  }
+
+  private readonly onXrSelect = (event: XRInputSourceEvent): void => {
+    const selectionSource = event.inputSource;
+    const isGazeOrHand =
+      selectionSource.targetRayMode === "gaze" || selectionSource.hand != null;
+    if (isGazeOrHand && this.spatialButtonHovered) {
+      this.toggleMonitoring();
+    }
+  };
+
+  private setActiveSession(session: XRSession | null): void {
+    if (session === this.activeSession) {
+      return;
+    }
+    this.activeSession?.removeEventListener("select", this.onXrSelect);
+    this.activeSession = session;
+    this.activeSession?.addEventListener("select", this.onXrSelect);
+  }
+
+  private async startMonitoring(): Promise<void> {
+    this.requestInFlight = true;
+    if (this.startButton != null) {
+      this.startButton.disabled = true;
+    }
+    this.setSensorStatus("Requesting microphone permission...");
     try {
       await this.microphone.start();
       this.microphoneAvailable = true;
       this.armMonitoring();
-      this.sensorOutput.value =
-        "Sensors armed; enter XR and establish a steady gaze";
+      this.setSensorStatus("Sensors armed; establish a steady gaze");
     } catch (error) {
       console.warn("[guided-sensing] microphone unavailable", error);
       this.microphoneAvailable = false;
       this.armMonitoring();
-      this.sensorOutput.value =
-        "Microphone unavailable; gaze cues and head-motion estimate remain active";
+      this.setSensorStatus(
+        "Microphone unavailable; gaze cues and head-motion estimate remain active",
+      );
     } finally {
-      this.startButton.disabled = false;
+      this.requestInFlight = false;
+      if (this.startButton != null) {
+        this.startButton.disabled = false;
+      }
       this.renderStatus();
     }
   }
@@ -200,9 +269,7 @@ export class GuidedSensingSystem extends createSystem({}) {
       this.startButton.disabled = false;
       this.startButton.textContent = "Start guided sensing";
     }
-    if (this.sensorOutput != null) {
-      this.sensorOutput.value = "Sensors stopped";
-    }
+    this.setSensorStatus("Sensors stopped");
   }
 
   private armMonitoring(): void {
@@ -374,11 +441,11 @@ export class GuidedSensingSystem extends createSystem({}) {
     }
     this.instructionPlayed = true;
     this.speak("Take a slow breath, then close your eyes.");
-    if (this.sensorOutput != null) {
-      this.sensorOutput.value = this.microphoneAvailable
+    this.setSensorStatus(
+      this.microphoneAvailable
         ? "Gaze established; listening for breath and gaze loss"
-        : "Gaze established; microphone unavailable, using head motion only";
-    }
+        : "Gaze established; microphone unavailable, using head motion only",
+    );
   }
 
   private resetGazeTracking(state: EyeEstimate): void {
@@ -427,16 +494,21 @@ export class GuidedSensingSystem extends createSystem({}) {
   }
 
   private renderStatus(): void {
-    if (
-      this.eyeOutput == null ||
-      this.breathOutput == null ||
-      this.sensorOutput == null
-    ) {
-      return;
+    if (this.eyeOutput != null) {
+      this.eyeOutput.value = this.eyeEstimate.replace(/_/gu, " ");
+      this.eyeOutput.dataset.state = this.eyeEstimate;
     }
-    this.eyeOutput.value = this.eyeEstimate.replace(/_/gu, " ");
-    this.eyeOutput.dataset.state = this.eyeEstimate;
-    this.breathOutput.value = this.breathEstimate.replace(/_/gu, " ");
-    this.breathOutput.dataset.state = this.breathEstimate;
+    if (this.breathOutput != null) {
+      this.breathOutput.value = this.breathEstimate.replace(/_/gu, " ");
+      this.breathOutput.dataset.state = this.breathEstimate;
+    }
+    this.renderSpatialStatus?.();
+  }
+
+  private setSensorStatus(message: string): void {
+    if (this.sensorOutput != null) {
+      this.sensorOutput.value = message;
+    }
+    this.renderSpatialStatus?.();
   }
 }
