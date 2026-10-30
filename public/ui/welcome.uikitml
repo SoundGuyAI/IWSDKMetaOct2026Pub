@@ -132,6 +132,12 @@
     </ButtonIcon>
     <ButtonLabel id="guided-sensing-button-label" class="button-label">Start guided sensing</ButtonLabel>
   </Button>
+  <Button id="breath-calibration-button" class="button">
+    <ButtonIcon>
+      <Gauge></Gauge>
+    </ButtonIcon>
+    <ButtonLabel id="breath-calibration-button-label" class="button-label">Calibrate breathing</ButtonLabel>
+  </Button>
   <Button id="xr-button" class="button">
     <ButtonIcon>
       <RectangleGoggles></RectangleGoggles>

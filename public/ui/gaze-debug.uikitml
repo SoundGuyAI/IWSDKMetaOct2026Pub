@@ -1,0 +1,113 @@
+<style>
+  .panel-root {
+    flex-direction: column;
+    width: 360px;
+  }
+
+  .content {
+    flex-direction: column;
+    gap: 8px;
+    padding: 20px;
+  }
+
+  .eyebrow {
+    color: #6b5a00;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+  }
+
+  .eyebrow:dark {
+    color: #f5d90a;
+  }
+
+  .heading {
+    color: #1c1d20;
+    font-size: 25px;
+    font-weight: 700;
+  }
+
+  .heading:dark {
+    color: #fafaf7;
+  }
+
+  .hint {
+    color: #4d5158;
+    font-size: 15px;
+    line-height: 20px;
+  }
+
+  .hint:dark {
+    color: #c8d4dc;
+  }
+
+  .row {
+    flex-direction: row;
+    justify-content: space-between;
+    padding-top: 8px;
+    padding-right: 10px;
+    padding-bottom: 8px;
+    padding-left: 10px;
+    border-radius: 8px;
+    background-color: #e8f0f5;
+  }
+
+  .row:dark {
+    background-color: #172c3a;
+  }
+
+  .label {
+    color: #4a5d6a;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .label:dark {
+    color: #9db8c8;
+  }
+
+  .value {
+    color: #153526;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .value:dark {
+    color: #9ff5ca;
+  }
+
+  .result {
+    color: #3a3b40;
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 21px;
+  }
+
+  .result:dark {
+    color: #f5d90a;
+  }
+
+  .button {
+    justify-content: flex-start;
+    margin-left: 20px;
+    margin-right: 20px;
+    margin-bottom: 20px;
+  }
+</style>
+<Panel class="panel-root">
+  <div class="content">
+    <div class="eyebrow">LIVE XR DIAGNOSTICS</div>
+    <div class="heading">Gaze + pinch</div>
+    <div class="hint">Gaze permission is requested when XR starts. A separate browser prompt may not appear.</div>
+    <div class="row"><div class="label">Requested</div><div class="value">yes</div></div>
+    <div class="row"><div class="label">Session grant</div><div id="gaze-feature-status" class="value">waiting for XR</div></div>
+    <div class="row"><div class="label">Gaze source</div><div id="gaze-source-status" class="value">missing</div></div>
+    <div class="row"><div class="label">Pose</div><div id="gaze-pose-status" class="value">invalid</div></div>
+    <div class="row"><div class="label">Pinches passed</div><div id="gaze-pinch-count" class="value">0</div></div>
+    <div id="gaze-test-result" class="result">Look at the test button and pinch.</div>
+  </div>
+  <Button id="gaze-pinch-test-button" class="button">
+    <ButtonIcon><ScanEye></ScanEye></ButtonIcon>
+    <ButtonLabel>Test gaze + pinch</ButtonLabel>
+  </Button>
+</Panel>

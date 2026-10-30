@@ -21,6 +21,12 @@ type BreathEstimate =
   | "exhale_estimate"
   | "quiet_or_uncertain";
 
+type GazeFeatureStatus =
+  | "waiting_for_xr"
+  | "granted"
+  | "not_granted"
+  | "unknown";
+
 const GAZE_BASELINE_SECONDS = 1;
 const PROBABLY_CLOSED_SECONDS = 0.65;
 const REOPEN_SECONDS = 0.2;
@@ -120,8 +126,17 @@ export class GuidedSensingSystem extends createSystem({}) {
   private requestInFlight = false;
   private renderSpatialStatus: (() => void) | null = null;
   private spatialButtonHovered = false;
+  private calibrationButtonHovered = false;
+  private gazeTestButtonHovered = false;
   private activeSession: XRSession | null = null;
   private lastSpatialActivationAt = -1;
+  private lastGazeTestActivationAt = -1;
+  private gazeFeatureStatus: GazeFeatureStatus = "waiting_for_xr";
+  private gazeSourcePresent = false;
+  private gazePoseValid = false;
+  private pinchTestCount = 0;
+  private gazeTestResult = "Look at the test button and pinch.";
+  private breathCalibrationRequested = false;
 
   private readonly startButton = document.querySelector<HTMLButtonElement>(
     "#start-guided-sensing",
@@ -156,10 +171,59 @@ export class GuidedSensingSystem extends createSystem({}) {
     const spatialSensorOutput = panel.requireElementById<UIKit.Text>(
       "spatial-sensor-status",
     );
+    const calibrationButton = panel.requireElementById(
+      "breath-calibration-button",
+    );
+    const calibrationButtonLabel = panel.requireElementById<UIKit.Text>(
+      "breath-calibration-button-label",
+    );
+    const markCalibrationHover = () => {
+      this.calibrationButtonHovered = true;
+    };
+    const clearCalibrationHover = () => {
+      this.calibrationButtonHovered = false;
+    };
+    const calibrate = () => this.requestBreathCalibration();
+
+    const debugPanel =
+      this.world.requireSceneObject<UIKitMLAsset>("gaze-debug-panel");
+    const gazeTestButton = debugPanel.requireElementById(
+      "gaze-pinch-test-button",
+    );
+    const gazeFeatureOutput = debugPanel.requireElementById<UIKit.Text>(
+      "gaze-feature-status",
+    );
+    const gazeSourceOutput = debugPanel.requireElementById<UIKit.Text>(
+      "gaze-source-status",
+    );
+    const gazePoseOutput = debugPanel.requireElementById<UIKit.Text>(
+      "gaze-pose-status",
+    );
+    const gazePinchOutput = debugPanel.requireElementById<UIKit.Text>(
+      "gaze-pinch-count",
+    );
+    const gazeTestResultOutput = debugPanel.requireElementById<UIKit.Text>(
+      "gaze-test-result",
+    );
+    const markGazeTestHover = () => {
+      this.gazeTestButtonHovered = true;
+    };
+    const clearGazeTestHover = () => {
+      this.gazeTestButtonHovered = false;
+    };
+    const runGazeTest = () => this.runGazePinchTest();
     spatialButton.name = "Btn_GuidedSensing";
     spatialButton.addEventListener("click", toggle);
     spatialButton.addEventListener("pointerenter", markSpatialHover);
     spatialButton.addEventListener("pointerleave", clearSpatialHover);
+    calibrationButton.name = "Btn_BreathCalibration";
+    calibrationButton.addEventListener("click", calibrate);
+    calibrationButton.addEventListener("pointerenter", markCalibrationHover);
+    calibrationButton.addEventListener("pointerleave", clearCalibrationHover);
+    gazeTestButton.name = "Btn_GazePinchTest";
+    gazeTestButton.addEventListener("click", runGazeTest);
+    gazeTestButton.addEventListener("pointerenter", markGazeTestHover);
+    gazeTestButton.addEventListener("pointerleave", clearGazeTestHover);
     this.renderSpatialStatus = () => {
       spatialButtonLabel.setProperties({
         text: this.monitoring ? "Stop sensing" : "Start guided sensing",
@@ -173,6 +237,22 @@ export class GuidedSensingSystem extends createSystem({}) {
       spatialSensorOutput.setProperties({
         text: this.sensorOutput?.value || "Sensors stopped",
       });
+      calibrationButtonLabel.setProperties({
+        text: this.breathCalibrationRequested
+          ? "Calibrating..."
+          : "Calibrate breathing",
+      });
+      gazeFeatureOutput.setProperties({
+        text: this.gazeFeatureStatus.replace(/_/gu, " "),
+      });
+      gazeSourceOutput.setProperties({
+        text: this.gazeSourcePresent ? "present" : "missing",
+      });
+      gazePoseOutput.setProperties({
+        text: this.gazePoseValid ? "valid" : "invalid",
+      });
+      gazePinchOutput.setProperties({ text: String(this.pinchTestCount) });
+      gazeTestResultOutput.setProperties({ text: this.gazeTestResult });
     };
 
     this.startButton?.addEventListener("click", toggle);
@@ -181,6 +261,12 @@ export class GuidedSensingSystem extends createSystem({}) {
       spatialButton.removeEventListener("click", toggle);
       spatialButton.removeEventListener("pointerenter", markSpatialHover);
       spatialButton.removeEventListener("pointerleave", clearSpatialHover);
+      calibrationButton.removeEventListener("click", calibrate);
+      calibrationButton.removeEventListener("pointerenter", markCalibrationHover);
+      calibrationButton.removeEventListener("pointerleave", clearCalibrationHover);
+      gazeTestButton.removeEventListener("click", runGazeTest);
+      gazeTestButton.removeEventListener("pointerenter", markGazeTestHover);
+      gazeTestButton.removeEventListener("pointerleave", clearGazeTestHover);
       this.setActiveSession(null);
       this.stopMonitoring();
     });
@@ -217,10 +303,44 @@ export class GuidedSensingSystem extends createSystem({}) {
     const selectionSource = event.inputSource;
     const isGazeOrHand =
       selectionSource.targetRayMode === "gaze" || selectionSource.hand != null;
-    if (isGazeOrHand && this.spatialButtonHovered) {
+    if (!isGazeOrHand) {
+      return;
+    }
+    if (this.gazeTestButtonHovered) {
+      this.runGazePinchTest();
+    } else if (this.calibrationButtonHovered) {
+      this.requestBreathCalibration();
+    } else if (this.spatialButtonHovered) {
       this.toggleMonitoring();
     }
   };
+
+  private runGazePinchTest(): void {
+    const now = performance.now();
+    if (now - this.lastGazeTestActivationAt < 300) {
+      return;
+    }
+    this.lastGazeTestActivationAt = now;
+    if (this.gazeFeatureStatus === "granted" && this.gazePoseValid) {
+      this.pinchTestCount += 1;
+      this.gazeTestResult = "PASS: gaze target + pinch received";
+    } else {
+      this.gazeTestResult = "FAIL: no valid gaze pose at pinch";
+    }
+    this.renderStatus();
+  }
+
+  private requestBreathCalibration(): void {
+    if (!this.monitoring) {
+      this.setSensorStatus("Start sensing before breathing calibration");
+      return;
+    }
+    this.breathCalibrationRequested = true;
+    this.breathAwaitingViewerPose = true;
+    this.breathEstimate = "calibrating";
+    this.setSensorStatus("Breathing calibration: breathe normally for 3 seconds");
+    this.speak("Breathe normally while calibration runs.");
+  }
 
   private setActiveSession(session: XRSession | null): void {
     if (session === this.activeSession) {
@@ -299,17 +419,34 @@ export class GuidedSensingSystem extends createSystem({}) {
       referenceSpace == null ||
       session.visibilityState !== "visible"
     ) {
+      this.gazeFeatureStatus = "waiting_for_xr";
+      this.gazeSourcePresent = false;
+      this.gazePoseValid = false;
       this.resetGazeTracking("waiting_for_xr");
       return;
     }
 
+    const enabledFeatures = (
+      session as XRSession & { enabledFeatures?: readonly string[] }
+    ).enabledFeatures;
+    this.gazeFeatureStatus =
+      enabledFeatures == null
+        ? "unknown"
+        : enabledFeatures.includes("gaze-tracking") ||
+            enabledFeatures.includes("eye-tracking")
+          ? "granted"
+          : "not_granted";
+
     const viewerPose = frame.getViewerPose(referenceSpace);
     if (viewerPose == null) {
+      this.gazeSourcePresent = false;
+      this.gazePoseValid = false;
       this.resetGazeTracking("unavailable");
       return;
     }
 
     const gazeSource = findGazeSource(session);
+    this.gazeSourcePresent = gazeSource != null;
     let gazeValid = false;
     if (gazeSource != null) {
       try {
@@ -319,6 +456,7 @@ export class GuidedSensingSystem extends createSystem({}) {
         console.warn("[guided-sensing] unable to sample gaze pose", error);
       }
     }
+    this.gazePoseValid = gazeValid;
 
     if (gazeValid) {
       this.gazeInvalidSince = -1;
@@ -353,7 +491,7 @@ export class GuidedSensingSystem extends createSystem({}) {
     this.gazeValidSince = -1;
     this.gazeRestoredSince = -1;
     if (!this.hasGazeBaseline) {
-      this.eyeEstimate = "calibrating_gaze";
+      this.eyeEstimate = gazeSource == null ? "unavailable" : "calibrating_gaze";
       return;
     }
     if (this.gazeInvalidSince < 0) {
@@ -401,6 +539,12 @@ export class GuidedSensingSystem extends createSystem({}) {
       this.noiseFloor += (rms - this.noiseFloor) / this.noiseSamples;
       this.breathEstimate = "calibrating";
       return;
+    }
+
+    if (this.breathCalibrationRequested) {
+      this.breathCalibrationRequested = false;
+      this.setSensorStatus("Breathing baseline captured; guided inhale/exhale comes next");
+      this.speak("Calibration complete.");
     }
 
     const airflowActive = rms > Math.max(0.004, this.noiseFloor * 1.8);

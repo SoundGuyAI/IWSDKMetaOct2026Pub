@@ -51,7 +51,7 @@
       },
       "gaze": {
         "logDiagnostics": true,
-        "showDebugReticle": false,
+        "showDebugReticle": true,
         "trackingLossGraceSeconds": 1
       }
     }

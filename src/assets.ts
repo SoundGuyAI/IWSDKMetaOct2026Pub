@@ -57,6 +57,7 @@ export default defineAssets({
     priority: 'lazy',
   },
   'welcome-panel': uikitml('welcome.uikitml', 'Welcome Panel'),
+  'gaze-debug-panel': uikitml('gaze-debug.uikitml', 'Gaze Debug Panel'),
   'label-grab': uikitml('label-grab.uikitml', 'Grab Label'),
   'label-select': uikitml('label-select.uikitml', 'Select Label'),
   'label-spin': uikitml('label-spin.uikitml', 'Spin Label'),
