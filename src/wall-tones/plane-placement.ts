@@ -2,6 +2,7 @@ import type { Entity } from '@iwsdk/core';
 import { XRPlane } from '@iwsdk/core';
 import {
   DESKTOP_GRID_DISTANCE_M,
+  DESKTOP_GRID_LATERAL_M,
   DESKTOP_PAD_GAP_M,
   HEADSET_PAD_SIZE_M,
   PAD_GAP_M,
@@ -225,15 +226,21 @@ export function planDesktopGridFromCamera(
   const forwardY = fy / fl;
   const forwardZ = fz / fl;
 
-  const centerX = cameraPosition.x + forwardX * DESKTOP_GRID_DISTANCE_M;
-  const centerY = cameraPosition.y + forwardY * DESKTOP_GRID_DISTANCE_M + 0.06;
-  const centerZ = cameraPosition.z + forwardZ * DESKTOP_GRID_DISTANCE_M;
-
   let rightX = -forwardZ;
   let rightZ = forwardX;
   const rightLen = Math.hypot(rightX, rightZ) || 1;
   rightX /= rightLen;
   rightZ /= rightLen;
+
+  const centerX =
+    cameraPosition.x +
+    forwardX * DESKTOP_GRID_DISTANCE_M +
+    rightX * DESKTOP_GRID_LATERAL_M;
+  const centerY = cameraPosition.y + forwardY * DESKTOP_GRID_DISTANCE_M + 0.06;
+  const centerZ =
+    cameraPosition.z +
+    forwardZ * DESKTOP_GRID_DISTANCE_M +
+    rightZ * DESKTOP_GRID_LATERAL_M;
 
   const upX = forwardY * rightZ;
   const upY = forwardZ * rightX - forwardX * rightZ;

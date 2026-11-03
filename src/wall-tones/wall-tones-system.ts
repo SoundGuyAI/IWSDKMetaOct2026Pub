@@ -402,8 +402,8 @@ export class WallTonesSystem extends createSystem({
   }
 
   private layoutPanelForFlatPlay(): void {
-    // Closer and to the right so the 2×2 pad grid does not cover the HUD.
-    this.applyPanelLayout(1.35, 1.42, -1.65, 0.28);
+    // Far enough right/clear of the left-shifted pad grid (confirmed via screenshot).
+    this.applyPanelLayout(1.95, 1.48, -1.55, 0.26);
   }
 
   private layoutPanelForMrPlay(): void {
@@ -947,7 +947,8 @@ export class WallTonesSystem extends createSystem({
         if (pressed) {
           anyPressed = true;
         }
-        if (!hovered) {
+        // Re-arm on release even while still hovered (same-pad twice in a row).
+        if (!pressed) {
           pad.pointerArmed = true;
         }
       }
@@ -959,14 +960,17 @@ export class WallTonesSystem extends createSystem({
     }
     for (const pad of this.pads) {
       const hovered = this.entityInQuery(pad.entity, this.queries.padHovered.entities);
-      if (!hovered) {
+      const pressed =
+        hovered &&
+        this.entityInQuery(pad.entity, this.queries.padPressed.entities);
+      // Edge-trigger on press; re-arm when the button is released while hovered
+      // so sequences like green→green register the second press.
+      if (!pressed) {
         pad.pointerArmed = true;
         continue;
       }
-      const pressed = this.entityInQuery(pad.entity, this.queries.padPressed.entities);
-      if (pressed && pad.pointerArmed) {
+      if (pad.pointerArmed) {
         pad.pointerArmed = false;
-        primeWallTonesAudioFromGesture();
         this.handlePadInput(pad.padIndex);
       }
     }

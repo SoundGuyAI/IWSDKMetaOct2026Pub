@@ -17,6 +17,8 @@ export const HEADSET_PAD_SIZE_M = 1;
 export const DESKTOP_PAD_SIZE_M = 0.42;
 export const DESKTOP_PAD_GAP_M = 0.18;
 export const DESKTOP_GRID_DISTANCE_M = 1.45;
+/** Shift the flat 2×2 grid left so the side HUD stays fully visible. */
+export const DESKTOP_GRID_LATERAL_M = -0.55;
 export const PAD_GAP_M = 0.25;
 /** Offset from the tracked hand/grip — not from the headset (0.35 at the face was unusable). */
 export const AIR_GHOST_HAND_OFFSET_M = 0.32;

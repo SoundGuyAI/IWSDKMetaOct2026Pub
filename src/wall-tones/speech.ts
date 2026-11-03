@@ -11,7 +11,7 @@ export const WALL_TONES_SPEECH = {
     'There is not enough wall space. Move the outlined buttons with your hand and pinch to place them beside you.',
   tableFound: 'I found a table. Listen and repeat the pattern.',
   noTable:
-    'I could not find a table. Move the outlined buttons with your hand and pinch to place them in front of you.',
+    'I could not find a table or room mesh. Place four outlines in the air — choose Table for flat pads or Wall for vertical ones, then pinch each in place.',
   airPlace: (step: number) =>
     `Outline ${step} of 4. Move your hand, then pinch to place.`,
   desktopReady:

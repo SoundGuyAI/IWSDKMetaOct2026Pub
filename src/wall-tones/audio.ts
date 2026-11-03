@@ -4,6 +4,7 @@ let sharedContext: AudioContext | null = null;
 const htmlToneCache = new Map<number, string>();
 const htmlAudioPool: HTMLAudioElement[] = [];
 let htmlPoolUnlocked = false;
+let webAudioPrimed = false;
 
 function createContext(): AudioContext {
   const Ctx =
@@ -135,26 +136,36 @@ function ensureHtmlAudioPool(): void {
   }
 }
 
-/** Must run synchronously inside touchstart / click (menu, overlay, UI button). */
+/**
+ * Unlock HTMLAudio on a user gesture. Must stay inaudible — an earlier version
+ * played pad 0 at audible volume on every pointerdown ("tone anywhere" + doubles).
+ */
 export function unlockHtmlAudioPoolFromGesture(): boolean {
   ensureHtmlAudioPool();
+  if (htmlPoolUnlocked) {
+    return true;
+  }
   let started = false;
   for (let padId = 0; padId < htmlAudioPool.length; padId += 1) {
     const audio = htmlAudioPool[padId];
     if (audio == null) {
       continue;
     }
-    audio.volume = padId === 0 ? 0.35 : 0.0001;
+    audio.volume = 0.0001;
     audio.currentTime = 0;
     try {
       const pending = audio.play();
       started = true;
       if (pending != null) {
-        void pending.then(() => {
-          htmlPoolUnlocked = true;
-        }).catch(() => {
-          /* retry on next gesture */
-        });
+        void pending
+          .then(() => {
+            htmlPoolUnlocked = true;
+            audio.pause();
+            audio.currentTime = 0;
+          })
+          .catch(() => {
+            /* retry on next gesture */
+          });
       }
     } catch {
       /* ignored */
@@ -213,20 +224,18 @@ function playPadToneInternal(padId: number, durationS = NOTE_DURATION_S): void {
   });
 }
 
-/** Call synchronously inside touchstart / click. */
+/** Call synchronously inside touchstart / click — resume only, no audible blip. */
 export function primeWallTonesAudioFromGesture(): void {
   unlockHtmlAudioPoolFromGesture();
   const context = getContext();
   if (context.state === 'suspended') {
     void context.resume().then(() => {
-      if (context.state === 'running') {
+      // One near-silent tick only on the first successful resume.
+      if (context.state === 'running' && !webAudioPrimed) {
+        webAudioPrimed = true;
         playSilentBlip(context);
       }
     });
-    return;
-  }
-  if (context.state === 'running') {
-    playSilentBlip(context);
   }
 }
 
@@ -299,4 +308,5 @@ export function suspendAudioContext(): void {
   htmlToneCache.clear();
   htmlAudioPool.length = 0;
   htmlPoolUnlocked = false;
+  webAudioPrimed = false;
 }
