@@ -10,9 +10,23 @@ export type WallTonePadId = (typeof WALL_TONE_PADS)[number]['id'];
 
 export const NOTE_DURATION_S = 0.45;
 export const NOTE_GAP_S = 0.15;
-export const TOUCH_BOX_DEPTH_M = 0.35;
-/** Extra hit slop for fingertip tests in MR (fraction of pad size). */
-export const TOUCH_SLOP_SCALE = 1.35;
+export const TOUCH_BOX_DEPTH_M = 0.22;
+/** Geometry inflate for the invisible touch mesh (keep modest to avoid false hits). */
+export const TOUCH_SLOP_SCALE = 1.08;
+/** Consecutive frames the tip must stay inside before a press counts. */
+export const TOUCH_ENTER_FRAMES = 2;
+/** Frames outside before the same pad can fire again. */
+export const TOUCH_EXIT_FRAMES = 3;
+/** Tip must stay within this of that hand's grip (rejects untracked ghost tips). */
+export const TOUCH_TIP_GRIP_MAX_M = 0.24;
+/** Extra center-distance budget beyond half the pad face (meters). */
+export const TOUCH_CENTER_PAD_MARGIN_M = 0.08;
+/** Ghost orientation slerp factor per frame at ~72 Hz (higher = snappier). */
+export const AIR_ORIENT_SLERP = 0.16;
+/** Palm flatness ≥ this snaps toward horizontal. */
+export const AIR_ORIENT_SNAP_FLAT = 0.68;
+/** Palm flatness ≤ this snaps toward vertical (band between avoids flicker). */
+export const AIR_ORIENT_SNAP_UPRIGHT = 0.42;
 export const HEADSET_PAD_SIZE_M = 1;
 export const DESKTOP_PAD_SIZE_M = 0.42;
 export const DESKTOP_PAD_GAP_M = 0.18;

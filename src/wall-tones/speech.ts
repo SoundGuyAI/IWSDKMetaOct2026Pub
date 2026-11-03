@@ -11,9 +11,9 @@ export const WALL_TONES_SPEECH = {
     'There is not enough wall space. Move the outlined buttons with your hand and pinch to place them beside you.',
   tableFound: 'I found a table. Listen and repeat the pattern.',
   noTable:
-    'I could not find a table or room mesh. Place four outlines in the air — choose Table for flat pads or Wall for vertical ones, then pinch each in place.',
+    'I could not find a table or room mesh. Tilt your placing hand so the outline snaps flat or upright, then pinch to place. You can also rescan the room from the panel.',
   airPlace: (step: number) =>
-    `Outline ${step} of 4. Move your hand, then pinch to place.`,
+    `Outline ${step} of 4. Tilt your hand, then pinch to place.`,
   desktopReady:
     'Tap any colored pad once to turn sound on and start. All four pads take part in the pattern.',
   gameStart:
@@ -29,7 +29,9 @@ export const WALL_TONES_SPEECH = {
     'Still there? Here is the pattern again. Touch the pads to repeat it.',
   repeatPattern: 'Playing the pattern again.',
   chooseAirOrient:
-    'Choose wall for vertical pads, or table for flat pads, then pinch to place each outline.',
+    'Tilt the hand you place with — the outline eases to flat or upright. Pinch to drop each pad. Use Rescan room if you want Quest to map your space again.',
+  rescanRoom:
+    'Opening room capture. Look around, then we will scan again.',
 } as const;
 
 /** Prime iOS Safari speech — call from the same tap as audio unlock. */
