@@ -13,7 +13,7 @@ export default async function run({ page, frame }) {
   });
 
   const target = 10;
-  const deadline = Date.now() + 95000;
+  const deadline = Date.now() + 180000;
 
   while (Date.now() < deadline) {
     const state = await surface.evaluate(() => {

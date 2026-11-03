@@ -16,6 +16,8 @@ export const WALL_TONES_SPEECH = {
     `Outline ${step} of 4. Move your hand, then pinch to place.`,
   desktopReady:
     'Tap any colored pad once to turn sound on and start. All four pads take part in the pattern.',
+  gameStart:
+    'The game is starting. Watch the pads, listen to the tone, then repeat the pattern.',
   streakMilestone: (streak: number) =>
     streak >= 10
       ? `Great run. ${streak} in a row.`
@@ -40,18 +42,37 @@ export function warmSpeechSynthesisFromGesture(): void {
 
 export class WallTonesSpeech {
   speak(line: string): void {
+    void this.speakAsync(line);
+  }
+
+  /** Speak a line and resolve when it finishes (or after a safety timeout). */
+  speakAsync(line: string): Promise<void> {
     if (!('speechSynthesis' in globalThis)) {
-      return;
+      return Promise.resolve();
     }
     if (needsSpeechUnlock() && !speechUnlocked) {
-      return;
+      return Promise.resolve();
     }
     globalThis.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(line);
     utterance.lang = 'en-US';
     utterance.rate = 0.92;
     utterance.pitch = 0.95;
-    globalThis.speechSynthesis.speak(utterance);
+    const estimatedMs = Math.max(2500, line.split(/\s+/).length * 420);
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        resolve();
+      };
+      utterance.onend = finish;
+      utterance.onerror = finish;
+      window.setTimeout(finish, estimatedMs + 800);
+      globalThis.speechSynthesis.speak(utterance);
+    });
   }
 
   cancel(): void {

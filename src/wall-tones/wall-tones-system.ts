@@ -21,6 +21,7 @@ import {
   AIR_PLACE_ROOM_PAD_SIZE_M,
   AIR_PLACE_SITTING_PAD_SIZE_M,
   NOTE_GAP_S,
+  POST_INTRO_DELAY_S,
   SCAN_WAIT_S,
   WALL_TONE_PADS,
   WRONG_RESET_DELAY_S,
@@ -664,8 +665,8 @@ export class WallTonesSystem extends createSystem({
     this.airPlaceStep += 1;
     if (this.airPlaceStep >= 4) {
       this.flowPhase = 'playing';
-      this.statusText = 'Playing';
-      this.beginRoundAfterDelay(0.8);
+      this.statusText = 'Get ready…';
+      this.beginRoundWithIntro();
       this.renderPanel();
       return;
     }
@@ -756,9 +757,8 @@ export class WallTonesSystem extends createSystem({
       this.pads.push(pad);
     });
     this.flowPhase = 'playing';
-    this.statusText = 'Playing';
-    this.speech.speak(line);
-    this.beginRoundAfterDelay(1);
+    this.statusText = 'Get ready…';
+    this.beginRoundWithIntro(line);
     this.renderPanel();
   }
 
@@ -794,9 +794,23 @@ export class WallTonesSystem extends createSystem({
     this.ghostPad = null;
   }
 
-  private beginRoundAfterDelay(delayS: number): void {
+  /** Intro voice, then a beat of silence, then the first pad blinks with its tone. */
+  private beginRoundWithIntro(leadInLine?: string): void {
     this.playbackQueue = this.playbackQueue.then(async () => {
-      await this.wait(delayS);
+      if (!this.experienceActive || this.flowPhase !== 'playing') {
+        return;
+      }
+      this.statusText = 'Listen to the intro…';
+      this.renderPanel();
+      if (leadInLine != null && leadInLine.length > 0) {
+        await this.speech.speakAsync(leadInLine);
+        await this.wait(0.35);
+      }
+      if (!this.experienceActive || this.flowPhase !== 'playing') {
+        return;
+      }
+      await this.speech.speakAsync(WALL_TONES_SPEECH.gameStart);
+      await this.wait(POST_INTRO_DELAY_S);
       if (!this.experienceActive || this.flowPhase !== 'playing') {
         return;
       }
@@ -937,29 +951,24 @@ export class WallTonesSystem extends createSystem({
     }
     this.flatAwaitingStart = false;
     primeWallTonesAudioFromGesture();
+    // Confirm the tap briefly, then run the spoken intro before the first sequence tone.
     const pad = this.pads[padIndex];
     if (pad != null) {
       flashPad(pad, true);
       playPadToneFromUserAction(padIndex);
-      window.setTimeout(() => flashPad(pad, false), 350);
+      window.setTimeout(() => flashPad(pad, false), 280);
     }
-    this.playbackQueue = this.playbackQueue.then(async () => {
-      await this.wait(0.2);
-      if (!this.experienceActive || this.flowPhase !== 'playing') {
-        return;
-      }
-      this.game.startNewRun();
-      this.renderPanel();
-      await this.playSequence();
-    });
+    this.statusText = 'Get ready…';
+    this.renderPanel();
+    this.beginRoundWithIntro();
   }
 
   private async onWrongInput(): Promise<void> {
     this.game.phase = 'resetting';
     await playErrorTone();
-    this.speech.speak(WALL_TONES_SPEECH.wrongTouch);
     this.statusText = 'Try again';
     this.renderPanel();
+    await this.speech.speakAsync(WALL_TONES_SPEECH.wrongTouch);
     await this.wait(WRONG_RESET_DELAY_S);
     if (!this.experienceActive) {
       return;
