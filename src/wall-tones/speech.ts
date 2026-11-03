@@ -7,8 +7,10 @@ export const WALL_TONES_SPEECH = {
   roomCapture:
     'I could not see enough surfaces. Open room capture on your headset, then we will look again.',
   padsOnWalls: 'I placed four buttons on your walls. Listen and repeat the pattern.',
+  pickWallSlots:
+    'I found walls. Cyan shows walls, orange shows other room mesh. Point at a green square and pinch to place each one-meter button. Pick four.',
   notEnoughWallSpace:
-    'There is not enough wall space. Move the outlined buttons with your hand and pinch to place them beside you.',
+    'There is not enough wall space for automatic placement. Point at the green squares on the walls if you see them, or move the outlined buttons with your hand and pinch to place them in the air.',
   tableFound: 'I found a table. Listen and repeat the pattern.',
   noTable:
     'I could not find a table or room mesh. Tilt your placing hand so the outline snaps flat or upright, then pinch to place. You can also rescan the room from the panel.',

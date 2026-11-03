@@ -10,8 +10,10 @@ import {
   VisibilityState,
   Vector3,
   XRAnchor,
+  XRMesh,
   XRPlane,
   createSystem,
+  type Entity,
 } from '@iwsdk/core';
 import { XRHandVisualAdapter } from '@iwsdk/xr-input';
 import type { ExperienceMode } from '../app-mode.js';
@@ -24,6 +26,7 @@ import {
   AIR_ORIENT_SNAP_UPRIGHT,
   AIR_PLACE_ROOM_PAD_SIZE_M,
   AIR_PLACE_SITTING_PAD_SIZE_M,
+  HEADSET_PAD_SIZE_M,
   NOTE_GAP_S,
   BETWEEN_ROUNDS_DELAY_S,
   IDLE_REPLAY_S,
@@ -41,8 +44,8 @@ import {
 import {
   collectTablePlanes,
   collectVerticalWalls,
+  generateWallPadCandidates,
   planDesktopGridFromCamera,
-  planRoomScalePads,
   planTablePads,
   type PlacedPadTransform,
 } from './plane-placement.js';
@@ -56,6 +59,15 @@ import {
   solidifyGhostPad,
   type PadRuntime,
 } from './pads.js';
+import {
+  applyRoomSetupTints,
+  clearRoomSetupTints,
+  createSlotCandidateRuntime,
+  createWallOverlay,
+  disposeSlotCandidates,
+  setCandidateVisualState,
+  type SlotCandidateRuntime,
+} from './room-setup-visuals.js';
 import { WallTonesSequence } from './sequence.js';
 import { WALL_TONES_SPEECH, WallTonesSpeech, unlockSpeechFromGesture, resetSpeechUnlock } from './speech.js';
 import {
@@ -63,6 +75,7 @@ import {
   switchBackToHubMenu,
   switchToWallTonesArWorld,
 } from './world-host.js';
+import { WallSlotCandidate } from './wall-slot-candidate-component.js';
 import { WallTonePad } from './wall-tone-pad-component.js';
 
 const FLAT_BACKDROP_NODE_IDS = [
@@ -76,12 +89,18 @@ const FLAT_BACKDROP_NODE_IDS = [
 
 type WallTonesDebugBridge = {
   phase: string;
+  flowPhase: string;
   sequence: readonly number[];
   inputStep: number;
   streak: number;
   bestStreak: number;
   flatAwaitingStart: boolean;
+  slotCandidateCount: number;
+  selectedSlotCount: number;
   submitPad: (padIndex: number) => void;
+  /** Emulator helper: spawn 4 ray-pickable wall slots in front of the player. */
+  startFakeWallPick: () => void;
+  selectSlot: (candidateIndex: number) => void;
 };
 
 declare global {
@@ -97,14 +116,18 @@ type FlowPhase =
   | 'inactive'
   | 'choose-mode'
   | 'scanning'
+  | 'wall-picking'
   | 'air-placement'
   | 'playing';
 
 export class WallTonesSystem extends createSystem({
   pads: { required: [WallTonePad] },
   planes: { required: [XRPlane] },
+  meshes: { required: [XRMesh] },
   padHovered: { required: [WallTonePad, Hovered] },
   padPressed: { required: [WallTonePad, Pressed] },
+  slotHovered: { required: [WallSlotCandidate, Hovered] },
+  slotPressed: { required: [WallSlotCandidate, Pressed] },
 }) {
   private readonly speech = new WallTonesSpeech();
   private readonly game = new WallTonesSequence();
@@ -126,6 +149,10 @@ export class WallTonesSystem extends createSystem({
   private readonly scratchQuat = new Quaternion();
   private readonly padWorldPos = new Vector3();
   private readonly tipScratch = new Vector3();
+  private readonly rayOrigin = new Vector3();
+  private readonly rayDir = new Vector3();
+  private readonly rayToSlot = new Vector3();
+  private readonly rayClosest = new Vector3();
   private readonly axisX = new Vector3(1, 0, 0);
 
   private experienceActive = false;
@@ -152,6 +179,11 @@ export class WallTonesSystem extends createSystem({
   private idleReplayQueued = false;
   private panelRayRemoved = false;
   private lackingSpatialData = false;
+  private slotCandidates: SlotCandidateRuntime[] = [];
+  private wallOverlayEntities: Entity[] = [];
+  private selectedSlotTransforms: PlacedPadTransform[] = [];
+  private readonly slotArmed = new Map<number, boolean>();
+  private slotSelectLatched = false;
   private readonly touchEnterFrames = new Map<number, number>();
   private readonly touchExitFrames = new Map<number, number>();
   private pointerAudioBound = false;
@@ -197,6 +229,20 @@ export class WallTonesSystem extends createSystem({
     if (stored === 'walltones') {
       void this.enterWallTonesMode();
     }
+    const awaitingMode = sessionStorage.getItem('wall-tones-awaiting-mode');
+    if (awaitingMode === '1' && getActiveWorldKind() === 'walltones-ar') {
+      sessionStorage.removeItem('wall-tones-awaiting-mode');
+      this.experienceActive = true;
+      document.title = 'Wall Tones';
+      this.bindPanelIfNeeded();
+      this.flowPhase = 'choose-mode';
+      this.setFlatHintVisible(false);
+      this.setSetupUiVisible(true);
+      this.statusText = 'Choose room scale or sitting.';
+      this.speech.speak(WALL_TONES_SPEECH.chooseMode);
+      this.renderPanel();
+    }
+
     const pendingSetup = sessionStorage.getItem('wall-tones-setup-mode');
     if (pendingSetup === 'room-scale' || pendingSetup === 'sitting') {
       sessionStorage.removeItem('wall-tones-setup-mode');
@@ -236,6 +282,9 @@ export class WallTonesSystem extends createSystem({
     }
     if (this.flowPhase === 'scanning') {
       this.tickScan(delta);
+    }
+    if (this.flowPhase === 'wall-picking') {
+      this.tickWallPicking();
     }
     if (this.flowPhase === 'air-placement') {
       this.tickAirPlacement(delta);
@@ -320,6 +369,17 @@ export class WallTonesSystem extends createSystem({
       return;
     }
 
+    // Switch to the AR/passthrough world once up front so choosing Room scale
+    // does not tear down XR mid-session (that felt like leaving the app).
+    if (getActiveWorldKind() === 'hub-vr') {
+      sessionStorage.setItem('wall-tones-awaiting-mode', '1');
+      sessionStorage.setItem('iwsdk-experience-mode', 'walltones');
+      this.statusText = 'Opening passthrough…';
+      this.renderPanel();
+      await switchToWallTonesArWorld();
+      return;
+    }
+
     this.flowPhase = 'choose-mode';
     this.setFlatHintVisible(false);
     this.setSetupUiVisible(true);
@@ -340,6 +400,7 @@ export class WallTonesSystem extends createSystem({
     this.airOrientationLocked = null;
     this.dominantHand = null;
     sessionStorage.removeItem('wall-tones-dominant-hand');
+    sessionStorage.removeItem('wall-tones-awaiting-mode');
     this.lackingSpatialData = false;
     this.touchEnterFrames.clear();
     this.touchExitFrames.clear();
@@ -351,10 +412,12 @@ export class WallTonesSystem extends createSystem({
     resetSpeechUnlock();
     this.unbindPointerAudioUnlock();
     this.hideMobileSoundOverlay();
+    this.clearRoomSetupVisuals();
     this.clearPads();
     this.ghostPad = null;
     this.setupMode = null;
     this.setFlatHintVisible(false);
+    this.setWallPickHintVisible(false);
     this.setAirOrientUiVisible(false);
     this.setRescanUiVisible(false);
     this.restorePanelLayout();
@@ -618,6 +681,9 @@ export class WallTonesSystem extends createSystem({
       get phase() {
         return system.game.phase;
       },
+      get flowPhase() {
+        return system.flowPhase;
+      },
       get sequence() {
         return [...system.game.sequence];
       },
@@ -633,10 +699,80 @@ export class WallTonesSystem extends createSystem({
       get flatAwaitingStart() {
         return system.flatAwaitingStart;
       },
+      get slotCandidateCount() {
+        return system.slotCandidates.length;
+      },
+      get selectedSlotCount() {
+        return system.selectedSlotTransforms.length;
+      },
       submitPad: (padIndex: number) => {
         system.handlePadInput(padIndex);
       },
+      startFakeWallPick: () => {
+        system.debugStartFakeWallPick();
+      },
+      selectSlot: (candidateIndex: number) => {
+        const slot = system.slotCandidates.find(
+          (entry) => entry.candidateIndex === candidateIndex,
+        );
+        if (slot != null) {
+          system.selectWallSlot(slot);
+        }
+      },
     };
+  }
+
+  /** Emulator-only path: four 1x1m slots ahead of the headset for ray-pick tests. */
+  private debugStartFakeWallPick(): void {
+    if (!this.experienceActive) {
+      this.experienceActive = true;
+    }
+    this.setupMode = 'room-scale';
+    this.player.head.getWorldPosition(this.viewer);
+    this.clearRoomSetupVisuals();
+    this.clearPads();
+    this.flowPhase = 'wall-picking';
+    this.selectedSlotTransforms = [];
+    this.slotSelectLatched = false;
+    this.layoutPanelForMrPlay();
+    this.setSetupUiVisible(false);
+    this.setFlatHintVisible(false);
+    this.setAirOrientUiVisible(false);
+    this.setWallPickHintVisible(true);
+    this.setRescanUiVisible(true);
+    this.setRepeatUiVisible(false);
+    // Place a 2x2 of slots in front of the headset along -Z (common XR forward).
+    this.player.head.getWorldPosition(this.viewer);
+    const forward = new Vector3(0, 0, -1);
+    const right = new Vector3(1, 0, 0);
+    const offsets = [
+      [-1.1, 0.35],
+      [1.1, 0.35],
+      [-1.1, -0.95],
+      [1.1, -0.95],
+    ];
+    const quat: [number, number, number, number] = [0, 0, 0, 1];
+    offsets.forEach(([ox, oy], index) => {
+      const pos = new Vector3(
+        this.viewer.x + right.x * ox + forward.x * 1.6,
+        this.viewer.y + oy,
+        this.viewer.z + right.z * ox + forward.z * 1.6,
+      );
+      const slot = createSlotCandidateRuntime(
+        this.world,
+        {
+          position: [pos.x, pos.y, pos.z],
+          quaternion: quat,
+          wallIndex: 0,
+          candidateIndex: index,
+        },
+        HEADSET_PAD_SIZE_M,
+      );
+      this.slotCandidates.push(slot);
+      this.slotArmed.set(index, true);
+    });
+    this.statusText = 'Debug wall pick: ray + select 4 green slots';
+    this.renderPanel();
   }
 
   private async onBackToMenu(): Promise<void> {
@@ -660,22 +796,27 @@ export class WallTonesSystem extends createSystem({
     }
     this.setupMode = mode;
     sessionStorage.setItem('wall-tones-setup-mode', mode);
-    this.statusText = 'Starting passthrough setup…';
-    this.renderPanel();
+    // Mode choice now happens inside the AR world already — no XR tear-down here.
     if (getActiveWorldKind() === 'hub-vr') {
+      this.statusText = 'Opening passthrough…';
+      this.renderPanel();
       await switchToWallTonesArWorld();
       return;
     }
+    this.setSetupUiVisible(false);
     this.flowPhase = 'scanning';
     this.scanStartedAt = performance.now() / 1000;
     this.speech.speak(WALL_TONES_SPEECH.lookAround);
+    this.statusText = 'Scanning the room…';
     this.renderPanel();
   }
 
   private tickScan(_delta: number): void {
     const elapsed = performance.now() / 1000 - this.scanStartedAt;
     if (elapsed < SCAN_WAIT_S) {
-      this.statusText = `Scanning the room… ${Math.ceil(SCAN_WAIT_S - elapsed)}s`;
+      const planeCount = this.queries.planes.entities.size;
+      const meshCount = this.queries.meshes.entities.size;
+      this.statusText = `Scanning… ${Math.ceil(SCAN_WAIT_S - elapsed)}s (${planeCount} planes, ${meshCount} meshes)`;
       this.renderPanel();
       return;
     }
@@ -700,12 +841,12 @@ export class WallTonesSystem extends createSystem({
     }
 
     const walls = collectVerticalWalls(planeEntities, this.viewer);
-    const transforms = planRoomScalePads(walls, this.viewer.y);
-    if (transforms == null) {
-      this.startAirPlacement(WALL_TONES_SPEECH.notEnoughWallSpace);
+    if (walls.length === 0) {
+      void this.offerRoomCaptureOrAir();
       return;
     }
-    this.finishHeadsetPlacement(transforms, WALL_TONES_SPEECH.padsOnWalls);
+    // Interactive pick: show wall/mesh tints + candidate 1x1m slots.
+    this.startWallPicking(walls);
   }
 
   private async offerRoomCaptureOrAir(): Promise<void> {
@@ -727,7 +868,219 @@ export class WallTonesSystem extends createSystem({
     this.startAirPlacement(WALL_TONES_SPEECH.notEnoughWallSpace);
   }
 
+  private startWallPicking(
+    walls: ReturnType<typeof collectVerticalWalls>,
+  ): void {
+    this.clearRoomSetupVisuals();
+    this.clearPads();
+    this.flowPhase = 'wall-picking';
+    this.lackingSpatialData = false;
+    this.selectedSlotTransforms = [];
+    this.layoutPanelForMrPlay();
+    this.setFlatHintVisible(false);
+    this.setAirOrientUiVisible(false);
+    this.setWallPickHintVisible(true);
+    this.setRescanUiVisible(true);
+    this.setRepeatUiVisible(false);
+
+    applyRoomSetupTints(walls.map((w) => w.entity), this.queries.meshes.entities);
+    for (const wall of walls) {
+      this.wallOverlayEntities.push(createWallOverlay(this.world, wall));
+    }
+
+    const candidates = generateWallPadCandidates(
+      walls,
+      this.viewer.y,
+      HEADSET_PAD_SIZE_M,
+    );
+    for (const candidate of candidates) {
+      const slot = createSlotCandidateRuntime(
+        this.world,
+        candidate,
+        HEADSET_PAD_SIZE_M,
+      );
+      this.slotCandidates.push(slot);
+      this.slotArmed.set(slot.candidateIndex, true);
+    }
+
+    if (this.slotCandidates.length === 0) {
+      // Walls detected but no 1x1 fits — fall back to air place with a clear reason.
+      this.clearRoomSetupVisuals();
+      this.startAirPlacement(WALL_TONES_SPEECH.notEnoughWallSpace);
+      return;
+    }
+
+    this.speech.speak(WALL_TONES_SPEECH.pickWallSlots);
+    this.statusText = `Pick pad 1 of 4 — ${this.slotCandidates.length} wall slots`;
+    this.renderPanel();
+  }
+
+  private tickWallPicking(): void {
+    const rayHovered = this.findRayHoveredSlot();
+    if (
+      rayHovered != null &&
+      !rayHovered.selected &&
+      !this.statusText.startsWith(`Hover slot ${rayHovered.candidateIndex}`)
+    ) {
+      this.statusText = `Hover slot ${rayHovered.candidateIndex} — pinch to pick (${this.selectedSlotTransforms.length}/4)`;
+      this.renderPanel();
+    }
+    for (const slot of this.slotCandidates) {
+      if (slot.selected) {
+        setCandidateVisualState(slot, 'selected');
+        continue;
+      }
+      const ecsHovered = this.entityInQuery(
+        slot.entity,
+        this.queries.slotHovered.entities,
+      );
+      const hovered = ecsHovered || slot === rayHovered;
+      const ecsPressed =
+        ecsHovered &&
+        this.entityInQuery(slot.entity, this.queries.slotPressed.entities);
+      setCandidateVisualState(slot, hovered ? 'hovered' : 'idle');
+      if (!ecsPressed) {
+        this.slotArmed.set(slot.candidateIndex, true);
+      }
+      if (ecsPressed && this.slotArmed.get(slot.candidateIndex)) {
+        this.slotArmed.set(slot.candidateIndex, false);
+        this.selectWallSlot(slot);
+      }
+    }
+
+    // Select via controller/hand trigger while the ray (or tip) is on a slot.
+    let anySelectActive = false;
+    for (const hand of ['right', 'left'] as const) {
+      const select = this.input.xr.getSelectState(hand);
+      if (!select.active && !select.start) {
+        continue;
+      }
+      anySelectActive = true;
+      if (this.slotSelectLatched && !select.start) {
+        continue;
+      }
+      const aimed =
+        this.findRayHoveredSlot(hand) ?? this.findTipHoveredSlot(hand);
+      if (aimed != null && !aimed.selected) {
+        this.slotSelectLatched = true;
+        this.selectWallSlot(aimed);
+        return;
+      }
+    }
+    if (!anySelectActive) {
+      this.slotSelectLatched = false;
+    }
+  }
+
+  /** Closest slot under a controller/hand target ray within pad half-extent. */
+  private findRayHoveredSlot(
+    preferredHand?: 'left' | 'right',
+  ): SlotCandidateRuntime | null {
+    const hands =
+      preferredHand != null
+        ? [preferredHand]
+        : (['right', 'left'] as const);
+    let best: SlotCandidateRuntime | null = null;
+    let bestAlong = Number.POSITIVE_INFINITY;
+    const hitRadius = HEADSET_PAD_SIZE_M * 0.55;
+    for (const hand of hands) {
+      const adapter = this.input.xr.visualAdapters[hand].peek();
+      if (adapter != null && !adapter.connected) {
+        continue;
+      }
+      const raySpace = this.player.raySpaces[hand];
+      raySpace.updateWorldMatrix(true, false);
+      raySpace.getWorldPosition(this.rayOrigin);
+      raySpace.getWorldQuaternion(this.gripQuat);
+      // XR target rays point along local -Z.
+      this.rayDir.set(0, 0, -1).applyQuaternion(this.gripQuat).normalize();
+      for (const slot of this.slotCandidates) {
+        if (slot.selected) {
+          continue;
+        }
+        slot.root.getWorldPosition(this.padWorldPos);
+        this.rayToSlot.copy(this.padWorldPos).sub(this.rayOrigin);
+        const along = this.rayToSlot.dot(this.rayDir);
+        if (along < 0.05 || along > 6) {
+          continue;
+        }
+        this.rayClosest.copy(this.rayOrigin).addScaledVector(this.rayDir, along);
+        const lateral = this.rayClosest.distanceTo(this.padWorldPos);
+        if (lateral <= hitRadius && along < bestAlong) {
+          bestAlong = along;
+          best = slot;
+        }
+      }
+    }
+    return best;
+  }
+
+  private findTipHoveredSlot(
+    hand: 'left' | 'right',
+  ): SlotCandidateRuntime | null {
+    this.player.indexTipSpaces[hand].getWorldPosition(this.tipScratch);
+    let best: SlotCandidateRuntime | null = null;
+    let bestDist = HEADSET_PAD_SIZE_M * 0.55;
+    for (const slot of this.slotCandidates) {
+      if (slot.selected) {
+        continue;
+      }
+      slot.root.getWorldPosition(this.padWorldPos);
+      const dist = this.tipScratch.distanceTo(this.padWorldPos);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = slot;
+      }
+    }
+    return best;
+  }
+
+  private selectWallSlot(slot: SlotCandidateRuntime): void {
+    if (slot.selected || this.selectedSlotTransforms.length >= 4) {
+      return;
+    }
+    // Keep picks spread out so four 1x1 pads do not stack.
+    const tooClose = this.selectedSlotTransforms.some((prior) => {
+      const dx = prior.position[0] - slot.transform.position[0];
+      const dy = prior.position[1] - slot.transform.position[1];
+      const dz = prior.position[2] - slot.transform.position[2];
+      return Math.hypot(dx, dy, dz) < HEADSET_PAD_SIZE_M * 0.75;
+    });
+    if (tooClose) {
+      this.statusText = 'Too close to another pick - choose a farther slot';
+      this.renderPanel();
+      return;
+    }
+    setCandidateVisualState(slot, 'selected');
+    this.selectedSlotTransforms.push({
+      position: slot.transform.position,
+      quaternion: slot.transform.quaternion,
+    });
+    const count = this.selectedSlotTransforms.length;
+    if (count >= 4) {
+      const transforms = [...this.selectedSlotTransforms];
+      this.clearRoomSetupVisuals();
+      this.finishHeadsetPlacement(transforms, WALL_TONES_SPEECH.padsOnWalls);
+      return;
+    }
+    this.statusText = `Pick pad ${count + 1} of 4`;
+    this.renderPanel();
+  }
+
+  private clearRoomSetupVisuals(): void {
+    disposeSlotCandidates(this.slotCandidates);
+    this.slotArmed.clear();
+    this.selectedSlotTransforms = [];
+    for (const entity of this.wallOverlayEntities) {
+      entity.dispose({ disposeResources: true });
+    }
+    this.wallOverlayEntities = [];
+    clearRoomSetupTints();
+    this.setWallPickHintVisible(false);
+  }
+
   private startAirPlacement(line: string): void {
+    this.clearRoomSetupVisuals();
     this.flowPhase = 'air-placement';
     this.airPlaceStep = 0;
     this.lackingSpatialData = true;
@@ -743,6 +1096,7 @@ export class WallTonesSystem extends createSystem({
     this.clearPads();
     this.layoutPanelForMrPlay();
     this.setFlatHintVisible(false);
+    this.setWallPickHintVisible(false);
     this.setAirOrientUiVisible(true);
     this.setRescanUiVisible(true);
     this.setRepeatUiVisible(false);
@@ -938,8 +1292,10 @@ export class WallTonesSystem extends createSystem({
     transforms: PlacedPadTransform[],
     line: string,
   ): void {
+    this.clearRoomSetupVisuals();
     this.clearPads();
     this.lackingSpatialData = false;
+    this.setWallPickHintVisible(false);
     this.setRescanUiVisible(false);
     const size = defaultHeadsetPadSize();
     transforms.forEach((transform, index) => {
@@ -1330,19 +1686,28 @@ export class WallTonesSystem extends createSystem({
       ?.setProperties({ display: visible ? 'flex' : 'none' });
   }
 
+  private setWallPickHintVisible(visible: boolean): void {
+    this.world
+      .getSceneObject<UIKitMLAsset>('wall-tones-panel')
+      ?.getElementById('wall-pick-hint')
+      ?.setProperties({ display: visible ? 'flex' : 'none' });
+  }
+
   private async onRescanRoom(): Promise<void> {
     if (!this.experienceActive) {
       return;
     }
-    if (this.flowPhase !== 'air-placement' && this.flowPhase !== 'playing') {
+    if (
+      this.flowPhase !== 'air-placement' &&
+      this.flowPhase !== 'playing' &&
+      this.flowPhase !== 'wall-picking'
+    ) {
       return;
-    }
-    if (!this.lackingSpatialData && this.flowPhase === 'playing') {
-      // Still allow an explicit rescan from the panel during air-derived play.
     }
     this.speech.speak(WALL_TONES_SPEECH.rescanRoom);
     this.statusText = 'Rescanning room…';
     this.renderPanel();
+    this.clearRoomSetupVisuals();
     this.clearPads();
     this.ghostPad = null;
     this.airPlaceStep = 0;

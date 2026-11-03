@@ -50,6 +50,7 @@ function buildArWorldOptions(): WorldOptions {
       features: {
         handTracking: true,
         planeDetection: true,
+        meshDetection: true,
         anchors: true,
         hitTest: true,
       },
@@ -59,7 +60,9 @@ function buildArWorldOptions(): WorldOptions {
       locomotion: false,
       grabbing: false,
       physics: false,
-      sceneUnderstanding: true,
+      sceneUnderstanding: {
+        showWireFrame: false,
+      },
       environmentRaycast: true,
     },
   };

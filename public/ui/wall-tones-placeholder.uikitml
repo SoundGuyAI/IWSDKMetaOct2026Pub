@@ -125,6 +125,9 @@
       </Button>
     </div>
   </div>
+  <div id="wall-pick-hint" class="status" style="display: none; margin-left: 24px; margin-right: 24px">
+    Cyan = walls, orange = other mesh, green = pad slots. Ray + pinch to pick 4.
+  </div>
   <Button id="rescan-room-button" class="button" style="display: none">
     <ButtonIcon><Search></Search></ButtonIcon>
     <ButtonLabel>Rescan room</ButtonLabel>

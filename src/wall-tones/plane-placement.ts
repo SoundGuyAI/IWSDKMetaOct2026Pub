@@ -1,5 +1,5 @@
 import type { Entity } from '@iwsdk/core';
-import { XRPlane } from '@iwsdk/core';
+import { Object3D, Quaternion, Vector3, XRPlane } from '@iwsdk/core';
 import {
   DESKTOP_GRID_DISTANCE_M,
   DESKTOP_GRID_LATERAL_M,
@@ -18,51 +18,61 @@ export type PlacedPadTransform = {
   quaternion: [number, number, number, number];
 };
 
-type WallSlot = {
+export type WallSlot = {
   entity: Entity;
   plane: XRPlaneData;
+  /** World-space center of the wall plane origin / mesh. */
   center: { x: number; y: number; z: number };
+  /** World-space outward normal (toward the player when possible). */
   normal: { x: number; y: number; z: number };
+  /** Local-space extents of the plane polygon on X/Z (meters). */
+  localMinX: number;
+  localMaxX: number;
+  localMinZ: number;
+  localMaxZ: number;
+  widthM: number;
+  heightM: number;
 };
+
+export type WallPadCandidate = PlacedPadTransform & {
+  wallIndex: number;
+  candidateIndex: number;
+};
+
+const _worldPos = new Vector3();
+const _worldNormal = new Vector3();
+const _localPoint = new Vector3();
+const _quat = new Quaternion();
+const _tmp = new Vector3();
 
 function readPlane(entity: Entity): XRPlaneData | null {
   const plane = entity.getValue(XRPlane, '_plane') as XRPlaneData | undefined;
   return plane ?? null;
 }
 
-function polygonCenter(polygon: DOMPointReadOnly[] | undefined): {
-  x: number;
-  y: number;
-  z: number;
+function polygonExtents(polygon: DOMPointReadOnly[] | undefined): {
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
 } | null {
   if (polygon == null || polygon.length === 0) {
     return null;
   }
-  let x = 0;
-  let y = 0;
-  let z = 0;
+  let minX = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let minZ = Number.POSITIVE_INFINITY;
+  let maxZ = Number.NEGATIVE_INFINITY;
   for (const point of polygon) {
-    x += point.x;
-    y += point.y;
-    z += point.z;
+    minX = Math.min(minX, point.x);
+    maxX = Math.max(maxX, point.x);
+    minZ = Math.min(minZ, point.z);
+    maxZ = Math.max(maxZ, point.z);
   }
-  const count = polygon.length;
-  return { x: x / count, y: y / count, z: z / count };
-}
-
-function estimateWallNormal(
-  plane: XRPlaneData,
-  viewer: { x: number; y: number; z: number },
-  center: { x: number; y: number; z: number },
-): { x: number; y: number; z: number } {
-  const nx = viewer.x - center.x;
-  const ny = viewer.y - center.y;
-  const nz = viewer.z - center.z;
-  const length = Math.hypot(nx, ny, nz) || 1;
-  if (plane.orientation === 'vertical') {
-    return { x: nx / length, y: 0, z: nz / length };
+  if (!Number.isFinite(minX) || !Number.isFinite(maxX)) {
+    return null;
   }
-  return { x: 0, y: 1, z: 0 };
+  return { minX, maxX, minZ, maxZ };
 }
 
 function orientPadTowardPlayer(
@@ -73,6 +83,29 @@ function orientPadTowardPlayer(
   return [0, Math.sin(half), 0, Math.cos(half)];
 }
 
+function worldNormalFromPlaneObject(
+  object3D: Object3D,
+  viewer: { x: number; y: number; z: number },
+  center: { x: number; y: number; z: number },
+): { x: number; y: number; z: number } {
+  // IWSDK plane meshes are thin boxes in local XZ; local +Y is the plane normal.
+  _worldNormal.set(0, 1, 0).transformDirection(object3D.matrixWorld).normalize();
+  _tmp.set(viewer.x - center.x, viewer.y - center.y, viewer.z - center.z);
+  if (_worldNormal.dot(_tmp) < 0) {
+    _worldNormal.negate();
+  }
+  // Prefer upright walls: flatten tiny Y drift for vertical planes.
+  if (Math.abs(_worldNormal.y) < 0.35) {
+    _worldNormal.y = 0;
+    _worldNormal.normalize();
+  }
+  return { x: _worldNormal.x, y: _worldNormal.y, z: _worldNormal.z };
+}
+
+/**
+ * Collect vertical walls using each plane entity's world pose.
+ * Polygon coords stay local; centers/normals are converted to world space.
+ */
 export function collectVerticalWalls(
   planeEntities: Iterable<Entity>,
   viewer: { x: number; y: number; z: number },
@@ -80,22 +113,51 @@ export function collectVerticalWalls(
   const walls: WallSlot[] = [];
   for (const entity of planeEntities) {
     const plane = readPlane(entity);
-    if (plane?.orientation !== 'vertical') {
+    if (plane == null) {
       continue;
     }
-    const center = polygonCenter(plane.polygon);
-    if (center == null) {
+    const object3D = entity.object3D;
+    if (object3D == null) {
       continue;
     }
-    const dy = Math.abs(center.y - viewer.y);
-    if (dy > 1.2) {
+    object3D.updateWorldMatrix(true, false);
+    object3D.getWorldPosition(_worldPos);
+
+    const extents = polygonExtents(plane.polygon);
+    const widthM = extents != null ? Math.max(0.01, extents.maxX - extents.minX) : 1;
+    const heightM = extents != null ? Math.max(0.01, extents.maxZ - extents.minZ) : 1;
+
+    // Orientation from WebXR when present; otherwise infer from world normal.
+    object3D.getWorldQuaternion(_quat);
+    _worldNormal.set(0, 1, 0).applyQuaternion(_quat).normalize();
+    const isVertical =
+      plane.orientation === 'vertical' || Math.abs(_worldNormal.y) < 0.45;
+    if (!isVertical) {
       continue;
     }
+
+    const center = { x: _worldPos.x, y: _worldPos.y, z: _worldPos.z };
+    // Keep walls that overlap reachable play height (not only plane origins near eye).
+    const wallMinY = center.y - heightM * 0.5;
+    const wallMaxY = center.y + heightM * 0.5;
+    if (wallMaxY < viewer.y - 1.6 || wallMinY > viewer.y + 1.4) {
+      continue;
+    }
+    if (widthM < HEADSET_PAD_SIZE_M * 0.85 || heightM < HEADSET_PAD_SIZE_M * 0.85) {
+      continue;
+    }
+
     walls.push({
       entity,
       plane,
       center,
-      normal: estimateWallNormal(plane, viewer, center),
+      normal: worldNormalFromPlaneObject(object3D, viewer, center),
+      localMinX: extents?.minX ?? -0.5,
+      localMaxX: extents?.maxX ?? 0.5,
+      localMinZ: extents?.minZ ?? -0.5,
+      localMaxZ: extents?.maxZ ?? 0.5,
+      widthM,
+      heightM,
     });
   }
   walls.sort(
@@ -113,91 +175,150 @@ export function collectTablePlanes(
   const tables: WallSlot[] = [];
   for (const entity of planeEntities) {
     const plane = readPlane(entity);
-    if (plane?.orientation !== 'horizontal') {
+    if (plane == null) {
       continue;
     }
-    const center = polygonCenter(plane.polygon);
-    if (center == null) {
+    const object3D = entity.object3D;
+    if (object3D == null) {
       continue;
     }
-    if (center.y < floorY + 0.55 || center.y > floorY + 1.2) {
+    object3D.updateWorldMatrix(true, false);
+    object3D.getWorldPosition(_worldPos);
+    object3D.getWorldQuaternion(_quat);
+    _worldNormal.set(0, 1, 0).applyQuaternion(_quat).normalize();
+    const isHorizontal =
+      plane.orientation === 'horizontal' || Math.abs(_worldNormal.y) > 0.7;
+    if (!isHorizontal) {
       continue;
     }
-    const span = plane.polygon?.length ?? 0;
-    if (span < 4) {
+    if (_worldPos.y < floorY + 0.45 || _worldPos.y > floorY + 1.35) {
+      continue;
+    }
+    const extents = polygonExtents(plane.polygon);
+    const widthM = extents != null ? extents.maxX - extents.minX : 0;
+    const depthM = extents != null ? extents.maxZ - extents.minZ : 0;
+    if (widthM < 0.4 || depthM < 0.4) {
       continue;
     }
     tables.push({
       entity,
       plane,
-      center,
+      center: { x: _worldPos.x, y: _worldPos.y, z: _worldPos.z },
       normal: { x: 0, y: 1, z: 0 },
+      localMinX: extents?.minX ?? -0.5,
+      localMaxX: extents?.maxX ?? 0.5,
+      localMinZ: extents?.minZ ?? -0.5,
+      localMaxZ: extents?.maxZ ?? 0.5,
+      widthM,
+      heightM: depthM,
     });
   }
   tables.sort((a, b) => b.center.y - a.center.y);
   return tables;
 }
 
-/** Returns four pad transforms or null when nothing valid fits. */
+/** Grid of 1x1m candidates on one wall that fit inside the plane polygon. */
+export function generateWallPadCandidates(
+  walls: WallSlot[],
+  viewerY: number,
+  sizeM = HEADSET_PAD_SIZE_M,
+): WallPadCandidate[] {
+  const candidates: WallPadCandidate[] = [];
+  let candidateIndex = 0;
+  const half = sizeM * 0.5;
+  const step = sizeM + 0.12;
+
+  walls.forEach((wall, wallIndex) => {
+    const object3D = wall.entity.object3D;
+    if (object3D == null) {
+      return;
+    }
+    object3D.updateWorldMatrix(true, false);
+
+    const minX = wall.localMinX + half + 0.05;
+    const maxX = wall.localMaxX - half - 0.05;
+    const minZ = wall.localMinZ + half + 0.05;
+    const maxZ = wall.localMaxZ - half - 0.05;
+    if (minX > maxX || minZ > maxZ) {
+      return;
+    }
+
+    for (let lx = minX; lx <= maxX + 1e-4; lx += step) {
+      for (let lz = minZ; lz <= maxZ + 1e-4; lz += step) {
+        _localPoint.set(lx, 0.02, lz);
+        object3D.localToWorld(_localPoint);
+        // Prefer playable heights near eye / chest.
+        if (_localPoint.y < viewerY - 0.85 || _localPoint.y > viewerY + 0.55) {
+          continue;
+        }
+        const quat = orientPadTowardPlayer(wall.normal);
+        // Nudge slightly off the wall along the normal so the pad sits in front.
+        candidates.push({
+          position: [
+            _localPoint.x + wall.normal.x * 0.03,
+            _localPoint.y + wall.normal.y * 0.03,
+            _localPoint.z + wall.normal.z * 0.03,
+          ],
+          quaternion: quat,
+          wallIndex,
+          candidateIndex,
+        });
+        candidateIndex += 1;
+      }
+    }
+  });
+
+  return candidates;
+}
+
+/** Auto plan used as a soft suggestion; prefer interactive pick when available. */
 export function planRoomScalePads(
   walls: WallSlot[],
   viewerY: number,
 ): PlacedPadTransform[] | null {
-  if (walls.length === 0) {
+  const candidates = generateWallPadCandidates(walls, viewerY);
+  if (candidates.length < 4) {
     return null;
   }
-  const size = HEADSET_PAD_SIZE_M;
-  const step = size + PAD_GAP_M;
-  const placements: PlacedPadTransform[] = [];
-  const usedWalls: WallSlot[] = [];
-
-  for (const wall of walls) {
-    if (placements.length >= 4) {
+  // Spread across walls when possible: take first hit per wall, then fill.
+  const picked: WallPadCandidate[] = [];
+  const usedWalls = new Set<number>();
+  for (const candidate of candidates) {
+    if (picked.length >= 4) {
       break;
     }
-    if (!usedWalls.includes(wall)) {
-      usedWalls.push(wall);
-      const baseY = Math.min(viewerY + 0.05, wall.center.y + 0.35);
-      const alongX = (placements.length % 2) * step - step * 0.5;
-      const alongY = Math.floor(placements.length / 2) * step;
-      placements.push({
-        position: [
-          wall.center.x + alongX * wall.normal.z,
-          baseY + alongY * 0.15,
-          wall.center.z + alongX * wall.normal.x,
-        ],
-        quaternion: orientPadTowardPlayer(wall.normal),
-      });
+    if (!usedWalls.has(candidate.wallIndex)) {
+      usedWalls.add(candidate.wallIndex);
+      picked.push(candidate);
     }
   }
-
-  let wallIndex = 0;
-  while (placements.length < 4 && walls.length > 0) {
-    const wall = walls[wallIndex % walls.length]!;
-    const indexOnWall = placements.filter((_, i) => i >= usedWalls.length).length;
-    const offset = (indexOnWall + 1) * step;
-    placements.push({
-      position: [
-        wall.center.x + wall.normal.x * 0.02,
-        Math.min(viewerY + 0.1, wall.center.y + 0.4) + offset * 0.05,
-        wall.center.z + wall.normal.z * 0.02,
-      ],
-      quaternion: orientPadTowardPlayer(wall.normal),
+  for (const candidate of candidates) {
+    if (picked.length >= 4) {
+      break;
+    }
+    if (picked.some((p) => p.candidateIndex === candidate.candidateIndex)) {
+      continue;
+    }
+    const tooClose = picked.some((p) => {
+      const dx = p.position[0] - candidate.position[0];
+      const dy = p.position[1] - candidate.position[1];
+      const dz = p.position[2] - candidate.position[2];
+      return Math.hypot(dx, dy, dz) < HEADSET_PAD_SIZE_M * 0.9;
     });
-    wallIndex += 1;
-    if (placements.length > 6) {
-      return null;
+    if (!tooClose) {
+      picked.push(candidate);
     }
   }
-
-  return placements.length === 4 ? placements : null;
+  return picked.length === 4
+    ? picked.map(({ position, quaternion }) => ({ position, quaternion }))
+    : null;
 }
 
 export function planTablePads(table: WallSlot): PlacedPadTransform[] {
   const size = HEADSET_PAD_SIZE_M;
   const step = size + PAD_GAP_M;
   const cx = table.center.x;
-  const cy = table.center.y + 0.01;
+  const cy = table.center.y + 0.02;
   const cz = table.center.z;
   const offsets = [
     [-step * 0.5, -step * 0.5],
@@ -218,64 +339,47 @@ export function planDesktopGridFromCamera(
   size: number,
 ): PlacedPadTransform[] {
   const step = size + DESKTOP_PAD_GAP_M;
-  const fx = cameraForward.x;
-  const fy = cameraForward.y;
-  const fz = cameraForward.z;
-  const fl = Math.hypot(fx, fy, fz) || 1;
-  const forwardX = fx / fl;
-  const forwardY = fy / fl;
-  const forwardZ = fz / fl;
-
-  let rightX = -forwardZ;
-  let rightZ = forwardX;
-  const rightLen = Math.hypot(rightX, rightZ) || 1;
-  rightX /= rightLen;
-  rightZ /= rightLen;
-
-  const centerX =
-    cameraPosition.x +
-    forwardX * DESKTOP_GRID_DISTANCE_M +
-    rightX * DESKTOP_GRID_LATERAL_M;
-  const centerY = cameraPosition.y + forwardY * DESKTOP_GRID_DISTANCE_M + 0.06;
-  const centerZ =
-    cameraPosition.z +
-    forwardZ * DESKTOP_GRID_DISTANCE_M +
-    rightZ * DESKTOP_GRID_LATERAL_M;
-
-  const upX = forwardY * rightZ;
-  const upY = forwardZ * rightX - forwardX * rightZ;
-  const upZ = -forwardY * rightX;
-  const upLen = Math.hypot(upX, upY, upZ) || 1;
-  const upNormX = upX / upLen;
-  const upNormY = upY / upLen;
-  const upNormZ = upZ / upLen;
-
-  const yaw = Math.atan2(
-    cameraPosition.x - centerX,
-    cameraPosition.z - centerZ,
-  );
+  const forward = new Vector3(
+    cameraForward.x,
+    cameraForward.y,
+    cameraForward.z,
+  ).normalize();
+  const right = new Vector3().crossVectors(forward, new Vector3(0, 1, 0));
+  if (right.lengthSq() < 1e-6) {
+    right.set(1, 0, 0);
+  } else {
+    right.normalize();
+  }
+  const up = new Vector3().crossVectors(right, forward).normalize();
+  const center = new Vector3(
+    cameraPosition.x,
+    cameraPosition.y,
+    cameraPosition.z,
+  )
+    .addScaledVector(forward, DESKTOP_GRID_DISTANCE_M)
+    .addScaledVector(right, DESKTOP_GRID_LATERAL_M);
+  const yaw = Math.atan2(-forward.x, -forward.z);
   const half = yaw * 0.5;
-  const quaternion: [number, number, number, number] = [
+  const quat: [number, number, number, number] = [
     0,
     Math.sin(half),
     0,
     Math.cos(half),
   ];
-
-  const rowStep = step * 0.92;
   const offsets = [
-    [-step * 0.5, rowStep * 0.5],
-    [step * 0.5, rowStep * 0.5],
-    [-step * 0.5, -rowStep * 0.5],
-    [step * 0.5, -rowStep * 0.5],
+    [-0.5, 0.5],
+    [0.5, 0.5],
+    [-0.5, -0.5],
+    [0.5, -0.5],
   ];
-
-  return offsets.map(([alongRight, alongUp]) => ({
-    position: [
-      centerX + rightX * alongRight + upNormX * alongUp,
-      centerY + upNormY * alongUp,
-      centerZ + rightZ * alongRight + upNormZ * alongUp,
-    ],
-    quaternion,
-  }));
+  return offsets.map(([ox, oy]) => {
+    const pos = center
+      .clone()
+      .addScaledVector(right, ox * step)
+      .addScaledVector(up, oy * step);
+    return {
+      position: [pos.x, pos.y, pos.z] as [number, number, number],
+      quaternion: quat,
+    };
+  });
 }
