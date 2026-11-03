@@ -7,6 +7,7 @@
 
 import { World } from '@iwsdk/core';
 import projectOptions from 'virtual:iwsdk-project';
+import { AppModeSystem } from './app-mode.js';
 import { GuidedSensingSystem } from './guided-sensing.js';
 import { PanelSystem } from './panel.js';
 import { RobotSystem } from './robot.js';
@@ -15,6 +16,7 @@ World.create(
   document.getElementById('scene-container') as HTMLDivElement,
   projectOptions,
 ).then((world) => {
+  world.registerSystem(AppModeSystem);
   world.registerSystem(GuidedSensingSystem);
   world.registerSystem(RobotSystem);
   world.registerSystem(PanelSystem);

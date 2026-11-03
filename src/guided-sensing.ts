@@ -256,7 +256,15 @@ export class GuidedSensingSystem extends createSystem({}) {
     };
 
     this.startButton?.addEventListener("click", toggle);
+    const onModeChange = (event: Event) => {
+      const mode = (event as CustomEvent<{ mode: string }>).detail.mode;
+      if (mode !== "meditation" && this.monitoring) {
+        this.stopMonitoring();
+      }
+    };
+    window.addEventListener("experience-mode-changed", onModeChange);
     this.cleanupFuncs.push(() => {
+      window.removeEventListener("experience-mode-changed", onModeChange);
       this.startButton?.removeEventListener("click", toggle);
       spatialButton.removeEventListener("click", toggle);
       spatialButton.removeEventListener("pointerenter", markSpatialHover);

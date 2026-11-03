@@ -7,31 +7,51 @@
 
 import { createSystem, UIKitMLAsset, VisibilityState } from '@iwsdk/core';
 
+const XR_PANEL_NODE_IDS = ['main-menu-panel', 'welcome-panel'] as const;
+
 export class PanelSystem extends createSystem({}) {
   init(): void {
-    const panel = this.world.getSceneObject<UIKitMLAsset>('welcome-panel');
-    const xrButton = panel?.getElementById('xr-button');
-    const exitButton = panel?.getElementById('exit-button');
-    if (xrButton == null || exitButton == null) {
-      return;
-    }
     if (!this.world.xrEnabled) {
-      xrButton.setProperties({ display: 'none' });
-      exitButton.setProperties({ display: 'none' });
+      for (const nodeId of XR_PANEL_NODE_IDS) {
+        const panel = this.world.getSceneObject<UIKitMLAsset>(nodeId);
+        panel?.getElementById('xr-button')?.setProperties({ display: 'none' });
+        panel
+          ?.getElementById('exit-button')
+          ?.setProperties({ display: 'none' });
+      }
       return;
     }
 
     const launchXR = () => this.world.launchXR();
     const exitXR = () => this.world.exitXR();
-    xrButton.addEventListener('click', launchXR);
-    exitButton.addEventListener('click', exitXR);
+
+    for (const nodeId of XR_PANEL_NODE_IDS) {
+      const panel = this.world.getSceneObject<UIKitMLAsset>(nodeId);
+      const xrButton = panel?.getElementById('xr-button');
+      const exitButton = panel?.getElementById('exit-button');
+      if (xrButton == null || exitButton == null) {
+        continue;
+      }
+      xrButton.addEventListener('click', launchXR);
+      exitButton.addEventListener('click', exitXR);
+      this.cleanupFuncs.push(
+        () => xrButton.removeEventListener('click', launchXR),
+        () => exitButton.removeEventListener('click', exitXR),
+      );
+    }
+
     this.cleanupFuncs.push(
-      () => xrButton.removeEventListener('click', launchXR),
-      () => exitButton.removeEventListener('click', exitXR),
       this.world.visibilityState.subscribe((visibilityState) => {
         const is2D = visibilityState === VisibilityState.NonImmersive;
-        xrButton.setProperties({ display: is2D ? 'flex' : 'none' });
-        exitButton.setProperties({ display: is2D ? 'none' : 'flex' });
+        for (const nodeId of XR_PANEL_NODE_IDS) {
+          const panel = this.world.getSceneObject<UIKitMLAsset>(nodeId);
+          panel
+            ?.getElementById('xr-button')
+            ?.setProperties({ display: is2D ? 'flex' : 'none' });
+          panel
+            ?.getElementById('exit-button')
+            ?.setProperties({ display: is2D ? 'none' : 'flex' });
+        }
       }),
     );
   }

@@ -1,0 +1,62 @@
+<style>
+  .panel-root {
+    flex-direction: column;
+    width: 400px;
+  }
+
+  .content {
+    flex-direction: column;
+    gap: 10px;
+    padding: 24px;
+  }
+
+  .eyebrow {
+    color: #6b5a00;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+  }
+
+  .eyebrow:dark {
+    color: #f5d90a;
+  }
+
+  .heading {
+    color: #1c1d20;
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 34px;
+  }
+
+  .heading:dark {
+    color: #fafaf7;
+  }
+
+  .body {
+    color: #3a3b40;
+    font-size: 17px;
+    line-height: 24px;
+  }
+
+  .body:dark {
+    color: #dddfe3;
+  }
+
+  .button {
+    justify-content: flex-start;
+    margin-left: 24px;
+    margin-right: 24px;
+    margin-bottom: 24px;
+  }
+</style>
+<Panel class="panel-root">
+  <div class="content">
+    <div class="eyebrow">COMING SOON</div>
+    <div class="heading">Wall Tones</div>
+    <div class="body">A mixed-reality memory game played on your real walls with art objects, inspired by the Meta Horizon title. We will plan and build this experience in a follow-up session.</div>
+  </div>
+  <Button id="back-to-menu-button" class="button">
+    <ButtonIcon><ArrowLeft></ArrowLeft></ButtonIcon>
+    <ButtonLabel>Back to main menu</ButtonLabel>
+  </Button>
+</Panel>
