@@ -47,6 +47,7 @@ export function createPadRuntime(
   });
   const face = new Mesh(new BoxGeometry(sizeM, sizeM, 0.02), faceMaterial);
   face.name = 'face';
+  face.renderOrder = 10;
   root.add(face);
 
   const touchVolume = new Mesh(

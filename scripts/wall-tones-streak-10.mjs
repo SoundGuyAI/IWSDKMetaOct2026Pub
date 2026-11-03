@@ -27,6 +27,7 @@ export default async function run({ page, frame }) {
         inputStep: debug.inputStep,
         streak: debug.streak,
         bestStreak: debug.bestStreak,
+        flatAwaitingStart: debug.flatAwaitingStart,
       };
     });
     if (state == null) {
@@ -35,6 +36,13 @@ export default async function run({ page, frame }) {
     }
     if (state.bestStreak >= target) {
       return { ok: true, bestStreak: state.bestStreak, streak: state.streak };
+    }
+    if (state.flatAwaitingStart || (state.phase === 'idle' && state.sequence.length === 0)) {
+      await surface.evaluate(() => {
+        window.__wallTonesDebug?.submitPad(0);
+      });
+      await page.waitForTimeout(400);
+      continue;
     }
     if (state.phase === 'input' && state.sequence.length > 0) {
       const padIndex = state.sequence[state.inputStep];

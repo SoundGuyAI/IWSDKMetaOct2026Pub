@@ -1,6 +1,8 @@
 import {
   Hovered,
   Pressed,
+  RayInteractable,
+  Transform,
   UIKit,
   Visibility,
   UIKitMLAsset,
@@ -12,11 +14,12 @@ import {
 } from '@iwsdk/core';
 import { XRHandVisualAdapter } from '@iwsdk/xr-input';
 import type { ExperienceMode } from '../app-mode.js';
-import { playErrorTone, playPadTone, suspendAudioContext } from './audio.js';
+import { playErrorTone, playPadTone, suspendAudioContext, unlockWallTonesAudio } from './audio.js';
 import {
   AIR_GHOST_DISTANCE_M,
   NOTE_GAP_S,
   SCAN_WAIT_S,
+  WALL_TONE_PADS,
   WRONG_RESET_DELAY_S,
   type WallTonePadId,
 } from './constants.js';
@@ -60,6 +63,7 @@ type WallTonesDebugBridge = {
   inputStep: number;
   streak: number;
   bestStreak: number;
+  flatAwaitingStart: boolean;
   submitPad: (padIndex: number) => void;
 };
 
@@ -105,6 +109,11 @@ export class WallTonesSystem extends createSystem({
   private panelBound = false;
   private flatBackdropHidden = false;
   private wasNonImmersive = true;
+  private flatAwaitingStart = false;
+  private panelRayRemoved = false;
+  private readonly savedPanelPosition = new Float32Array(3);
+  private readonly savedPanelScale = new Float32Array(3);
+  private panelPositionSaved = false;
 
   init(): void {
     this.bindPanelIfNeeded();
@@ -159,7 +168,8 @@ export class WallTonesSystem extends createSystem({
     ) {
       this.spawnDesktopPads();
       if (this.game.phase === 'idle') {
-        this.beginRoundAfterDelay(0.5);
+        this.flatAwaitingStart = true;
+        this.statusText = 'Tap any pad to start (sound on)';
       }
     }
     if (this.flowPhase === 'scanning') {
@@ -168,12 +178,12 @@ export class WallTonesSystem extends createSystem({
     if (this.flowPhase === 'air-placement') {
       this.tickAirPlacement();
     }
-    if (this.game.phase === 'input') {
-      if (this.useDesktopInput()) {
+    if (this.useDesktopInput()) {
+      if (this.flatAwaitingStart || this.game.phase === 'input') {
         this.readDesktopTouches();
-      } else {
-        this.readFingertipTouches();
       }
+    } else if (this.game.phase === 'input') {
+      this.readFingertipTouches();
     }
   }
 
@@ -230,6 +240,7 @@ export class WallTonesSystem extends createSystem({
     }
     this.experienceActive = false;
     this.flowPhase = 'inactive';
+    this.flatAwaitingStart = false;
     this.playbackQueue = Promise.resolve();
     this.game.phase = 'idle';
     this.game.resetAllScores();
@@ -239,20 +250,89 @@ export class WallTonesSystem extends createSystem({
     this.ghostPad = null;
     this.setupMode = null;
     this.setFlatHintVisible(false);
+    this.restorePanelLayout();
+    this.restorePanelPointerCapture();
     this.showStudioBackdrop();
     this.renderPanel();
   }
 
   private beginFlatPlay(): void {
     this.flowPhase = 'playing';
-    this.statusText = 'Watch the sequence';
+    this.flatAwaitingStart = true;
+    this.statusText = 'Tap any pad to start (sound on)';
     this.setSetupUiVisible(false);
     this.setFlatHintVisible(true);
     this.hideStudioBackdrop();
+    this.layoutPanelForFlatPlay();
+    this.disablePanelPointerCapture();
     this.spawnDesktopPads();
     this.speech.speak(WALL_TONES_SPEECH.desktopReady);
     this.renderPanel();
-    this.beginRoundAfterDelay(1.2);
+  }
+
+  private layoutPanelForFlatPlay(): void {
+    const entity = this.world.getSceneEntity('wall-tones-panel');
+    if (entity == null) {
+      return;
+    }
+    const position = entity.getVectorView(Transform, 'position');
+    if (!this.panelPositionSaved) {
+      this.savedPanelPosition.set(position);
+      const scale = entity.getVectorView(Transform, 'scale');
+      this.savedPanelScale.set(scale);
+      this.panelPositionSaved = true;
+    }
+    position[0] = 1.25;
+    position[1] = 2.35;
+    position[2] = -2.5;
+    const scale = entity.getVectorView(Transform, 'scale');
+    scale[0] = 0.22;
+    scale[1] = 0.22;
+    scale[2] = 0.22;
+  }
+
+  private restorePanelLayout(): void {
+    if (!this.panelPositionSaved) {
+      return;
+    }
+    const entity = this.world.getSceneEntity('wall-tones-panel');
+    const position = entity?.getVectorView(Transform, 'position');
+    if (position == null) {
+      return;
+    }
+    position[0] = this.savedPanelPosition[0]!;
+    position[1] = this.savedPanelPosition[1]!;
+    position[2] = this.savedPanelPosition[2]!;
+    const scale = entity.getVectorView(Transform, 'scale');
+    scale[0] = this.savedPanelScale[0]!;
+    scale[1] = this.savedPanelScale[1]!;
+    scale[2] = this.savedPanelScale[2]!;
+  }
+
+  private disablePanelPointerCapture(): void {
+    const entity = this.world.getSceneEntity('wall-tones-panel');
+    if (entity == null || this.panelRayRemoved) {
+      return;
+    }
+    if (entity.hasComponent(RayInteractable)) {
+      entity.removeComponent(RayInteractable);
+      this.panelRayRemoved = true;
+    }
+  }
+
+  private restorePanelPointerCapture(): void {
+    const entity = this.world.getSceneEntity('wall-tones-panel');
+    if (entity == null || !this.panelRayRemoved) {
+      return;
+    }
+    entity.addComponent(RayInteractable);
+    this.panelRayRemoved = false;
+  }
+
+  private formatSequenceLabel(): string {
+    return this.game.sequence
+      .map((padId) => WALL_TONE_PADS[padId]?.name ?? '?')
+      .join(' → ');
   }
 
   private onVisibilityForFlatPlay(state: VisibilityState): void {
@@ -334,6 +414,9 @@ export class WallTonesSystem extends createSystem({
       },
       get bestStreak() {
         return system.game.bestStreak;
+      },
+      get flatAwaitingStart() {
+        return system.flatAwaitingStart;
       },
       submitPad: (padIndex: number) => {
         system.handlePadInput(padIndex);
@@ -541,9 +624,12 @@ export class WallTonesSystem extends createSystem({
       });
       pad.root.position.set(...transform.position);
       pad.root.quaternion.set(...transform.quaternion);
+      pad.touchVolume.scale.set(1.15, 1.15, 1.25);
       this.pads.push(pad);
     });
-    this.statusText = 'Watch the sequence';
+    if (!this.flatAwaitingStart) {
+      this.statusText = 'Watch the sequence';
+    }
     this.renderPanel();
   }
 
@@ -570,14 +656,14 @@ export class WallTonesSystem extends createSystem({
       return;
     }
     this.game.phase = 'playback';
-    this.statusText = 'Watch the sequence';
+    this.statusText = `Listen: ${this.formatSequenceLabel()}`;
     this.renderPanel();
     for (let index = 0; index < this.game.sequence.length; index += 1) {
       const padId = this.game.sequence[index]!;
       const pad = this.pads[padId];
       if (pad != null) {
         flashPad(pad, true);
-        playPadTone(padId);
+        await playPadTone(padId);
         await this.wait(NOTE_GAP_S + 0.45);
         flashPad(pad, false);
       }
@@ -585,7 +671,7 @@ export class WallTonesSystem extends createSystem({
     }
     this.game.phase = 'input';
     this.game.inputStep = 0;
-    this.statusText = 'Your turn';
+    this.statusText = `Your turn: ${this.formatSequenceLabel()}`;
     this.renderPanel();
   }
 
@@ -649,6 +735,10 @@ export class WallTonesSystem extends createSystem({
   }
 
   private handlePadInput(padIndex: number): void {
+    if (this.flatAwaitingStart && this.useDesktopPath()) {
+      void this.startFlatPlayFromPad(padIndex);
+      return;
+    }
     if (this.game.phase !== 'input') {
       return;
     }
@@ -674,9 +764,32 @@ export class WallTonesSystem extends createSystem({
     }
   }
 
+  private async startFlatPlayFromPad(padIndex: number): Promise<void> {
+    if (!this.flatAwaitingStart || !this.experienceActive) {
+      return;
+    }
+    this.flatAwaitingStart = false;
+    this.playbackQueue = this.playbackQueue.then(async () => {
+      await unlockWallTonesAudio();
+      const pad = this.pads[padIndex];
+      if (pad != null) {
+        flashPad(pad, true);
+        await playPadTone(padIndex);
+        await this.wait(0.15);
+        flashPad(pad, false);
+      }
+      if (!this.experienceActive || this.flowPhase !== 'playing') {
+        return;
+      }
+      this.game.startNewRun();
+      this.renderPanel();
+      await this.playSequence();
+    });
+  }
+
   private async onWrongInput(): Promise<void> {
     this.game.phase = 'resetting';
-    playErrorTone();
+    await playErrorTone();
     this.speech.speak(WALL_TONES_SPEECH.wrongTouch);
     this.statusText = 'Try again';
     this.renderPanel();

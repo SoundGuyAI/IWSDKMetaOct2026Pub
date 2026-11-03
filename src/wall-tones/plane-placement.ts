@@ -1,6 +1,8 @@
 import type { Entity } from '@iwsdk/core';
 import { XRPlane } from '@iwsdk/core';
 import {
+  DESKTOP_GRID_DISTANCE_M,
+  DESKTOP_PAD_GAP_M,
   HEADSET_PAD_SIZE_M,
   PAD_GAP_M,
 } from './constants.js';
@@ -214,7 +216,7 @@ export function planDesktopGridFromCamera(
   cameraForward: { x: number; y: number; z: number },
   size: number,
 ): PlacedPadTransform[] {
-  const step = size + PAD_GAP_M;
+  const step = size + DESKTOP_PAD_GAP_M;
   const fx = cameraForward.x;
   const fy = cameraForward.y;
   const fz = cameraForward.z;
@@ -223,9 +225,9 @@ export function planDesktopGridFromCamera(
   const forwardY = fy / fl;
   const forwardZ = fz / fl;
 
-  const centerX = cameraPosition.x + forwardX * 1.55;
-  const centerY = cameraPosition.y + forwardY * 1.55 - 0.12;
-  const centerZ = cameraPosition.z + forwardZ * 1.55;
+  const centerX = cameraPosition.x + forwardX * DESKTOP_GRID_DISTANCE_M;
+  const centerY = cameraPosition.y + forwardY * DESKTOP_GRID_DISTANCE_M + 0.06;
+  const centerZ = cameraPosition.z + forwardZ * DESKTOP_GRID_DISTANCE_M;
 
   let rightX = -forwardZ;
   let rightZ = forwardX;
@@ -253,11 +255,12 @@ export function planDesktopGridFromCamera(
     Math.cos(half),
   ];
 
+  const rowStep = step * 0.92;
   const offsets = [
-    [-step * 0.5, step * 0.5],
-    [step * 0.5, step * 0.5],
-    [-step * 0.5, -step * 0.5],
-    [step * 0.5, -step * 0.5],
+    [-step * 0.5, rowStep * 0.5],
+    [step * 0.5, rowStep * 0.5],
+    [-step * 0.5, -rowStep * 0.5],
+    [step * 0.5, -rowStep * 0.5],
   ];
 
   return offsets.map(([alongRight, alongUp]) => ({

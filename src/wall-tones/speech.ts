@@ -14,7 +14,8 @@ export const WALL_TONES_SPEECH = {
     'I could not find a table. Place four buttons in the air beside you.',
   airPlace: (step: number) =>
     `Pinch to place button ${step} of 4.`,
-  desktopReady: 'Four buttons are ready in front of you. The game is starting.',
+  desktopReady:
+    'Tap any colored pad once to turn sound on and start. All four pads take part in the pattern.',
   gameStart: 'The game is starting. Watch and listen.',
   roundSuccess: 'Good. Here is the next pattern.',
   wrongTouch: 'That was wrong. Let us start again.',
