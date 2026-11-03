@@ -1,6 +1,7 @@
 /**
  * Switches between the main menu and the three experience modes by toggling
- * authored scene node visibility and keeping the browser shell in sync.
+ * authored scene node visibility. Mode selection lives on spatial UIKitML panels,
+ * which are ray- and pointer-interactable in both desktop WebGL and XR.
  */
 import {
   createSystem,
@@ -51,7 +52,6 @@ export class AppModeSystem extends createSystem({}) {
     this.bindWallTonesPlaceholder();
     this.bindDemoNav();
     this.bindWelcomeBack();
-    this.bindBrowserMenu();
     this.applyMode(this.mode, false);
   }
 
@@ -83,7 +83,7 @@ export class AppModeSystem extends createSystem({}) {
       this.setNodeVisible(nodeId, showMeditation);
     }
 
-    this.syncBrowserShell(mode);
+    this.syncDocumentChrome(mode);
 
     if (dispatchEvent) {
       window.dispatchEvent(
@@ -153,60 +153,13 @@ export class AppModeSystem extends createSystem({}) {
     }
   }
 
-  private bindBrowserMenu(): void {
-    const menu = document.getElementById('main-menu');
-    if (menu == null) {
-      return;
-    }
-
-    const bind = (id: string, mode: ExperienceMode) => {
-      const button = menu.querySelector<HTMLButtonElement>(`#${id}`);
-      button?.addEventListener('click', () => this.setMode(mode));
-    };
-
-    bind('browser-mode-demo', 'demo');
-    bind('browser-mode-meditation', 'meditation');
-    bind('browser-mode-walltones', 'walltones');
-
-    const backButton = document.getElementById('browser-back-menu');
-    backButton?.addEventListener('click', () => this.setMode('menu'));
-    const floatingBack = document.getElementById('browser-floating-back');
-    floatingBack?.addEventListener('click', () => this.setMode('menu'));
-
-    window.addEventListener('experience-mode-changed', (event) => {
-      const detail = (event as CustomEvent<{ mode: ExperienceMode }>).detail;
-      this.syncBrowserShell(detail.mode);
-    });
-
-    this.syncBrowserShell(this.mode);
-  }
-
-  private syncBrowserShell(mode: ExperienceMode): void {
-    const menu = document.getElementById('main-menu');
-    const meditationPanel = document.getElementById('meditation-panel');
-    const floatingBack = document.getElementById('browser-floating-back');
-    const pageTitle = document.getElementById('page-title');
-    if (menu == null) {
-      return;
-    }
-
-    menu.hidden = mode !== 'menu';
-    if (meditationPanel != null) {
-      meditationPanel.hidden = mode !== 'meditation';
-    }
-    if (floatingBack != null) {
-      floatingBack.hidden = mode === 'menu' || mode === 'meditation';
-    }
-
+  private syncDocumentChrome(mode: ExperienceMode): void {
     const titles: Record<ExperienceMode, string> = {
       menu: 'Experience hub',
       demo: 'Starter demo',
       meditation: 'Breath & gaze rest',
       walltones: 'Wall Tones (planned)',
     };
-    if (pageTitle != null) {
-      pageTitle.textContent = titles[mode];
-    }
     document.title = titles[mode];
 
     const welcomeBack = this.world
