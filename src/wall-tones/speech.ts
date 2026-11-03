@@ -25,6 +25,11 @@ export const WALL_TONES_SPEECH = {
   wrongTouch: 'That was wrong. Let us start again.',
   backToMenu: 'Back to the main menu.',
   soundReady: 'Sound is on. Tap a pad to start.',
+  idleReplay:
+    'Still there? Here is the pattern again. Touch the pads to repeat it.',
+  repeatPattern: 'Playing the pattern again.',
+  chooseAirOrient:
+    'Choose wall for vertical pads, or table for flat pads, then pinch to place each outline.',
 } as const;
 
 /** Prime iOS Safari speech — call from the same tap as audio unlock. */

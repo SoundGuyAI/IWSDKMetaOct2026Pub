@@ -10,7 +10,9 @@ export type WallTonePadId = (typeof WALL_TONE_PADS)[number]['id'];
 
 export const NOTE_DURATION_S = 0.45;
 export const NOTE_GAP_S = 0.15;
-export const TOUCH_BOX_DEPTH_M = 0.2;
+export const TOUCH_BOX_DEPTH_M = 0.35;
+/** Extra hit slop for fingertip tests in MR (fraction of pad size). */
+export const TOUCH_SLOP_SCALE = 1.35;
 export const HEADSET_PAD_SIZE_M = 1;
 export const DESKTOP_PAD_SIZE_M = 0.42;
 export const DESKTOP_PAD_GAP_M = 0.18;
@@ -28,3 +30,5 @@ export const WRONG_RESET_DELAY_S = 0.9;
 export const POST_INTRO_DELAY_S = 0.85;
 /** Short beat after a successful round before the next sequence plays. */
 export const BETWEEN_ROUNDS_DELAY_S = 0.55;
+/** Replay the pattern if the player stays idle this long during input. */
+export const IDLE_REPLAY_S = 15;

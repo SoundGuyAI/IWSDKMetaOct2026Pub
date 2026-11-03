@@ -14,6 +14,7 @@ import {
   DESKTOP_PAD_SIZE_M,
   HEADSET_PAD_SIZE_M,
   TOUCH_BOX_DEPTH_M,
+  TOUCH_SLOP_SCALE,
   WALL_TONE_PADS,
 } from './constants.js';
 import { WallTonePad } from './wall-tone-pad-component.js';
@@ -51,12 +52,13 @@ export function createPadRuntime(
   face.renderOrder = 10;
   root.add(face);
 
+  const touchDepth = TOUCH_BOX_DEPTH_M;
   const touchVolume = new Mesh(
-    new BoxGeometry(sizeM, sizeM, TOUCH_BOX_DEPTH_M),
+    new BoxGeometry(sizeM * TOUCH_SLOP_SCALE, sizeM * TOUCH_SLOP_SCALE, touchDepth),
     new MeshBasicMaterial({ visible: false }),
   );
   touchVolume.name = 'touch-volume';
-  touchVolume.position.z = TOUCH_BOX_DEPTH_M * 0.5;
+  touchVolume.position.z = touchDepth * 0.45;
   root.add(touchVolume);
 
   const entity = world.createTransformEntity(root);
@@ -155,11 +157,11 @@ export function createGhostPadRuntime(
   }
 
   const touchVolume = new Mesh(
-    new BoxGeometry(sizeM, sizeM, TOUCH_BOX_DEPTH_M),
+    new BoxGeometry(sizeM * TOUCH_SLOP_SCALE, sizeM * TOUCH_SLOP_SCALE, TOUCH_BOX_DEPTH_M),
     new MeshBasicMaterial({ visible: false }),
   );
   touchVolume.name = 'touch-volume';
-  touchVolume.position.z = TOUCH_BOX_DEPTH_M * 0.5;
+  touchVolume.position.z = TOUCH_BOX_DEPTH_M * 0.45;
   root.add(touchVolume);
 
   const entity = world.createTransformEntity(root);
@@ -213,6 +215,16 @@ export function solidifyGhostPad(pad: PadRuntime, sizeM: number): void {
       material.depthWrite = true;
       material.color.setHex(spec?.color ?? 0xffffff);
     }
+  }
+  const touch = pad.root.getObjectByName('touch-volume') as Mesh | undefined;
+  if (touch != null) {
+    touch.geometry.dispose();
+    touch.geometry = new BoxGeometry(
+      sizeM * TOUCH_SLOP_SCALE,
+      sizeM * TOUCH_SLOP_SCALE,
+      TOUCH_BOX_DEPTH_M,
+    );
+    touch.position.z = TOUCH_BOX_DEPTH_M * 0.45;
   }
   pad.root.name = `wall-tone-pad-${spec?.name ?? pad.padIndex}`;
   pad.isGhost = false;

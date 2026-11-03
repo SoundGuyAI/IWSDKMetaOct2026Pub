@@ -111,7 +111,21 @@
         <ButtonLabel>Sitting (table)</ButtonLabel>
       </Button>
     </div>
+    <div id="air-orient-row" class="setup-row" style="display: none">
+      <Button id="orient-vertical-button" class="button">
+        <ButtonIcon><LayoutGrid></LayoutGrid></ButtonIcon>
+        <ButtonLabel>Wall / vertical</ButtonLabel>
+      </Button>
+      <Button id="orient-horizontal-button" class="button">
+        <ButtonIcon><Armchair></Armchair></ButtonIcon>
+        <ButtonLabel>Table / flat</ButtonLabel>
+      </Button>
+    </div>
   </div>
+  <Button id="repeat-pattern-button" class="button" style="display: none">
+    <ButtonIcon><RefreshCw></RefreshCw></ButtonIcon>
+    <ButtonLabel>Repeat pattern</ButtonLabel>
+  </Button>
   <Button id="back-to-menu-button" class="button button-last">
     <ButtonIcon><ArrowLeft></ArrowLeft></ButtonIcon>
     <ButtonLabel>Back to main menu</ButtonLabel>
