@@ -208,21 +208,64 @@ export function planTablePads(table: WallSlot): PlacedPadTransform[] {
   }));
 }
 
-export function planDesktopGrid(
-  viewerPosition: { x: number; y: number; z: number },
+/** Flat browser layout: 2×2 grid centered in the camera view (not player origin). */
+export function planDesktopGridFromCamera(
+  cameraPosition: { x: number; y: number; z: number },
+  cameraForward: { x: number; y: number; z: number },
   size: number,
 ): PlacedPadTransform[] {
   const step = size + PAD_GAP_M;
-  const centerZ = viewerPosition.z - 1.35;
-  const centerY = viewerPosition.y - 0.25;
+  const fx = cameraForward.x;
+  const fy = cameraForward.y;
+  const fz = cameraForward.z;
+  const fl = Math.hypot(fx, fy, fz) || 1;
+  const forwardX = fx / fl;
+  const forwardY = fy / fl;
+  const forwardZ = fz / fl;
+
+  const centerX = cameraPosition.x + forwardX * 1.55;
+  const centerY = cameraPosition.y + forwardY * 1.55 - 0.12;
+  const centerZ = cameraPosition.z + forwardZ * 1.55;
+
+  let rightX = -forwardZ;
+  let rightZ = forwardX;
+  const rightLen = Math.hypot(rightX, rightZ) || 1;
+  rightX /= rightLen;
+  rightZ /= rightLen;
+
+  const upX = forwardY * rightZ;
+  const upY = forwardZ * rightX - forwardX * rightZ;
+  const upZ = -forwardY * rightX;
+  const upLen = Math.hypot(upX, upY, upZ) || 1;
+  const upNormX = upX / upLen;
+  const upNormY = upY / upLen;
+  const upNormZ = upZ / upLen;
+
+  const yaw = Math.atan2(
+    cameraPosition.x - centerX,
+    cameraPosition.z - centerZ,
+  );
+  const half = yaw * 0.5;
+  const quaternion: [number, number, number, number] = [
+    0,
+    Math.sin(half),
+    0,
+    Math.cos(half),
+  ];
+
   const offsets = [
-    [-step * 0.5, -step * 0.5],
-    [step * 0.5, -step * 0.5],
     [-step * 0.5, step * 0.5],
     [step * 0.5, step * 0.5],
+    [-step * 0.5, -step * 0.5],
+    [step * 0.5, -step * 0.5],
   ];
-  return offsets.map(([ox, oz]) => ({
-    position: [viewerPosition.x + ox, centerY + oz * 0.05, centerZ + oz],
-    quaternion: [0, 0, 0, 1],
+
+  return offsets.map(([alongRight, alongUp]) => ({
+    position: [
+      centerX + rightX * alongRight + upNormX * alongUp,
+      centerY + upNormY * alongUp,
+      centerZ + rightZ * alongRight + upNormZ * alongUp,
+    ],
+    quaternion,
   }));
 }

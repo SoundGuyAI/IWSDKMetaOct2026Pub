@@ -1,7 +1,7 @@
 import {
   Hovered,
   Pressed,
-  UIKit,
+  Visibility,
   UIKitMLAsset,
   VisibilityState,
   Vector3,
@@ -22,7 +22,7 @@ import {
 import {
   collectTablePlanes,
   collectVerticalWalls,
-  planDesktopGrid,
+  planDesktopGridFromCamera,
   planRoomScalePads,
   planTablePads,
   type PlacedPadTransform,
@@ -44,6 +44,30 @@ import {
 } from './world-host.js';
 import { WallTonePad } from './wall-tone-pad-component.js';
 
+const FLAT_BACKDROP_NODE_IDS = [
+  'studio-floor',
+  'stage',
+  'gallery-set',
+  'sideboard-set',
+  'key-light',
+  'fill-light',
+] as const;
+
+type WallTonesDebugBridge = {
+  phase: string;
+  sequence: readonly number[];
+  inputStep: number;
+  streak: number;
+  bestStreak: number;
+  submitPad: (padIndex: number) => void;
+};
+
+declare global {
+  interface Window {
+    __wallTonesDebug?: WallTonesDebugBridge;
+  }
+}
+
 type SetupMode = 'room-scale' | 'sitting';
 
 type FlowPhase =
@@ -62,6 +86,8 @@ export class WallTonesSystem extends createSystem({
   private readonly speech = new WallTonesSpeech();
   private readonly game = new WallTonesSequence();
   private readonly viewer = new Vector3();
+  private readonly cameraForward = new Vector3();
+  private readonly cameraPosition = new Vector3();
   private readonly tipLeft = new Vector3();
   private readonly tipRight = new Vector3();
   private readonly tipLocal = new Vector3();
@@ -76,6 +102,8 @@ export class WallTonesSystem extends createSystem({
   private ghostPad: PadRuntime | null = null;
   private statusText = '';
   private panelBound = false;
+  private flatBackdropHidden = false;
+  private wasNonImmersive = true;
 
   init(): void {
     this.bindPanelIfNeeded();
@@ -88,8 +116,17 @@ export class WallTonesSystem extends createSystem({
       }
     };
     window.addEventListener('experience-mode-changed', onModeChange);
+    this.wasNonImmersive =
+      this.world.visibilityState.peek() === VisibilityState.NonImmersive;
+    this.cleanupFuncs.push(
+      this.world.visibilityState.subscribe((state) => {
+        this.onVisibilityForFlatPlay(state);
+      }),
+    );
+    this.publishDebugBridge();
     this.cleanupFuncs.push(() => {
       window.removeEventListener('experience-mode-changed', onModeChange);
+      delete window.__wallTonesDebug;
       void this.leaveWallTonesMode();
     });
 
@@ -175,11 +212,7 @@ export class WallTonesSystem extends createSystem({
     this.bindPanelIfNeeded();
 
     if (this.useDesktopPath()) {
-      this.flowPhase = 'playing';
-      this.setSetupUiVisible(false);
-      this.spawnDesktopPads();
-      this.speech.speak(WALL_TONES_SPEECH.desktopReady);
-      this.beginRoundAfterDelay(1.2);
+      this.beginFlatPlay();
       return;
     }
 
@@ -204,7 +237,107 @@ export class WallTonesSystem extends createSystem({
     this.clearPads();
     this.ghostPad = null;
     this.setupMode = null;
+    this.setFlatHintVisible(false);
+    this.showStudioBackdrop();
     this.renderPanel();
+  }
+
+  private beginFlatPlay(): void {
+    this.flowPhase = 'playing';
+    this.statusText = 'Watch the sequence';
+    this.setSetupUiVisible(false);
+    this.setFlatHintVisible(true);
+    this.hideStudioBackdrop();
+    this.spawnDesktopPads();
+    this.speech.speak(WALL_TONES_SPEECH.desktopReady);
+    this.renderPanel();
+    this.beginRoundAfterDelay(1.2);
+  }
+
+  private onVisibilityForFlatPlay(state: VisibilityState): void {
+    const nonImmersive = state === VisibilityState.NonImmersive;
+    if (
+      this.experienceActive &&
+      nonImmersive &&
+      !this.wasNonImmersive &&
+      getActiveWorldKind() === 'hub-vr' &&
+      this.setupMode == null
+    ) {
+      this.beginFlatPlay();
+    } else if (
+      this.experienceActive &&
+      !nonImmersive &&
+      this.wasNonImmersive &&
+      this.flowPhase === 'playing' &&
+      this.setupMode == null
+    ) {
+      this.clearPads();
+      this.showStudioBackdrop();
+      this.setFlatHintVisible(false);
+      this.flowPhase = 'choose-mode';
+      this.statusText = 'Choose room scale or sitting.';
+      this.setSetupUiVisible(true);
+      this.speech.speak(WALL_TONES_SPEECH.chooseMode);
+      this.renderPanel();
+    }
+    this.wasNonImmersive = nonImmersive;
+  }
+
+  private hideStudioBackdrop(): void {
+    if (this.flatBackdropHidden) {
+      return;
+    }
+    for (const nodeId of FLAT_BACKDROP_NODE_IDS) {
+      const entity = this.world.getSceneEntity(nodeId);
+      if (entity != null) {
+        entity.setValue(Visibility, 'isVisible', false);
+      }
+    }
+    this.flatBackdropHidden = true;
+  }
+
+  private showStudioBackdrop(): void {
+    if (!this.flatBackdropHidden) {
+      return;
+    }
+    for (const nodeId of FLAT_BACKDROP_NODE_IDS) {
+      const entity = this.world.getSceneEntity(nodeId);
+      if (entity != null) {
+        entity.setValue(Visibility, 'isVisible', true);
+      }
+    }
+    this.flatBackdropHidden = false;
+  }
+
+  private setFlatHintVisible(visible: boolean): void {
+    this.world
+      .getSceneObject<UIKitMLAsset>('wall-tones-panel')
+      ?.getElementById('flat-play-hint')
+      ?.setProperties({ display: visible ? 'flex' : 'none' });
+  }
+
+  private publishDebugBridge(): void {
+    const system = this;
+    window.__wallTonesDebug = {
+      get phase() {
+        return system.game.phase;
+      },
+      get sequence() {
+        return [...system.game.sequence];
+      },
+      get inputStep() {
+        return system.game.inputStep;
+      },
+      get streak() {
+        return system.game.streak;
+      },
+      get bestStreak() {
+        return system.game.bestStreak;
+      },
+      submitPad: (padIndex: number) => {
+        system.handlePadInput(padIndex);
+      },
+    };
   }
 
   private async onBackToMenu(): Promise<void> {
@@ -392,9 +525,14 @@ export class WallTonesSystem extends createSystem({
 
   private spawnDesktopPads(): void {
     this.clearPads();
-    this.player.head.getWorldPosition(this.viewer);
+    this.world.camera.getWorldPosition(this.cameraPosition);
+    this.world.camera.getWorldDirection(this.cameraForward);
     const size = defaultDesktopPadSize();
-    const transforms = planDesktopGrid(this.viewer, size);
+    const transforms = planDesktopGridFromCamera(
+      this.cameraPosition,
+      this.cameraForward,
+      size,
+    );
     transforms.forEach((transform, index) => {
       const pad = createPadRuntime(this.world, index as WallTonePadId, size, {
         rayInteractable: true,
@@ -402,10 +540,9 @@ export class WallTonesSystem extends createSystem({
       });
       pad.root.position.set(...transform.position);
       pad.root.quaternion.set(...transform.quaternion);
-      pad.root.lookAt(this.viewer.x, this.viewer.y, this.viewer.z);
       this.pads.push(pad);
     });
-    this.statusText = 'Playing';
+    this.statusText = 'Watch the sequence';
     this.renderPanel();
   }
 
@@ -572,15 +709,15 @@ export class WallTonesSystem extends createSystem({
       return;
     }
     panel
-      .getElementById<UIKit.Text>('wall-tones-best-streak')
+      .getElementById('wall-tones-best-streak')
       ?.setProperties({ text: String(this.game.bestStreak) });
     panel
-      .getElementById<UIKit.Text>('wall-tones-status')
+      .getElementById('wall-tones-status')
       ?.setProperties({
         text: this.statusText || 'Ready',
       });
     panel
-      .getElementById<UIKit.Text>('wall-tones-current-streak')
+      .getElementById('wall-tones-current-streak')
       ?.setProperties({ text: String(this.game.streak) });
   }
 

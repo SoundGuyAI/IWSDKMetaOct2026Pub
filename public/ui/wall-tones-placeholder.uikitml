@@ -89,15 +89,18 @@
   <div class="content">
     <div class="eyebrow">MIXED REALITY</div>
     <div class="heading">Wall Tones</div>
+    <div id="flat-play-hint" class="body" style="display: none">
+      Flat play: watch the sequence, then click each pad once. Wrong pad resets this run; best streak stays.
+    </div>
     <div class="stat-row">
       <div class="stat-label">Best streak</div>
-      <Text id="wall-tones-best-streak" class="stat-value"></Text>
+      <div id="wall-tones-best-streak" class="stat-value">0</div>
     </div>
     <div class="stat-row">
       <div class="stat-label">Current streak</div>
-      <Text id="wall-tones-current-streak" class="stat-value"></Text>
+      <div id="wall-tones-current-streak" class="stat-value">0</div>
     </div>
-    <Text id="wall-tones-status" class="status"></Text>
+    <div id="wall-tones-status" class="status">Ready</div>
     <div id="setup-mode-row" class="setup-row">
       <Button id="mode-room-scale-button" class="button">
         <ButtonIcon><LayoutGrid></LayoutGrid></ButtonIcon>
