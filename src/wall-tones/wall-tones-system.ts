@@ -1266,14 +1266,14 @@ export class WallTonesSystem extends createSystem({
       this.airOrientation = this.airOrientationLocked;
       return;
     }
-    // Grip local +Y tends to follow the palm/back axis; high |world Y| ⇒ flat hand.
+    // Grip local +Y follows the hand long axis: high |world Y| ⇒ upright hand ⇒ wall.
     this.handUp.set(0, 1, 0).applyQuaternion(this.gripQuat).normalize();
-    const flatness = Math.abs(this.handUp.y);
+    const uprightness = Math.abs(this.handUp.y);
     let next = this.airOrientation;
-    if (flatness >= AIR_ORIENT_SNAP_FLAT) {
-      next = 'horizontal';
-    } else if (flatness <= AIR_ORIENT_SNAP_UPRIGHT) {
+    if (uprightness >= AIR_ORIENT_SNAP_UPRIGHT) {
       next = 'vertical';
+    } else if (uprightness <= AIR_ORIENT_SNAP_FLAT) {
+      next = 'horizontal';
     }
     if (next !== this.airOrientation) {
       this.airOrientation = next;

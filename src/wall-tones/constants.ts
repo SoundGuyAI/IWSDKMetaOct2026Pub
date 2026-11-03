@@ -23,10 +23,13 @@ export const TOUCH_TIP_GRIP_MAX_M = 0.24;
 export const TOUCH_CENTER_PAD_MARGIN_M = 0.08;
 /** Ghost orientation slerp factor per frame at ~72 Hz (higher = snappier). */
 export const AIR_ORIENT_SLERP = 0.16;
-/** Palm flatness ≥ this snaps toward horizontal. */
-export const AIR_ORIENT_SNAP_FLAT = 0.68;
-/** Palm flatness ≤ this snaps toward vertical (band between avoids flicker). */
-export const AIR_ORIENT_SNAP_UPRIGHT = 0.42;
+/**
+ * Grip local +Y tends to follow the hand's long axis on Quest grips/hands.
+ * High |world Y| ⇒ hand held upright ⇒ wall pad; low ⇒ hand flattened ⇒ table pad.
+ */
+export const AIR_ORIENT_SNAP_UPRIGHT = 0.68;
+/** |gripUp.y| ≤ this snaps toward horizontal (band between avoids flicker). */
+export const AIR_ORIENT_SNAP_FLAT = 0.42;
 export const HEADSET_PAD_SIZE_M = 1;
 export const DESKTOP_PAD_SIZE_M = 0.42;
 export const DESKTOP_PAD_GAP_M = 0.18;
