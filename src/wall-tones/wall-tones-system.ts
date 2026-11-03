@@ -16,7 +16,10 @@ import { XRHandVisualAdapter } from '@iwsdk/xr-input';
 import type { ExperienceMode } from '../app-mode.js';
 import { playErrorTone, playPadTone, playPadToneFromUserAction, primeWallTonesAudioFromGesture, suspendAudioContext, needsExplicitMobileSoundUnlock, isHtmlAudioPoolUnlocked } from './audio.js';
 import {
-  AIR_GHOST_DISTANCE_M,
+  AIR_GHOST_HAND_OFFSET_M,
+  AIR_GHOST_MIN_HEAD_DISTANCE_M,
+  AIR_PLACE_ROOM_PAD_SIZE_M,
+  AIR_PLACE_SITTING_PAD_SIZE_M,
   NOTE_GAP_S,
   SCAN_WAIT_S,
   WALL_TONE_PADS,
@@ -32,11 +35,13 @@ import {
   type PlacedPadTransform,
 } from './plane-placement.js';
 import {
+  createGhostPadRuntime,
   createPadRuntime,
   defaultDesktopPadSize,
   defaultHeadsetPadSize,
   disposePadRuntimes,
   flashPad,
+  solidifyGhostPad,
   type PadRuntime,
 } from './pads.js';
 import { WallTonesSequence } from './sequence.js';
@@ -96,6 +101,10 @@ export class WallTonesSystem extends createSystem({
   private readonly tipLeft = new Vector3();
   private readonly tipRight = new Vector3();
   private readonly tipLocal = new Vector3();
+  private readonly gripWorld = new Vector3();
+  private readonly ghostForward = new Vector3();
+  private readonly ghostTarget = new Vector3();
+  private readonly awayFromHead = new Vector3();
 
   private experienceActive = false;
   private flowPhase: FlowPhase = 'inactive';
@@ -104,6 +113,7 @@ export class WallTonesSystem extends createSystem({
   private playbackQueue: Promise<void> = Promise.resolve();
   private scanStartedAt = -1;
   private airPlaceStep = 0;
+  private airPadSizeM = AIR_PLACE_ROOM_PAD_SIZE_M;
   private ghostPad: PadRuntime | null = null;
   private statusText = '';
   private panelBound = false;
@@ -614,26 +624,25 @@ export class WallTonesSystem extends createSystem({
   private startAirPlacement(line: string): void {
     this.flowPhase = 'air-placement';
     this.airPlaceStep = 0;
+    this.airPadSizeM =
+      this.setupMode === 'sitting'
+        ? AIR_PLACE_SITTING_PAD_SIZE_M
+        : AIR_PLACE_ROOM_PAD_SIZE_M;
     this.clearPads();
     this.speech.speak(line);
     this.speech.speak(WALL_TONES_SPEECH.airPlace(1));
-    this.statusText = 'Pinch to place each button.';
+    this.statusText = 'Move the outline with your hand, then pinch to place.';
     this.spawnGhostPad();
     this.renderPanel();
   }
 
   private spawnGhostPad(): void {
     this.ghostPad?.entity.dispose({ disposeResources: true });
-    this.ghostPad = createPadRuntime(
+    this.ghostPad = createGhostPadRuntime(
       this.world,
       (this.airPlaceStep % 4) as WallTonePadId,
-      defaultHeadsetPadSize(),
-      { rayInteractable: false, anchor: false },
+      this.airPadSizeM,
     );
-    const face = this.ghostPad.root.getObjectByName('face');
-    if (face != null) {
-      face.scale.setScalar(0.85);
-    }
   }
 
   private tickAirPlacement(): void {
@@ -641,22 +650,14 @@ export class WallTonesSystem extends createSystem({
     if (hand == null || this.ghostPad == null) {
       return;
     }
-    this.player.head.getWorldPosition(this.viewer);
-    const yaw = this.player.head.rotation.y;
-    const offsetX = Math.sin(yaw) * AIR_GHOST_DISTANCE_M;
-    const offsetZ = Math.cos(yaw) * AIR_GHOST_DISTANCE_M;
-    this.ghostPad.root.position.set(
-      this.viewer.x + offsetX,
-      this.viewer.y - 0.05,
-      this.viewer.z - offsetZ,
-    );
-    this.ghostPad.root.quaternion.copy(this.player.head.quaternion);
+    this.updateGhostPadPose(hand);
 
     const select = this.input.xr.getSelectState(hand);
     if (!select.start) {
       return;
     }
     const placed = this.ghostPad;
+    solidifyGhostPad(placed, this.airPadSizeM);
     placed.entity.addComponent(XRAnchor);
     this.pads.push(placed);
     this.ghostPad = null;
@@ -669,7 +670,64 @@ export class WallTonesSystem extends createSystem({
       return;
     }
     this.speech.speak(WALL_TONES_SPEECH.airPlace(this.airPlaceStep + 1));
+    this.statusText = `Pinch to place outline ${this.airPlaceStep + 1} of 4.`;
     this.spawnGhostPad();
+    this.renderPanel();
+  }
+
+  private updateGhostPadPose(hand: 'left' | 'right'): void {
+    if (this.ghostPad == null) {
+      return;
+    }
+    this.player.head.getWorldPosition(this.viewer);
+    this.player.gripSpaces[hand].getWorldPosition(this.gripWorld);
+
+    this.ghostForward.set(
+      this.gripWorld.x - this.viewer.x,
+      0,
+      this.gripWorld.z - this.viewer.z,
+    );
+    if (this.ghostForward.lengthSq() < 1e-6) {
+      this.player.head.getWorldDirection(this.ghostForward);
+      this.ghostForward.y = 0;
+    }
+    this.ghostForward.normalize();
+
+    this.ghostTarget
+      .copy(this.gripWorld)
+      .addScaledVector(this.ghostForward, AIR_GHOST_HAND_OFFSET_M);
+    // Prefer table/lap height for sitting, mid-torso for room-scale air place.
+    const preferredY =
+      this.setupMode === 'sitting'
+        ? this.viewer.y - 0.55
+        : this.viewer.y - 0.35;
+    this.ghostTarget.y = preferredY * 0.35 + this.gripWorld.y * 0.65;
+
+    this.awayFromHead.copy(this.ghostTarget).sub(this.viewer);
+    const minDist = Math.max(
+      AIR_GHOST_MIN_HEAD_DISTANCE_M,
+      this.airPadSizeM * 0.5 + 0.45,
+    );
+    if (this.awayFromHead.length() < minDist) {
+      if (this.awayFromHead.lengthSq() < 1e-6) {
+        this.awayFromHead.copy(this.ghostForward);
+      }
+      this.awayFromHead.setLength(minDist);
+      this.ghostTarget.copy(this.viewer).add(this.awayFromHead);
+      this.ghostTarget.y = preferredY * 0.35 + this.gripWorld.y * 0.65;
+      this.awayFromHead.copy(this.ghostTarget).sub(this.viewer);
+      if (this.awayFromHead.length() < minDist) {
+        this.awayFromHead.setLength(minDist);
+        this.ghostTarget.copy(this.viewer).add(this.awayFromHead);
+      }
+    }
+
+    this.ghostPad.root.position.copy(this.ghostTarget);
+    const yaw = Math.atan2(
+      this.viewer.x - this.ghostTarget.x,
+      this.viewer.z - this.ghostTarget.z,
+    );
+    this.ghostPad.root.rotation.set(0, yaw, 0);
   }
 
   private preferredPlacementHand(): 'left' | 'right' | null {

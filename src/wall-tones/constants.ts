@@ -16,6 +16,11 @@ export const DESKTOP_PAD_SIZE_M = 0.42;
 export const DESKTOP_PAD_GAP_M = 0.18;
 export const DESKTOP_GRID_DISTANCE_M = 1.45;
 export const PAD_GAP_M = 0.25;
-export const AIR_GHOST_DISTANCE_M = 0.35;
+/** Offset from the tracked hand/grip — not from the headset (0.35 at the face was unusable). */
+export const AIR_GHOST_HAND_OFFSET_M = 0.32;
+/** Keep the ghost pad center at least this far from the eyes. */
+export const AIR_GHOST_MIN_HEAD_DISTANCE_M = 0.7;
+export const AIR_PLACE_SITTING_PAD_SIZE_M = 0.36;
+export const AIR_PLACE_ROOM_PAD_SIZE_M = 0.55;
 export const SCAN_WAIT_S = 3;
 export const WRONG_RESET_DELAY_S = 0.9;

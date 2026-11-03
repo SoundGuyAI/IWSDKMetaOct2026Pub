@@ -8,12 +8,12 @@ export const WALL_TONES_SPEECH = {
     'I could not see enough surfaces. Open room capture on your headset, then we will look again.',
   padsOnWalls: 'I placed four buttons on your walls. Listen and repeat the pattern.',
   notEnoughWallSpace:
-    'There is not enough wall space. Place four buttons in the air beside you.',
+    'There is not enough wall space. Move the outlined buttons with your hand and pinch to place them beside you.',
   tableFound: 'I found a table. Listen and repeat the pattern.',
   noTable:
-    'I could not find a table. Place four buttons in the air beside you.',
+    'I could not find a table. Move the outlined buttons with your hand and pinch to place them in front of you.',
   airPlace: (step: number) =>
-    `Pinch to place button ${step} of 4.`,
+    `Outline ${step} of 4. Move your hand, then pinch to place.`,
   desktopReady:
     'Tap any colored pad once to turn sound on and start. All four pads take part in the pattern.',
   streakMilestone: (streak: number) =>
