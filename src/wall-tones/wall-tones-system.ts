@@ -35,7 +35,12 @@ import {
   PANEL_FOLLOW_SCALE,
   PANEL_FOLLOW_SLERP,
   PANEL_FOLLOW_Y_OFFSET_M,
+  PANEL_LOOK_AWAY_DEG,
+  PANEL_SNAP_ARRIVE_M,
   SCAN_WAIT_S,
+  SIMON_FANFARE_END_PAUSE_S,
+  SIMON_FANFARE_FIRST_PAD_REPEATS,
+  SIMON_FANFARE_MID_PAUSE_S,
   TOUCH_ENTER_FRAMES,
   TOUCH_EXIT_FRAMES,
   TOUCH_HOVER_CENTER_MARGIN_M,
@@ -170,6 +175,7 @@ export class WallTonesSystem extends createSystem({
   private readonly panelFollowQuat = new Quaternion();
   private readonly panelFollowTargetQuat = new Quaternion();
   private readonly headQuat = new Quaternion();
+  private readonly toPanel = new Vector3();
 
   private experienceActive = false;
   private flowPhase: FlowPhase = 'inactive';
@@ -205,8 +211,11 @@ export class WallTonesSystem extends createSystem({
   private pointerAudioBound = false;
   private mobileSoundButton: HTMLButtonElement | null = null;
   private mediaUnlockApplied = false;
-  /** Wireframe hover/press volumes on pads; on by default for tuning. */
+  /** Wireframe hover/press volumes on pads; VR only, on by default for tuning. */
   private showTouchDebug = true;
+  /** Setup HUD is world-anchored; look-away past a threshold re-snaps it. */
+  private panelWorldAnchored = false;
+  private panelSnapActive = false;
   private readonly onPointerDownForAudio = (): void => {
     if (needsExplicitMobileSoundUnlock() && !isHtmlAudioPoolUnlocked()) {
       this.applyUserGestureMediaUnlock(false);
@@ -254,6 +263,7 @@ export class WallTonesSystem extends createSystem({
       document.title = 'Wall Tones';
       this.bindPanelIfNeeded();
       this.flowPhase = 'choose-mode';
+      this.resetSetupPanelAnchor();
       this.setFlatHintVisible(false);
       this.setSetupUiVisible(true);
       this.setRepeatUiVisible(false);
@@ -413,9 +423,9 @@ export class WallTonesSystem extends createSystem({
       return;
     }
 
-    // Switch to the AR/passthrough world once up front so choosing Room scale
-    // does not tear down XR mid-session (that felt like leaving the app).
-    if (getActiveWorldKind() === 'hub-vr') {
+    // Switch to AR only while still flat. Enter XR already boots AR first;
+    // never destroy an active immersive session here (that looked like leaving MR).
+    if (getActiveWorldKind() === 'hub-vr' && this.useDesktopPath()) {
       sessionStorage.setItem('wall-tones-awaiting-mode', '1');
       sessionStorage.setItem('iwsdk-experience-mode', 'walltones');
       this.statusText = 'Opening passthrough…';
@@ -425,6 +435,7 @@ export class WallTonesSystem extends createSystem({
     }
 
     this.flowPhase = 'choose-mode';
+    this.resetSetupPanelAnchor();
     this.setFlatHintVisible(false);
     this.setSetupUiVisible(true);
     this.setRepeatUiVisible(false);
@@ -466,6 +477,7 @@ export class WallTonesSystem extends createSystem({
     this.setAirOrientUiVisible(false);
     this.setRescanUiVisible(false);
     this.setRepeatUiVisible(false);
+    this.resetSetupPanelAnchor();
     this.restorePanelLayout();
     this.restorePanelPointerCapture();
     this.showStudioBackdrop();
@@ -594,9 +606,13 @@ export class WallTonesSystem extends createSystem({
     );
   }
 
-  /** Keep the Wall Tones menu in front of the headset until play begins. */
+  /**
+   * World-anchored setup HUD: place once in front, then only slerp-snap when the
+   * player looks ~PANEL_LOOK_AWAY_DEG away from the panel.
+   */
   private tickSetupPanelFollow(delta: number): void {
     if (!this.isSetupPanelFollowActive()) {
+      this.panelSnapActive = false;
       return;
     }
     const entity = this.world.getSceneEntity('wall-tones-panel');
@@ -614,40 +630,81 @@ export class WallTonesSystem extends createSystem({
 
     this.player.head.getWorldPosition(this.viewer);
     this.player.head.getWorldQuaternion(this.headQuat);
-    // Head Object3D getWorldDirection follows +Z (behind the wearer). Use local -Z.
     this.ghostForward.set(0, 0, -1).applyQuaternion(this.headQuat).normalize();
     this.panelFollowTargetPos
       .copy(this.viewer)
       .addScaledVector(this.ghostForward, PANEL_FOLLOW_DISTANCE_M);
     this.panelFollowTargetPos.y += PANEL_FOLLOW_Y_OFFSET_M;
-
-    // Match headset yaw/pitch so the UIKit front (+viewer side) faces the player.
     this.panelFollowTargetQuat.copy(this.headQuat);
 
-    const alpha =
-      1 - Math.pow(1 - PANEL_FOLLOW_SLERP, Math.max(delta, 1 / 120) * 72);
     this.panelFollowPos.set(position[0]!, position[1]!, position[2]!);
-    this.panelFollowPos.lerp(this.panelFollowTargetPos, alpha);
-    position[0] = this.panelFollowPos.x;
-    position[1] = this.panelFollowPos.y;
-    position[2] = this.panelFollowPos.z;
-
     this.panelFollowQuat.set(
       orientation[0]!,
       orientation[1]!,
       orientation[2]!,
       orientation[3]!,
     );
+
+    if (!this.panelWorldAnchored) {
+      position[0] = this.panelFollowTargetPos.x;
+      position[1] = this.panelFollowTargetPos.y;
+      position[2] = this.panelFollowTargetPos.z;
+      orientation[0] = this.panelFollowTargetQuat.x;
+      orientation[1] = this.panelFollowTargetQuat.y;
+      orientation[2] = this.panelFollowTargetQuat.z;
+      orientation[3] = this.panelFollowTargetQuat.w;
+      scale[0] = PANEL_FOLLOW_SCALE;
+      scale[1] = PANEL_FOLLOW_SCALE;
+      scale[2] = PANEL_FOLLOW_SCALE;
+      this.panelWorldAnchored = true;
+      this.panelSnapActive = false;
+      this.restorePanelPointerCapture();
+      return;
+    }
+
+    this.toPanel.copy(this.panelFollowPos).sub(this.viewer);
+    if (this.toPanel.lengthSq() > 1e-6) {
+      this.toPanel.normalize();
+      const lookDot = Math.min(
+        1,
+        Math.max(-1, this.ghostForward.dot(this.toPanel)),
+      );
+      const lookAwayDeg = (Math.acos(lookDot) * 180) / Math.PI;
+      if (lookAwayDeg >= PANEL_LOOK_AWAY_DEG) {
+        this.panelSnapActive = true;
+      }
+    }
+
+    if (!this.panelSnapActive) {
+      scale[0] = PANEL_FOLLOW_SCALE;
+      scale[1] = PANEL_FOLLOW_SCALE;
+      scale[2] = PANEL_FOLLOW_SCALE;
+      return;
+    }
+
+    const alpha =
+      1 - Math.pow(1 - PANEL_FOLLOW_SLERP, Math.max(delta, 1 / 120) * 72);
+    this.panelFollowPos.lerp(this.panelFollowTargetPos, alpha);
     this.panelFollowQuat.slerp(this.panelFollowTargetQuat, alpha);
+    position[0] = this.panelFollowPos.x;
+    position[1] = this.panelFollowPos.y;
+    position[2] = this.panelFollowPos.z;
     orientation[0] = this.panelFollowQuat.x;
     orientation[1] = this.panelFollowQuat.y;
     orientation[2] = this.panelFollowQuat.z;
     orientation[3] = this.panelFollowQuat.w;
-
     scale[0] = PANEL_FOLLOW_SCALE;
     scale[1] = PANEL_FOLLOW_SCALE;
     scale[2] = PANEL_FOLLOW_SCALE;
+    if (this.panelFollowPos.distanceTo(this.panelFollowTargetPos) <= PANEL_SNAP_ARRIVE_M) {
+      this.panelSnapActive = false;
+    }
     this.restorePanelPointerCapture();
+  }
+
+  private resetSetupPanelAnchor(): void {
+    this.panelWorldAnchored = false;
+    this.panelSnapActive = false;
   }
 
   private applyPanelLayout(
@@ -747,6 +804,7 @@ export class WallTonesSystem extends createSystem({
       this.showStudioBackdrop();
       this.setFlatHintVisible(false);
       this.flowPhase = 'choose-mode';
+      this.resetSetupPanelAnchor();
       this.statusText = 'Choose room scale or sitting.';
       this.setSetupUiVisible(true);
       this.setRepeatUiVisible(false);
@@ -754,6 +812,7 @@ export class WallTonesSystem extends createSystem({
       this.renderPanel();
     }
     this.wasNonImmersive = nonImmersive;
+    this.applyTouchDebugVisibility();
   }
 
   private hideStudioBackdrop(): void {
@@ -891,17 +950,19 @@ export class WallTonesSystem extends createSystem({
 
   private async onBackToMenu(): Promise<void> {
     this.speech.speak(WALL_TONES_SPEECH.backToMenu);
+    const reenterXr = !this.useDesktopPath();
     await this.leaveWallTonesMode();
     if (getActiveWorldKind() === 'walltones-ar') {
-      await switchBackToHubMenu();
-    } else {
-      window.dispatchEvent(
-        new CustomEvent('experience-mode-changed', {
-          detail: { mode: 'menu' satisfies ExperienceMode },
-        }),
-      );
-      sessionStorage.setItem('iwsdk-experience-mode', 'menu');
+      // Rebuild the hub, then re-enter XR so Back does not dump the player to a stuck flat page.
+      await switchBackToHubMenu({ reenterXr });
+      return;
     }
+    window.dispatchEvent(
+      new CustomEvent('experience-mode-changed', {
+        detail: { mode: 'menu' satisfies ExperienceMode },
+      }),
+    );
+    sessionStorage.setItem('iwsdk-experience-mode', 'menu');
   }
 
   private async onChooseSetup(mode: SetupMode): Promise<void> {
@@ -910,8 +971,9 @@ export class WallTonesSystem extends createSystem({
     }
     this.setupMode = mode;
     sessionStorage.setItem('wall-tones-setup-mode', mode);
-    // Mode choice now happens inside the AR world already — no XR tear-down here.
-    if (getActiveWorldKind() === 'hub-vr') {
+    // Never destroy an active XR session to swap worlds — that looked like leaving MR.
+    // Enter XR boots the AR world up front; this path only swaps while still flat.
+    if (getActiveWorldKind() === 'hub-vr' && this.useDesktopPath()) {
       this.statusText = 'Opening passthrough…';
       this.renderPanel();
       await switchToWallTonesArWorld();
@@ -1567,7 +1629,45 @@ export class WallTonesSystem extends createSystem({
     this.ghostPad = null;
   }
 
-  /** Intro voice, then a beat of silence, then the first pad blinks with its tone. */
+  /**
+   * Simon-style startup fanfare: each pad once, pause, first pad four times,
+   * then a short pause before voice / the real pattern.
+   */
+  private async playSimonStartupFanfare(): Promise<void> {
+    this.statusText = 'Watch the pads…';
+    this.renderPanel();
+    for (let padIndex = 0; padIndex < WALL_TONE_PADS.length; padIndex += 1) {
+      if (!this.experienceActive || this.flowPhase !== 'playing') {
+        return;
+      }
+      await this.blinkPadNote(padIndex);
+    }
+    await this.wait(SIMON_FANFARE_MID_PAUSE_S);
+    for (let repeat = 0; repeat < SIMON_FANFARE_FIRST_PAD_REPEATS; repeat += 1) {
+      if (!this.experienceActive || this.flowPhase !== 'playing') {
+        return;
+      }
+      await this.blinkPadNote(0);
+    }
+    await this.wait(SIMON_FANFARE_END_PAUSE_S);
+  }
+
+  private async blinkPadNote(padIndex: number): Promise<void> {
+    const pad = this.pads[padIndex];
+    if (pad != null) {
+      flashPad(pad, true);
+      if (this.useDesktopInput()) {
+        playPadToneFromUserAction(padIndex);
+        await this.wait(0.45);
+      } else {
+        await playPadTone(padIndex);
+      }
+      flashPad(pad, false);
+    }
+    await this.wait(NOTE_GAP_S);
+  }
+
+  /** Fanfare, start voiceover, pause, then the first pattern note. */
   private beginRoundWithIntro(leadInLine?: string): void {
     this.playbackQueue = this.playbackQueue.then(async () => {
       if (!this.experienceActive || this.flowPhase !== 'playing') {
@@ -1579,6 +1679,10 @@ export class WallTonesSystem extends createSystem({
         await this.speech.speakAsync(leadInLine);
         await this.wait(0.35);
       }
+      if (!this.experienceActive || this.flowPhase !== 'playing') {
+        return;
+      }
+      await this.playSimonStartupFanfare();
       if (!this.experienceActive || this.flowPhase !== 'playing') {
         return;
       }
@@ -1650,6 +1754,9 @@ export class WallTonesSystem extends createSystem({
         const pressed =
           hovered &&
           this.entityInQuery(pad.entity, this.queries.padPressed.entities);
+        pad.hoverInside = hovered;
+        pad.fingerInside = pressed;
+        this.syncPadProximityVisual(pad, 0);
         if (pressed) {
           anyPressed = true;
         }
@@ -1669,6 +1776,9 @@ export class WallTonesSystem extends createSystem({
       const pressed =
         hovered &&
         this.entityInQuery(pad.entity, this.queries.padPressed.entities);
+      pad.hoverInside = hovered;
+      pad.fingerInside = pressed;
+      this.syncPadProximityVisual(pad, 0);
       // Edge-trigger on press; re-arm when the button is released while hovered
       // so sequences like green→green register the second press.
       if (!pressed) {
@@ -1842,17 +1952,23 @@ export class WallTonesSystem extends createSystem({
   }
 
   private applyTouchDebugVisibility(): void {
+    // Flat/desktop: no collider wireframes. VR/MR only.
+    const visible = this.showTouchDebug && !this.useDesktopPath();
     for (const pad of this.pads) {
-      setPadDebugCollidersVisible(pad, this.showTouchDebug);
+      setPadDebugCollidersVisible(pad, visible);
     }
     if (this.ghostPad != null) {
-      setPadDebugCollidersVisible(this.ghostPad, this.showTouchDebug);
+      setPadDebugCollidersVisible(this.ghostPad, visible);
     }
   }
 
   private syncDebugCollidersButton(): void {
-    this.world
-      .getSceneObject<UIKitMLAsset>('wall-tones-panel')
+    const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+    const showButton = !this.useDesktopPath();
+    panel
+      ?.getElementById('debug-colliders-button')
+      ?.setProperties({ display: showButton ? 'flex' : 'none' });
+    panel
       ?.getElementById<UIKit.Text>('debug-colliders-label')
       ?.setProperties({
         text: this.showTouchDebug ? 'Debug colliders: ON' : 'Debug colliders: OFF',
@@ -1939,11 +2055,16 @@ export class WallTonesSystem extends createSystem({
     this.playbackQueue = this.playbackQueue.then(async () => {
       await this.speech.speakAsync(WALL_TONES_SPEECH.wrongTouch);
       await this.wait(WRONG_RESET_DELAY_S);
-      if (!this.experienceActive) {
+      if (!this.experienceActive || this.flowPhase !== 'playing') {
         return;
       }
       this.game.onWrongInput();
       this.renderPanel();
+      // Same Simon fanfare as a fresh start, pause, then the first note again.
+      await this.playSimonStartupFanfare();
+      if (!this.experienceActive || this.flowPhase !== 'playing') {
+        return;
+      }
       await this.playSequence();
     });
   }

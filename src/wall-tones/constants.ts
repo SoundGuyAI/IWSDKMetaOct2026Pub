@@ -36,14 +36,24 @@ export const TOUCH_HOVER_CENTER_MARGIN_M = 0.16;
 export const TOUCH_PRESS_CENTER_MARGIN_M = 0.04;
 /** @deprecated Prefer TOUCH_PRESS_CENTER_MARGIN_M. */
 export const TOUCH_CENTER_PAD_MARGIN_M = TOUCH_PRESS_CENTER_MARGIN_M;
-/** Pre-game Wall Tones panel: meters in front of the headset. */
-export const PANEL_FOLLOW_DISTANCE_M = 1.15;
+/** Pre-game Wall Tones panel: meters in front of the headset (world-anchored). */
+export const PANEL_FOLLOW_DISTANCE_M = 1.55;
 /** Panel height offset relative to headset (meters). */
-export const PANEL_FOLLOW_Y_OFFSET_M = -0.12;
-/** Panel follow slerp/lerp factor per frame at ~72 Hz. */
-export const PANEL_FOLLOW_SLERP = 0.14;
-/** Panel scale while following the headset during setup. */
+export const PANEL_FOLLOW_Y_OFFSET_M = -0.1;
+/** Panel re-anchor slerp/lerp factor per frame at ~72 Hz after look-away. */
+export const PANEL_FOLLOW_SLERP = 0.12;
+/** Panel scale while in setup (world-anchored). */
 export const PANEL_FOLLOW_SCALE = 0.3;
+/** Re-snap the setup panel only after looking this many degrees away from it. */
+export const PANEL_LOOK_AWAY_DEG = 12;
+/** How close (meters) the panel must get to the target before a look-away snap finishes. */
+export const PANEL_SNAP_ARRIVE_M = 0.04;
+/** Simon-style startup: silence between the four-pad sweep and the green encore. */
+export const SIMON_FANFARE_MID_PAUSE_S = 0.35;
+/** Simon-style startup: silence after the encore before voice / first note. */
+export const SIMON_FANFARE_END_PAUSE_S = 0.5;
+/** Times the first pad repeats in the startup fanfare. */
+export const SIMON_FANFARE_FIRST_PAD_REPEATS = 4;
 /** Ghost orientation slerp factor per frame at ~72 Hz (higher = snappier). */
 export const AIR_ORIENT_SLERP = 0.16;
 /**

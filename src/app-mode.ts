@@ -101,10 +101,32 @@ export class AppModeSystem extends createSystem({}) {
     entity.setValue(Visibility, 'isVisible', visible);
   }
 
-  private startWallTones(): void {
+  private startWallTonesFlat(): void {
     primeWallTonesAudioFromGesture();
     unlockSpeechFromGesture();
     this.setMode('walltones');
+  }
+
+  /**
+   * Enter XR boots the AR Wall Tones world first (while still flat), then
+   * launches one XR session — so later mode picks never tear XR down.
+   * Dynamic import avoids a circular dependency with world-host.
+   */
+  private enterXrIntoWallTones(): void {
+    primeWallTonesAudioFromGesture();
+    unlockSpeechFromGesture();
+    persistMode('walltones');
+    sessionStorage.setItem('wall-tones-awaiting-mode', '1');
+    void import('./wall-tones/world-host.js').then((host) => {
+      if (host.getActiveWorldKind() === 'hub-vr') {
+        void host.switchToWallTonesArWorld();
+        return;
+      }
+      this.setMode('walltones');
+      if (this.world.xrEnabled) {
+        this.world.launchXR();
+      }
+    });
   }
 
   private bindMainMenu(): void {
@@ -114,14 +136,8 @@ export class AppModeSystem extends createSystem({}) {
     }
     const wallTonesButton = panel.getElementById('mode-walltones-button');
     const xrButton = panel.getElementById('xr-button');
-    wallTonesButton?.addEventListener('click', () => this.startWallTones());
-    xrButton?.addEventListener('click', () => {
-      // Enter XR also boots Wall Tones so the headset lands in setup, not the hub.
-      this.startWallTones();
-      if (this.world.xrEnabled) {
-        this.world.launchXR();
-      }
-    });
+    wallTonesButton?.addEventListener('click', () => this.startWallTonesFlat());
+    xrButton?.addEventListener('click', () => this.enterXrIntoWallTones());
     if (wallTonesButton != null) {
       wallTonesButton.name = 'Btn_ModeWallTones';
     }
