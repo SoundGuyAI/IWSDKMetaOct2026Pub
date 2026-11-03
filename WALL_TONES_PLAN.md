@@ -2,6 +2,8 @@
 
 Implementation spec for a later agent. The menu already has a Wall Tones entry. This document defines the game. Do not treat colors, tones, or spoken lines here as final until the original Unity project is reviewed.
 
+Track progress in [WALL_TONES_TODO.md](WALL_TONES_TODO.md). Update that file as each item starts and finishes. Add a short note when an item is blocked. Do not leave it stale at the end of a session.
+
 ## What already exists
 
 PR #4 added a hub, not the game. [src/app-mode.ts](src/app-mode.ts) defines `ExperienceMode` including `'walltones'`. Choosing **Wall Tones (planned)** shows scene node `wall-tones-panel` ([public/ui/wall-tones-placeholder.uikitml](public/ui/wall-tones-placeholder.uikitml)) and hides the menu. **Back to main menu** (`back-to-menu-button`) returns to `'menu'`. Mode changes emit `experience-mode-changed`.
