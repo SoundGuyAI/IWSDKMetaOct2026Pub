@@ -1,6 +1,7 @@
 import type { Entity } from '@iwsdk/core';
 import { Object3D, Quaternion, Vector3, XRPlane } from '@iwsdk/core';
 import {
+  AIR_PLACE_SITTING_PAD_SIZE_M,
   DESKTOP_GRID_DISTANCE_M,
   DESKTOP_GRID_LATERAL_M,
   DESKTOP_PAD_GAP_M,
@@ -81,6 +82,13 @@ function orientPadTowardPlayer(
   const yaw = Math.atan2(normal.x, normal.z);
   const half = yaw * 0.5;
   return [0, Math.sin(half), 0, Math.cos(half)];
+}
+
+/** Face-up pad on a table (thin axis points up). */
+function orientPadFlatOnTable(): [number, number, number, number] {
+  // -90° around X: local XY face becomes world XZ (horizontal).
+  const half = -Math.PI / 4;
+  return [Math.sin(half), 0, 0, Math.cos(half)];
 }
 
 function worldNormalFromPlaneObject(
@@ -271,6 +279,54 @@ export function generateWallPadCandidates(
   return candidates;
 }
 
+/** Grid of sitting-sized candidates on horizontal table planes. */
+export function generateTablePadCandidates(
+  tables: WallSlot[],
+  sizeM = AIR_PLACE_SITTING_PAD_SIZE_M,
+): WallPadCandidate[] {
+  const candidates: WallPadCandidate[] = [];
+  let candidateIndex = 0;
+  const half = sizeM * 0.5;
+  const step = sizeM + 0.08;
+  const flatQuat = orientPadFlatOnTable();
+
+  tables.forEach((table, wallIndex) => {
+    const object3D = table.entity.object3D;
+    if (object3D == null) {
+      return;
+    }
+    object3D.updateWorldMatrix(true, false);
+
+    const minX = table.localMinX + half + 0.04;
+    const maxX = table.localMaxX - half - 0.04;
+    const minZ = table.localMinZ + half + 0.04;
+    const maxZ = table.localMaxZ - half - 0.04;
+    if (minX > maxX || minZ > maxZ) {
+      return;
+    }
+
+    for (let lx = minX; lx <= maxX + 1e-4; lx += step) {
+      for (let lz = minZ; lz <= maxZ + 1e-4; lz += step) {
+        _localPoint.set(lx, 0.02, lz);
+        object3D.localToWorld(_localPoint);
+        candidates.push({
+          position: [
+            _localPoint.x + table.normal.x * 0.02,
+            _localPoint.y + table.normal.y * 0.02,
+            _localPoint.z + table.normal.z * 0.02,
+          ],
+          quaternion: flatQuat,
+          wallIndex,
+          candidateIndex,
+        });
+        candidateIndex += 1;
+      }
+    }
+  });
+
+  return candidates;
+}
+
 /** Auto plan used as a soft suggestion; prefer interactive pick when available. */
 export function planRoomScalePads(
   walls: WallSlot[],
@@ -315,11 +371,12 @@ export function planRoomScalePads(
 }
 
 export function planTablePads(table: WallSlot): PlacedPadTransform[] {
-  const size = HEADSET_PAD_SIZE_M;
-  const step = size + PAD_GAP_M;
+  const size = AIR_PLACE_SITTING_PAD_SIZE_M;
+  const step = size + PAD_GAP_M * 0.5;
   const cx = table.center.x;
   const cy = table.center.y + 0.02;
   const cz = table.center.z;
+  const flatQuat = orientPadFlatOnTable();
   const offsets = [
     [-step * 0.5, -step * 0.5],
     [step * 0.5, -step * 0.5],
@@ -328,7 +385,7 @@ export function planTablePads(table: WallSlot): PlacedPadTransform[] {
   ];
   return offsets.map(([ox, oz]) => ({
     position: [cx + ox, cy, cz + oz],
-    quaternion: orientPadTowardPlayer(table.normal),
+    quaternion: flatQuat,
   }));
 }
 

@@ -44,9 +44,9 @@ import {
 import {
   collectTablePlanes,
   collectVerticalWalls,
+  generateTablePadCandidates,
   generateWallPadCandidates,
   planDesktopGridFromCamera,
-  planTablePads,
   type PlacedPadTransform,
 } from './plane-placement.js';
 import {
@@ -820,6 +820,7 @@ export class WallTonesSystem extends createSystem({
       this.startAirPlacement(WALL_TONES_SPEECH.chooseAirMenu);
       return;
     }
+    this.setSpatialMeshesVisible(true);
     this.flowPhase = 'scanning';
     this.scanStartedAt = performance.now() / 1000;
     this.speech.speak(WALL_TONES_SPEECH.lookAround);
@@ -851,8 +852,7 @@ export class WallTonesSystem extends createSystem({
         this.startAirPlacement(WALL_TONES_SPEECH.noTable);
         return;
       }
-      const transforms = planTablePads(tables[0]!);
-      this.finishHeadsetPlacement(transforms, WALL_TONES_SPEECH.tableFound);
+      this.startTablePicking(tables);
       return;
     }
 
@@ -887,11 +887,52 @@ export class WallTonesSystem extends createSystem({
   private startWallPicking(
     walls: ReturnType<typeof collectVerticalWalls>,
   ): void {
+    this.beginSurfacePicking({
+      surfaces: walls,
+      padSizeM: HEADSET_PAD_SIZE_M,
+      candidates: generateWallPadCandidates(
+        walls,
+        this.viewer.y,
+        HEADSET_PAD_SIZE_M,
+      ),
+      speech: WALL_TONES_SPEECH.pickWallSlots,
+      emptyFallback: () =>
+        this.startAirPlacement(WALL_TONES_SPEECH.notEnoughWallSpace),
+      statusLabel: 'wall slots',
+    });
+  }
+
+  private startTablePicking(
+    tables: ReturnType<typeof collectTablePlanes>,
+  ): void {
+    this.beginSurfacePicking({
+      surfaces: tables,
+      padSizeM: AIR_PLACE_SITTING_PAD_SIZE_M,
+      candidates: generateTablePadCandidates(
+        tables,
+        AIR_PLACE_SITTING_PAD_SIZE_M,
+      ),
+      speech: WALL_TONES_SPEECH.pickTableSlots,
+      emptyFallback: () => this.startAirPlacement(WALL_TONES_SPEECH.noTable),
+      statusLabel: 'table slots',
+    });
+  }
+
+  private beginSurfacePicking(options: {
+    surfaces: ReturnType<typeof collectVerticalWalls>;
+    padSizeM: number;
+    candidates: ReturnType<typeof generateWallPadCandidates>;
+    speech: string;
+    emptyFallback: () => void;
+    statusLabel: string;
+  }): void {
     this.clearRoomSetupVisuals();
     this.clearPads();
+    this.setSpatialMeshesVisible(true);
     this.flowPhase = 'wall-picking';
     this.lackingSpatialData = false;
     this.selectedSlotTransforms = [];
+    this.slotSelectLatched = false;
     this.layoutPanelForMrPlay();
     this.setFlatHintVisible(false);
     this.setAirOrientUiVisible(false);
@@ -899,35 +940,32 @@ export class WallTonesSystem extends createSystem({
     this.setRescanUiVisible(true);
     this.setRepeatUiVisible(false);
 
-    applyRoomSetupTints(walls.map((w) => w.entity), this.queries.meshes.entities);
-    for (const wall of walls) {
-      this.wallOverlayEntities.push(createWallOverlay(this.world, wall));
+    applyRoomSetupTints(
+      options.surfaces.map((surface) => surface.entity),
+      this.queries.meshes.entities,
+    );
+    for (const surface of options.surfaces) {
+      this.wallOverlayEntities.push(createWallOverlay(this.world, surface));
     }
 
-    const candidates = generateWallPadCandidates(
-      walls,
-      this.viewer.y,
-      HEADSET_PAD_SIZE_M,
-    );
-    for (const candidate of candidates) {
+    for (const candidate of options.candidates) {
       const slot = createSlotCandidateRuntime(
         this.world,
         candidate,
-        HEADSET_PAD_SIZE_M,
+        options.padSizeM,
       );
       this.slotCandidates.push(slot);
       this.slotArmed.set(slot.candidateIndex, true);
     }
 
     if (this.slotCandidates.length === 0) {
-      // Walls detected but no 1x1 fits — fall back to air place with a clear reason.
       this.clearRoomSetupVisuals();
-      this.startAirPlacement(WALL_TONES_SPEECH.notEnoughWallSpace);
+      options.emptyFallback();
       return;
     }
 
-    this.speech.speak(WALL_TONES_SPEECH.pickWallSlots);
-    this.statusText = `Pick pad 1 of 4 — ${this.slotCandidates.length} wall slots`;
+    this.speech.speak(options.speech);
+    this.statusText = `Pick pad 1 of 4 — ${this.slotCandidates.length} ${options.statusLabel}`;
     this.renderPanel();
   }
 
@@ -998,7 +1036,7 @@ export class WallTonesSystem extends createSystem({
         : (['right', 'left'] as const);
     let best: SlotCandidateRuntime | null = null;
     let bestAlong = Number.POSITIVE_INFINITY;
-    const hitRadius = HEADSET_PAD_SIZE_M * 0.55;
+    const hitRadius = this.placementPadSizeM() * 0.55;
     for (const hand of hands) {
       const adapter = this.input.xr.visualAdapters[hand].peek();
       if (adapter != null && !adapter.connected) {
@@ -1036,7 +1074,7 @@ export class WallTonesSystem extends createSystem({
   ): SlotCandidateRuntime | null {
     this.player.indexTipSpaces[hand].getWorldPosition(this.tipScratch);
     let best: SlotCandidateRuntime | null = null;
-    let bestDist = HEADSET_PAD_SIZE_M * 0.55;
+    let bestDist = this.placementPadSizeM() * 0.55;
     for (const slot of this.slotCandidates) {
       if (slot.selected) {
         continue;
@@ -1055,12 +1093,13 @@ export class WallTonesSystem extends createSystem({
     if (slot.selected || this.selectedSlotTransforms.length >= 4) {
       return;
     }
-    // Keep picks spread out so four 1x1 pads do not stack.
+    // Keep picks spread out so pads do not stack.
+    const minSpacing = this.placementPadSizeM() * 0.75;
     const tooClose = this.selectedSlotTransforms.some((prior) => {
       const dx = prior.position[0] - slot.transform.position[0];
       const dy = prior.position[1] - slot.transform.position[1];
       const dz = prior.position[2] - slot.transform.position[2];
-      return Math.hypot(dx, dy, dz) < HEADSET_PAD_SIZE_M * 0.75;
+      return Math.hypot(dx, dy, dz) < minSpacing;
     });
     if (tooClose) {
       this.statusText = 'Too close to another pick - choose a farther slot';
@@ -1075,8 +1114,12 @@ export class WallTonesSystem extends createSystem({
     const count = this.selectedSlotTransforms.length;
     if (count >= 4) {
       const transforms = [...this.selectedSlotTransforms];
+      const doneLine =
+        this.setupMode === 'sitting'
+          ? WALL_TONES_SPEECH.tableFound
+          : WALL_TONES_SPEECH.padsOnWalls;
       this.clearRoomSetupVisuals();
-      this.finishHeadsetPlacement(transforms, WALL_TONES_SPEECH.padsOnWalls);
+      this.finishHeadsetPlacement(transforms, doneLine);
       return;
     }
     this.statusText = `Pick pad ${count + 1} of 4`;
@@ -1095,8 +1138,29 @@ export class WallTonesSystem extends createSystem({
     this.setWallPickHintVisible(false);
   }
 
+  /** Hide Quest plane/mesh proxies during play so only the pads remain visible. */
+  private setSpatialMeshesVisible(visible: boolean): void {
+    for (const entity of this.queries.planes.entities) {
+      if (entity.object3D != null) {
+        entity.object3D.visible = visible;
+      }
+    }
+    for (const entity of this.queries.meshes.entities) {
+      if (entity.object3D != null) {
+        entity.object3D.visible = visible;
+      }
+    }
+  }
+
+  private placementPadSizeM(): number {
+    return this.setupMode === 'sitting'
+      ? AIR_PLACE_SITTING_PAD_SIZE_M
+      : defaultHeadsetPadSize();
+  }
+
   private startAirPlacement(line: string): void {
     this.clearRoomSetupVisuals();
+    this.setSpatialMeshesVisible(false);
     this.flowPhase = 'air-placement';
     this.airPlaceStep = 0;
     this.lackingSpatialData = true;
@@ -1193,6 +1257,7 @@ export class WallTonesSystem extends createSystem({
       this.setAirOrientUiVisible(false);
       this.setRescanUiVisible(this.lackingSpatialData);
       this.setRepeatUiVisible(true);
+      this.setSpatialMeshesVisible(false);
       this.statusText = 'Get ready…';
       this.beginRoundWithIntro();
       this.renderPanel();
@@ -1345,7 +1410,10 @@ export class WallTonesSystem extends createSystem({
     this.lackingSpatialData = false;
     this.setWallPickHintVisible(false);
     this.setRescanUiVisible(false);
-    const size = defaultHeadsetPadSize();
+    this.setAirOrientUiVisible(false);
+    // Play mode: only the four pads — hide plane/mesh proxies.
+    this.setSpatialMeshesVisible(false);
+    const size = this.placementPadSizeM();
     transforms.forEach((transform, index) => {
       const pad = createPadRuntime(this.world, index as WallTonePadId, size, {
         rayInteractable: false,
@@ -1357,7 +1425,6 @@ export class WallTonesSystem extends createSystem({
     });
     this.flowPhase = 'playing';
     this.layoutPanelForMrPlay();
-    this.setAirOrientUiVisible(false);
     this.setRepeatUiVisible(true);
     this.statusText = 'Get ready…';
     this.beginRoundWithIntro(line);
@@ -1774,6 +1841,7 @@ export class WallTonesSystem extends createSystem({
         console.warn('[wall-tones] rescan room capture failed', error);
       }
     }
+    this.setSpatialMeshesVisible(true);
     this.flowPhase = 'scanning';
     this.scanStartedAt = performance.now() / 1000;
     this.lackingSpatialData = false;

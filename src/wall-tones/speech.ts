@@ -11,6 +11,8 @@ export const WALL_TONES_SPEECH = {
   padsOnWalls: 'I placed four buttons on your walls. Listen and repeat the pattern.',
   pickWallSlots:
     'I found walls. Cyan shows walls, orange shows other room mesh. Point at a green square and pinch to place each one-meter button. Pick four.',
+  pickTableSlots:
+    'I found table surfaces. Cyan shows flat surfaces, orange shows other room items. Point at a green square and pinch to place four buttons. Pick four.',
   notEnoughWallSpace:
     'There is not enough wall space for automatic placement. Point at the green squares on the walls if you see them, or move the outlined buttons with your hand and pinch to place them in the air.',
   tableFound: 'I found a table. Listen and repeat the pattern.',
