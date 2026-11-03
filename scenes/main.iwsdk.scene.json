@@ -356,6 +356,51 @@
       ]
     },
     {
+      "id": "main-menu-panel",
+      "name": "Main Menu Panel",
+      "content": {
+        "type": "asset",
+        "asset": "main-menu-panel"
+      },
+      "transform": {
+        "position": [0, 1.78, -2.75],
+        "scale": 0.34
+      },
+      "components": {
+        "RayInteractable": {}
+      }
+    },
+    {
+      "id": "demo-nav-panel",
+      "name": "Demo Nav Panel",
+      "content": {
+        "type": "asset",
+        "asset": "demo-nav-panel"
+      },
+      "transform": {
+        "position": [-1.05, 1.92, -3.55],
+        "scale": 0.28
+      },
+      "components": {
+        "RayInteractable": {}
+      }
+    },
+    {
+      "id": "wall-tones-panel",
+      "name": "Wall Tones Placeholder",
+      "content": {
+        "type": "asset",
+        "asset": "wall-tones-panel"
+      },
+      "transform": {
+        "position": [0, 1.75, -2.75],
+        "scale": 0.32
+      },
+      "components": {
+        "RayInteractable": {}
+      }
+    },
+    {
       "id": "welcome-panel",
       "name": "Welcome Panel",
       "content": {
