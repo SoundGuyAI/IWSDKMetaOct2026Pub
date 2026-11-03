@@ -150,4 +150,10 @@
     </ButtonIcon>
     <ButtonLabel class="button-label">Exit to Browser</ButtonLabel>
   </Button>
+  <Button id="back-to-menu-button" class="button" style="display: none">
+    <ButtonIcon>
+      <ArrowLeft></ArrowLeft>
+    </ButtonIcon>
+    <ButtonLabel class="button-label">Main menu</ButtonLabel>
+  </Button>
 </Panel>

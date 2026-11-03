@@ -124,6 +124,7 @@ export class GuidedSensingSystem extends createSystem({}) {
   private instructionPlayed = false;
   private breathAwaitingViewerPose = false;
   private requestInFlight = false;
+  private startCancelled = false;
   private renderSpatialStatus: (() => void) | null = null;
   private spatialButtonHovered = false;
   private calibrationButtonHovered = false;
@@ -256,7 +257,16 @@ export class GuidedSensingSystem extends createSystem({}) {
     };
 
     this.startButton?.addEventListener("click", toggle);
+    const onModeChange = (event: Event) => {
+      const mode = (event as CustomEvent<{ mode: string }>).detail.mode;
+      if (mode !== "meditation") {
+        this.startCancelled = true;
+        this.stopMonitoring();
+      }
+    };
+    window.addEventListener("experience-mode-changed", onModeChange);
     this.cleanupFuncs.push(() => {
+      window.removeEventListener("experience-mode-changed", onModeChange);
       this.startButton?.removeEventListener("click", toggle);
       spatialButton.removeEventListener("click", toggle);
       spatialButton.removeEventListener("pointerenter", markSpatialHover);
@@ -353,17 +363,25 @@ export class GuidedSensingSystem extends createSystem({}) {
 
   private async startMonitoring(): Promise<void> {
     this.requestInFlight = true;
+    this.startCancelled = false;
     if (this.startButton != null) {
       this.startButton.disabled = true;
     }
     this.setSensorStatus("Requesting microphone permission...");
     try {
       await this.microphone.start();
+      if (this.startCancelled) {
+        this.microphone.stop();
+        return;
+      }
       this.microphoneAvailable = true;
       this.armMonitoring();
       this.setSensorStatus("Sensors armed; establish a steady gaze");
     } catch (error) {
       console.warn("[guided-sensing] microphone unavailable", error);
+      if (this.startCancelled) {
+        return;
+      }
       this.microphoneAvailable = false;
       this.armMonitoring();
       this.setSensorStatus(
