@@ -16,8 +16,10 @@ export const WALL_TONES_SPEECH = {
     `Pinch to place button ${step} of 4.`,
   desktopReady:
     'Tap any colored pad once to turn sound on and start. All four pads take part in the pattern.',
-  gameStart: 'The game is starting. Watch and listen.',
-  roundSuccess: 'Good. Here is the next pattern.',
+  streakMilestone: (streak: number) =>
+    streak >= 10
+      ? `Great run. ${streak} in a row.`
+      : `Nice. ${streak} in a row.`,
   wrongTouch: 'That was wrong. Let us start again.',
   backToMenu: 'Back to the main menu.',
 } as const;

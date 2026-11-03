@@ -8,7 +8,7 @@ import {
   UIKitMLAsset,
   Visibility,
 } from '@iwsdk/core';
-import { unlockWallTonesAudio } from './wall-tones/audio.js';
+import { primeWallTonesAudioFromGesture } from './wall-tones/audio.js';
 
 export type ExperienceMode = 'menu' | 'demo' | 'meditation' | 'walltones';
 
@@ -114,7 +114,7 @@ export class AppModeSystem extends createSystem({}) {
       this.setMode('meditation'),
     );
     wallTonesButton?.addEventListener('click', () => {
-      void unlockWallTonesAudio();
+      primeWallTonesAudioFromGesture();
       this.setMode('walltones');
     });
     if (demoButton != null) {

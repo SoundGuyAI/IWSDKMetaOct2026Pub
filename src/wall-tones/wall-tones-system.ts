@@ -14,7 +14,7 @@ import {
 } from '@iwsdk/core';
 import { XRHandVisualAdapter } from '@iwsdk/xr-input';
 import type { ExperienceMode } from '../app-mode.js';
-import { playErrorTone, playPadTone, suspendAudioContext, unlockWallTonesAudio } from './audio.js';
+import { playErrorTone, playPadTone, playPadToneFromUserAction, primeWallTonesAudioFromGesture, suspendAudioContext } from './audio.js';
 import {
   AIR_GHOST_DISTANCE_M,
   NOTE_GAP_S,
@@ -111,6 +111,10 @@ export class WallTonesSystem extends createSystem({
   private wasNonImmersive = true;
   private flatAwaitingStart = false;
   private panelRayRemoved = false;
+  private pointerAudioBound = false;
+  private readonly onPointerDownForAudio = (): void => {
+    primeWallTonesAudioFromGesture();
+  };
   private readonly savedPanelPosition = new Float32Array(3);
   private readonly savedPanelScale = new Float32Array(3);
   private panelPositionSaved = false;
@@ -221,6 +225,7 @@ export class WallTonesSystem extends createSystem({
     this.game.resetAllScores();
     document.title = 'Wall Tones';
     this.bindPanelIfNeeded();
+    this.bindPointerAudioUnlock();
 
     if (this.useDesktopPath()) {
       this.beginFlatPlay();
@@ -246,6 +251,7 @@ export class WallTonesSystem extends createSystem({
     this.game.resetAllScores();
     this.speech.cancel();
     suspendAudioContext();
+    this.unbindPointerAudioUnlock();
     this.clearPads();
     this.ghostPad = null;
     this.setupMode = null;
@@ -265,9 +271,26 @@ export class WallTonesSystem extends createSystem({
     this.hideStudioBackdrop();
     this.layoutPanelForFlatPlay();
     this.disablePanelPointerCapture();
+    this.bindPointerAudioUnlock();
     this.spawnDesktopPads();
-    this.speech.speak(WALL_TONES_SPEECH.desktopReady);
+    this.statusText = 'Tap any pad to start (sound on)';
     this.renderPanel();
+  }
+
+  private bindPointerAudioUnlock(): void {
+    if (this.pointerAudioBound) {
+      return;
+    }
+    this.pointerAudioBound = true;
+    window.addEventListener('pointerdown', this.onPointerDownForAudio, true);
+  }
+
+  private unbindPointerAudioUnlock(): void {
+    if (!this.pointerAudioBound) {
+      return;
+    }
+    this.pointerAudioBound = false;
+    window.removeEventListener('pointerdown', this.onPointerDownForAudio, true);
   }
 
   private layoutPanelForFlatPlay(): void {
@@ -297,7 +320,7 @@ export class WallTonesSystem extends createSystem({
     }
     const entity = this.world.getSceneEntity('wall-tones-panel');
     const position = entity?.getVectorView(Transform, 'position');
-    if (position == null) {
+    if (entity == null || position == null) {
       return;
     }
     position[0] = this.savedPanelPosition[0]!;
@@ -565,7 +588,6 @@ export class WallTonesSystem extends createSystem({
     if (this.airPlaceStep >= 4) {
       this.flowPhase = 'playing';
       this.statusText = 'Playing';
-      this.speech.speak(WALL_TONES_SPEECH.gameStart);
       this.beginRoundAfterDelay(0.8);
       this.renderPanel();
       return;
@@ -602,7 +624,6 @@ export class WallTonesSystem extends createSystem({
     this.flowPhase = 'playing';
     this.statusText = 'Playing';
     this.speech.speak(line);
-    this.speech.speak(WALL_TONES_SPEECH.gameStart);
     this.beginRoundAfterDelay(1);
     this.renderPanel();
   }
@@ -694,6 +715,7 @@ export class WallTonesSystem extends createSystem({
       const pressed = this.entityInQuery(pad.entity, this.queries.padPressed.entities);
       if (pressed && pad.pointerArmed) {
         pad.pointerArmed = false;
+        primeWallTonesAudioFromGesture();
         this.handlePadInput(pad.padIndex);
       }
     }
@@ -749,7 +771,11 @@ export class WallTonesSystem extends createSystem({
     const pad = this.pads[padIndex];
     if (pad != null) {
       flashPad(pad, true);
-      playPadTone(padIndex);
+      if (this.useDesktopInput()) {
+        playPadToneFromUserAction(padIndex);
+      } else {
+        void playPadTone(padIndex);
+      }
       window.setTimeout(() => flashPad(pad, false), 350);
     }
     if (padIndex !== expected) {
@@ -759,8 +785,15 @@ export class WallTonesSystem extends createSystem({
     const completed = this.game.onCorrectInput();
     this.renderPanel();
     if (completed) {
-      this.speech.speak(WALL_TONES_SPEECH.roundSuccess);
+      this.maybeSpeakStreakEncouragement();
       void this.playSequence();
+    }
+  }
+
+  private maybeSpeakStreakEncouragement(): void {
+    const streak = this.game.streak;
+    if (streak > 0 && streak % 5 === 0) {
+      this.speech.speak(WALL_TONES_SPEECH.streakMilestone(streak));
     }
   }
 
@@ -769,15 +802,15 @@ export class WallTonesSystem extends createSystem({
       return;
     }
     this.flatAwaitingStart = false;
+    primeWallTonesAudioFromGesture();
+    const pad = this.pads[padIndex];
+    if (pad != null) {
+      flashPad(pad, true);
+      playPadToneFromUserAction(padIndex);
+      window.setTimeout(() => flashPad(pad, false), 350);
+    }
     this.playbackQueue = this.playbackQueue.then(async () => {
-      await unlockWallTonesAudio();
-      const pad = this.pads[padIndex];
-      if (pad != null) {
-        flashPad(pad, true);
-        await playPadTone(padIndex);
-        await this.wait(0.15);
-        flashPad(pad, false);
-      }
+      await this.wait(0.2);
       if (!this.experienceActive || this.flowPhase !== 'playing') {
         return;
       }
