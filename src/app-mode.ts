@@ -9,6 +9,7 @@ import {
   Visibility,
 } from '@iwsdk/core';
 import { primeWallTonesAudioFromGesture } from './wall-tones/audio.js';
+import { unlockSpeechFromGesture } from './wall-tones/speech.js';
 
 export type ExperienceMode = 'menu' | 'demo' | 'meditation' | 'walltones';
 
@@ -115,6 +116,7 @@ export class AppModeSystem extends createSystem({}) {
     );
     wallTonesButton?.addEventListener('click', () => {
       primeWallTonesAudioFromGesture();
+      unlockSpeechFromGesture();
       this.setMode('walltones');
     });
     if (demoButton != null) {

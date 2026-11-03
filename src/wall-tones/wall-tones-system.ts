@@ -14,7 +14,7 @@ import {
 } from '@iwsdk/core';
 import { XRHandVisualAdapter } from '@iwsdk/xr-input';
 import type { ExperienceMode } from '../app-mode.js';
-import { playErrorTone, playPadTone, playPadToneFromUserAction, primeWallTonesAudioFromGesture, suspendAudioContext } from './audio.js';
+import { playErrorTone, playPadTone, playPadToneFromUserAction, primeWallTonesAudioFromGesture, suspendAudioContext, needsExplicitMobileSoundUnlock, isHtmlAudioPoolUnlocked } from './audio.js';
 import {
   AIR_GHOST_DISTANCE_M,
   NOTE_GAP_S,
@@ -40,7 +40,7 @@ import {
   type PadRuntime,
 } from './pads.js';
 import { WallTonesSequence } from './sequence.js';
-import { WALL_TONES_SPEECH, WallTonesSpeech } from './speech.js';
+import { WALL_TONES_SPEECH, WallTonesSpeech, unlockSpeechFromGesture, resetSpeechUnlock } from './speech.js';
 import {
   getActiveWorldKind,
   switchBackToHubMenu,
@@ -112,7 +112,13 @@ export class WallTonesSystem extends createSystem({
   private flatAwaitingStart = false;
   private panelRayRemoved = false;
   private pointerAudioBound = false;
+  private mobileSoundButton: HTMLButtonElement | null = null;
+  private mediaUnlockApplied = false;
   private readonly onPointerDownForAudio = (): void => {
+    if (needsExplicitMobileSoundUnlock() && !isHtmlAudioPoolUnlocked()) {
+      this.applyUserGestureMediaUnlock(false);
+      return;
+    }
     primeWallTonesAudioFromGesture();
   };
   private readonly savedPanelPosition = new Float32Array(3);
@@ -246,12 +252,15 @@ export class WallTonesSystem extends createSystem({
     this.experienceActive = false;
     this.flowPhase = 'inactive';
     this.flatAwaitingStart = false;
+    this.mediaUnlockApplied = false;
     this.playbackQueue = Promise.resolve();
     this.game.phase = 'idle';
     this.game.resetAllScores();
     this.speech.cancel();
     suspendAudioContext();
+    resetSpeechUnlock();
     this.unbindPointerAudioUnlock();
+    this.hideMobileSoundOverlay();
     this.clearPads();
     this.ghostPad = null;
     this.setupMode = null;
@@ -273,8 +282,70 @@ export class WallTonesSystem extends createSystem({
     this.disablePanelPointerCapture();
     this.bindPointerAudioUnlock();
     this.spawnDesktopPads();
-    this.statusText = 'Tap any pad to start (sound on)';
+    if (needsExplicitMobileSoundUnlock() && !isHtmlAudioPoolUnlocked()) {
+      this.statusText = 'Tap “Sound on” below, then any pad';
+      this.showMobileSoundOverlay();
+    } else {
+      this.statusText = 'Tap any pad to start (sound on)';
+    }
     this.renderPanel();
+  }
+
+  private applyUserGestureMediaUnlock(speakLine: boolean): void {
+    if (this.mediaUnlockApplied && isHtmlAudioPoolUnlocked()) {
+      return;
+    }
+    this.mediaUnlockApplied = true;
+    primeWallTonesAudioFromGesture();
+    unlockSpeechFromGesture();
+    this.hideMobileSoundOverlay();
+    if (speakLine) {
+      this.speech.speak(WALL_TONES_SPEECH.soundReady);
+    }
+    if (this.flatAwaitingStart) {
+      this.statusText = 'Tap any pad to start';
+    }
+    this.renderPanel();
+  }
+
+  private showMobileSoundOverlay(): void {
+    if (!needsExplicitMobileSoundUnlock()) {
+      return;
+    }
+    if (this.mobileSoundButton == null) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = 'Sound on — tap here';
+      button.id = 'wall-tones-mobile-sound';
+      Object.assign(button.style, {
+        position: 'fixed',
+        left: '50%',
+        bottom: 'max(24px, env(safe-area-inset-bottom))',
+        transform: 'translateX(-50%)',
+        zIndex: '99999',
+        fontSize: '18px',
+        padding: '14px 22px',
+        borderRadius: '12px',
+        border: 'none',
+        background: '#f5d90a',
+        color: '#1c1d20',
+        fontWeight: '700',
+        boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
+      });
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        this.applyUserGestureMediaUnlock(true);
+      });
+      document.body.appendChild(button);
+      this.mobileSoundButton = button;
+    }
+    this.mobileSoundButton.style.display = 'block';
+  }
+
+  private hideMobileSoundOverlay(): void {
+    if (this.mobileSoundButton != null) {
+      this.mobileSoundButton.style.display = 'none';
+    }
   }
 
   private bindPointerAudioUnlock(): void {
@@ -283,6 +354,10 @@ export class WallTonesSystem extends createSystem({
     }
     this.pointerAudioBound = true;
     window.addEventListener('pointerdown', this.onPointerDownForAudio, true);
+    window.addEventListener('touchstart', this.onPointerDownForAudio, {
+      capture: true,
+      passive: true,
+    });
   }
 
   private unbindPointerAudioUnlock(): void {
@@ -291,6 +366,7 @@ export class WallTonesSystem extends createSystem({
     }
     this.pointerAudioBound = false;
     window.removeEventListener('pointerdown', this.onPointerDownForAudio, true);
+    window.removeEventListener('touchstart', this.onPointerDownForAudio, true);
   }
 
   private layoutPanelForFlatPlay(): void {

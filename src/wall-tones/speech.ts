@@ -22,11 +22,28 @@ export const WALL_TONES_SPEECH = {
       : `Nice. ${streak} in a row.`,
   wrongTouch: 'That was wrong. Let us start again.',
   backToMenu: 'Back to the main menu.',
+  soundReady: 'Sound is on. Tap a pad to start.',
 } as const;
+
+/** Prime iOS Safari speech — call from the same tap as audio unlock. */
+export function warmSpeechSynthesisFromGesture(): void {
+  if (!('speechSynthesis' in globalThis)) {
+    return;
+  }
+  globalThis.speechSynthesis.getVoices();
+  const utterance = new SpeechSynthesisUtterance('Sound on.');
+  utterance.lang = 'en-US';
+  utterance.volume = 0.85;
+  utterance.rate = 0.95;
+  globalThis.speechSynthesis.speak(utterance);
+}
 
 export class WallTonesSpeech {
   speak(line: string): void {
     if (!('speechSynthesis' in globalThis)) {
+      return;
+    }
+    if (needsSpeechUnlock() && !speechUnlocked) {
       return;
     }
     globalThis.speechSynthesis.cancel();
@@ -40,4 +57,22 @@ export class WallTonesSpeech {
   cancel(): void {
     globalThis.speechSynthesis?.cancel();
   }
+}
+
+let speechUnlocked = false;
+
+function needsSpeechUnlock(): boolean {
+  if (typeof navigator === 'undefined') {
+    return false;
+  }
+  return /iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
+export function unlockSpeechFromGesture(): void {
+  speechUnlocked = true;
+  warmSpeechSynthesisFromGesture();
+}
+
+export function resetSpeechUnlock(): void {
+  speechUnlocked = !needsSpeechUnlock();
 }

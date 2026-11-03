@@ -2,12 +2,17 @@ import { WALL_TONE_PADS, NOTE_DURATION_S } from './constants.js';
 
 let sharedContext: AudioContext | null = null;
 const htmlToneCache = new Map<number, string>();
+const htmlAudioPool: HTMLAudioElement[] = [];
+let htmlPoolUnlocked = false;
 
 function createContext(): AudioContext {
   const Ctx =
     globalThis.AudioContext ??
     (globalThis as unknown as { webkitAudioContext?: typeof AudioContext })
       .webkitAudioContext;
+  if (Ctx == null) {
+    throw new Error('[wall-tones] Web Audio not available');
+  }
   sharedContext = new Ctx();
   return sharedContext;
 }
@@ -17,6 +22,23 @@ function getContext(): AudioContext {
     return createContext();
   }
   return sharedContext;
+}
+
+/** iPhone / iPad Safari needs HTML audio unlocked from a real tap before tones or TTS work reliably. */
+export function needsExplicitMobileSoundUnlock(): boolean {
+  if (typeof navigator === 'undefined') {
+    return false;
+  }
+  const ua = navigator.userAgent;
+  const ios =
+    /iPhone|iPad|iPod/i.test(ua) ||
+    (navigator.maxTouchPoints > 0 && /MacIntel/i.test(navigator.platform));
+  const android = /Android/i.test(ua);
+  return ios || android;
+}
+
+export function isHtmlAudioPoolUnlocked(): boolean {
+  return htmlPoolUnlocked;
 }
 
 function playSilentBlip(context: AudioContext): void {
@@ -102,6 +124,62 @@ function htmlToneUrl(padId: number): string {
   return url;
 }
 
+function ensureHtmlAudioPool(): void {
+  if (htmlAudioPool.length >= 4) {
+    return;
+  }
+  for (let padId = 0; padId < 4; padId += 1) {
+    const audio = new Audio(htmlToneUrl(padId));
+    audio.preload = 'auto';
+    htmlAudioPool[padId] = audio;
+  }
+}
+
+/** Must run synchronously inside touchstart / click (menu, overlay, UI button). */
+export function unlockHtmlAudioPoolFromGesture(): boolean {
+  ensureHtmlAudioPool();
+  let started = false;
+  for (let padId = 0; padId < htmlAudioPool.length; padId += 1) {
+    const audio = htmlAudioPool[padId];
+    if (audio == null) {
+      continue;
+    }
+    audio.volume = padId === 0 ? 0.35 : 0.0001;
+    audio.currentTime = 0;
+    try {
+      const pending = audio.play();
+      started = true;
+      if (pending != null) {
+        void pending.then(() => {
+          htmlPoolUnlocked = true;
+        }).catch(() => {
+          /* retry on next gesture */
+        });
+      }
+    } catch {
+      /* ignored */
+    }
+  }
+  if (started) {
+    htmlPoolUnlocked = true;
+  }
+  return started;
+}
+
+function playPooledPadTone(padId: number): void {
+  ensureHtmlAudioPool();
+  const audio = htmlAudioPool[padId];
+  if (audio == null || !htmlPoolUnlocked) {
+    playHtmlPadTone(padId);
+    return;
+  }
+  audio.volume = 0.95;
+  audio.currentTime = 0;
+  void audio.play().catch(() => {
+    playHtmlPadTone(padId);
+  });
+}
+
 function playHtmlPadTone(padId: number): void {
   try {
     const audio = new Audio(htmlToneUrl(padId));
@@ -114,8 +192,30 @@ function playHtmlPadTone(padId: number): void {
   }
 }
 
-/** Call synchronously inside click / pointerdown (menu or canvas). */
+function playPadToneInternal(padId: number, durationS = NOTE_DURATION_S): void {
+  if (needsExplicitMobileSoundUnlock() || htmlPoolUnlocked) {
+    if (htmlPoolUnlocked) {
+      playPooledPadTone(padId);
+      return;
+    }
+  }
+  const context = getContext();
+  if (context.state === 'running') {
+    schedulePadToneWebAudio(context, padId, durationS);
+    return;
+  }
+  void context.resume().then(() => {
+    if (context.state === 'running') {
+      schedulePadToneWebAudio(context, padId, durationS);
+    } else {
+      playHtmlPadTone(padId);
+    }
+  });
+}
+
+/** Call synchronously inside touchstart / click. */
 export function primeWallTonesAudioFromGesture(): void {
+  unlockHtmlAudioPoolFromGesture();
   const context = getContext();
   if (context.state === 'suspended') {
     void context.resume().then(() => {
@@ -142,33 +242,24 @@ async function ensureAudioRunning(): Promise<AudioContext | null> {
   return context.state === 'running' ? context : null;
 }
 
-/** User tapped a pad — call after pointerdown primed the audio context when possible. */
 export function playPadToneFromUserAction(padId: number): void {
-  const context = getContext();
-  if (context.state === 'running') {
-    schedulePadToneWebAudio(context, padId);
-    return;
-  }
-  void context.resume().then(() => {
-    if (context.state === 'running') {
-      schedulePadToneWebAudio(context, padId);
-    } else {
-      playHtmlPadTone(padId);
-    }
-  });
+  playPadToneInternal(padId);
 }
 
-/** @deprecated use primeWallTonesAudioFromGesture — kept for callers awaiting unlock */
 export async function unlockWallTonesAudio(): Promise<boolean> {
   primeWallTonesAudioFromGesture();
   const context = await ensureAudioRunning();
-  return context != null;
+  return context != null || htmlPoolUnlocked;
 }
 
 export async function playPadTone(
   padId: number,
   durationS = NOTE_DURATION_S,
 ): Promise<void> {
+  if (htmlPoolUnlocked) {
+    playPooledPadTone(padId);
+    return;
+  }
   const context = await ensureAudioRunning();
   if (context != null) {
     schedulePadToneWebAudio(context, padId, durationS);
@@ -178,6 +269,11 @@ export async function playPadTone(
 }
 
 export async function playErrorTone(): Promise<void> {
+  if (htmlPoolUnlocked) {
+    playPooledPadTone(0);
+    window.setTimeout(() => playPooledPadTone(0), 120);
+    return;
+  }
   const context = await ensureAudioRunning();
   if (context == null) {
     playHtmlPadTone(0);
@@ -201,4 +297,6 @@ export function suspendAudioContext(): void {
   void sharedContext?.close();
   sharedContext = null;
   htmlToneCache.clear();
+  htmlAudioPool.length = 0;
+  htmlPoolUnlocked = false;
 }
