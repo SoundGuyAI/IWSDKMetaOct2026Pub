@@ -4,20 +4,22 @@ Update this file as work proceeds. Mark an item `in progress` when it starts and
 
 ## Not started
 
-- [ ] Replace the Wall Tones placeholder panel with mode choice, best streak, and round status. Keep `back-to-menu-button`.
-- [ ] Add `src/wall-tones/` for setup, pad volumes, sequence state, and speech. Register the systems from `src/index.ts`. Run only while the mode is `walltones`.
-- [ ] Desktop: spawn four pads in a 2 by 2 grid in front of the player, skip scanning, and accept a click as a touch.
-- [ ] Sequence rules: playback, growing sequence, wrong touch resets the current run to one note, best streak stays, streak clears when returning to the menu.
-- [ ] English `speechSynthesis` lines, cancelled on exit and when a new line starts.
-- [ ] Headset: passthrough session with plane detection, anchors, and hand tracking, without changing the VR hub config for demo and meditation.
-- [ ] Room scale: four 1 m pads on vertical planes, prefer one wall each, share a wall with about a 0.25 m gap when needed. If four will not fit, voice leads into air placement and no partial set is left behind.
-- [ ] Sitting: four pads on one table plane, or the same air placement when no table qualifies.
-- [ ] Air placement: four pinch-to-place steps. Pinch does not press a pad during play.
-- [ ] Hands-only hits: index fingertip enters a thick box once per touch. Controllers do not count.
-- [ ] Verify desktop play and leave Quest plane, anchor, and fingertip checks noted here if a headset was not available.
-
 ## In progress
 
 ## Done
 
+- [x] Replace the Wall Tones placeholder panel with mode choice, best streak, and round status. Keep `back-to-menu-button`.
+- [x] Add `src/wall-tones/` for setup, pad volumes, sequence state, and speech. Register the systems from `src/index.ts`. Run only while the mode is `walltones`.
+- [x] Desktop: spawn four pads in a 2 by 2 grid in front of the player, skip scanning, and accept a click as a touch.
+- [x] Sequence rules: playback, growing sequence, wrong touch resets the current run to one note, best streak stays, streak clears when returning to the menu.
+- [x] English `speechSynthesis` lines, cancelled on exit and when a new line starts.
+- [x] Headset: passthrough session with plane detection, anchors, and hand tracking, without changing the VR hub config for demo and meditation.
+- [x] Room scale: four 1 m pads on vertical planes, prefer one wall each, share a wall with about a 0.25 m gap when needed. If four will not fit, voice leads into air placement and no partial set is left behind.
+- [x] Sitting: four pads on one table plane, or the same air placement when no table qualifies.
+- [x] Air placement: four pinch-to-place steps. Pinch does not press a pad during play.
+- [x] Hands-only hits: index fingertip enters a thick box once per touch. Controllers do not count.
+- [x] Verify desktop play and leave Quest plane, anchor, and fingertip checks noted here if a headset was not available.
+
 ## Notes
+
+- **2026-11-03 (Asia/Jerusalem):** Desktop round verified in the managed browser (screenshot + recording). Quest passthrough, plane placement, anchors, and live fingertip hits were not run in this session — no headset attached to the cloud agent. Use the dev tunnel URL on a Quest to validate AR setup.

@@ -7,5 +7,6 @@
 
 import { defineComponents } from '@iwsdk/core';
 import { Robot } from './robot-component.js';
+import { WallTonePad } from './wall-tones/wall-tone-pad-component.js';
 
-export default defineComponents([Robot]);
+export default defineComponents([Robot, WallTonePad]);

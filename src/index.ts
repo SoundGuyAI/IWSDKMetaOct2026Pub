@@ -5,19 +5,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import { World } from '@iwsdk/core';
-import projectOptions from 'virtual:iwsdk-project';
-import { AppModeSystem } from './app-mode.js';
-import { GuidedSensingSystem } from './guided-sensing.js';
-import { PanelSystem } from './panel.js';
-import { RobotSystem } from './robot.js';
+import { startInitialWorld } from './wall-tones/world-host.js';
 
-World.create(
+void startInitialWorld(
   document.getElementById('scene-container') as HTMLDivElement,
-  projectOptions,
-).then((world) => {
-  world.registerSystem(AppModeSystem);
-  world.registerSystem(GuidedSensingSystem);
-  world.registerSystem(RobotSystem);
-  world.registerSystem(PanelSystem);
-});
+);
