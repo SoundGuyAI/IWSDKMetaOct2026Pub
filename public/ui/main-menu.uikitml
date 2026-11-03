@@ -4,7 +4,7 @@
 <style>
   .panel-root {
     flex-direction: column;
-    width: 440px;
+    width: 520px;
   }
 
   .panel-content {
@@ -72,6 +72,26 @@
   .hint:dark {
     color: #b8c4ce;
   }
+
+  .xr-button {
+    justify-content: center;
+    height: 78px;
+    margin-top: 22px;
+    margin-left: 20px;
+    margin-right: 20px;
+    margin-bottom: 28px;
+    padding-top: 18px;
+    padding-bottom: 18px;
+    padding-left: 22px;
+    padding-right: 22px;
+  }
+
+  .xr-button-label {
+    font-size: 30px;
+    font-weight: 700;
+    line-height: 34px;
+    transform-translate-y: 1px;
+  }
 </style>
 <Panel class="panel-root">
   <div class="panel-content">
@@ -92,9 +112,9 @@
     <ButtonLabel class="button-label">Wall Tones (planned)</ButtonLabel>
   </Button>
   <div class="hint">Wall Tones is a room-scale memory puzzle on Quest. Design coming in a future session.</div>
-  <Button id="xr-button" class="button">
+  <Button id="xr-button" class="xr-button" style="height: 78px">
     <ButtonIcon><RectangleGoggles></RectangleGoggles></ButtonIcon>
-    <ButtonLabel class="button-label">Enter XR</ButtonLabel>
+    <ButtonLabel class="xr-button-label">Enter XR</ButtonLabel>
   </Button>
   <Button id="exit-button" class="button button-last" style="display: none">
     <ButtonIcon><LogIn></LogIn></ButtonIcon>
