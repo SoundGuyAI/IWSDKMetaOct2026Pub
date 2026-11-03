@@ -21,6 +21,7 @@ import {
   AIR_PLACE_ROOM_PAD_SIZE_M,
   AIR_PLACE_SITTING_PAD_SIZE_M,
   NOTE_GAP_S,
+  BETWEEN_ROUNDS_DELAY_S,
   POST_INTRO_DELAY_S,
   SCAN_WAIT_S,
   WALL_TONE_PADS,
@@ -121,6 +122,8 @@ export class WallTonesSystem extends createSystem({
   private flatBackdropHidden = false;
   private wasNonImmersive = true;
   private flatAwaitingStart = false;
+  /** After playback, ignore touches until every pad is clear (avoids stuck finger auto-hitting). */
+  private inputNeedsClear = false;
   private panelRayRemoved = false;
   private pointerAudioBound = false;
   private mobileSoundButton: HTMLButtonElement | null = null;
@@ -263,6 +266,7 @@ export class WallTonesSystem extends createSystem({
     this.experienceActive = false;
     this.flowPhase = 'inactive';
     this.flatAwaitingStart = false;
+    this.inputNeedsClear = false;
     this.mediaUnlockApplied = false;
     this.playbackQueue = Promise.resolve();
     this.game.phase = 'idle';
@@ -825,6 +829,8 @@ export class WallTonesSystem extends createSystem({
       return;
     }
     this.game.phase = 'playback';
+    this.inputNeedsClear = true;
+    this.armAllPads();
     this.statusText = `Listen: ${this.formatSequenceLabel()}`;
     this.renderPanel();
     for (let index = 0; index < this.game.sequence.length; index += 1) {
@@ -840,8 +846,16 @@ export class WallTonesSystem extends createSystem({
     }
     this.game.phase = 'input';
     this.game.inputStep = 0;
+    this.inputNeedsClear = true;
     this.statusText = `Your turn: ${this.formatSequenceLabel()}`;
     this.renderPanel();
+  }
+
+  private armAllPads(): void {
+    for (const pad of this.pads) {
+      pad.pointerArmed = true;
+      pad.fingerInside = false;
+    }
   }
 
   private entityInQuery(entity: import('@iwsdk/core').Entity, set: Set<import('@iwsdk/core').Entity>): boolean {
@@ -854,6 +868,26 @@ export class WallTonesSystem extends createSystem({
   }
 
   private readDesktopTouches(): void {
+    if (this.inputNeedsClear) {
+      let anyPressed = false;
+      for (const pad of this.pads) {
+        const hovered = this.entityInQuery(pad.entity, this.queries.padHovered.entities);
+        const pressed =
+          hovered &&
+          this.entityInQuery(pad.entity, this.queries.padPressed.entities);
+        if (pressed) {
+          anyPressed = true;
+        }
+        if (!hovered) {
+          pad.pointerArmed = true;
+        }
+      }
+      if (!anyPressed) {
+        this.inputNeedsClear = false;
+        this.armAllPads();
+      }
+      return;
+    }
     for (const pad of this.pads) {
       const hovered = this.entityInQuery(pad.entity, this.queries.padHovered.entities);
       if (!hovered) {
@@ -870,6 +904,23 @@ export class WallTonesSystem extends createSystem({
   }
 
   private readFingertipTouches(): void {
+    if (this.inputNeedsClear) {
+      let anyInside = false;
+      for (const pad of this.pads) {
+        const inside =
+          this.isFingerInsidePad(pad, 'left') ||
+          this.isFingerInsidePad(pad, 'right');
+        pad.fingerInside = inside;
+        if (inside) {
+          anyInside = true;
+        }
+      }
+      if (!anyInside) {
+        this.inputNeedsClear = false;
+        this.armAllPads();
+      }
+      return;
+    }
     for (const pad of this.pads) {
       const inside = this.isFingerInsidePad(pad, 'left') || this.isFingerInsidePad(pad, 'right');
       if (!inside) {
@@ -933,15 +984,24 @@ export class WallTonesSystem extends createSystem({
     const completed = this.game.onCorrectInput();
     this.renderPanel();
     if (completed) {
-      this.maybeSpeakStreakEncouragement();
-      void this.playSequence();
-    }
-  }
-
-  private maybeSpeakStreakEncouragement(): void {
-    const streak = this.game.streak;
-    if (streak > 0 && streak % 5 === 0) {
-      this.speech.speak(WALL_TONES_SPEECH.streakMilestone(streak));
+      // Lock input immediately so a held finger/click cannot eat the next round.
+      this.game.phase = 'playback';
+      this.inputNeedsClear = true;
+      this.statusText = `Nice — streak ${this.game.streak}. Next pattern…`;
+      this.renderPanel();
+      const streak = this.game.streak;
+      this.playbackQueue = this.playbackQueue.then(async () => {
+        if (streak > 0 && streak % 5 === 0) {
+          await this.speech.speakAsync(WALL_TONES_SPEECH.streakMilestone(streak));
+          await this.wait(0.35);
+        } else {
+          await this.wait(BETWEEN_ROUNDS_DELAY_S);
+        }
+        if (!this.experienceActive || this.flowPhase !== 'playing') {
+          return;
+        }
+        await this.playSequence();
+      });
     }
   }
 
@@ -965,17 +1025,20 @@ export class WallTonesSystem extends createSystem({
 
   private async onWrongInput(): Promise<void> {
     this.game.phase = 'resetting';
+    this.inputNeedsClear = true;
     await playErrorTone();
     this.statusText = 'Try again';
     this.renderPanel();
-    await this.speech.speakAsync(WALL_TONES_SPEECH.wrongTouch);
-    await this.wait(WRONG_RESET_DELAY_S);
-    if (!this.experienceActive) {
-      return;
-    }
-    this.game.onWrongInput();
-    this.renderPanel();
-    await this.playSequence();
+    this.playbackQueue = this.playbackQueue.then(async () => {
+      await this.speech.speakAsync(WALL_TONES_SPEECH.wrongTouch);
+      await this.wait(WRONG_RESET_DELAY_S);
+      if (!this.experienceActive) {
+        return;
+      }
+      this.game.onWrongInput();
+      this.renderPanel();
+      await this.playSequence();
+    });
   }
 
   private useDesktopPath(): boolean {

@@ -26,3 +26,5 @@ export const SCAN_WAIT_S = 3;
 export const WRONG_RESET_DELAY_S = 0.9;
 /** Silence after the start intro finishes, before the first pad tone. */
 export const POST_INTRO_DELAY_S = 0.85;
+/** Short beat after a successful round before the next sequence plays. */
+export const BETWEEN_ROUNDS_DELAY_S = 0.55;
