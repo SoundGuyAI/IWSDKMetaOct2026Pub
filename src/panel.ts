@@ -12,7 +12,9 @@ import {
   VisibilityState,
 } from '@iwsdk/core';
 
-const XR_PANEL_NODE_IDS = ['main-menu-panel', 'welcome-panel'] as const;
+/** Main-menu Enter XR is owned by AppModeSystem (starts Wall Tones + launchXR). */
+const XR_EXIT_PANEL_NODE_IDS = ['main-menu-panel', 'welcome-panel'] as const;
+const XR_LAUNCH_PANEL_NODE_IDS = ['welcome-panel'] as const;
 
 /** Desktop: pull the hub menu closer/larger so Enter XR fills more of the frame. */
 const MAIN_MENU_DESKTOP = {
@@ -27,14 +29,13 @@ export class PanelSystem extends createSystem({}) {
 
   init(): void {
     if (!this.world.xrEnabled) {
-      for (const nodeId of XR_PANEL_NODE_IDS) {
+      for (const nodeId of XR_EXIT_PANEL_NODE_IDS) {
         const panel = this.world.getSceneObject<UIKitMLAsset>(nodeId);
         panel?.getElementById('xr-button')?.setProperties({ display: 'none' });
         panel
           ?.getElementById('exit-button')
           ?.setProperties({ display: 'none' });
       }
-      // Still bring the menu forward on desktop builds without XR.
       this.applyMainMenuDesktopLayout(true);
       return;
     }
@@ -42,24 +43,33 @@ export class PanelSystem extends createSystem({}) {
     const launchXR = () => this.world.launchXR();
     const exitXR = () => this.world.exitXR();
 
-    for (const nodeId of XR_PANEL_NODE_IDS) {
+    for (const nodeId of XR_LAUNCH_PANEL_NODE_IDS) {
       const panel = this.world.getSceneObject<UIKitMLAsset>(nodeId);
       const xrButton = panel?.getElementById('xr-button');
-      const exitButton = panel?.getElementById('exit-button');
-      if (xrButton == null || exitButton == null) {
+      if (xrButton == null) {
         continue;
       }
       xrButton.addEventListener('click', launchXR);
+      this.cleanupFuncs.push(() =>
+        xrButton.removeEventListener('click', launchXR),
+      );
+    }
+
+    for (const nodeId of XR_EXIT_PANEL_NODE_IDS) {
+      const panel = this.world.getSceneObject<UIKitMLAsset>(nodeId);
+      const exitButton = panel?.getElementById('exit-button');
+      if (exitButton == null) {
+        continue;
+      }
       exitButton.addEventListener('click', exitXR);
-      this.cleanupFuncs.push(
-        () => xrButton.removeEventListener('click', launchXR),
-        () => exitButton.removeEventListener('click', exitXR),
+      this.cleanupFuncs.push(() =>
+        exitButton.removeEventListener('click', exitXR),
       );
     }
 
     const syncForVisibility = (visibilityState: VisibilityState) => {
       const is2D = visibilityState === VisibilityState.NonImmersive;
-      for (const nodeId of XR_PANEL_NODE_IDS) {
+      for (const nodeId of XR_EXIT_PANEL_NODE_IDS) {
         const panel = this.world.getSceneObject<UIKitMLAsset>(nodeId);
         const xrButton = panel?.getElementById('xr-button');
         xrButton?.setProperties({

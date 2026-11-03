@@ -31,11 +31,20 @@ import {
   BETWEEN_ROUNDS_DELAY_S,
   IDLE_REPLAY_S,
   POST_INTRO_DELAY_S,
+  PANEL_FOLLOW_DISTANCE_M,
+  PANEL_FOLLOW_SCALE,
+  PANEL_FOLLOW_SLERP,
+  PANEL_FOLLOW_Y_OFFSET_M,
   SCAN_WAIT_S,
-  TOUCH_BOX_DEPTH_M,
-  TOUCH_CENTER_PAD_MARGIN_M,
   TOUCH_ENTER_FRAMES,
   TOUCH_EXIT_FRAMES,
+  TOUCH_HOVER_CENTER_MARGIN_M,
+  TOUCH_HOVER_DEPTH_M,
+  TOUCH_HOVER_SCALE,
+  TOUCH_PRESS_CENTER_MARGIN_M,
+  TOUCH_PRESS_COOLDOWN_S,
+  TOUCH_PRESS_DEPTH_M,
+  TOUCH_PRESS_SCALE,
   TOUCH_TIP_GRIP_MAX_M,
   WALL_TONE_PADS,
   WRONG_RESET_DELAY_S,
@@ -50,12 +59,14 @@ import {
   type PlacedPadTransform,
 } from './plane-placement.js';
 import {
+  applyPadVisualState,
   createGhostPadRuntime,
   createPadRuntime,
   defaultDesktopPadSize,
   defaultHeadsetPadSize,
   disposePadRuntimes,
   flashPad,
+  setPadDebugCollidersVisible,
   solidifyGhostPad,
   type PadRuntime,
 } from './pads.js';
@@ -154,6 +165,11 @@ export class WallTonesSystem extends createSystem({
   private readonly rayToSlot = new Vector3();
   private readonly rayClosest = new Vector3();
   private readonly axisX = new Vector3(1, 0, 0);
+  private readonly panelFollowPos = new Vector3();
+  private readonly panelFollowTargetPos = new Vector3();
+  private readonly panelFollowQuat = new Quaternion();
+  private readonly panelFollowTargetQuat = new Quaternion();
+  private readonly headQuat = new Quaternion();
 
   private experienceActive = false;
   private flowPhase: FlowPhase = 'inactive';
@@ -189,6 +205,8 @@ export class WallTonesSystem extends createSystem({
   private pointerAudioBound = false;
   private mobileSoundButton: HTMLButtonElement | null = null;
   private mediaUnlockApplied = false;
+  /** Wireframe hover/press volumes on pads; on by default for tuning. */
+  private showTouchDebug = true;
   private readonly onPointerDownForAudio = (): void => {
     if (needsExplicitMobileSoundUnlock() && !isHtmlAudioPoolUnlocked()) {
       this.applyUserGestureMediaUnlock(false);
@@ -238,6 +256,7 @@ export class WallTonesSystem extends createSystem({
       this.flowPhase = 'choose-mode';
       this.setFlatHintVisible(false);
       this.setSetupUiVisible(true);
+      this.setRepeatUiVisible(false);
       this.statusText = 'Choose room scale or sitting.';
       this.speech.speak(WALL_TONES_SPEECH.chooseMode);
       this.renderPanel();
@@ -277,6 +296,7 @@ export class WallTonesSystem extends createSystem({
     this.bindPanelIfNeeded();
     if (!this.useDesktopPath()) {
       this.noteDominantHandFromInput();
+      this.tickSetupPanelFollow(delta);
     }
     if (
       this.useDesktopPath() &&
@@ -302,7 +322,10 @@ export class WallTonesSystem extends createSystem({
       if (this.flatAwaitingStart || this.game.phase === 'input') {
         this.readDesktopTouches();
       }
-    } else if (this.game.phase === 'input') {
+    } else if (
+      this.flowPhase === 'playing' &&
+      (this.game.phase === 'input' || this.inputNeedsClear)
+    ) {
       this.readFingertipTouches();
     }
     this.tickIdleReplay();
@@ -360,8 +383,17 @@ export class WallTonesSystem extends createSystem({
     panel
       .getElementById('rescan-room-button')
       ?.addEventListener('click', () => void this.onRescanRoom());
+    panel
+      .getElementById('debug-colliders-button')
+      ?.addEventListener('click', () => this.toggleTouchDebug());
+    this.syncDebugCollidersButton();
+    this.applyTouchDebugVisibility();
     if (this.experienceActive && this.useDesktopPath()) {
       this.setSetupUiVisible(false);
+    }
+    // Never show Repeat during mode / placement selection.
+    if (this.flowPhase !== 'playing' || this.flatAwaitingStart) {
+      this.setRepeatUiVisible(false);
     }
     this.renderPanel();
   }
@@ -395,6 +427,7 @@ export class WallTonesSystem extends createSystem({
     this.flowPhase = 'choose-mode';
     this.setFlatHintVisible(false);
     this.setSetupUiVisible(true);
+    this.setRepeatUiVisible(false);
     this.statusText = 'Choose room scale or sitting.';
     this.speech.speak(WALL_TONES_SPEECH.chooseMode);
     this.renderPanel();
@@ -432,6 +465,7 @@ export class WallTonesSystem extends createSystem({
     this.setWallPickHintVisible(false);
     this.setAirOrientUiVisible(false);
     this.setRescanUiVisible(false);
+    this.setRepeatUiVisible(false);
     this.restorePanelLayout();
     this.restorePanelPointerCapture();
     this.showStudioBackdrop();
@@ -447,11 +481,11 @@ export class WallTonesSystem extends createSystem({
     this.setFlatHintVisible(true);
     this.hideStudioBackdrop();
     this.layoutPanelForFlatPlay();
-    // Keep RayInteractable so Back / Repeat stay clickable; panel sits beside the pads.
+    // Keep RayInteractable so Back stays clickable; panel sits beside the pads.
     this.restorePanelPointerCapture();
     this.bindPointerAudioUnlock();
     this.spawnDesktopPads();
-    this.setRepeatUiVisible(true);
+    this.setRepeatUiVisible(false);
     if (needsExplicitMobileSoundUnlock() && !isHtmlAudioPoolUnlocked()) {
       this.statusText = 'Tap “Sound on” below, then any pad';
       this.showMobileSoundOverlay();
@@ -545,8 +579,75 @@ export class WallTonesSystem extends createSystem({
   }
 
   private layoutPanelForMrPlay(): void {
-    // Beside the play space, still within easy controller / hand ray reach.
-    this.applyPanelLayout(0.78, 1.32, -0.9, 0.28);
+    // Once pads are live, park the HUD beside the play space.
+    this.applyPanelLayout(0.55, 1.35, -0.95, 0.28);
+  }
+
+  private isSetupPanelFollowActive(): boolean {
+    return (
+      this.experienceActive &&
+      !this.useDesktopPath() &&
+      (this.flowPhase === 'choose-mode' ||
+        this.flowPhase === 'scanning' ||
+        this.flowPhase === 'wall-picking' ||
+        this.flowPhase === 'air-placement')
+    );
+  }
+
+  /** Keep the Wall Tones menu in front of the headset until play begins. */
+  private tickSetupPanelFollow(delta: number): void {
+    if (!this.isSetupPanelFollowActive()) {
+      return;
+    }
+    const entity = this.world.getSceneEntity('wall-tones-panel');
+    if (entity == null) {
+      return;
+    }
+    const position = entity.getVectorView(Transform, 'position');
+    const orientation = entity.getVectorView(Transform, 'orientation');
+    const scale = entity.getVectorView(Transform, 'scale');
+    if (!this.panelPositionSaved) {
+      this.savedPanelPosition.set(position);
+      this.savedPanelScale.set(scale);
+      this.panelPositionSaved = true;
+    }
+
+    this.player.head.getWorldPosition(this.viewer);
+    this.player.head.getWorldQuaternion(this.headQuat);
+    // Head Object3D getWorldDirection follows +Z (behind the wearer). Use local -Z.
+    this.ghostForward.set(0, 0, -1).applyQuaternion(this.headQuat).normalize();
+    this.panelFollowTargetPos
+      .copy(this.viewer)
+      .addScaledVector(this.ghostForward, PANEL_FOLLOW_DISTANCE_M);
+    this.panelFollowTargetPos.y += PANEL_FOLLOW_Y_OFFSET_M;
+
+    // Match headset yaw/pitch so the UIKit front (+viewer side) faces the player.
+    this.panelFollowTargetQuat.copy(this.headQuat);
+
+    const alpha =
+      1 - Math.pow(1 - PANEL_FOLLOW_SLERP, Math.max(delta, 1 / 120) * 72);
+    this.panelFollowPos.set(position[0]!, position[1]!, position[2]!);
+    this.panelFollowPos.lerp(this.panelFollowTargetPos, alpha);
+    position[0] = this.panelFollowPos.x;
+    position[1] = this.panelFollowPos.y;
+    position[2] = this.panelFollowPos.z;
+
+    this.panelFollowQuat.set(
+      orientation[0]!,
+      orientation[1]!,
+      orientation[2]!,
+      orientation[3]!,
+    );
+    this.panelFollowQuat.slerp(this.panelFollowTargetQuat, alpha);
+    orientation[0] = this.panelFollowQuat.x;
+    orientation[1] = this.panelFollowQuat.y;
+    orientation[2] = this.panelFollowQuat.z;
+    orientation[3] = this.panelFollowQuat.w;
+
+    scale[0] = PANEL_FOLLOW_SCALE;
+    scale[1] = PANEL_FOLLOW_SCALE;
+    scale[2] = PANEL_FOLLOW_SCALE;
+    this.restorePanelPointerCapture();
   }
 
   private applyPanelLayout(
@@ -648,6 +749,7 @@ export class WallTonesSystem extends createSystem({
       this.flowPhase = 'choose-mode';
       this.statusText = 'Choose room scale or sitting.';
       this.setSetupUiVisible(true);
+      this.setRepeatUiVisible(false);
       this.speech.speak(WALL_TONES_SPEECH.chooseMode);
       this.renderPanel();
     }
@@ -746,7 +848,7 @@ export class WallTonesSystem extends createSystem({
     this.flowPhase = 'wall-picking';
     this.selectedSlotTransforms = [];
     this.slotSelectLatched = false;
-    this.layoutPanelForMrPlay();
+    // Panel stays head-followed until play starts.
     this.setSetupUiVisible(false);
     this.setFlatHintVisible(false);
     this.setAirOrientUiVisible(false);
@@ -933,7 +1035,6 @@ export class WallTonesSystem extends createSystem({
     this.lackingSpatialData = false;
     this.selectedSlotTransforms = [];
     this.slotSelectLatched = false;
-    this.layoutPanelForMrPlay();
     this.setFlatHintVisible(false);
     this.setAirOrientUiVisible(false);
     this.setWallPickHintVisible(true);
@@ -1172,7 +1273,6 @@ export class WallTonesSystem extends createSystem({
       this.setupMode === 'sitting' ? 'horizontal' : 'vertical';
     this.syncAirPadSizeFromOrientation();
     this.clearPads();
-    this.layoutPanelForMrPlay();
     this.setFlatHintVisible(false);
     this.setWallPickHintVisible(false);
     this.setAirOrientUiVisible(true);
@@ -1229,6 +1329,7 @@ export class WallTonesSystem extends createSystem({
       (this.airPlaceStep % 4) as WallTonePadId,
       this.airPadSizeM,
     );
+    this.applyTouchDebugVisibility();
   }
 
   private tickAirPlacement(delta: number): void {
@@ -1250,10 +1351,12 @@ export class WallTonesSystem extends createSystem({
     solidifyGhostPad(placed, this.airPadSizeM);
     placed.entity.addComponent(XRAnchor);
     this.pads.push(placed);
+    this.applyTouchDebugVisibility();
     this.ghostPad = null;
     this.airPlaceStep += 1;
     if (this.airPlaceStep >= 4) {
       this.flowPhase = 'playing';
+      this.layoutPanelForMrPlay();
       this.setAirOrientUiVisible(false);
       this.setRescanUiVisible(this.lackingSpatialData);
       this.setRepeatUiVisible(true);
@@ -1423,6 +1526,7 @@ export class WallTonesSystem extends createSystem({
       pad.root.quaternion.set(...transform.quaternion);
       this.pads.push(pad);
     });
+    this.applyTouchDebugVisibility();
     this.flowPhase = 'playing';
     this.layoutPanelForMrPlay();
     this.setRepeatUiVisible(true);
@@ -1448,9 +1552,9 @@ export class WallTonesSystem extends createSystem({
       });
       pad.root.position.set(...transform.position);
       pad.root.quaternion.set(...transform.quaternion);
-      pad.touchVolume.scale.set(1.15, 1.15, 1.25);
       this.pads.push(pad);
     });
+    this.applyTouchDebugVisibility();
     if (!this.flatAwaitingStart) {
       this.statusText = 'Watch the sequence';
     }
@@ -1523,6 +1627,9 @@ export class WallTonesSystem extends createSystem({
     for (const pad of this.pads) {
       pad.pointerArmed = true;
       pad.fingerInside = false;
+      pad.hoverInside = false;
+      pad.pressCooldownUntil = 0;
+      applyPadVisualState(pad, 'idle');
     }
   }
 
@@ -1576,16 +1683,22 @@ export class WallTonesSystem extends createSystem({
   }
 
   private readFingertipTouches(): void {
+    const now = performance.now() / 1000;
+
     if (this.inputNeedsClear) {
-      let anyInside = false;
+      let anyPressInside = false;
       for (const pad of this.pads) {
-        const inside = this.sampleTipInsidePad(pad) != null;
-        pad.fingerInside = inside;
-        if (inside) {
-          anyInside = true;
+        const pressDist = this.sampleTipInVolume(pad, 'press');
+        const hoverDist = this.sampleTipInVolume(pad, 'hover');
+        pad.fingerInside = pressDist != null;
+        pad.hoverInside = hoverDist != null;
+        if (pressDist != null) {
+          anyPressInside = true;
         }
+        this.syncPadProximityVisual(pad, now);
       }
-      if (!anyInside) {
+      // Must leave the smaller press box before the next note can arm.
+      if (!anyPressInside) {
         this.inputNeedsClear = false;
         this.armAllPads();
         this.touchEnterFrames.clear();
@@ -1594,52 +1707,97 @@ export class WallTonesSystem extends createSystem({
       return;
     }
 
-    // Only the closest pad under either tip may fire — avoids multi-pad ghosts.
-    let bestPad: PadRuntime | null = null;
-    let bestDist = Number.POSITIVE_INFINITY;
+    // Closest pad under the tip for press — avoids multi-pad ghosts.
+    let bestPress: PadRuntime | null = null;
+    let bestPressDist = Number.POSITIVE_INFINITY;
     for (const pad of this.pads) {
-      const dist = this.sampleTipInsidePad(pad);
-      if (dist == null) {
+      const hoverDist = this.sampleTipInVolume(pad, 'hover');
+      pad.hoverInside = hoverDist != null;
+
+      const pressDist = this.sampleTipInVolume(pad, 'press');
+      if (pressDist == null) {
         const exit = (this.touchExitFrames.get(pad.padIndex) ?? 0) + 1;
         this.touchExitFrames.set(pad.padIndex, exit);
         if (exit >= TOUCH_EXIT_FRAMES) {
+          // Leaving the inner box re-arms this pad (after cooldown).
           pad.fingerInside = false;
+          pad.pointerArmed = true;
+          this.touchEnterFrames.set(pad.padIndex, 0);
+        }
+        this.syncPadProximityVisual(pad, now);
+        continue;
+      }
+      this.touchExitFrames.set(pad.padIndex, 0);
+      if (pressDist < bestPressDist) {
+        bestPressDist = pressDist;
+        bestPress = pad;
+      }
+      this.syncPadProximityVisual(pad, now);
+    }
+
+    for (const pad of this.pads) {
+      if (pad !== bestPress) {
+        if (bestPress != null) {
           this.touchEnterFrames.set(pad.padIndex, 0);
         }
         continue;
       }
-      this.touchExitFrames.set(pad.padIndex, 0);
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestPad = pad;
+      const enter = (this.touchEnterFrames.get(pad.padIndex) ?? 0) + 1;
+      this.touchEnterFrames.set(pad.padIndex, enter);
+      // Rising edge only: enter the small box, never fire on exit.
+      if (
+        !pad.fingerInside &&
+        pad.pointerArmed &&
+        now >= pad.pressCooldownUntil &&
+        enter >= TOUCH_ENTER_FRAMES
+      ) {
+        pad.fingerInside = true;
+        pad.pointerArmed = false;
+        pad.pressCooldownUntil = now + TOUCH_PRESS_COOLDOWN_S;
+        this.handlePadInput(pad.padIndex);
       }
+      this.syncPadProximityVisual(pad, now);
     }
+  }
 
-    for (const pad of this.pads) {
-      if (pad === bestPad) {
-        const enter = (this.touchEnterFrames.get(pad.padIndex) ?? 0) + 1;
-        this.touchEnterFrames.set(pad.padIndex, enter);
-        if (!pad.fingerInside && enter >= TOUCH_ENTER_FRAMES) {
-          pad.fingerInside = true;
-          this.handlePadInput(pad.padIndex);
-        }
-      } else if (bestPad != null) {
-        this.touchEnterFrames.set(pad.padIndex, 0);
+  private syncPadProximityVisual(pad: PadRuntime, _now: number): void {
+    if (pad.fingerInside) {
+      if (pad.visualState !== 'pressed') {
+        applyPadVisualState(pad, 'pressed');
       }
+      return;
+    }
+    if (pad.hoverInside) {
+      if (pad.visualState !== 'hover') {
+        applyPadVisualState(pad, 'hover');
+      }
+      return;
+    }
+    if (pad.visualState !== 'idle') {
+      applyPadVisualState(pad, 'idle');
     }
   }
 
   /**
-   * Returns distance from tip to pad center when the index tip is inside the
-   * touch volume; otherwise null. Requires a connected hand and tip near that
-   * hand's grip so untracked ghost tips cannot false-press.
+   * Distance from tip to pad center when inside hover or press volume; else null.
+   * Requires a connected hand tip near that hand's grip.
    */
-  private sampleTipInsidePad(pad: PadRuntime): number | null {
+  private sampleTipInVolume(
+    pad: PadRuntime,
+    kind: 'hover' | 'press',
+  ): number | null {
+    const volume = kind === 'hover' ? pad.hoverVolume : pad.touchVolume;
     pad.root.updateWorldMatrix(true, false);
-    pad.touchVolume.updateWorldMatrix(true, false);
+    volume.updateWorldMatrix(true, false);
     pad.root.getWorldPosition(this.padWorldPos);
-    const maxCenter =
-      pad.sizeM * 0.5 * Math.SQRT2 + TOUCH_CENTER_PAD_MARGIN_M;
+    const margin =
+      kind === 'hover'
+        ? TOUCH_HOVER_CENTER_MARGIN_M
+        : TOUCH_PRESS_CENTER_MARGIN_M;
+    const scale = kind === 'hover' ? TOUCH_HOVER_SCALE : TOUCH_PRESS_SCALE;
+    const maxCenter = pad.sizeM * 0.5 * Math.SQRT2 * scale + margin;
+    const fallbackDepth =
+      kind === 'hover' ? TOUCH_HOVER_DEPTH_M : TOUCH_PRESS_DEPTH_M;
 
     for (const hand of ['left', 'right'] as const) {
       const adapter = this.input.xr.visualAdapters[hand].peek();
@@ -1656,25 +1814,49 @@ export class WallTonesSystem extends createSystem({
         continue;
       }
       this.tipLocal.copy(this.tipScratch);
-      pad.touchVolume.worldToLocal(this.tipLocal);
-      const touchMesh = pad.touchVolume as import('@iwsdk/core').Mesh;
+      volume.worldToLocal(this.tipLocal);
+      const touchMesh = volume as import('@iwsdk/core').Mesh;
       const geom = touchMesh.geometry as {
         parameters?: { width?: number; height?: number; depth?: number };
       };
       const hx = (geom.parameters?.width ?? pad.sizeM) * 0.5;
       const hy = (geom.parameters?.height ?? pad.sizeM) * 0.5;
-      const hz = (geom.parameters?.depth ?? TOUCH_BOX_DEPTH_M) * 0.5;
-      // Front-biased slab: allow a little behind the face, reject deep punch-through.
+      const hz = (geom.parameters?.depth ?? fallbackDepth) * 0.5;
+      // Front-biased slab around the face; no deep punch-through.
       if (
         Math.abs(this.tipLocal.x) <= hx &&
         Math.abs(this.tipLocal.y) <= hy &&
-        this.tipLocal.z >= -hz * 0.35 &&
+        this.tipLocal.z >= -hz * 0.25 &&
         this.tipLocal.z <= hz
       ) {
         return centerDist;
       }
     }
     return null;
+  }
+
+  private toggleTouchDebug(): void {
+    this.showTouchDebug = !this.showTouchDebug;
+    this.applyTouchDebugVisibility();
+    this.syncDebugCollidersButton();
+  }
+
+  private applyTouchDebugVisibility(): void {
+    for (const pad of this.pads) {
+      setPadDebugCollidersVisible(pad, this.showTouchDebug);
+    }
+    if (this.ghostPad != null) {
+      setPadDebugCollidersVisible(this.ghostPad, this.showTouchDebug);
+    }
+  }
+
+  private syncDebugCollidersButton(): void {
+    this.world
+      .getSceneObject<UIKitMLAsset>('wall-tones-panel')
+      ?.getElementById<UIKit.Text>('debug-colliders-label')
+      ?.setProperties({
+        text: this.showTouchDebug ? 'Debug colliders: ON' : 'Debug colliders: OFF',
+      });
   }
 
   private handlePadInput(padIndex: number): void {
@@ -1742,6 +1924,7 @@ export class WallTonesSystem extends createSystem({
       playPadToneFromUserAction(padIndex);
       window.setTimeout(() => flashPad(pad, false), 280);
     }
+    this.setRepeatUiVisible(true);
     this.statusText = 'Get ready…';
     this.renderPanel();
     this.beginRoundWithIntro();

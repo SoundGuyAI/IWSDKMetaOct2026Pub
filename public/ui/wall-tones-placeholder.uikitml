@@ -140,8 +140,13 @@
     <ButtonIcon><RefreshCw></RefreshCw></ButtonIcon>
     <ButtonLabel>Repeat pattern</ButtonLabel>
   </Button>
+  <Button id="debug-colliders-button" class="button">
+    <ButtonIcon><Bug></Bug></ButtonIcon>
+    <ButtonLabel id="debug-colliders-label">Debug colliders: ON</ButtonLabel>
+  </Button>
   <Button id="back-to-menu-button" class="button button-last">
     <ButtonIcon><ArrowLeft></ArrowLeft></ButtonIcon>
     <ButtonLabel>Back to main menu</ButtonLabel>
   </Button>
 </Panel>
+
