@@ -1,7 +1,9 @@
 /** Browser speech lines for Wall Tones (English). */
 export const WALL_TONES_SPEECH = {
   chooseMode:
-    'Choose room scale to play on your walls, or sitting to play on a table.',
+    'Choose room scale for walls, sitting for a table, or air place to put the pads by hand.',
+  chooseAirMenu:
+    'Air place works for wall or table style. Tilt your hand to snap upright or flat, then pinch four times.',
   lookAround:
     'I am looking at your room. Give me a few seconds to find the walls.',
   roomCapture:

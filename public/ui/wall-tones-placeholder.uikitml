@@ -110,6 +110,10 @@
         <ButtonIcon><Armchair></Armchair></ButtonIcon>
         <ButtonLabel>Sitting (table)</ButtonLabel>
       </Button>
+      <Button id="mode-air-place-button" class="button">
+        <ButtonIcon><Hand></Hand></ButtonIcon>
+        <ButtonLabel>Air place</ButtonLabel>
+      </Button>
     </div>
     <div id="air-orient-row" class="setup-row" style="display: none">
       <div id="air-orient-hint" class="status">

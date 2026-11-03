@@ -109,7 +109,7 @@ declare global {
   }
 }
 
-type SetupMode = 'room-scale' | 'sitting';
+type SetupMode = 'room-scale' | 'sitting' | 'air';
 type AirOrientation = 'vertical' | 'horizontal';
 
 type FlowPhase =
@@ -244,12 +244,15 @@ export class WallTonesSystem extends createSystem({
     }
 
     const pendingSetup = sessionStorage.getItem('wall-tones-setup-mode');
-    if (pendingSetup === 'room-scale' || pendingSetup === 'sitting') {
+    if (
+      pendingSetup === 'room-scale' ||
+      pendingSetup === 'sitting' ||
+      pendingSetup === 'air'
+    ) {
       sessionStorage.removeItem('wall-tones-setup-mode');
       this.setupMode = pendingSetup;
       this.experienceActive = true;
-      this.flowPhase = 'scanning';
-      this.scanStartedAt = performance.now() / 1000;
+      document.title = 'Wall Tones';
       const storedHand = sessionStorage.getItem('wall-tones-dominant-hand');
       if (storedHand === 'left' || storedHand === 'right') {
         this.dominantHand = storedHand;
@@ -257,7 +260,13 @@ export class WallTonesSystem extends createSystem({
       this.bindPanelIfNeeded();
       this.setFlatHintVisible(false);
       this.setSetupUiVisible(false);
-      this.speech.speak(WALL_TONES_SPEECH.lookAround);
+      if (pendingSetup === 'air') {
+        this.startAirPlacement(WALL_TONES_SPEECH.chooseAirMenu);
+      } else {
+        this.flowPhase = 'scanning';
+        this.scanStartedAt = performance.now() / 1000;
+        this.speech.speak(WALL_TONES_SPEECH.lookAround);
+      }
     }
   }
 
@@ -336,6 +345,9 @@ export class WallTonesSystem extends createSystem({
     panel
       .getElementById('mode-sitting-button')
       ?.addEventListener('click', () => void this.onChooseSetup('sitting'));
+    panel
+      .getElementById('mode-air-place-button')
+      ?.addEventListener('click', () => void this.onChooseSetup('air'));
     panel
       .getElementById('orient-vertical-button')
       ?.addEventListener('click', () => this.setAirOrientation('vertical'));
@@ -804,6 +816,10 @@ export class WallTonesSystem extends createSystem({
       return;
     }
     this.setSetupUiVisible(false);
+    if (mode === 'air') {
+      this.startAirPlacement(WALL_TONES_SPEECH.chooseAirMenu);
+      return;
+    }
     this.flowPhase = 'scanning';
     this.scanStartedAt = performance.now() / 1000;
     this.speech.speak(WALL_TONES_SPEECH.lookAround);
@@ -1087,12 +1103,10 @@ export class WallTonesSystem extends createSystem({
     this.airOrientationLocked = null;
     // Keep dominantHand from the first panel select so ghost orientation
     // follows that placing hand; only clear it when leaving the experience.
+    // Menu "Air place" covers both wall and table styles via hand tilt / locks.
     this.airOrientation =
       this.setupMode === 'sitting' ? 'horizontal' : 'vertical';
-    this.airPadSizeM =
-      this.setupMode === 'sitting'
-        ? AIR_PLACE_SITTING_PAD_SIZE_M
-        : AIR_PLACE_ROOM_PAD_SIZE_M;
+    this.syncAirPadSizeFromOrientation();
     this.clearPads();
     this.layoutPanelForMrPlay();
     this.setFlatHintVisible(false);
@@ -1104,14 +1118,39 @@ export class WallTonesSystem extends createSystem({
     this.speech.speak(WALL_TONES_SPEECH.chooseAirOrient);
     this.speech.speak(WALL_TONES_SPEECH.airPlace(1));
     this.statusText =
-      'Tilt placing hand to snap flat/upright, then pinch. Or Rescan room.';
+      this.setupMode === 'air'
+        ? 'Air place: tilt for wall or table size, then pinch. Or Rescan room.'
+        : 'Tilt placing hand to snap flat/upright, then pinch. Or Rescan room.';
     this.spawnGhostPad();
     this.renderPanel();
   }
 
+  /** Room-scale air pads when upright; sitting-sized pads when flat. */
+  private syncAirPadSizeFromOrientation(): void {
+    if (this.setupMode === 'sitting') {
+      this.airPadSizeM = AIR_PLACE_SITTING_PAD_SIZE_M;
+      return;
+    }
+    if (this.setupMode === 'room-scale') {
+      this.airPadSizeM = AIR_PLACE_ROOM_PAD_SIZE_M;
+      return;
+    }
+    // Explicit Air place menu option: size follows orientation snap/lock.
+    this.airPadSizeM =
+      this.airOrientation === 'horizontal'
+        ? AIR_PLACE_SITTING_PAD_SIZE_M
+        : AIR_PLACE_ROOM_PAD_SIZE_M;
+  }
+
   private setAirOrientation(orientation: AirOrientation): void {
+    const sizeChanged =
+      this.setupMode === 'air' && orientation !== this.airOrientation;
     this.airOrientation = orientation;
     this.airOrientationLocked = orientation;
+    this.syncAirPadSizeFromOrientation();
+    if (sizeChanged && this.flowPhase === 'air-placement' && this.ghostPad != null) {
+      this.spawnGhostPad();
+    }
     this.statusText =
       orientation === 'horizontal'
         ? 'Locked table / flat. Pinch to place.'
@@ -1238,6 +1277,15 @@ export class WallTonesSystem extends createSystem({
     }
     if (next !== this.airOrientation) {
       this.airOrientation = next;
+      const prevSize = this.airPadSizeM;
+      this.syncAirPadSizeFromOrientation();
+      if (
+        this.setupMode === 'air' &&
+        this.airPadSizeM !== prevSize &&
+        this.ghostPad != null
+      ) {
+        this.spawnGhostPad();
+      }
       this.statusText =
         next === 'horizontal'
           ? 'Snapped flat - pinch to place'
