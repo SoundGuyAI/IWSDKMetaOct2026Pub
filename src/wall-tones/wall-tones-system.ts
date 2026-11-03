@@ -1,6 +1,7 @@
 import {
   Hovered,
   Pressed,
+  UIKit,
   Visibility,
   UIKitMLAsset,
   VisibilityState,
@@ -709,15 +710,15 @@ export class WallTonesSystem extends createSystem({
       return;
     }
     panel
-      .getElementById('wall-tones-best-streak')
+      .getElementById<UIKit.Text>('wall-tones-best-streak')
       ?.setProperties({ text: String(this.game.bestStreak) });
     panel
-      .getElementById('wall-tones-status')
+      .getElementById<UIKit.Text>('wall-tones-status')
       ?.setProperties({
         text: this.statusText || 'Ready',
       });
     panel
-      .getElementById('wall-tones-current-streak')
+      .getElementById<UIKit.Text>('wall-tones-current-streak')
       ?.setProperties({ text: String(this.game.streak) });
   }
 
