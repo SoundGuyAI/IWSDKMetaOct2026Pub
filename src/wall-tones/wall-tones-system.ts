@@ -33,6 +33,8 @@ import {
   AIR_PLACE_ROOM_PAD_SIZE_M,
   AIR_PLACE_SITTING_PAD_SIZE_M,
   HEADSET_PAD_SIZE_M,
+  PHONE_PAD_SIZE_M,
+  PHONE_PANEL_FLAT,
   BLINK_CUE_OFFSCREEN_DEG,
   BLINK_HOLD_S,
   NOTE_GAP_S,
@@ -70,6 +72,7 @@ import {
   collectVerticalWalls,
   generateTablePadCandidates,
   generateWallPadCandidates,
+  PHONE_FLAT_GRID,
   planDesktopGridFromCamera,
   type PlacedPadTransform,
 } from './plane-placement.js';
@@ -634,15 +637,25 @@ export class WallTonesSystem extends createSystem({
     window.removeEventListener('touchstart', this.onPointerDownForAudio, true);
   }
 
+  private isPhoneFlatViewport(): boolean {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    return width <= 480 || (height <= 480 && width <= 950);
+  }
+
   private layoutPanelForFlatPlay(): void {
-    // Desktop: park right of the pad grid. Phones: center/lower/shrink so the
-    // HUD + Back stay on-screen without changing VR follow placement.
-    const width = typeof window === 'undefined' ? 1280 : window.innerWidth;
-    const height = typeof window === 'undefined' ? 800 : window.innerHeight;
-    const phoneFlat =
-      width <= 480 || (height <= 480 && width <= 950);
-    if (phoneFlat) {
-      this.applyPanelLayout(0, 1.22, -1.85, 0.28);
+    // Desktop: park right of the pad grid. Phones: HUD on top of the portrait
+    // frame (closer + higher) so pads sit clear below — VR follow unchanged.
+    if (this.isPhoneFlatViewport()) {
+      this.applyPanelLayout(
+        PHONE_PANEL_FLAT.position[0],
+        PHONE_PANEL_FLAT.position[1],
+        PHONE_PANEL_FLAT.position[2],
+        PHONE_PANEL_FLAT.scale,
+      );
       return;
     }
     this.applyPanelLayout(1.95, 1.48, -1.55, 0.26);
@@ -1751,11 +1764,13 @@ export class WallTonesSystem extends createSystem({
     this.clearPads();
     this.world.camera.getWorldPosition(this.cameraPosition);
     this.world.camera.getWorldDirection(this.cameraForward);
-    const size = defaultDesktopPadSize();
+    const phoneFlat = this.isPhoneFlatViewport();
+    const size = phoneFlat ? PHONE_PAD_SIZE_M : defaultDesktopPadSize();
     const transforms = planDesktopGridFromCamera(
       this.cameraPosition,
       this.cameraForward,
       size,
+      phoneFlat ? PHONE_FLAT_GRID : undefined,
     );
     transforms.forEach((transform, index) => {
       const pad = createPadRuntime(this.world, index as WallTonePadId, size, {
