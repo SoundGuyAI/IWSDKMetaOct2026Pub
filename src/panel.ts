@@ -131,13 +131,15 @@ export class PanelSystem extends createSystem({}) {
   /**
    * Flat chrome only. Desktop keeps the established large Enter XR; phones use
    * a shorter button so the stack fits. Immersive restores Exit / hides Enter XR.
+   * When XR is unavailable (`world.xrEnabled` false), Enter XR stays hidden.
    */
   private syncMainMenuChrome(is2D: boolean): void {
     const mobile = is2D && isCompactFlatViewport();
+    const showEnterXr = is2D && this.world.xrEnabled;
     for (const nodeId of XR_EXIT_PANEL_NODE_IDS) {
       const panel = this.world.getSceneObject<UIKitMLAsset>(nodeId);
       const xrButton = panel?.getElementById('xr-button');
-      if (nodeId === 'main-menu-panel' && is2D) {
+      if (nodeId === 'main-menu-panel' && showEnterXr) {
         xrButton?.setProperties(
           mobile
             ? {
@@ -155,12 +157,14 @@ export class PanelSystem extends createSystem({}) {
         );
       } else {
         xrButton?.setProperties({
-          display: is2D ? 'flex' : 'none',
+          display: showEnterXr ? 'flex' : 'none',
         });
       }
       panel
         ?.getElementById('exit-button')
-        ?.setProperties({ display: is2D ? 'none' : 'flex' });
+        ?.setProperties({
+          display: !is2D && this.world.xrEnabled ? 'flex' : 'none',
+        });
     }
   }
 
