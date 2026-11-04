@@ -13,22 +13,150 @@ import {
 import {
   DESKTOP_PAD_SIZE_M,
   HEADSET_PAD_SIZE_M,
-  TOUCH_BOX_DEPTH_M,
-  TOUCH_SLOP_SCALE,
+  TOUCH_HOVER_DEPTH_M,
+  TOUCH_HOVER_SCALE,
+  TOUCH_PRESS_DEPTH_M,
+  TOUCH_PRESS_SCALE,
   WALL_TONE_PADS,
 } from './constants.js';
 import { WallTonePad } from './wall-tone-pad-component.js';
 
+export type PadVisualState = 'idle' | 'hover' | 'pressed';
+
 export type PadRuntime = {
   entity: Entity;
   root: Object3D;
+  /** Inner press volume (legacy name kept for call sites). */
   touchVolume: Object3D;
+  hoverVolume: Object3D;
+  debugHoverMesh: Mesh;
+  debugPressMesh: Mesh;
   padIndex: number;
   sizeM: number;
   pointerArmed: boolean;
+  /** Tip currently inside the inner press volume. */
   fingerInside: boolean;
+  /** Tip currently inside the outer hover volume. */
+  hoverInside: boolean;
+  /** Earliest time (performance.now()/1000) another press may fire. */
+  pressCooldownUntil: number;
+  visualState: PadVisualState;
   isGhost: boolean;
 };
+
+function makeVolumeMesh(
+  name: string,
+  width: number,
+  height: number,
+  depth: number,
+  z: number,
+): Mesh {
+  const mesh = new Mesh(
+    new BoxGeometry(width, height, depth),
+    new MeshBasicMaterial({ visible: false }),
+  );
+  mesh.name = name;
+  mesh.position.z = z;
+  return mesh;
+}
+
+function makeDebugMesh(
+  name: string,
+  width: number,
+  height: number,
+  depth: number,
+  z: number,
+  color: number,
+): Mesh {
+  const mesh = new Mesh(
+    new BoxGeometry(width, height, depth),
+    new MeshBasicMaterial({
+      color,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.85,
+      depthWrite: false,
+      side: DoubleSide,
+    }),
+  );
+  mesh.name = name;
+  mesh.position.z = z;
+  mesh.renderOrder = 40;
+  mesh.visible = false;
+  return mesh;
+}
+
+function attachTouchVolumes(root: Object3D, sizeM: number): {
+  touchVolume: Mesh;
+  hoverVolume: Mesh;
+  debugHoverMesh: Mesh;
+  debugPressMesh: Mesh;
+} {
+  const pressW = sizeM * TOUCH_PRESS_SCALE;
+  const hoverW = sizeM * TOUCH_HOVER_SCALE;
+  const pressZ = TOUCH_PRESS_DEPTH_M * 0.42;
+  const hoverZ = TOUCH_HOVER_DEPTH_M * 0.42;
+
+  const touchVolume = makeVolumeMesh(
+    'touch-volume',
+    pressW,
+    pressW,
+    TOUCH_PRESS_DEPTH_M,
+    pressZ,
+  );
+  const hoverVolume = makeVolumeMesh(
+    'hover-volume',
+    hoverW,
+    hoverW,
+    TOUCH_HOVER_DEPTH_M,
+    hoverZ,
+  );
+  const debugPressMesh = makeDebugMesh(
+    'debug-press-volume',
+    pressW,
+    pressW,
+    TOUCH_PRESS_DEPTH_M,
+    pressZ,
+    0xff66cc,
+  );
+  const debugHoverMesh = makeDebugMesh(
+    'debug-hover-volume',
+    hoverW,
+    hoverW,
+    TOUCH_HOVER_DEPTH_M,
+    hoverZ,
+    0x66fff0,
+  );
+
+  root.add(hoverVolume);
+  root.add(touchVolume);
+  root.add(debugHoverMesh);
+  root.add(debugPressMesh);
+
+  return { touchVolume, hoverVolume, debugHoverMesh, debugPressMesh };
+}
+
+function basePadFields(
+  padIndex: number,
+  sizeM: number,
+  volumes: ReturnType<typeof attachTouchVolumes>,
+  isGhost: boolean,
+): Omit<PadRuntime, 'entity' | 'root'> {
+  return {
+    touchVolume: volumes.touchVolume,
+    hoverVolume: volumes.hoverVolume,
+    debugHoverMesh: volumes.debugHoverMesh,
+    debugPressMesh: volumes.debugPressMesh,
+    padIndex,
+    sizeM,
+    pointerArmed: true,
+    fingerInside: false,
+    hoverInside: false,
+    pressCooldownUntil: 0,
+    visualState: 'idle',
+    isGhost,
+  };
+}
 
 export function createPadRuntime(
   world: World,
@@ -53,15 +181,7 @@ export function createPadRuntime(
   face.renderOrder = 10;
   root.add(face);
 
-  const touchDepth = TOUCH_BOX_DEPTH_M;
-  const touchVolume = new Mesh(
-    new BoxGeometry(sizeM * TOUCH_SLOP_SCALE, sizeM * TOUCH_SLOP_SCALE, touchDepth),
-    new MeshBasicMaterial({ visible: false }),
-  );
-  touchVolume.name = 'touch-volume';
-  touchVolume.position.z = touchDepth * 0.45;
-  root.add(touchVolume);
-
+  const volumes = attachTouchVolumes(root, sizeM);
   const entity = world.createTransformEntity(root);
   entity.addComponent(WallTonePad);
   entity.setValue(WallTonePad, 'padIndex', padIndex);
@@ -75,12 +195,7 @@ export function createPadRuntime(
   return {
     entity,
     root,
-    touchVolume,
-    padIndex,
-    sizeM: sizeM,
-    pointerArmed: true,
-    fingerInside: false,
-    isGhost: false,
+    ...basePadFields(padIndex, sizeM, volumes, false),
   };
 }
 
@@ -158,14 +273,7 @@ export function createGhostPadRuntime(
     root.add(marker);
   }
 
-  const touchVolume = new Mesh(
-    new BoxGeometry(sizeM * TOUCH_SLOP_SCALE, sizeM * TOUCH_SLOP_SCALE, TOUCH_BOX_DEPTH_M),
-    new MeshBasicMaterial({ visible: false }),
-  );
-  touchVolume.name = 'touch-volume';
-  touchVolume.position.z = TOUCH_BOX_DEPTH_M * 0.45;
-  root.add(touchVolume);
-
+  const volumes = attachTouchVolumes(root, sizeM);
   const entity = world.createTransformEntity(root);
   entity.addComponent(WallTonePad);
   entity.setValue(WallTonePad, 'padIndex', padIndex);
@@ -173,12 +281,7 @@ export function createGhostPadRuntime(
   return {
     entity,
     root,
-    touchVolume,
-    padIndex,
-    sizeM: sizeM,
-    pointerArmed: true,
-    fingerInside: false,
-    isGhost: true,
+    ...basePadFields(padIndex, sizeM, volumes, true),
   };
 }
 
@@ -220,18 +323,64 @@ export function solidifyGhostPad(pad: PadRuntime, sizeM: number): void {
       material.color.setHex(spec?.color ?? 0xffffff);
     }
   }
-  const touch = pad.root.getObjectByName('touch-volume') as Mesh | undefined;
-  if (touch != null) {
-    touch.geometry.dispose();
-    touch.geometry = new BoxGeometry(
-      sizeM * TOUCH_SLOP_SCALE,
-      sizeM * TOUCH_SLOP_SCALE,
-      TOUCH_BOX_DEPTH_M,
-    );
-    touch.position.z = TOUCH_BOX_DEPTH_M * 0.45;
-  }
+  resizeTouchVolumes(pad, sizeM);
   pad.root.name = `wall-tone-pad-${spec?.name ?? pad.padIndex}`;
   pad.isGhost = false;
+  pad.visualState = 'idle';
+  applyPadVisualState(pad, 'idle');
+}
+
+function resizeTouchVolumes(pad: PadRuntime, sizeM: number): void {
+  const pressW = sizeM * TOUCH_PRESS_SCALE;
+  const hoverW = sizeM * TOUCH_HOVER_SCALE;
+  const pressZ = TOUCH_PRESS_DEPTH_M * 0.42;
+  const hoverZ = TOUCH_HOVER_DEPTH_M * 0.42;
+
+  for (const [mesh, w, d, z] of [
+    [pad.touchVolume, pressW, TOUCH_PRESS_DEPTH_M, pressZ],
+    [pad.hoverVolume, hoverW, TOUCH_HOVER_DEPTH_M, hoverZ],
+    [pad.debugPressMesh, pressW, TOUCH_PRESS_DEPTH_M, pressZ],
+    [pad.debugHoverMesh, hoverW, TOUCH_HOVER_DEPTH_M, hoverZ],
+  ] as const) {
+    if (!(mesh instanceof Mesh)) {
+      continue;
+    }
+    mesh.geometry.dispose();
+    mesh.geometry = new BoxGeometry(w, w, d);
+    mesh.position.z = z;
+  }
+}
+
+export function setPadDebugCollidersVisible(
+  pad: PadRuntime,
+  visible: boolean,
+): void {
+  pad.debugHoverMesh.visible = visible;
+  pad.debugPressMesh.visible = visible;
+}
+
+export function applyPadVisualState(
+  pad: PadRuntime,
+  state: PadVisualState,
+): void {
+  pad.visualState = state;
+  const face = pad.root.getObjectByName('face') as Mesh | undefined;
+  const material = face?.material;
+  if (!(material instanceof MeshBasicMaterial)) {
+    return;
+  }
+  const spec = WALL_TONE_PADS[pad.padIndex];
+  material.color.setHex(spec?.color ?? 0xffffff);
+  if (face != null) {
+    face.scale.set(1, 1, 1);
+  }
+  if (state === 'hover') {
+    // Entering the wide proximity box: richer sat, slightly brighter.
+    material.color.offsetHSL(0.02, 0.22, 0.12);
+  } else if (state === 'pressed') {
+    // Confirmed press: punchier lightness / sat shift.
+    material.color.offsetHSL(-0.03, 0.15, 0.32);
+  }
 }
 
 export function disposePadRuntimes(pads: PadRuntime[]): void {
@@ -241,6 +390,10 @@ export function disposePadRuntimes(pads: PadRuntime[]): void {
   pads.length = 0;
 }
 
+/**
+ * High-contrast blink for fanfare / pattern playback. Yellow and other bright
+ * pads lerp hard toward white and grow slightly so the flash reads in MR.
+ */
 export function flashPad(pad: PadRuntime, active: boolean): void {
   const face = pad.root.getObjectByName('face') as Mesh | undefined;
   const material = face?.material;
@@ -248,10 +401,17 @@ export function flashPad(pad: PadRuntime, active: boolean): void {
     return;
   }
   const spec = WALL_TONE_PADS[pad.padIndex];
-  material.color.setHex(spec?.color ?? 0xffffff);
   if (active) {
-    material.color.offsetHSL(0, 0, 0.25);
+    pad.visualState = 'pressed';
+    material.color.setHex(spec?.color ?? 0xffffff);
+    // Strong flash: pull toward white (yellow especially needs this).
+    material.color.lerp(new Color(0xffffff), 0.78);
+    material.color.offsetHSL(0, 0.05, 0.08);
+    face?.scale.set(1.14, 1.14, 1.35);
+    return;
   }
+  face?.scale.set(1, 1, 1);
+  applyPadVisualState(pad, pad.hoverInside ? 'hover' : 'idle');
 }
 
 export function defaultDesktopPadSize(): number {

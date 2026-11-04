@@ -8,25 +8,69 @@ export const WALL_TONE_PADS = [
 
 export type WallTonePadId = (typeof WALL_TONE_PADS)[number]['id'];
 
-export const NOTE_DURATION_S = 0.45;
-export const NOTE_GAP_S = 0.15;
-export const TOUCH_BOX_DEPTH_M = 0.22;
-/** Geometry inflate for the invisible touch mesh (keep modest to avoid false hits). */
-export const TOUCH_SLOP_SCALE = 1.08;
-/** Consecutive frames the tip must stay inside before a press counts. */
+export const NOTE_DURATION_S = 0.55;
+export const NOTE_GAP_S = 0.28;
+/** Extra hold while a pad stays lit during fanfare / pattern playback. */
+export const BLINK_HOLD_S = 0.22;
+/** Inner press slab depth (meters) — short so a poke registers near the face. */
+export const TOUCH_PRESS_DEPTH_M = 0.14;
+/** Outer proximity / hover volume depth (meters). */
+export const TOUCH_HOVER_DEPTH_M = 0.34;
+/** Legacy alias used by older helpers; matches press depth. */
+export const TOUCH_BOX_DEPTH_M = TOUCH_PRESS_DEPTH_M;
+/** Inner press face inflate (1 = pad face size). */
+export const TOUCH_PRESS_SCALE = 1.02;
+/** Outer hover face inflate — wider so you see proximity before a press. */
+export const TOUCH_HOVER_SCALE = 1.42;
+/** @deprecated Prefer TOUCH_PRESS_SCALE. */
+export const TOUCH_SLOP_SCALE = TOUCH_PRESS_SCALE;
+/** Consecutive frames inside the press volume before a press counts. */
 export const TOUCH_ENTER_FRAMES = 2;
-/** Frames outside before the same pad can fire again. */
-export const TOUCH_EXIT_FRAMES = 3;
+/** Frames outside the press volume before the pad re-arms. */
+export const TOUCH_EXIT_FRAMES = 2;
+/** After a press, ignore re-entry until this cooldown elapses (seconds). */
+export const TOUCH_PRESS_COOLDOWN_S = 0.4;
 /** Tip must stay within this of that hand's grip (rejects untracked ghost tips). */
 export const TOUCH_TIP_GRIP_MAX_M = 0.24;
-/** Extra center-distance budget beyond half the pad face (meters). */
-export const TOUCH_CENTER_PAD_MARGIN_M = 0.08;
+/** Extra center-distance budget for the outer hover volume (meters). */
+export const TOUCH_HOVER_CENTER_MARGIN_M = 0.16;
+/** Extra center-distance budget for the inner press volume (meters). */
+export const TOUCH_PRESS_CENTER_MARGIN_M = 0.04;
+/** @deprecated Prefer TOUCH_PRESS_CENTER_MARGIN_M. */
+export const TOUCH_CENTER_PAD_MARGIN_M = TOUCH_PRESS_CENTER_MARGIN_M;
+/** Pre-game Wall Tones panel: meters in front of the headset (world-anchored). */
+export const PANEL_FOLLOW_DISTANCE_M = 1.55;
+/** Panel height offset relative to headset (meters). */
+export const PANEL_FOLLOW_Y_OFFSET_M = -0.1;
+/** Panel re-anchor slerp/lerp factor per frame at ~72 Hz after look-away. */
+export const PANEL_FOLLOW_SLERP = 0.12;
+/** Panel scale while in setup (world-anchored). */
+export const PANEL_FOLLOW_SCALE = 0.3;
+/** Re-snap the setup panel only after looking this many degrees away from it. */
+export const PANEL_LOOK_AWAY_DEG = 24;
+/** How close (meters) the panel must get to the target before a look-away snap finishes. */
+export const PANEL_SNAP_ARRIVE_M = 0.04;
+/** In-game HUD distance when first parked in front of the player. */
+export const PANEL_PLAY_DISTANCE_M = 1.4;
+/** In-game HUD scale. */
+export const PANEL_PLAY_SCALE = 0.28;
+/** Simon-style startup: silence between the four-pad sweep and the green encore. */
+export const SIMON_FANFARE_MID_PAUSE_S = 0.5;
+/** Simon-style startup: silence after the encore before voice / first note. */
+export const SIMON_FANFARE_END_PAUSE_S = 0.65;
+/** Times the first pad repeats in the startup fanfare. */
+export const SIMON_FANFARE_FIRST_PAD_REPEATS = 4;
+/** If a blinking pad is outside this view cone (degrees from look), show a cue arrow. */
+export const BLINK_CUE_OFFSCREEN_DEG = 28;
 /** Ghost orientation slerp factor per frame at ~72 Hz (higher = snappier). */
 export const AIR_ORIENT_SLERP = 0.16;
-/** Palm flatness ≥ this snaps toward horizontal. */
-export const AIR_ORIENT_SNAP_FLAT = 0.68;
-/** Palm flatness ≤ this snaps toward vertical (band between avoids flicker). */
-export const AIR_ORIENT_SNAP_UPRIGHT = 0.42;
+/**
+ * Grip local +Y tends to follow the hand's long axis on Quest grips/hands.
+ * High |world Y| ⇒ hand held upright ⇒ wall pad; low ⇒ hand flattened ⇒ table pad.
+ */
+export const AIR_ORIENT_SNAP_UPRIGHT = 0.68;
+/** |gripUp.y| ≤ this snaps toward horizontal (band between avoids flicker). */
+export const AIR_ORIENT_SNAP_FLAT = 0.42;
 export const HEADSET_PAD_SIZE_M = 1;
 export const DESKTOP_PAD_SIZE_M = 0.42;
 export const DESKTOP_PAD_GAP_M = 0.18;

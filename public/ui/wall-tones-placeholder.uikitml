@@ -84,8 +84,33 @@
   .button-last {
     margin-bottom: 24px;
   }
+
+  .drag-bar {
+    flex-direction: column;
+    margin-left: 16px;
+    margin-right: 16px;
+    margin-top: 12px;
+    margin-bottom: 4px;
+  }
+
+  .drag-handle {
+    justify-content: center;
+    height: 44px;
+  }
+
+  .drag-handle-label {
+    font-size: 15px;
+    font-weight: 700;
+    transform-translate-y: 1px;
+  }
 </style>
 <Panel class="panel-root">
+  <div id="panel-drag-bar" class="drag-bar" style="display: none">
+    <Button id="panel-drag-handle" class="drag-handle" style="height: 44px">
+      <ButtonIcon><Move></Move></ButtonIcon>
+      <ButtonLabel id="panel-drag-label" class="drag-handle-label">Drag to move panel</ButtonLabel>
+    </Button>
+  </div>
   <div class="content">
     <div class="eyebrow">MIXED REALITY</div>
     <div class="heading">Wall Tones</div>
@@ -101,6 +126,10 @@
       <div id="wall-tones-current-streak" class="stat-value">0</div>
     </div>
     <div id="wall-tones-status" class="status">Ready</div>
+    <Button id="debug-colliders-button" class="button" style="margin-top: 8px">
+      <ButtonIcon><Bug></Bug></ButtonIcon>
+      <ButtonLabel id="debug-colliders-label">Debug colliders: ON</ButtonLabel>
+    </Button>
     <div id="setup-mode-row" class="setup-row">
       <Button id="mode-room-scale-button" class="button">
         <ButtonIcon><LayoutGrid></LayoutGrid></ButtonIcon>
@@ -109,6 +138,10 @@
       <Button id="mode-sitting-button" class="button">
         <ButtonIcon><Armchair></Armchair></ButtonIcon>
         <ButtonLabel>Sitting (table)</ButtonLabel>
+      </Button>
+      <Button id="mode-air-place-button" class="button">
+        <ButtonIcon><Hand></Hand></ButtonIcon>
+        <ButtonLabel>Air place</ButtonLabel>
       </Button>
     </div>
     <div id="air-orient-row" class="setup-row" style="display: none">
@@ -125,6 +158,9 @@
       </Button>
     </div>
   </div>
+  <div id="wall-pick-hint" class="status" style="display: none; margin-left: 24px; margin-right: 24px">
+    Cyan = surfaces, orange = other items, green = pad slots. Ray + pinch to pick 4.
+  </div>
   <Button id="rescan-room-button" class="button" style="display: none">
     <ButtonIcon><Search></Search></ButtonIcon>
     <ButtonLabel>Rescan room</ButtonLabel>
@@ -138,3 +174,4 @@
     <ButtonLabel>Back to main menu</ButtonLabel>
   </Button>
 </Panel>
+

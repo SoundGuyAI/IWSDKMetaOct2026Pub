@@ -1,7 +1,6 @@
 /**
- * Switches between the main menu and the three experience modes by toggling
- * authored scene node visibility. Mode selection lives on spatial UIKitML panels,
- * which are ray- and pointer-interactable in both desktop WebGL and XR.
+ * Switches between the main menu and experience modes by toggling authored
+ * scene node visibility. Mode selection lives on spatial UIKitML panels.
  */
 import {
   createSystem,
@@ -102,31 +101,48 @@ export class AppModeSystem extends createSystem({}) {
     entity.setValue(Visibility, 'isVisible', visible);
   }
 
+  private startWallTonesFlat(): void {
+    primeWallTonesAudioFromGesture();
+    unlockSpeechFromGesture();
+    this.setMode('walltones');
+  }
+
+  /**
+   * Enter XR boots the AR Wall Tones world first (while still flat), then
+   * launches one XR session — so later mode picks never tear XR down.
+   * Dynamic import avoids a circular dependency with world-host.
+   */
+  private enterXrIntoWallTones(): void {
+    primeWallTonesAudioFromGesture();
+    unlockSpeechFromGesture();
+    persistMode('walltones');
+    sessionStorage.setItem('wall-tones-awaiting-mode', '1');
+    void import('./wall-tones/world-host.js').then((host) => {
+      if (host.getActiveWorldKind() === 'hub-vr') {
+        void host.switchToWallTonesArWorld();
+        return;
+      }
+      this.setMode('walltones');
+      if (this.world.xrEnabled) {
+        this.world.launchXR();
+      }
+    });
+  }
+
   private bindMainMenu(): void {
     const panel = this.world.getSceneObject<UIKitMLAsset>('main-menu-panel');
     if (panel == null) {
       return;
     }
-    const demoButton = panel.getElementById('mode-demo-button');
-    const meditationButton = panel.getElementById('mode-meditation-button');
     const wallTonesButton = panel.getElementById('mode-walltones-button');
-    demoButton?.addEventListener('click', () => this.setMode('demo'));
-    meditationButton?.addEventListener('click', () =>
-      this.setMode('meditation'),
-    );
-    wallTonesButton?.addEventListener('click', () => {
-      primeWallTonesAudioFromGesture();
-      unlockSpeechFromGesture();
-      this.setMode('walltones');
-    });
-    if (demoButton != null) {
-      demoButton.name = 'Btn_ModeDemo';
-    }
-    if (meditationButton != null) {
-      meditationButton.name = 'Btn_ModeMeditation';
-    }
+    const xrButton = panel.getElementById('xr-button');
+    wallTonesButton?.addEventListener('click', () => this.startWallTonesFlat());
+    xrButton?.addEventListener('click', () => this.enterXrIntoWallTones());
     if (wallTonesButton != null) {
       wallTonesButton.name = 'Btn_ModeWallTones';
+    }
+    if (xrButton != null) {
+      xrButton.name = 'Btn_EnterXrWallTones';
     }
   }
 
@@ -159,10 +175,10 @@ export class AppModeSystem extends createSystem({}) {
 
   private syncDocumentChrome(mode: ExperienceMode): void {
     const titles: Record<ExperienceMode, string> = {
-      menu: 'Experience hub',
+      menu: 'Wall Tones',
       demo: 'Starter demo',
       meditation: 'Breath & gaze rest',
-      walltones: 'Wall Tones (planned)',
+      walltones: 'Wall Tones',
     };
     document.title = titles[mode];
 

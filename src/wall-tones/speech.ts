@@ -1,14 +1,20 @@
 /** Browser speech lines for Wall Tones (English). */
 export const WALL_TONES_SPEECH = {
   chooseMode:
-    'Choose room scale to play on your walls, or sitting to play on a table.',
+    'Choose room scale for walls, sitting for a table, or air place to put the pads by hand.',
+  chooseAirMenu:
+    'Air place works for wall or table style. Tilt your hand to snap upright or flat, then pinch four times.',
   lookAround:
     'I am looking at your room. Give me a few seconds to find the walls.',
   roomCapture:
     'I could not see enough surfaces. Open room capture on your headset, then we will look again.',
   padsOnWalls: 'I placed four buttons on your walls. Listen and repeat the pattern.',
+  pickWallSlots:
+    'I found walls. Cyan shows walls, orange shows other room mesh. Point at a green square and pinch to place each one-meter button. Pick four.',
+  pickTableSlots:
+    'I found table surfaces. Cyan shows flat surfaces, orange shows other room items. Point at a green square and pinch to place four buttons. Pick four.',
   notEnoughWallSpace:
-    'There is not enough wall space. Move the outlined buttons with your hand and pinch to place them beside you.',
+    'There is not enough wall space for automatic placement. Point at the green squares on the walls if you see them, or move the outlined buttons with your hand and pinch to place them in the air.',
   tableFound: 'I found a table. Listen and repeat the pattern.',
   noTable:
     'I could not find a table or room mesh. Tilt your placing hand so the outline snaps flat or upright, then pinch to place. You can also rescan the room from the panel.',
@@ -48,6 +54,9 @@ export function warmSpeechSynthesisFromGesture(): void {
 }
 
 export class WallTonesSpeech {
+  /** Serialize lines so consecutive speak() calls do not cancel each other. */
+  private chain: Promise<void> = Promise.resolve();
+
   speak(line: string): void {
     void this.speakAsync(line);
   }
@@ -60,7 +69,15 @@ export class WallTonesSpeech {
     if (needsSpeechUnlock() && !speechUnlocked) {
       return Promise.resolve();
     }
-    globalThis.speechSynthesis.cancel();
+    const run = this.chain.then(() => this.utter(line));
+    this.chain = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
+  private utter(line: string): Promise<void> {
     const utterance = new SpeechSynthesisUtterance(line);
     utterance.lang = 'en-US';
     utterance.rate = 0.92;
@@ -84,6 +101,7 @@ export class WallTonesSpeech {
 
   cancel(): void {
     globalThis.speechSynthesis?.cancel();
+    this.chain = Promise.resolve();
   }
 }
 
