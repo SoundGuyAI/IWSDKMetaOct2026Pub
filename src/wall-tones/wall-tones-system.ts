@@ -635,7 +635,16 @@ export class WallTonesSystem extends createSystem({
   }
 
   private layoutPanelForFlatPlay(): void {
-    // Far enough right/clear of the left-shifted pad grid (confirmed via screenshot).
+    // Desktop: park right of the pad grid. Phones: center/lower/shrink so the
+    // HUD + Back stay on-screen without changing VR follow placement.
+    const width = typeof window === 'undefined' ? 1280 : window.innerWidth;
+    const height = typeof window === 'undefined' ? 800 : window.innerHeight;
+    const phoneFlat =
+      width <= 480 || (height <= 480 && width <= 950);
+    if (phoneFlat) {
+      this.applyPanelLayout(0, 1.22, -1.85, 0.28);
+      return;
+    }
     this.applyPanelLayout(1.95, 1.48, -1.55, 0.26);
   }
 
