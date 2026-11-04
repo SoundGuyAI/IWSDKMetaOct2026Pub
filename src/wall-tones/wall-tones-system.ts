@@ -1,6 +1,7 @@
 import {
   Hovered,
   Pressed,
+  Quaternion,
   RayInteractable,
   Transform,
   UIKit,
@@ -18,6 +19,9 @@ import { playErrorTone, playPadTone, playPadToneFromUserAction, primeWallTonesAu
 import {
   AIR_GHOST_HAND_OFFSET_M,
   AIR_GHOST_MIN_HEAD_DISTANCE_M,
+  AIR_ORIENT_SLERP,
+  AIR_ORIENT_SNAP_FLAT,
+  AIR_ORIENT_SNAP_UPRIGHT,
   AIR_PLACE_ROOM_PAD_SIZE_M,
   AIR_PLACE_SITTING_PAD_SIZE_M,
   NOTE_GAP_S,
@@ -25,7 +29,11 @@ import {
   IDLE_REPLAY_S,
   POST_INTRO_DELAY_S,
   SCAN_WAIT_S,
-  TOUCH_SLOP_SCALE,
+  TOUCH_BOX_DEPTH_M,
+  TOUCH_CENTER_PAD_MARGIN_M,
+  TOUCH_ENTER_FRAMES,
+  TOUCH_EXIT_FRAMES,
+  TOUCH_TIP_GRIP_MAX_M,
   WALL_TONE_PADS,
   WRONG_RESET_DELAY_S,
   type WallTonePadId,
@@ -110,6 +118,15 @@ export class WallTonesSystem extends createSystem({
   private readonly ghostForward = new Vector3();
   private readonly ghostTarget = new Vector3();
   private readonly awayFromHead = new Vector3();
+  private readonly handUp = new Vector3();
+  private readonly handForward = new Vector3();
+  private readonly gripQuat = new Quaternion();
+  private readonly ghostQuat = new Quaternion();
+  private readonly targetGhostQuat = new Quaternion();
+  private readonly scratchQuat = new Quaternion();
+  private readonly padWorldPos = new Vector3();
+  private readonly tipScratch = new Vector3();
+  private readonly axisX = new Vector3(1, 0, 0);
 
   private experienceActive = false;
   private flowPhase: FlowPhase = 'inactive';
@@ -128,9 +145,15 @@ export class WallTonesSystem extends createSystem({
   /** After playback, ignore touches until every pad is clear (avoids stuck finger auto-hitting). */
   private inputNeedsClear = false;
   private airOrientation: AirOrientation = 'vertical';
+  /** When set, panel lock overrides hand-driven snap. */
+  private airOrientationLocked: AirOrientation | null = null;
+  private dominantHand: 'left' | 'right' | null = null;
   private lastInputAt = 0;
   private idleReplayQueued = false;
   private panelRayRemoved = false;
+  private lackingSpatialData = false;
+  private readonly touchEnterFrames = new Map<number, number>();
+  private readonly touchExitFrames = new Map<number, number>();
   private pointerAudioBound = false;
   private mobileSoundButton: HTMLButtonElement | null = null;
   private mediaUnlockApplied = false;
@@ -181,7 +204,13 @@ export class WallTonesSystem extends createSystem({
       this.experienceActive = true;
       this.flowPhase = 'scanning';
       this.scanStartedAt = performance.now() / 1000;
+      const storedHand = sessionStorage.getItem('wall-tones-dominant-hand');
+      if (storedHand === 'left' || storedHand === 'right') {
+        this.dominantHand = storedHand;
+      }
       this.bindPanelIfNeeded();
+      this.setFlatHintVisible(false);
+      this.setSetupUiVisible(false);
       this.speech.speak(WALL_TONES_SPEECH.lookAround);
     }
   }
@@ -191,6 +220,9 @@ export class WallTonesSystem extends createSystem({
       return;
     }
     this.bindPanelIfNeeded();
+    if (!this.useDesktopPath()) {
+      this.noteDominantHandFromInput();
+    }
     if (
       this.useDesktopPath() &&
       this.flowPhase === 'playing' &&
@@ -206,7 +238,7 @@ export class WallTonesSystem extends createSystem({
       this.tickScan(delta);
     }
     if (this.flowPhase === 'air-placement') {
-      this.tickAirPlacement();
+      this.tickAirPlacement(delta);
     }
     if (this.useDesktopInput()) {
       if (this.flatAwaitingStart || this.game.phase === 'input') {
@@ -216,6 +248,25 @@ export class WallTonesSystem extends createSystem({
       this.readFingertipTouches();
     }
     this.tickIdleReplay();
+  }
+
+  /** First pinch / trigger that selects UI or places becomes the orientation hand. */
+  private noteDominantHandFromInput(): void {
+    if (this.dominantHand != null) {
+      return;
+    }
+    const stored = sessionStorage.getItem('wall-tones-dominant-hand');
+    if (stored === 'left' || stored === 'right') {
+      this.dominantHand = stored;
+      return;
+    }
+    for (const hand of ['right', 'left'] as const) {
+      if (this.input.xr.getSelectState(hand).start) {
+        this.dominantHand = hand;
+        sessionStorage.setItem('wall-tones-dominant-hand', hand);
+        return;
+      }
+    }
   }
 
   private bindPanelIfNeeded(): void {
@@ -245,6 +296,9 @@ export class WallTonesSystem extends createSystem({
     panel
       .getElementById('repeat-pattern-button')
       ?.addEventListener('click', () => void this.onRepeatPattern());
+    panel
+      .getElementById('rescan-room-button')
+      ?.addEventListener('click', () => void this.onRescanRoom());
     if (this.experienceActive && this.useDesktopPath()) {
       this.setSetupUiVisible(false);
     }
@@ -267,6 +321,7 @@ export class WallTonesSystem extends createSystem({
     }
 
     this.flowPhase = 'choose-mode';
+    this.setFlatHintVisible(false);
     this.setSetupUiVisible(true);
     this.statusText = 'Choose room scale or sitting.';
     this.speech.speak(WALL_TONES_SPEECH.chooseMode);
@@ -282,6 +337,12 @@ export class WallTonesSystem extends createSystem({
     this.flatAwaitingStart = false;
     this.inputNeedsClear = false;
     this.mediaUnlockApplied = false;
+    this.airOrientationLocked = null;
+    this.dominantHand = null;
+    sessionStorage.removeItem('wall-tones-dominant-hand');
+    this.lackingSpatialData = false;
+    this.touchEnterFrames.clear();
+    this.touchExitFrames.clear();
     this.playbackQueue = Promise.resolve();
     this.game.phase = 'idle';
     this.game.resetAllScores();
@@ -294,6 +355,8 @@ export class WallTonesSystem extends createSystem({
     this.ghostPad = null;
     this.setupMode = null;
     this.setFlatHintVisible(false);
+    this.setAirOrientUiVisible(false);
+    this.setRescanUiVisible(false);
     this.restorePanelLayout();
     this.restorePanelPointerCapture();
     this.showStudioBackdrop();
@@ -667,6 +730,10 @@ export class WallTonesSystem extends createSystem({
   private startAirPlacement(line: string): void {
     this.flowPhase = 'air-placement';
     this.airPlaceStep = 0;
+    this.lackingSpatialData = true;
+    this.airOrientationLocked = null;
+    // Keep dominantHand from the first panel select so ghost orientation
+    // follows that placing hand; only clear it when leaving the experience.
     this.airOrientation =
       this.setupMode === 'sitting' ? 'horizontal' : 'vertical';
     this.airPadSizeM =
@@ -675,25 +742,26 @@ export class WallTonesSystem extends createSystem({
         : AIR_PLACE_ROOM_PAD_SIZE_M;
     this.clearPads();
     this.layoutPanelForMrPlay();
+    this.setFlatHintVisible(false);
     this.setAirOrientUiVisible(true);
+    this.setRescanUiVisible(true);
     this.setRepeatUiVisible(false);
     this.speech.speak(line);
     this.speech.speak(WALL_TONES_SPEECH.chooseAirOrient);
     this.speech.speak(WALL_TONES_SPEECH.airPlace(1));
     this.statusText =
-      this.airOrientation === 'horizontal'
-        ? 'Flat pads — pinch to place. Switch to Wall if you want vertical.'
-        : 'Vertical pads — pinch to place. Switch to Table if you want flat.';
+      'Tilt placing hand to snap flat/upright, then pinch. Or Rescan room.';
     this.spawnGhostPad();
     this.renderPanel();
   }
 
   private setAirOrientation(orientation: AirOrientation): void {
     this.airOrientation = orientation;
+    this.airOrientationLocked = orientation;
     this.statusText =
       orientation === 'horizontal'
-        ? 'Table / flat outlines. Pinch to place.'
-        : 'Wall / vertical outlines. Pinch to place.';
+        ? 'Locked table / flat. Pinch to place.'
+        : 'Locked wall / vertical. Pinch to place.';
     this.renderPanel();
   }
 
@@ -706,16 +774,20 @@ export class WallTonesSystem extends createSystem({
     );
   }
 
-  private tickAirPlacement(): void {
-    const hand = this.preferredPlacementHand();
+  private tickAirPlacement(delta: number): void {
+    const hand = this.resolvePlacementHand();
     if (hand == null || this.ghostPad == null) {
       return;
     }
-    this.updateGhostPadPose(hand);
+    this.updateGhostPadPose(hand, delta);
 
     const select = this.input.xr.getSelectState(hand);
     if (!select.start) {
       return;
+    }
+    if (this.dominantHand == null) {
+      this.dominantHand = hand;
+      sessionStorage.setItem('wall-tones-dominant-hand', hand);
     }
     const placed = this.ghostPad;
     solidifyGhostPad(placed, this.airPadSizeM);
@@ -726,6 +798,7 @@ export class WallTonesSystem extends createSystem({
     if (this.airPlaceStep >= 4) {
       this.flowPhase = 'playing';
       this.setAirOrientUiVisible(false);
+      this.setRescanUiVisible(this.lackingSpatialData);
       this.setRepeatUiVisible(true);
       this.statusText = 'Get ready…';
       this.beginRoundWithIntro();
@@ -738,12 +811,13 @@ export class WallTonesSystem extends createSystem({
     this.renderPanel();
   }
 
-  private updateGhostPadPose(hand: 'left' | 'right'): void {
+  private updateGhostPadPose(hand: 'left' | 'right', delta: number): void {
     if (this.ghostPad == null) {
       return;
     }
     this.player.head.getWorldPosition(this.viewer);
     this.player.gripSpaces[hand].getWorldPosition(this.gripWorld);
+    this.readGripWorldQuaternion(hand, this.gripQuat);
 
     this.ghostForward.set(
       this.gripWorld.x - this.viewer.x,
@@ -759,7 +833,6 @@ export class WallTonesSystem extends createSystem({
     this.ghostTarget
       .copy(this.gripWorld)
       .addScaledVector(this.ghostForward, AIR_GHOST_HAND_OFFSET_M);
-    // Prefer table/lap height for sitting, mid-torso for room-scale air place.
     const preferredY =
       this.setupMode === 'sitting'
         ? this.viewer.y - 0.55
@@ -786,19 +859,72 @@ export class WallTonesSystem extends createSystem({
     }
 
     this.ghostPad.root.position.copy(this.ghostTarget);
+    this.updateAirOrientationFromHand();
+    this.buildTargetGhostQuaternion(this.targetGhostQuat);
+    // Slerp in local space toward the snapped target (frame-rate independent).
+    const alpha = 1 - Math.pow(1 - AIR_ORIENT_SLERP, Math.max(delta, 1 / 120) * 72);
+    this.ghostQuat.copy(this.ghostPad.root.quaternion);
+    this.ghostQuat.slerp(this.targetGhostQuat, alpha);
+    this.ghostPad.root.quaternion.copy(this.ghostQuat);
+  }
+
+  private updateAirOrientationFromHand(): void {
+    if (this.airOrientationLocked != null) {
+      this.airOrientation = this.airOrientationLocked;
+      return;
+    }
+    // Grip local +Y tends to follow the palm/back axis; high |world Y| ⇒ flat hand.
+    this.handUp.set(0, 1, 0).applyQuaternion(this.gripQuat).normalize();
+    const flatness = Math.abs(this.handUp.y);
+    let next = this.airOrientation;
+    if (flatness >= AIR_ORIENT_SNAP_FLAT) {
+      next = 'horizontal';
+    } else if (flatness <= AIR_ORIENT_SNAP_UPRIGHT) {
+      next = 'vertical';
+    }
+    if (next !== this.airOrientation) {
+      this.airOrientation = next;
+      this.statusText =
+        next === 'horizontal'
+          ? 'Snapped flat - pinch to place'
+          : 'Snapped upright - pinch to place';
+      this.renderPanel();
+    }
+  }
+
+  private buildTargetGhostQuaternion(out: Quaternion): void {
     const yaw = Math.atan2(
       this.viewer.x - this.ghostTarget.x,
       this.viewer.z - this.ghostTarget.z,
     );
+    const halfYaw = yaw * 0.5;
+    out.set(0, Math.sin(halfYaw), 0, Math.cos(halfYaw));
     if (this.airOrientation === 'horizontal') {
-      // Face up like a table pad; yaw still aims the square toward the player.
-      this.ghostPad.root.rotation.set(-Math.PI / 2, yaw, 0);
-    } else {
-      this.ghostPad.root.rotation.set(0, yaw, 0);
+      this.scratchQuat.setFromAxisAngle(this.axisX, -Math.PI / 2);
+      out.multiply(this.scratchQuat);
     }
   }
 
-  private preferredPlacementHand(): 'left' | 'right' | null {
+  private readGripWorldQuaternion(
+    hand: 'left' | 'right',
+    out: Quaternion,
+  ): void {
+    const grip = this.player.gripSpaces[hand];
+    grip.updateWorldMatrix(true, false);
+    grip.getWorldQuaternion(out);
+  }
+
+  private resolvePlacementHand(): 'left' | 'right' | null {
+    if (this.dominantHand != null) {
+      return this.dominantHand;
+    }
+    // Prefer a connected hand (right first) until the first UI/pinch sets dominant.
+    for (const hand of ['right', 'left'] as const) {
+      const adapter = this.input.xr.visualAdapters[hand].peek();
+      if (adapter?.connected) {
+        return hand;
+      }
+    }
     for (const hand of ['right', 'left'] as const) {
       const adapter = this.input.xr.visualAdapters[hand].peek();
       if (adapter instanceof XRHandVisualAdapter) {
@@ -813,6 +939,8 @@ export class WallTonesSystem extends createSystem({
     line: string,
   ): void {
     this.clearPads();
+    this.lackingSpatialData = false;
+    this.setRescanUiVisible(false);
     const size = defaultHeadsetPadSize();
     transforms.forEach((transform, index) => {
       const pad = createPadRuntime(this.world, index as WallTonePadId, size, {
@@ -980,7 +1108,7 @@ export class WallTonesSystem extends createSystem({
     if (this.inputNeedsClear) {
       let anyInside = false;
       for (const pad of this.pads) {
-        const inside = this.isHandTouchingPad(pad);
+        const inside = this.sampleTipInsidePad(pad) != null;
         pad.fingerInside = inside;
         if (inside) {
           anyInside = true;
@@ -989,70 +1117,93 @@ export class WallTonesSystem extends createSystem({
       if (!anyInside) {
         this.inputNeedsClear = false;
         this.armAllPads();
+        this.touchEnterFrames.clear();
+        this.touchExitFrames.clear();
       }
       return;
     }
+
+    // Only the closest pad under either tip may fire — avoids multi-pad ghosts.
+    let bestPad: PadRuntime | null = null;
+    let bestDist = Number.POSITIVE_INFINITY;
     for (const pad of this.pads) {
-      const inside = this.isHandTouchingPad(pad);
-      if (!inside) {
-        pad.fingerInside = false;
+      const dist = this.sampleTipInsidePad(pad);
+      if (dist == null) {
+        const exit = (this.touchExitFrames.get(pad.padIndex) ?? 0) + 1;
+        this.touchExitFrames.set(pad.padIndex, exit);
+        if (exit >= TOUCH_EXIT_FRAMES) {
+          pad.fingerInside = false;
+          this.touchEnterFrames.set(pad.padIndex, 0);
+        }
         continue;
       }
-      if (!pad.fingerInside) {
-        pad.fingerInside = true;
-        this.handlePadInput(pad.padIndex);
+      this.touchExitFrames.set(pad.padIndex, 0);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestPad = pad;
+      }
+    }
+
+    for (const pad of this.pads) {
+      if (pad === bestPad) {
+        const enter = (this.touchEnterFrames.get(pad.padIndex) ?? 0) + 1;
+        this.touchEnterFrames.set(pad.padIndex, enter);
+        if (!pad.fingerInside && enter >= TOUCH_ENTER_FRAMES) {
+          pad.fingerInside = true;
+          this.handlePadInput(pad.padIndex);
+        }
+      } else if (bestPad != null) {
+        this.touchEnterFrames.set(pad.padIndex, 0);
       }
     }
   }
 
-  private isHandTouchingPad(pad: PadRuntime): boolean {
-    return (
-      this.isFingerInsidePad(pad, 'left') ||
-      this.isFingerInsidePad(pad, 'right') ||
-      this.isGripNearPad(pad, 'left') ||
-      this.isGripNearPad(pad, 'right')
-    );
-  }
-
-  private isFingerInsidePad(pad: PadRuntime, hand: 'left' | 'right'): boolean {
-    // Sample tip spaces even when the visual is a controller — Quest still
-    // updates index tips, and requiring XRHandVisualAdapter blocked many hits.
-    this.player.indexTipSpaces[hand].getWorldPosition(
-      hand === 'left' ? this.tipLeft : this.tipRight,
-    );
-    const tip = hand === 'left' ? this.tipLeft : this.tipRight;
+  /**
+   * Returns distance from tip to pad center when the index tip is inside the
+   * touch volume; otherwise null. Requires a connected hand and tip near that
+   * hand's grip so untracked ghost tips cannot false-press.
+   */
+  private sampleTipInsidePad(pad: PadRuntime): number | null {
     pad.root.updateWorldMatrix(true, false);
     pad.touchVolume.updateWorldMatrix(true, false);
-    this.tipLocal.copy(tip);
-    pad.touchVolume.worldToLocal(this.tipLocal);
-    const touchMesh = pad.touchVolume as import('@iwsdk/core').Mesh;
-    const geom = touchMesh.geometry as {
-      parameters?: { width?: number; height?: number; depth?: number };
-    };
-    const width = geom.parameters?.width ?? 0.5;
-    const height = geom.parameters?.height ?? 0.5;
-    const depth = geom.parameters?.depth ?? 0.35;
-    const hx = width * 0.5 * TOUCH_SLOP_SCALE;
-    const hy = height * 0.5 * TOUCH_SLOP_SCALE;
-    const hz = depth * 0.5 * TOUCH_SLOP_SCALE;
-    return (
-      Math.abs(this.tipLocal.x) <= hx &&
-      Math.abs(this.tipLocal.y) <= hy &&
-      Math.abs(this.tipLocal.z) <= hz
-    );
-  }
+    pad.root.getWorldPosition(this.padWorldPos);
+    const maxCenter =
+      pad.sizeM * 0.5 * Math.SQRT2 + TOUCH_CENTER_PAD_MARGIN_M;
 
-  private isGripNearPad(pad: PadRuntime, hand: 'left' | 'right'): boolean {
-    this.player.gripSpaces[hand].getWorldPosition(this.gripWorld);
-    pad.root.updateWorldMatrix(true, false);
-    pad.root.getWorldPosition(this.ghostTarget);
-    const touchMesh = pad.touchVolume as import('@iwsdk/core').Mesh;
-    const geom = touchMesh.geometry as {
-      parameters?: { width?: number };
-    };
-    const width = geom.parameters?.width ?? this.airPadSizeM;
-    const reach = Math.max(0.28, width * 0.65);
-    return this.gripWorld.distanceTo(this.ghostTarget) <= reach;
+    for (const hand of ['left', 'right'] as const) {
+      const adapter = this.input.xr.visualAdapters[hand].peek();
+      if (adapter == null || !adapter.connected) {
+        continue;
+      }
+      this.player.indexTipSpaces[hand].getWorldPosition(this.tipScratch);
+      this.player.gripSpaces[hand].getWorldPosition(this.gripWorld);
+      if (this.tipScratch.distanceTo(this.gripWorld) > TOUCH_TIP_GRIP_MAX_M) {
+        continue;
+      }
+      const centerDist = this.tipScratch.distanceTo(this.padWorldPos);
+      if (centerDist > maxCenter) {
+        continue;
+      }
+      this.tipLocal.copy(this.tipScratch);
+      pad.touchVolume.worldToLocal(this.tipLocal);
+      const touchMesh = pad.touchVolume as import('@iwsdk/core').Mesh;
+      const geom = touchMesh.geometry as {
+        parameters?: { width?: number; height?: number; depth?: number };
+      };
+      const hx = (geom.parameters?.width ?? pad.sizeM) * 0.5;
+      const hy = (geom.parameters?.height ?? pad.sizeM) * 0.5;
+      const hz = (geom.parameters?.depth ?? TOUCH_BOX_DEPTH_M) * 0.5;
+      // Front-biased slab: allow a little behind the face, reject deep punch-through.
+      if (
+        Math.abs(this.tipLocal.x) <= hx &&
+        Math.abs(this.tipLocal.y) <= hy &&
+        this.tipLocal.z >= -hz * 0.35 &&
+        this.tipLocal.z <= hz
+      ) {
+        return centerDist;
+      }
+    }
+    return null;
   }
 
   private handlePadInput(padIndex: number): void {
@@ -1089,7 +1240,7 @@ export class WallTonesSystem extends createSystem({
       // Lock input immediately so a held finger/click cannot eat the next round.
       this.game.phase = 'playback';
       this.inputNeedsClear = true;
-      this.statusText = `Nice — streak ${this.game.streak}. Next pattern…`;
+      this.statusText = `Nice - streak ${this.game.streak}. Next pattern…`;
       this.renderPanel();
       const streak = this.game.streak;
       this.playbackQueue = this.playbackQueue.then(async () => {
@@ -1170,6 +1321,52 @@ export class WallTonesSystem extends createSystem({
       .getSceneObject<UIKitMLAsset>('wall-tones-panel')
       ?.getElementById('repeat-pattern-button')
       ?.setProperties({ display: visible ? 'flex' : 'none' });
+  }
+
+  private setRescanUiVisible(visible: boolean): void {
+    this.world
+      .getSceneObject<UIKitMLAsset>('wall-tones-panel')
+      ?.getElementById('rescan-room-button')
+      ?.setProperties({ display: visible ? 'flex' : 'none' });
+  }
+
+  private async onRescanRoom(): Promise<void> {
+    if (!this.experienceActive) {
+      return;
+    }
+    if (this.flowPhase !== 'air-placement' && this.flowPhase !== 'playing') {
+      return;
+    }
+    if (!this.lackingSpatialData && this.flowPhase === 'playing') {
+      // Still allow an explicit rescan from the panel during air-derived play.
+    }
+    this.speech.speak(WALL_TONES_SPEECH.rescanRoom);
+    this.statusText = 'Rescanning room…';
+    this.renderPanel();
+    this.clearPads();
+    this.ghostPad = null;
+    this.airPlaceStep = 0;
+    this.game.phase = 'idle';
+    this.playbackQueue = Promise.resolve();
+    this.setAirOrientUiVisible(false);
+    this.setRepeatUiVisible(false);
+
+    const session = this.xrManager.getSession() as XRSession & {
+      initiateRoomCapture?: () => Promise<undefined>;
+    };
+    if (typeof session?.initiateRoomCapture === 'function') {
+      try {
+        await session.initiateRoomCapture();
+      } catch (error) {
+        console.warn('[wall-tones] rescan room capture failed', error);
+      }
+    }
+    this.flowPhase = 'scanning';
+    this.scanStartedAt = performance.now() / 1000;
+    this.lackingSpatialData = false;
+    this.setRescanUiVisible(false);
+    this.speech.speak(WALL_TONES_SPEECH.lookAround);
+    this.renderPanel();
   }
 
   private async onRepeatPattern(): Promise<void> {

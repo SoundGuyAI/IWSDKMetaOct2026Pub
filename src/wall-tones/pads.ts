@@ -24,6 +24,7 @@ export type PadRuntime = {
   root: Object3D;
   touchVolume: Object3D;
   padIndex: number;
+  sizeM: number;
   pointerArmed: boolean;
   fingerInside: boolean;
   isGhost: boolean;
@@ -76,6 +77,7 @@ export function createPadRuntime(
     root,
     touchVolume,
     padIndex,
+    sizeM: sizeM,
     pointerArmed: true,
     fingerInside: false,
     isGhost: false,
@@ -173,6 +175,7 @@ export function createGhostPadRuntime(
     root,
     touchVolume,
     padIndex,
+    sizeM: sizeM,
     pointerArmed: true,
     fingerInside: false,
     isGhost: true,
@@ -184,6 +187,7 @@ export function solidifyGhostPad(pad: PadRuntime, sizeM: number): void {
   if (!pad.isGhost) {
     return;
   }
+  pad.sizeM = sizeM;
   const toRemove: Object3D[] = [];
   pad.root.traverse((child) => {
     if (child.name === 'ghost-frame' || child.name === 'ghost-corner') {
