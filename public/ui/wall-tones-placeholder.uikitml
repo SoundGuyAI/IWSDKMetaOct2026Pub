@@ -1,7 +1,7 @@
 <style>
   .panel-root {
     flex-direction: column;
-    width: 400px;
+    width: 420px;
   }
 
   .content {
@@ -32,30 +32,101 @@
     color: #fafaf7;
   }
 
-  .body {
+  .stat-row {
+    flex-direction: row;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .stat-label {
+    color: #3a3b40;
+    font-size: 16px;
+    line-height: 22px;
+  }
+
+  .stat-label:dark {
+    color: #c8ccd2;
+  }
+
+  .stat-value {
+    color: #1c1d20;
+    font-size: 22px;
+    font-weight: 700;
+  }
+
+  .stat-value:dark {
+    color: #fafaf7;
+  }
+
+  .status {
     color: #3a3b40;
     font-size: 17px;
     line-height: 24px;
+    margin-top: 4px;
   }
 
-  .body:dark {
+  .status:dark {
     color: #dddfe3;
+  }
+
+  .setup-row {
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
   }
 
   .button {
     justify-content: flex-start;
     margin-left: 24px;
     margin-right: 24px;
+  }
+
+  .button-last {
     margin-bottom: 24px;
   }
 </style>
 <Panel class="panel-root">
   <div class="content">
-    <div class="eyebrow">COMING SOON</div>
+    <div class="eyebrow">MIXED REALITY</div>
     <div class="heading">Wall Tones</div>
-    <div class="body">A mixed-reality memory game played on your real walls with art objects, inspired by the Meta Horizon title. We will plan and build this experience in a follow-up session.</div>
+    <div id="flat-play-hint" class="body" style="display: none">
+      Flat play: watch the sequence, then click each pad once. Wrong pad resets this run; best streak stays.
+    </div>
+    <div class="stat-row">
+      <div class="stat-label">Best streak</div>
+      <div id="wall-tones-best-streak" class="stat-value">0</div>
+    </div>
+    <div class="stat-row">
+      <div class="stat-label">Current streak</div>
+      <div id="wall-tones-current-streak" class="stat-value">0</div>
+    </div>
+    <div id="wall-tones-status" class="status">Ready</div>
+    <div id="setup-mode-row" class="setup-row">
+      <Button id="mode-room-scale-button" class="button">
+        <ButtonIcon><LayoutGrid></LayoutGrid></ButtonIcon>
+        <ButtonLabel>Room scale</ButtonLabel>
+      </Button>
+      <Button id="mode-sitting-button" class="button">
+        <ButtonIcon><Armchair></Armchair></ButtonIcon>
+        <ButtonLabel>Sitting (table)</ButtonLabel>
+      </Button>
+    </div>
+    <div id="air-orient-row" class="setup-row" style="display: none">
+      <Button id="orient-vertical-button" class="button">
+        <ButtonIcon><LayoutGrid></LayoutGrid></ButtonIcon>
+        <ButtonLabel>Wall / vertical</ButtonLabel>
+      </Button>
+      <Button id="orient-horizontal-button" class="button">
+        <ButtonIcon><Armchair></Armchair></ButtonIcon>
+        <ButtonLabel>Table / flat</ButtonLabel>
+      </Button>
+    </div>
   </div>
-  <Button id="back-to-menu-button" class="button">
+  <Button id="repeat-pattern-button" class="button" style="display: none">
+    <ButtonIcon><RefreshCw></RefreshCw></ButtonIcon>
+    <ButtonLabel>Repeat pattern</ButtonLabel>
+  </Button>
+  <Button id="back-to-menu-button" class="button button-last">
     <ButtonIcon><ArrowLeft></ArrowLeft></ButtonIcon>
     <ButtonLabel>Back to main menu</ButtonLabel>
   </Button>

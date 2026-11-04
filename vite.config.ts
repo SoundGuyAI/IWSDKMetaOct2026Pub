@@ -8,9 +8,39 @@
 import { iwsdkDev } from '@iwsdk/vite-plugin-dev';
 import { defineConfig } from 'vite';
 
+/**
+ * When the app is opened through a public tunnel (*.trycloudflare.com), Vite's
+ * HMR client may fall back to a WebSocket on localhost:8081. Chrome/Edge then
+ * prompt: "Access other apps and services on this device" (loopback permission).
+ * That is hot-reload plumbing, not Wall Tones gameplay code.
+ *
+ * Set PUBLIC_TUNNEL_HOST to the tunnel hostname (no scheme) so HMR stays on the
+ * public host, or IWSDK_DISABLE_HMR=1 to turn HMR off for remote headset tests.
+ */
+const publicTunnelHost = process.env.PUBLIC_TUNNEL_HOST?.replace(
+  /^https?:\/\//,
+  '',
+).replace(/\/$/, '');
+const disableHmr = process.env.IWSDK_DISABLE_HMR === '1';
+
 export default defineConfig({
   plugins: [iwsdkDev()],
-  server: { host: '0.0.0.0', port: 8081, open: false },
+  server: {
+    host: '0.0.0.0',
+    port: 8081,
+    open: false,
+    // Allow Cloudflare quick tunnels and LAN hostnames without blocking the page.
+    allowedHosts: ['.trycloudflare.com', 'localhost', '.local'],
+    hmr: disableHmr
+      ? false
+      : publicTunnelHost
+        ? {
+            protocol: 'wss',
+            host: publicTunnelHost,
+            clientPort: 443,
+          }
+        : undefined,
+  },
   build: {
     outDir: 'dist',
     sourcemap: process.env.NODE_ENV !== 'production',
