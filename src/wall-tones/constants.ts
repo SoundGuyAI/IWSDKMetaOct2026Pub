@@ -8,8 +8,10 @@ export const WALL_TONE_PADS = [
 
 export type WallTonePadId = (typeof WALL_TONE_PADS)[number]['id'];
 
-export const NOTE_DURATION_S = 0.45;
-export const NOTE_GAP_S = 0.15;
+export const NOTE_DURATION_S = 0.55;
+export const NOTE_GAP_S = 0.28;
+/** Extra hold while a pad stays lit during fanfare / pattern playback. */
+export const BLINK_HOLD_S = 0.22;
 /** Inner press slab depth (meters) — short so a poke registers near the face. */
 export const TOUCH_PRESS_DEPTH_M = 0.14;
 /** Outer proximity / hover volume depth (meters). */
@@ -45,15 +47,21 @@ export const PANEL_FOLLOW_SLERP = 0.12;
 /** Panel scale while in setup (world-anchored). */
 export const PANEL_FOLLOW_SCALE = 0.3;
 /** Re-snap the setup panel only after looking this many degrees away from it. */
-export const PANEL_LOOK_AWAY_DEG = 12;
+export const PANEL_LOOK_AWAY_DEG = 24;
 /** How close (meters) the panel must get to the target before a look-away snap finishes. */
 export const PANEL_SNAP_ARRIVE_M = 0.04;
+/** In-game HUD distance when first parked in front of the player. */
+export const PANEL_PLAY_DISTANCE_M = 1.4;
+/** In-game HUD scale. */
+export const PANEL_PLAY_SCALE = 0.28;
 /** Simon-style startup: silence between the four-pad sweep and the green encore. */
-export const SIMON_FANFARE_MID_PAUSE_S = 0.35;
+export const SIMON_FANFARE_MID_PAUSE_S = 0.5;
 /** Simon-style startup: silence after the encore before voice / first note. */
-export const SIMON_FANFARE_END_PAUSE_S = 0.5;
+export const SIMON_FANFARE_END_PAUSE_S = 0.65;
 /** Times the first pad repeats in the startup fanfare. */
 export const SIMON_FANFARE_FIRST_PAD_REPEATS = 4;
+/** If a blinking pad is outside this view cone (degrees from look), show a cue arrow. */
+export const BLINK_CUE_OFFSCREEN_DEG = 28;
 /** Ghost orientation slerp factor per frame at ~72 Hz (higher = snappier). */
 export const AIR_ORIENT_SLERP = 0.16;
 /**

@@ -84,8 +84,33 @@
   .button-last {
     margin-bottom: 24px;
   }
+
+  .drag-bar {
+    flex-direction: column;
+    margin-left: 16px;
+    margin-right: 16px;
+    margin-top: 12px;
+    margin-bottom: 4px;
+  }
+
+  .drag-handle {
+    justify-content: center;
+    height: 44px;
+  }
+
+  .drag-handle-label {
+    font-size: 15px;
+    font-weight: 700;
+    transform-translate-y: 1px;
+  }
 </style>
 <Panel class="panel-root">
+  <div id="panel-drag-bar" class="drag-bar" style="display: none">
+    <Button id="panel-drag-handle" class="drag-handle" style="height: 44px">
+      <ButtonIcon><Move></Move></ButtonIcon>
+      <ButtonLabel id="panel-drag-label" class="drag-handle-label">Drag to move panel</ButtonLabel>
+    </Button>
+  </div>
   <div class="content">
     <div class="eyebrow">MIXED REALITY</div>
     <div class="heading">Wall Tones</div>

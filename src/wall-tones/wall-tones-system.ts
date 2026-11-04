@@ -1,5 +1,11 @@
 import {
+  ConeGeometry,
+  CylinderGeometry,
+  DoubleSide,
   Hovered,
+  Mesh,
+  MeshBasicMaterial,
+  Object3D,
   Pressed,
   Quaternion,
   RayInteractable,
@@ -27,6 +33,8 @@ import {
   AIR_PLACE_ROOM_PAD_SIZE_M,
   AIR_PLACE_SITTING_PAD_SIZE_M,
   HEADSET_PAD_SIZE_M,
+  BLINK_CUE_OFFSCREEN_DEG,
+  BLINK_HOLD_S,
   NOTE_GAP_S,
   BETWEEN_ROUNDS_DELAY_S,
   IDLE_REPLAY_S,
@@ -36,6 +44,8 @@ import {
   PANEL_FOLLOW_SLERP,
   PANEL_FOLLOW_Y_OFFSET_M,
   PANEL_LOOK_AWAY_DEG,
+  PANEL_PLAY_DISTANCE_M,
+  PANEL_PLAY_SCALE,
   PANEL_SNAP_ARRIVE_M,
   SCAN_WAIT_S,
   SIMON_FANFARE_END_PAUSE_S,
@@ -216,6 +226,12 @@ export class WallTonesSystem extends createSystem({
   /** Setup HUD is world-anchored; look-away past a threshold re-snaps it. */
   private panelWorldAnchored = false;
   private panelSnapActive = false;
+  /** Click drag handle, then hold select to reposition the in-game HUD. */
+  private panelDragArmed = false;
+  private panelDragging = false;
+  private blinkCuePad: PadRuntime | null = null;
+  private blinkCueRoot: Object3D | null = null;
+  private blinkCueEntity: Entity | null = null;
   private readonly onPointerDownForAudio = (): void => {
     if (needsExplicitMobileSoundUnlock() && !isHtmlAudioPoolUnlocked()) {
       this.applyUserGestureMediaUnlock(false);
@@ -307,6 +323,8 @@ export class WallTonesSystem extends createSystem({
     if (!this.useDesktopPath()) {
       this.noteDominantHandFromInput();
       this.tickSetupPanelFollow(delta);
+      this.tickPanelDrag();
+      this.tickBlinkCueArrow();
     }
     if (
       this.useDesktopPath() &&
@@ -396,8 +414,14 @@ export class WallTonesSystem extends createSystem({
     panel
       .getElementById('debug-colliders-button')
       ?.addEventListener('click', () => this.toggleTouchDebug());
+    panel
+      .getElementById('panel-drag-handle')
+      ?.addEventListener('click', () => this.togglePanelDragArm());
     this.syncDebugCollidersButton();
     this.applyTouchDebugVisibility();
+    this.setPanelDragBarVisible(
+      this.flowPhase === 'playing' && !this.useDesktopPath(),
+    );
     if (this.experienceActive && this.useDesktopPath()) {
       this.setSetupUiVisible(false);
     }
@@ -477,6 +501,11 @@ export class WallTonesSystem extends createSystem({
     this.setAirOrientUiVisible(false);
     this.setRescanUiVisible(false);
     this.setRepeatUiVisible(false);
+    this.setPanelDragBarVisible(false);
+    this.panelDragArmed = false;
+    this.panelDragging = false;
+    this.setBlinkCuePad(null);
+    this.disposeBlinkCueArrow();
     this.resetSetupPanelAnchor();
     this.restorePanelLayout();
     this.restorePanelPointerCapture();
@@ -491,6 +520,7 @@ export class WallTonesSystem extends createSystem({
     this.setSetupUiVisible(false);
     this.setAirOrientUiVisible(false);
     this.setFlatHintVisible(true);
+    this.setPanelDragBarVisible(false);
     this.hideStudioBackdrop();
     this.layoutPanelForFlatPlay();
     // Keep RayInteractable so Back stays clickable; panel sits beside the pads.
@@ -591,8 +621,25 @@ export class WallTonesSystem extends createSystem({
   }
 
   private layoutPanelForMrPlay(): void {
-    // Once pads are live, park the HUD beside the play space.
-    this.applyPanelLayout(0.55, 1.35, -0.95, 0.28);
+    // Park the HUD in front of the player when play starts (not a stale side offset).
+    this.panelDragArmed = false;
+    this.panelDragging = false;
+    this.player.head.getWorldPosition(this.viewer);
+    this.player.head.getWorldQuaternion(this.headQuat);
+    this.ghostForward.set(0, 0, -1).applyQuaternion(this.headQuat).normalize();
+    this.panelFollowTargetPos
+      .copy(this.viewer)
+      .addScaledVector(this.ghostForward, PANEL_PLAY_DISTANCE_M);
+    this.panelFollowTargetPos.y += PANEL_FOLLOW_Y_OFFSET_M;
+    this.applyPanelLayout(
+      this.panelFollowTargetPos.x,
+      this.panelFollowTargetPos.y,
+      this.panelFollowTargetPos.z,
+      PANEL_PLAY_SCALE,
+      this.headQuat,
+    );
+    this.setPanelDragBarVisible(true);
+    this.syncPanelDragLabel();
   }
 
   private isSetupPanelFollowActive(): boolean {
@@ -712,6 +759,7 @@ export class WallTonesSystem extends createSystem({
     y: number,
     z: number,
     scaleValue: number,
+    orientationQuat?: Quaternion,
   ): void {
     const entity = this.world.getSceneEntity('wall-tones-panel');
     if (entity == null) {
@@ -727,6 +775,13 @@ export class WallTonesSystem extends createSystem({
     position[0] = x;
     position[1] = y;
     position[2] = z;
+    if (orientationQuat != null) {
+      const orientation = entity.getVectorView(Transform, 'orientation');
+      orientation[0] = orientationQuat.x;
+      orientation[1] = orientationQuat.y;
+      orientation[2] = orientationQuat.z;
+      orientation[3] = orientationQuat.w;
+    }
     const scale = entity.getVectorView(Transform, 'scale');
     scale[0] = scaleValue;
     scale[1] = scaleValue;
@@ -1655,14 +1710,17 @@ export class WallTonesSystem extends createSystem({
   private async blinkPadNote(padIndex: number): Promise<void> {
     const pad = this.pads[padIndex];
     if (pad != null) {
+      this.setBlinkCuePad(pad);
       flashPad(pad, true);
       if (this.useDesktopInput()) {
         playPadToneFromUserAction(padIndex);
-        await this.wait(0.45);
+        await this.wait(0.55 + BLINK_HOLD_S);
       } else {
         await playPadTone(padIndex);
+        await this.wait(BLINK_HOLD_S);
       }
       flashPad(pad, false);
+      this.setBlinkCuePad(null);
     }
     await this.wait(NOTE_GAP_S);
   }
@@ -1710,10 +1768,12 @@ export class WallTonesSystem extends createSystem({
       const padId = this.game.sequence[index]!;
       const pad = this.pads[padId];
       if (pad != null) {
+        this.setBlinkCuePad(pad);
         flashPad(pad, true);
         await playPadTone(padId);
-        await this.wait(NOTE_GAP_S + 0.45);
+        await this.wait(NOTE_GAP_S + BLINK_HOLD_S + 0.2);
         flashPad(pad, false);
+        this.setBlinkCuePad(null);
       }
       await this.wait(NOTE_GAP_S);
     }
@@ -1723,6 +1783,7 @@ export class WallTonesSystem extends createSystem({
     this.lastInputAt = performance.now() / 1000;
     this.idleReplayQueued = false;
     this.setRepeatUiVisible(true);
+    this.setPanelDragBarVisible(!this.useDesktopPath());
     this.statusText = `Your turn: ${this.formatSequenceLabel()}`;
     this.renderPanel();
   }
@@ -1973,6 +2034,162 @@ export class WallTonesSystem extends createSystem({
       ?.setProperties({
         text: this.showTouchDebug ? 'Debug colliders: ON' : 'Debug colliders: OFF',
       });
+  }
+
+  private setPanelDragBarVisible(visible: boolean): void {
+    this.world
+      .getSceneObject<UIKitMLAsset>('wall-tones-panel')
+      ?.getElementById('panel-drag-bar')
+      ?.setProperties({ display: visible ? 'flex' : 'none' });
+  }
+
+  private syncPanelDragLabel(): void {
+    this.world
+      .getSceneObject<UIKitMLAsset>('wall-tones-panel')
+      ?.getElementById<UIKit.Text>('panel-drag-label')
+      ?.setProperties({
+        text: this.panelDragArmed
+          ? 'Pinch and point to place…'
+          : 'Drag to move panel',
+      });
+  }
+
+  private togglePanelDragArm(): void {
+    if (this.useDesktopPath() || this.flowPhase !== 'playing') {
+      return;
+    }
+    this.panelDragArmed = !this.panelDragArmed;
+    this.panelDragging = false;
+    this.syncPanelDragLabel();
+    this.statusText = this.panelDragArmed
+      ? 'Point at a spot and pinch to move the panel'
+      : 'Panel move cancelled';
+    this.renderPanel();
+  }
+
+  private tickPanelDrag(): void {
+    if (
+      !this.panelDragArmed ||
+      this.flowPhase !== 'playing' ||
+      this.useDesktopPath()
+    ) {
+      return;
+    }
+    let selectHeld = false;
+    for (const hand of ['left', 'right'] as const) {
+      const select = this.input.xr.getSelectState(hand);
+      if (!select.active && !select.start) {
+        continue;
+      }
+      selectHeld = true;
+      const raySpace = this.player.raySpaces[hand];
+      raySpace.getWorldPosition(this.rayOrigin);
+      raySpace.getWorldQuaternion(this.gripQuat);
+      this.rayDir.set(0, 0, -1).applyQuaternion(this.gripQuat).normalize();
+      this.panelFollowTargetPos
+        .copy(this.rayOrigin)
+        .addScaledVector(this.rayDir, PANEL_PLAY_DISTANCE_M);
+      this.player.head.getWorldPosition(this.viewer);
+      this.player.head.getWorldQuaternion(this.headQuat);
+      this.applyPanelLayout(
+        this.panelFollowTargetPos.x,
+        this.panelFollowTargetPos.y,
+        this.panelFollowTargetPos.z,
+        PANEL_PLAY_SCALE,
+        this.headQuat,
+      );
+      this.panelDragging = true;
+      break;
+    }
+    if (this.panelDragging && !selectHeld) {
+      this.panelDragArmed = false;
+      this.panelDragging = false;
+      this.syncPanelDragLabel();
+      this.statusText = 'Panel placed';
+      this.renderPanel();
+    }
+  }
+
+  private setBlinkCuePad(pad: PadRuntime | null): void {
+    this.blinkCuePad = pad;
+    if (pad == null) {
+      if (this.blinkCueRoot != null) {
+        this.blinkCueRoot.visible = false;
+      }
+    }
+  }
+
+  private ensureBlinkCueArrow(): void {
+    if (this.blinkCueRoot != null) {
+      return;
+    }
+    const root = new Object3D();
+    root.name = 'wall-tones-blink-cue';
+    const mat = new MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.45,
+      depthWrite: false,
+      side: DoubleSide,
+    });
+    const shaft = new Mesh(new CylinderGeometry(0.012, 0.012, 0.16, 8), mat);
+    shaft.position.y = 0.08;
+    const head = new Mesh(new ConeGeometry(0.045, 0.1, 10), mat.clone());
+    head.position.y = 0.2;
+    root.add(shaft);
+    root.add(head);
+    root.visible = false;
+    this.blinkCueRoot = root;
+    this.blinkCueEntity = this.world.createTransformEntity(root);
+  }
+
+  private disposeBlinkCueArrow(): void {
+    this.blinkCueEntity?.dispose({ disposeResources: true });
+    this.blinkCueEntity = null;
+    this.blinkCueRoot = null;
+    this.blinkCuePad = null;
+  }
+
+  /** Half-transparent arrow in front of the headset when the blinking pad is off-screen. */
+  private tickBlinkCueArrow(): void {
+    if (
+      this.blinkCuePad == null ||
+      this.useDesktopPath() ||
+      this.flowPhase !== 'playing'
+    ) {
+      if (this.blinkCueRoot != null) {
+        this.blinkCueRoot.visible = false;
+      }
+      return;
+    }
+    this.ensureBlinkCueArrow();
+    if (this.blinkCueRoot == null) {
+      return;
+    }
+    this.player.head.getWorldPosition(this.viewer);
+    this.player.head.getWorldQuaternion(this.headQuat);
+    this.ghostForward.set(0, 0, -1).applyQuaternion(this.headQuat).normalize();
+    this.blinkCuePad.root.getWorldPosition(this.padWorldPos);
+    this.toPanel.copy(this.padWorldPos).sub(this.viewer);
+    if (this.toPanel.lengthSq() < 1e-6) {
+      this.blinkCueRoot.visible = false;
+      return;
+    }
+    this.toPanel.normalize();
+    const lookDot = Math.min(1, Math.max(-1, this.ghostForward.dot(this.toPanel)));
+    const offscreenDeg = (Math.acos(lookDot) * 180) / Math.PI;
+    if (offscreenDeg < BLINK_CUE_OFFSCREEN_DEG) {
+      this.blinkCueRoot.visible = false;
+      return;
+    }
+    this.panelFollowTargetPos
+      .copy(this.viewer)
+      .addScaledVector(this.ghostForward, 0.85);
+    this.blinkCueRoot.position.copy(this.panelFollowTargetPos);
+    // Point the local +Y arrow toward the pad.
+    this.handUp.set(0, 1, 0);
+    this.blinkCueRoot.quaternion.setFromUnitVectors(this.handUp, this.toPanel);
+    this.blinkCueRoot.visible = true;
   }
 
   private handlePadInput(padIndex: number): void {

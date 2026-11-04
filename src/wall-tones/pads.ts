@@ -371,12 +371,15 @@ export function applyPadVisualState(
   }
   const spec = WALL_TONE_PADS[pad.padIndex];
   material.color.setHex(spec?.color ?? 0xffffff);
+  if (face != null) {
+    face.scale.set(1, 1, 1);
+  }
   if (state === 'hover') {
     // Entering the wide proximity box: richer sat, slightly brighter.
-    material.color.offsetHSL(0.02, 0.22, 0.1);
+    material.color.offsetHSL(0.02, 0.22, 0.12);
   } else if (state === 'pressed') {
     // Confirmed press: punchier lightness / sat shift.
-    material.color.offsetHSL(-0.03, 0.12, 0.28);
+    material.color.offsetHSL(-0.03, 0.15, 0.32);
   }
 }
 
@@ -387,8 +390,28 @@ export function disposePadRuntimes(pads: PadRuntime[]): void {
   pads.length = 0;
 }
 
+/**
+ * High-contrast blink for fanfare / pattern playback. Yellow and other bright
+ * pads lerp hard toward white and grow slightly so the flash reads in MR.
+ */
 export function flashPad(pad: PadRuntime, active: boolean): void {
-  applyPadVisualState(pad, active ? 'pressed' : pad.hoverInside ? 'hover' : 'idle');
+  const face = pad.root.getObjectByName('face') as Mesh | undefined;
+  const material = face?.material;
+  if (!(material instanceof MeshBasicMaterial)) {
+    return;
+  }
+  const spec = WALL_TONE_PADS[pad.padIndex];
+  if (active) {
+    pad.visualState = 'pressed';
+    material.color.setHex(spec?.color ?? 0xffffff);
+    // Strong flash: pull toward white (yellow especially needs this).
+    material.color.lerp(new Color(0xffffff), 0.78);
+    material.color.offsetHSL(0, 0.05, 0.08);
+    face?.scale.set(1.14, 1.14, 1.35);
+    return;
+  }
+  face?.scale.set(1, 1, 1);
+  applyPadVisualState(pad, pad.hoverInside ? 'hover' : 'idle');
 }
 
 export function defaultDesktopPadSize(): number {
