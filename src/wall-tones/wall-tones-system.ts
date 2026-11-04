@@ -1067,15 +1067,13 @@ export class WallTonesSystem extends createSystem({
 
   private async onBackToMenu(): Promise<void> {
     this.speech.speak(WALL_TONES_SPEECH.backToMenu);
-    // Immersive AR: stay in the same XR session. Rebuilding the hub world calls
-    // exitXR() and looks like leaving VR for a few seconds.
-    if (getActiveWorldKind() === 'walltones-ar' && !this.useDesktopPath()) {
-      await this.returnToSetupChooser();
-      return;
-    }
+    const wasImmersive = !this.useDesktopPath();
+    const fromArWorld = getActiveWorldKind() === 'walltones-ar';
     await this.leaveWallTonesMode();
-    if (getActiveWorldKind() === 'walltones-ar') {
-      await switchBackToHubMenu({ reenterXr: false });
+    // Always return to the hub main menu. Immersive AR rebuilds the hub world
+    // and re-enters XR so Back does not dump the player to a flat browser view.
+    if (fromArWorld) {
+      await switchBackToHubMenu({ reenterXr: wasImmersive });
       return;
     }
     window.dispatchEvent(
@@ -1084,43 +1082,6 @@ export class WallTonesSystem extends createSystem({
       }),
     );
     sessionStorage.setItem('iwsdk-experience-mode', 'menu');
-  }
-
-  /** Clear pads/setup and show mode select without tearing down XR. */
-  private async returnToSetupChooser(): Promise<void> {
-    this.playbackQueue = Promise.resolve();
-    this.speech.cancel();
-    this.flatAwaitingStart = false;
-    this.inputNeedsClear = false;
-    this.airOrientationLocked = null;
-    this.setupMode = null;
-    this.airPlaceStep = 0;
-    this.lackingSpatialData = false;
-    this.game.phase = 'idle';
-    this.game.resetAllScores();
-    this.touchEnterFrames.clear();
-    this.touchExitFrames.clear();
-    this.panelDragArmed = false;
-    this.panelDragging = false;
-    this.setBlinkCuePad(null);
-    this.clearRoomSetupVisuals();
-    this.clearPads();
-    this.ghostPad = null;
-    this.setSpatialMeshesVisible(true);
-    this.setFlatHintVisible(false);
-    this.setWallPickHintVisible(false);
-    this.setAirOrientUiVisible(false);
-    this.setRescanUiVisible(false);
-    this.setRepeatUiVisible(false);
-    this.setPanelDragBarVisible(false);
-    this.flowPhase = 'choose-mode';
-    this.experienceActive = true;
-    this.resetSetupPanelAnchor();
-    this.setSetupUiVisible(true);
-    this.syncDebugCollidersButton();
-    this.applyTouchDebugVisibility();
-    this.statusText = 'Choose room scale or sitting.';
-    this.renderPanel();
   }
 
   private async onChooseSetup(mode: SetupMode): Promise<void> {
