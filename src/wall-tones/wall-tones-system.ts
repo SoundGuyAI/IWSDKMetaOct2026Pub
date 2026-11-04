@@ -283,6 +283,9 @@ export class WallTonesSystem extends createSystem({
       this.setFlatHintVisible(false);
       this.setSetupUiVisible(true);
       this.setRepeatUiVisible(false);
+      this.setRescanUiVisible(false);
+      this.syncDebugCollidersButton();
+      this.applyTouchDebugVisibility();
       this.statusText = 'Choose room scale or sitting.';
       this.speech.speak(WALL_TONES_SPEECH.chooseMode);
       this.renderPanel();
@@ -463,6 +466,9 @@ export class WallTonesSystem extends createSystem({
     this.setFlatHintVisible(false);
     this.setSetupUiVisible(true);
     this.setRepeatUiVisible(false);
+    this.setRescanUiVisible(false);
+    this.syncDebugCollidersButton();
+    this.applyTouchDebugVisibility();
     this.statusText = 'Choose room scale or sitting.';
     this.speech.speak(WALL_TONES_SPEECH.chooseMode);
     this.renderPanel();
@@ -863,10 +869,12 @@ export class WallTonesSystem extends createSystem({
       this.statusText = 'Choose room scale or sitting.';
       this.setSetupUiVisible(true);
       this.setRepeatUiVisible(false);
+      this.setRescanUiVisible(false);
       this.speech.speak(WALL_TONES_SPEECH.chooseMode);
       this.renderPanel();
     }
     this.wasNonImmersive = nonImmersive;
+    this.syncDebugCollidersButton();
     this.applyTouchDebugVisibility();
   }
 
@@ -1005,11 +1013,15 @@ export class WallTonesSystem extends createSystem({
 
   private async onBackToMenu(): Promise<void> {
     this.speech.speak(WALL_TONES_SPEECH.backToMenu);
-    const reenterXr = !this.useDesktopPath();
+    // Immersive AR: stay in the same XR session. Rebuilding the hub world calls
+    // exitXR() and looks like leaving VR for a few seconds.
+    if (getActiveWorldKind() === 'walltones-ar' && !this.useDesktopPath()) {
+      await this.returnToSetupChooser();
+      return;
+    }
     await this.leaveWallTonesMode();
     if (getActiveWorldKind() === 'walltones-ar') {
-      // Rebuild the hub, then re-enter XR so Back does not dump the player to a stuck flat page.
-      await switchBackToHubMenu({ reenterXr });
+      await switchBackToHubMenu({ reenterXr: false });
       return;
     }
     window.dispatchEvent(
@@ -1018,6 +1030,43 @@ export class WallTonesSystem extends createSystem({
       }),
     );
     sessionStorage.setItem('iwsdk-experience-mode', 'menu');
+  }
+
+  /** Clear pads/setup and show mode select without tearing down XR. */
+  private async returnToSetupChooser(): Promise<void> {
+    this.playbackQueue = Promise.resolve();
+    this.speech.cancel();
+    this.flatAwaitingStart = false;
+    this.inputNeedsClear = false;
+    this.airOrientationLocked = null;
+    this.setupMode = null;
+    this.airPlaceStep = 0;
+    this.lackingSpatialData = false;
+    this.game.phase = 'idle';
+    this.game.resetAllScores();
+    this.touchEnterFrames.clear();
+    this.touchExitFrames.clear();
+    this.panelDragArmed = false;
+    this.panelDragging = false;
+    this.setBlinkCuePad(null);
+    this.clearRoomSetupVisuals();
+    this.clearPads();
+    this.ghostPad = null;
+    this.setSpatialMeshesVisible(true);
+    this.setFlatHintVisible(false);
+    this.setWallPickHintVisible(false);
+    this.setAirOrientUiVisible(false);
+    this.setRescanUiVisible(false);
+    this.setRepeatUiVisible(false);
+    this.setPanelDragBarVisible(false);
+    this.flowPhase = 'choose-mode';
+    this.experienceActive = true;
+    this.resetSetupPanelAnchor();
+    this.setSetupUiVisible(true);
+    this.syncDebugCollidersButton();
+    this.applyTouchDebugVisibility();
+    this.statusText = 'Choose room scale or sitting.';
+    this.renderPanel();
   }
 
   private async onChooseSetup(mode: SetupMode): Promise<void> {
@@ -1393,16 +1442,17 @@ export class WallTonesSystem extends createSystem({
     this.setFlatHintVisible(false);
     this.setWallPickHintVisible(false);
     this.setAirOrientUiVisible(true);
-    this.setRescanUiVisible(true);
+    this.setRescanUiVisible(false);
     this.setRepeatUiVisible(false);
     this.speech.speak(line);
     this.speech.speak(WALL_TONES_SPEECH.chooseAirOrient);
     this.speech.speak(WALL_TONES_SPEECH.airPlace(1));
     this.statusText =
       this.setupMode === 'air'
-        ? 'Air place: tilt for wall or table size, then pinch. Or Rescan room.'
-        : 'Tilt placing hand to snap flat/upright, then pinch. Or Rescan room.';
+        ? 'Air place: tilt for wall or table size, then pinch.'
+        : 'Tilt placing hand to snap flat/upright, then pinch.';
     this.spawnGhostPad();
+    this.syncDebugCollidersButton();
     this.renderPanel();
   }
 
@@ -1475,7 +1525,7 @@ export class WallTonesSystem extends createSystem({
       this.flowPhase = 'playing';
       this.layoutPanelForMrPlay();
       this.setAirOrientUiVisible(false);
-      this.setRescanUiVisible(this.lackingSpatialData);
+      this.setRescanUiVisible(false);
       this.setRepeatUiVisible(true);
       this.setSpatialMeshesVisible(false);
       this.statusText = 'Get ready…';
@@ -1646,7 +1696,9 @@ export class WallTonesSystem extends createSystem({
     this.applyTouchDebugVisibility();
     this.flowPhase = 'playing';
     this.layoutPanelForMrPlay();
+    this.setRescanUiVisible(false);
     this.setRepeatUiVisible(true);
+    this.syncDebugCollidersButton();
     this.statusText = 'Get ready…';
     this.beginRoundWithIntro(line);
     this.renderPanel();
@@ -2025,7 +2077,8 @@ export class WallTonesSystem extends createSystem({
 
   private syncDebugCollidersButton(): void {
     const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
-    const showButton = !this.useDesktopPath();
+    // Show in any immersive / MR session, including setup before pads exist.
+    const showButton = !this.useDesktopPath() && this.experienceActive;
     panel
       ?.getElementById('debug-colliders-button')
       ?.setProperties({ display: showButton ? 'flex' : 'none' });

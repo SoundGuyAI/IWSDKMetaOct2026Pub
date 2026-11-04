@@ -126,6 +126,10 @@
       <div id="wall-tones-current-streak" class="stat-value">0</div>
     </div>
     <div id="wall-tones-status" class="status">Ready</div>
+    <Button id="debug-colliders-button" class="button" style="margin-top: 8px">
+      <ButtonIcon><Bug></Bug></ButtonIcon>
+      <ButtonLabel id="debug-colliders-label">Debug colliders: ON</ButtonLabel>
+    </Button>
     <div id="setup-mode-row" class="setup-row">
       <Button id="mode-room-scale-button" class="button">
         <ButtonIcon><LayoutGrid></LayoutGrid></ButtonIcon>
@@ -164,10 +168,6 @@
   <Button id="repeat-pattern-button" class="button" style="display: none">
     <ButtonIcon><RefreshCw></RefreshCw></ButtonIcon>
     <ButtonLabel>Repeat pattern</ButtonLabel>
-  </Button>
-  <Button id="debug-colliders-button" class="button">
-    <ButtonIcon><Bug></Bug></ButtonIcon>
-    <ButtonLabel id="debug-colliders-label">Debug colliders: ON</ButtonLabel>
   </Button>
   <Button id="back-to-menu-button" class="button button-last">
     <ButtonIcon><ArrowLeft></ArrowLeft></ButtonIcon>
