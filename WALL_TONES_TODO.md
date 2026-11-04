@@ -1,8 +1,18 @@
 # Wall Tones progress
 
-Update this file as work proceeds. Mark an item `in progress` when it starts and `done` when it meets the acceptance line in [WALL_TONES_PLAN.md](WALL_TONES_PLAN.md). Add a dated note for anything blocked or deliberately deferred. Times are Asia/Jerusalem.
+Personal backlog for what still needs work — not an agent task list. Move items between sections as you go. Mark an item `in progress` when it starts and `done` when it meets the acceptance line in [WALL_TONES_PLAN.md](WALL_TONES_PLAN.md). Add a dated note for anything blocked or deliberately deferred. Times are Asia/Jerusalem.
 
 ## Not started
+
+- [ ] Setup window: bigger threshold angle to jump back into view
+- [ ] Setup window: after mode is selected, place it a little farther away, a little higher, and make it draggable
+- [ ] Bug: first box in the pattern is not blinking in VR (arrow also not showing)
+- [ ] Blink should use the cube’s color, not white
+- [ ] Allow clicking the button with a ray
+- [ ] Sports mode that disables ray button clicks
+- [ ] Animation and juice
+- [ ] Wrist band that shows the buttons playing the pattern
+- [ ] Incremental features (park smaller follow-ups here as they come up)
 
 ## In progress
 
