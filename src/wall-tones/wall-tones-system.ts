@@ -104,6 +104,9 @@ import {
 import { WallSlotCandidate } from './wall-slot-candidate-component.js';
 import { WallTonePad } from './wall-tone-pad-component.js';
 
+/** Stable hand order — never allocate per XR frame. */
+const XR_HANDS = ['right', 'left'] as const;
+
 const FLAT_BACKDROP_NODE_IDS = [
   'studio-floor',
   'stage',
@@ -193,6 +196,11 @@ export class WallTonesSystem extends createSystem({
   private pads: PadRuntime[] = [];
   private playbackQueue: Promise<void> = Promise.resolve();
   private scanStartedAt = -1;
+  /** One-shot room capture while scanning; blocks repeat initiateRoomCapture calls. */
+  private roomCaptureInFlight = false;
+  private roomCaptureAttempted = false;
+  /** Reused when materializing the XRPlane query (no per-frame Array.from). */
+  private readonly planeEntityScratch: Entity[] = [];
   private airPlaceStep = 0;
   private airPadSizeM = AIR_PLACE_ROOM_PAD_SIZE_M;
   private ghostPad: PadRuntime | null = null;
@@ -313,6 +321,8 @@ export class WallTonesSystem extends createSystem({
       } else {
         this.flowPhase = 'scanning';
         this.scanStartedAt = performance.now() / 1000;
+        this.roomCaptureInFlight = false;
+        this.roomCaptureAttempted = false;
         this.speech.speak(WALL_TONES_SPEECH.lookAround);
       }
     }
@@ -372,7 +382,7 @@ export class WallTonesSystem extends createSystem({
       this.dominantHand = stored;
       return;
     }
-    for (const hand of ['right', 'left'] as const) {
+    for (const hand of XR_HANDS) {
       if (this.input.xr.getSelectState(hand).start) {
         this.dominantHand = hand;
         sessionStorage.setItem('wall-tones-dominant-hand', hand);
@@ -485,9 +495,12 @@ export class WallTonesSystem extends createSystem({
     this.mediaUnlockApplied = false;
     this.airOrientationLocked = null;
     this.dominantHand = null;
-    sessionStorage.removeItem('wall-tones-dominant-hand');
+    // Keep wall-tones-dominant-hand across world swaps so AR restore can read it.
+    // Cleared only when returning to the hub menu (switchBackToHubMenu).
     sessionStorage.removeItem('wall-tones-awaiting-mode');
     this.lackingSpatialData = false;
+    this.roomCaptureInFlight = false;
+    this.roomCaptureAttempted = false;
     this.touchEnterFrames.clear();
     this.touchExitFrames.clear();
     this.playbackQueue = Promise.resolve();
@@ -1091,6 +1104,8 @@ export class WallTonesSystem extends createSystem({
     this.setSpatialMeshesVisible(true);
     this.flowPhase = 'scanning';
     this.scanStartedAt = performance.now() / 1000;
+    this.roomCaptureInFlight = false;
+    this.roomCaptureAttempted = false;
     this.speech.speak(WALL_TONES_SPEECH.lookAround);
     this.statusText = 'Scanning the room…';
     this.renderPanel();
@@ -1106,16 +1121,24 @@ export class WallTonesSystem extends createSystem({
       return;
     }
 
+    if (this.roomCaptureInFlight) {
+      return;
+    }
+
     this.player.head.getWorldPosition(this.viewer);
-    const planeEntities = [...this.queries.planes.entities];
-    if (planeEntities.length === 0) {
+    if (this.queries.planes.entities.size === 0) {
       void this.offerRoomCaptureOrAir();
       return;
     }
 
+    this.planeEntityScratch.length = 0;
+    for (const entity of this.queries.planes.entities) {
+      this.planeEntityScratch.push(entity);
+    }
+
     if (this.setupMode === 'sitting') {
       const floorY = this.viewer.y - 1.45;
-      const tables = collectTablePlanes(planeEntities, floorY);
+      const tables = collectTablePlanes(this.planeEntityScratch, floorY);
       if (tables.length === 0) {
         this.startAirPlacement(WALL_TONES_SPEECH.noTable);
         return;
@@ -1124,7 +1147,7 @@ export class WallTonesSystem extends createSystem({
       return;
     }
 
-    const walls = collectVerticalWalls(planeEntities, this.viewer);
+    const walls = collectVerticalWalls(this.planeEntityScratch, this.viewer);
     if (walls.length === 0) {
       void this.offerRoomCaptureOrAir();
       return;
@@ -1134,19 +1157,30 @@ export class WallTonesSystem extends createSystem({
   }
 
   private async offerRoomCaptureOrAir(): Promise<void> {
+    if (this.roomCaptureInFlight) {
+      return;
+    }
     const session = this.xrManager.getSession() as XRSession & {
       initiateRoomCapture?: () => Promise<undefined>;
     };
-    if (typeof session?.initiateRoomCapture === 'function') {
+    if (
+      typeof session?.initiateRoomCapture === 'function' &&
+      !this.roomCaptureAttempted
+    ) {
+      this.roomCaptureInFlight = true;
+      this.roomCaptureAttempted = true;
       this.statusText = 'Opening room capture…';
       this.renderPanel();
       this.speech.speak(WALL_TONES_SPEECH.roomCapture);
       try {
         await session.initiateRoomCapture();
+        this.scanStartedAt = performance.now() / 1000;
       } catch (error) {
         console.warn('[wall-tones] room capture failed', error);
+        this.startAirPlacement(WALL_TONES_SPEECH.notEnoughWallSpace);
+      } finally {
+        this.roomCaptureInFlight = false;
       }
-      this.scanStartedAt = performance.now() / 1000;
       return;
     }
     this.startAirPlacement(WALL_TONES_SPEECH.notEnoughWallSpace);
@@ -1225,7 +1259,8 @@ export class WallTonesSystem extends createSystem({
       this.slotArmed.set(slot.candidateIndex, true);
     }
 
-    if (this.slotCandidates.length === 0) {
+    // Need four distinct picks; fewer candidates traps the player in wall-picking.
+    if (this.slotCandidates.length < 4) {
       this.clearRoomSetupVisuals();
       options.emptyFallback();
       return;
@@ -1271,7 +1306,7 @@ export class WallTonesSystem extends createSystem({
 
     // Select via controller/hand trigger while the ray (or tip) is on a slot.
     let anySelectActive = false;
-    for (const hand of ['right', 'left'] as const) {
+    for (const hand of XR_HANDS) {
       const select = this.input.xr.getSelectState(hand);
       if (!select.active && !select.start) {
         continue;
@@ -1297,14 +1332,13 @@ export class WallTonesSystem extends createSystem({
   private findRayHoveredSlot(
     preferredHand?: 'left' | 'right',
   ): SlotCandidateRuntime | null {
-    const hands =
-      preferredHand != null
-        ? [preferredHand]
-        : (['right', 'left'] as const);
     let best: SlotCandidateRuntime | null = null;
     let bestAlong = Number.POSITIVE_INFINITY;
     const hitRadius = this.placementPadSizeM() * 0.55;
-    for (const hand of hands) {
+    for (const hand of XR_HANDS) {
+      if (preferredHand != null && hand !== preferredHand) {
+        continue;
+      }
       const adapter = this.input.xr.visualAdapters[hand].peek();
       if (adapter != null && !adapter.connected) {
         continue;
@@ -1656,13 +1690,13 @@ export class WallTonesSystem extends createSystem({
       return this.dominantHand;
     }
     // Prefer a connected hand (right first) until the first UI/pinch sets dominant.
-    for (const hand of ['right', 'left'] as const) {
+    for (const hand of XR_HANDS) {
       const adapter = this.input.xr.visualAdapters[hand].peek();
       if (adapter?.connected) {
         return hand;
       }
     }
-    for (const hand of ['right', 'left'] as const) {
+    for (const hand of XR_HANDS) {
       const adapter = this.input.xr.visualAdapters[hand].peek();
       if (adapter instanceof XRHandVisualAdapter) {
         return hand;
@@ -2022,7 +2056,7 @@ export class WallTonesSystem extends createSystem({
     const fallbackDepth =
       kind === 'hover' ? TOUCH_HOVER_DEPTH_M : TOUCH_PRESS_DEPTH_M;
 
-    for (const hand of ['left', 'right'] as const) {
+    for (const hand of XR_HANDS) {
       const adapter = this.input.xr.visualAdapters[hand].peek();
       if (adapter == null || !adapter.connected) {
         continue;
@@ -2129,7 +2163,7 @@ export class WallTonesSystem extends createSystem({
       return;
     }
     let selectHeld = false;
-    for (const hand of ['left', 'right'] as const) {
+    for (const hand of XR_HANDS) {
       const select = this.input.xr.getSelectState(hand);
       if (!select.active && !select.start) {
         continue;
@@ -2402,6 +2436,8 @@ export class WallTonesSystem extends createSystem({
     this.airPlaceStep = 0;
     this.game.phase = 'idle';
     this.playbackQueue = Promise.resolve();
+    this.roomCaptureInFlight = false;
+    this.roomCaptureAttempted = false;
     this.setAirOrientUiVisible(false);
     this.setRepeatUiVisible(false);
 
@@ -2409,10 +2445,14 @@ export class WallTonesSystem extends createSystem({
       initiateRoomCapture?: () => Promise<undefined>;
     };
     if (typeof session?.initiateRoomCapture === 'function') {
+      this.roomCaptureInFlight = true;
+      this.roomCaptureAttempted = true;
       try {
         await session.initiateRoomCapture();
       } catch (error) {
         console.warn('[wall-tones] rescan room capture failed', error);
+      } finally {
+        this.roomCaptureInFlight = false;
       }
     }
     this.setSpatialMeshesVisible(true);

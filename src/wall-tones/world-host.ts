@@ -98,10 +98,10 @@ async function destroyActiveWorld(): Promise<void> {
 export async function bootHubWorld(container: HTMLElement): Promise<World> {
   sceneContainer = container;
   await destroyActiveWorld();
+  activeKind = 'hub-vr';
   const world = await World.create(container, projectOptions);
   registerHubSystems(world);
   activeWorld = world;
-  activeKind = 'hub-vr';
   return world;
 }
 
@@ -119,10 +119,12 @@ export async function switchToWallTonesArWorld(): Promise<World> {
     }
     sessionStorage.setItem(MODE_STORAGE_KEY, 'walltones');
     await destroyActiveWorld();
+    // Kind must be walltones-ar before registerSystem so WallTonesSystem.init /
+    // bindPanelIfNeeded see the AR world (not a stale hub-vr kind).
+    activeKind = 'walltones-ar';
     const world = await World.create(sceneContainer, buildArWorldOptions());
     registerArSystems(world);
     activeWorld = world;
-    activeKind = 'walltones-ar';
     world.launchXR();
     return world;
   });
@@ -141,6 +143,7 @@ export async function switchBackToHubMenu(options?: {
     sessionStorage.setItem(MODE_STORAGE_KEY, 'menu');
     sessionStorage.removeItem('wall-tones-awaiting-mode');
     sessionStorage.removeItem('wall-tones-setup-mode');
+    sessionStorage.removeItem('wall-tones-dominant-hand');
     if (sceneContainer == null) {
       throw new Error('Scene container is not initialized');
     }

@@ -181,7 +181,9 @@ export function createWallOverlay(
     side: DoubleSide,
     depthWrite: false,
   });
-  const mesh = new Mesh(new BoxGeometry(width, height, 0.02), material);
+  // IWSDK plane meshes lie in local XZ; local +Y is the surface normal.
+  // Put wall height along local Z so the overlay lies in the wall plane.
+  const mesh = new Mesh(new BoxGeometry(width, 0.02, height), material);
   mesh.renderOrder = 15;
   root.add(mesh);
   const object3D = wall.entity.object3D;

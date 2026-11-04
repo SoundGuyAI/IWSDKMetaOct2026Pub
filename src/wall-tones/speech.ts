@@ -54,6 +54,9 @@ export function warmSpeechSynthesisFromGesture(): void {
 }
 
 export class WallTonesSpeech {
+  /** Serialize lines so consecutive speak() calls do not cancel each other. */
+  private chain: Promise<void> = Promise.resolve();
+
   speak(line: string): void {
     void this.speakAsync(line);
   }
@@ -66,7 +69,15 @@ export class WallTonesSpeech {
     if (needsSpeechUnlock() && !speechUnlocked) {
       return Promise.resolve();
     }
-    globalThis.speechSynthesis.cancel();
+    const run = this.chain.then(() => this.utter(line));
+    this.chain = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
+  private utter(line: string): Promise<void> {
     const utterance = new SpeechSynthesisUtterance(line);
     utterance.lang = 'en-US';
     utterance.rate = 0.92;
@@ -90,6 +101,7 @@ export class WallTonesSpeech {
 
   cancel(): void {
     globalThis.speechSynthesis?.cancel();
+    this.chain = Promise.resolve();
   }
 }
 
