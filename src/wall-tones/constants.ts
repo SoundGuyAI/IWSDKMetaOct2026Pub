@@ -77,6 +77,20 @@ export const DESKTOP_PAD_GAP_M = 0.18;
 export const DESKTOP_GRID_DISTANCE_M = 1.45;
 /** Shift the flat 2×2 grid left so the side HUD stays fully visible. */
 export const DESKTOP_GRID_LATERAL_M = -0.55;
+/** Phone flat: smaller pads so a centered 2×2 fits a portrait frame. */
+export const PHONE_PAD_SIZE_M = 0.3;
+export const PHONE_PAD_GAP_M = 0.1;
+export const PHONE_GRID_DISTANCE_M = 1.55;
+/** Drop the phone pad grid into the lower half of the view. */
+export const PHONE_GRID_VERTICAL_M = -0.42;
+/**
+ * Phone HUD: high in the portrait frame and closer than the pad grid so the
+ * card stays readable and in front if anything still overlaps.
+ */
+export const PHONE_PANEL_FLAT = {
+  position: [0, 1.72, -0.72] as const,
+  scale: 0.18,
+} as const;
 export const PAD_GAP_M = 0.25;
 /** Offset from the tracked hand/grip — not from the headset (0.35 at the face was unusable). */
 export const AIR_GHOST_HAND_OFFSET_M = 0.32;

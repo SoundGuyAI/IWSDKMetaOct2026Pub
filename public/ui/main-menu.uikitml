@@ -82,19 +82,19 @@
     transform-translate-y: 1px;
   }
 </style>
-<Panel class="panel-root">
-  <div class="panel-content">
-    <div class="eyebrow">WALL TONES</div>
-    <div class="heading">Memory pads</div>
-    <div class="body">Start on desktop, or Enter XR to jump straight into Wall Tones in your room.</div>
+<Panel id="main-menu-root" class="panel-root">
+  <div id="main-menu-content" class="panel-content">
+    <div id="main-menu-eyebrow" class="eyebrow">WALL TONES</div>
+    <div id="main-menu-heading" class="heading">Memory pads</div>
+    <div id="main-menu-body" class="body">Start on desktop, or Enter XR to jump straight into Wall Tones in your room.</div>
   </div>
   <Button id="mode-walltones-button" class="button" style="height: 64px">
     <ButtonIcon><LayoutGrid></LayoutGrid></ButtonIcon>
-    <ButtonLabel class="button-label">Start Wall Tones</ButtonLabel>
+    <ButtonLabel id="mode-walltones-label" class="button-label">Start Wall Tones</ButtonLabel>
   </Button>
   <Button id="xr-button" class="xr-button" style="height: 78px">
     <ButtonIcon><RectangleGoggles></RectangleGoggles></ButtonIcon>
-    <ButtonLabel class="xr-button-label">Enter XR</ButtonLabel>
+    <ButtonLabel id="xr-button-label" class="xr-button-label">Enter XR</ButtonLabel>
   </Button>
   <Button id="exit-button" class="button" style="display: none; margin-bottom: 28px">
     <ButtonIcon><LogIn></LogIn></ButtonIcon>

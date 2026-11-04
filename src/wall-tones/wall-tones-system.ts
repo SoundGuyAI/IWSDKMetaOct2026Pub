@@ -33,6 +33,8 @@ import {
   AIR_PLACE_ROOM_PAD_SIZE_M,
   AIR_PLACE_SITTING_PAD_SIZE_M,
   HEADSET_PAD_SIZE_M,
+  PHONE_PAD_SIZE_M,
+  PHONE_PANEL_FLAT,
   BLINK_CUE_OFFSCREEN_DEG,
   BLINK_HOLD_S,
   NOTE_GAP_S,
@@ -70,6 +72,7 @@ import {
   collectVerticalWalls,
   generateTablePadCandidates,
   generateWallPadCandidates,
+  PHONE_FLAT_GRID,
   planDesktopGridFromCamera,
   type PlacedPadTransform,
 } from './plane-placement.js';
@@ -276,16 +279,17 @@ export class WallTonesSystem extends createSystem({
       void this.leaveWallTonesMode();
     });
 
-    const stored = sessionStorage.getItem('iwsdk-experience-mode');
-    if (stored === 'walltones') {
-      void this.enterWallTonesMode();
-    }
+    // Enter XR boots the AR world while still NonImmersive. Handle awaiting
+    // setup BEFORE the stored-mode path, or beginFlatPlay would spawn the
+    // four desktop pads and leave them floating through VR choose-mode.
     const awaitingMode = sessionStorage.getItem('wall-tones-awaiting-mode');
     if (awaitingMode === '1' && getActiveWorldKind() === 'walltones-ar') {
       sessionStorage.removeItem('wall-tones-awaiting-mode');
       this.experienceActive = true;
       document.title = 'Wall Tones';
       this.bindPanelIfNeeded();
+      this.clearPads();
+      this.flatAwaitingStart = false;
       this.flowPhase = 'choose-mode';
       this.resetSetupPanelAnchor();
       this.setFlatHintVisible(false);
@@ -297,6 +301,8 @@ export class WallTonesSystem extends createSystem({
       this.statusText = 'Choose room scale or sitting.';
       this.speech.speak(WALL_TONES_SPEECH.chooseMode);
       this.renderPanel();
+    } else if (sessionStorage.getItem('iwsdk-experience-mode') === 'walltones') {
+      void this.enterWallTonesMode();
     }
 
     const pendingSetup = sessionStorage.getItem('wall-tones-setup-mode');
@@ -455,22 +461,30 @@ export class WallTonesSystem extends createSystem({
     this.bindPanelIfNeeded();
     this.bindPointerAudioUnlock();
 
+    // XR boot / world swap in progress — never spawn the flat 2×2 here.
+    if (sessionStorage.getItem('wall-tones-awaiting-mode') === '1') {
+      this.clearPads();
+      this.flatAwaitingStart = false;
+      this.flowPhase = 'choose-mode';
+      this.resetSetupPanelAnchor();
+      this.setFlatHintVisible(false);
+      this.setSetupUiVisible(true);
+      this.setRepeatUiVisible(false);
+      this.setRescanUiVisible(false);
+      this.syncDebugCollidersButton();
+      this.applyTouchDebugVisibility();
+      this.statusText = 'Opening passthrough…';
+      this.renderPanel();
+      return;
+    }
+
     if (this.useDesktopPath()) {
       this.beginFlatPlay();
       return;
     }
 
-    // Switch to AR only while still flat. Enter XR already boots AR first;
-    // never destroy an active immersive session here (that looked like leaving MR).
-    if (getActiveWorldKind() === 'hub-vr' && this.useDesktopPath()) {
-      sessionStorage.setItem('wall-tones-awaiting-mode', '1');
-      sessionStorage.setItem('iwsdk-experience-mode', 'walltones');
-      this.statusText = 'Opening passthrough…';
-      this.renderPanel();
-      await switchToWallTonesArWorld();
-      return;
-    }
-
+    this.clearPads();
+    this.flatAwaitingStart = false;
     this.flowPhase = 'choose-mode';
     this.resetSetupPanelAnchor();
     this.setFlatHintVisible(false);
@@ -533,6 +547,12 @@ export class WallTonesSystem extends createSystem({
   }
 
   private beginFlatPlay(): void {
+    if (!this.useDesktopPath()) {
+      return;
+    }
+    if (sessionStorage.getItem('wall-tones-awaiting-mode') === '1') {
+      return;
+    }
     this.flowPhase = 'playing';
     this.flatAwaitingStart = true;
     this.statusText = 'Tap any pad to start (sound on)';
@@ -634,8 +654,27 @@ export class WallTonesSystem extends createSystem({
     window.removeEventListener('touchstart', this.onPointerDownForAudio, true);
   }
 
+  private isPhoneFlatViewport(): boolean {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    return width <= 480 || (height <= 480 && width <= 950);
+  }
+
   private layoutPanelForFlatPlay(): void {
-    // Far enough right/clear of the left-shifted pad grid (confirmed via screenshot).
+    // Desktop: park right of the pad grid. Phones: HUD on top of the portrait
+    // frame (closer + higher) so pads sit clear below — VR follow unchanged.
+    if (this.isPhoneFlatViewport()) {
+      this.applyPanelLayout(
+        PHONE_PANEL_FLAT.position[0],
+        PHONE_PANEL_FLAT.position[1],
+        PHONE_PANEL_FLAT.position[2],
+        PHONE_PANEL_FLAT.scale,
+      );
+      return;
+    }
     this.applyPanelLayout(1.95, 1.48, -1.55, 0.26);
   }
 
@@ -870,21 +909,23 @@ export class WallTonesSystem extends createSystem({
     } else if (
       this.experienceActive &&
       !nonImmersive &&
-      this.wasNonImmersive &&
-      this.flowPhase === 'playing' &&
-      this.setupMode == null
+      this.wasNonImmersive
     ) {
+      // Always drop the flat 2×2 when entering XR — setup must not show it.
       this.clearPads();
+      this.flatAwaitingStart = false;
       this.showStudioBackdrop();
       this.setFlatHintVisible(false);
-      this.flowPhase = 'choose-mode';
-      this.resetSetupPanelAnchor();
-      this.statusText = 'Choose room scale or sitting.';
-      this.setSetupUiVisible(true);
-      this.setRepeatUiVisible(false);
-      this.setRescanUiVisible(false);
-      this.speech.speak(WALL_TONES_SPEECH.chooseMode);
-      this.renderPanel();
+      if (this.setupMode == null && this.flowPhase !== 'scanning') {
+        this.flowPhase = 'choose-mode';
+        this.resetSetupPanelAnchor();
+        this.statusText = 'Choose room scale or sitting.';
+        this.setSetupUiVisible(true);
+        this.setRepeatUiVisible(false);
+        this.setRescanUiVisible(false);
+        this.speech.speak(WALL_TONES_SPEECH.chooseMode);
+        this.renderPanel();
+      }
     }
     this.wasNonImmersive = nonImmersive;
     this.syncDebugCollidersButton();
@@ -1026,15 +1067,13 @@ export class WallTonesSystem extends createSystem({
 
   private async onBackToMenu(): Promise<void> {
     this.speech.speak(WALL_TONES_SPEECH.backToMenu);
-    // Immersive AR: stay in the same XR session. Rebuilding the hub world calls
-    // exitXR() and looks like leaving VR for a few seconds.
-    if (getActiveWorldKind() === 'walltones-ar' && !this.useDesktopPath()) {
-      await this.returnToSetupChooser();
-      return;
-    }
+    const wasImmersive = !this.useDesktopPath();
+    const fromArWorld = getActiveWorldKind() === 'walltones-ar';
     await this.leaveWallTonesMode();
-    if (getActiveWorldKind() === 'walltones-ar') {
-      await switchBackToHubMenu({ reenterXr: false });
+    // Always return to the hub main menu. Immersive AR rebuilds the hub world
+    // and re-enters XR so Back does not dump the player to a flat browser view.
+    if (fromArWorld) {
+      await switchBackToHubMenu({ reenterXr: wasImmersive });
       return;
     }
     window.dispatchEvent(
@@ -1043,43 +1082,6 @@ export class WallTonesSystem extends createSystem({
       }),
     );
     sessionStorage.setItem('iwsdk-experience-mode', 'menu');
-  }
-
-  /** Clear pads/setup and show mode select without tearing down XR. */
-  private async returnToSetupChooser(): Promise<void> {
-    this.playbackQueue = Promise.resolve();
-    this.speech.cancel();
-    this.flatAwaitingStart = false;
-    this.inputNeedsClear = false;
-    this.airOrientationLocked = null;
-    this.setupMode = null;
-    this.airPlaceStep = 0;
-    this.lackingSpatialData = false;
-    this.game.phase = 'idle';
-    this.game.resetAllScores();
-    this.touchEnterFrames.clear();
-    this.touchExitFrames.clear();
-    this.panelDragArmed = false;
-    this.panelDragging = false;
-    this.setBlinkCuePad(null);
-    this.clearRoomSetupVisuals();
-    this.clearPads();
-    this.ghostPad = null;
-    this.setSpatialMeshesVisible(true);
-    this.setFlatHintVisible(false);
-    this.setWallPickHintVisible(false);
-    this.setAirOrientUiVisible(false);
-    this.setRescanUiVisible(false);
-    this.setRepeatUiVisible(false);
-    this.setPanelDragBarVisible(false);
-    this.flowPhase = 'choose-mode';
-    this.experienceActive = true;
-    this.resetSetupPanelAnchor();
-    this.setSetupUiVisible(true);
-    this.syncDebugCollidersButton();
-    this.applyTouchDebugVisibility();
-    this.statusText = 'Choose room scale or sitting.';
-    this.renderPanel();
   }
 
   private async onChooseSetup(mode: SetupMode): Promise<void> {
@@ -1739,14 +1741,19 @@ export class WallTonesSystem extends createSystem({
   }
 
   private spawnDesktopPads(): void {
+    if (!this.useDesktopPath()) {
+      return;
+    }
     this.clearPads();
     this.world.camera.getWorldPosition(this.cameraPosition);
     this.world.camera.getWorldDirection(this.cameraForward);
-    const size = defaultDesktopPadSize();
+    const phoneFlat = this.isPhoneFlatViewport();
+    const size = phoneFlat ? PHONE_PAD_SIZE_M : defaultDesktopPadSize();
     const transforms = planDesktopGridFromCamera(
       this.cameraPosition,
       this.cameraForward,
       size,
+      phoneFlat ? PHONE_FLAT_GRID : undefined,
     );
     transforms.forEach((transform, index) => {
       const pad = createPadRuntime(this.world, index as WallTonePadId, size, {

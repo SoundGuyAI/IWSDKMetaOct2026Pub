@@ -7,6 +7,9 @@ import {
   DESKTOP_PAD_GAP_M,
   HEADSET_PAD_SIZE_M,
   PAD_GAP_M,
+  PHONE_GRID_DISTANCE_M,
+  PHONE_GRID_VERTICAL_M,
+  PHONE_PAD_GAP_M,
 } from './constants.js';
 
 type XRPlaneData = {
@@ -389,13 +392,36 @@ export function planTablePads(table: WallSlot): PlacedPadTransform[] {
   }));
 }
 
-/** Flat browser layout: 2×2 grid centered in the camera view (not player origin). */
+export type FlatPadGridLayout = {
+  distanceM: number;
+  lateralM: number;
+  verticalM: number;
+  gapM: number;
+};
+
+const DESKTOP_FLAT_GRID: FlatPadGridLayout = {
+  distanceM: DESKTOP_GRID_DISTANCE_M,
+  lateralM: DESKTOP_GRID_LATERAL_M,
+  verticalM: 0,
+  gapM: DESKTOP_PAD_GAP_M,
+};
+
+/** Phone portrait: centered 2×2 dropped into the lower half under the HUD. */
+export const PHONE_FLAT_GRID: FlatPadGridLayout = {
+  distanceM: PHONE_GRID_DISTANCE_M,
+  lateralM: 0,
+  verticalM: PHONE_GRID_VERTICAL_M,
+  gapM: PHONE_PAD_GAP_M,
+};
+
+/** Flat browser layout: 2×2 grid in the camera view (not player origin). */
 export function planDesktopGridFromCamera(
   cameraPosition: { x: number; y: number; z: number },
   cameraForward: { x: number; y: number; z: number },
   size: number,
+  layout: FlatPadGridLayout = DESKTOP_FLAT_GRID,
 ): PlacedPadTransform[] {
-  const step = size + DESKTOP_PAD_GAP_M;
+  const step = size + layout.gapM;
   const forward = new Vector3(
     cameraForward.x,
     cameraForward.y,
@@ -413,8 +439,9 @@ export function planDesktopGridFromCamera(
     cameraPosition.y,
     cameraPosition.z,
   )
-    .addScaledVector(forward, DESKTOP_GRID_DISTANCE_M)
-    .addScaledVector(right, DESKTOP_GRID_LATERAL_M);
+    .addScaledVector(forward, layout.distanceM)
+    .addScaledVector(right, layout.lateralM)
+    .addScaledVector(up, layout.verticalM);
   const yaw = Math.atan2(-forward.x, -forward.z);
   const half = yaw * 0.5;
   const quat: [number, number, number, number] = [
