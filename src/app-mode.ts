@@ -4,11 +4,19 @@
  */
 import {
   createSystem,
+  UIKit,
   UIKitMLAsset,
   Visibility,
+  VisibilityState,
 } from '@iwsdk/core';
 import { primeWallTonesAudioFromGesture } from './wall-tones/audio.js';
-import { unlockSpeechFromGesture } from './wall-tones/speech.js';
+import {
+  WallTonesSpeech,
+  getVoiceGender,
+  setVoiceGender,
+  unlockSpeechFromGesture,
+  type WallTonesVoiceGender,
+} from './wall-tones/speech.js';
 
 export type ExperienceMode = 'menu' | 'demo' | 'meditation' | 'walltones';
 
@@ -46,6 +54,7 @@ function persistMode(mode: ExperienceMode): void {
 
 export class AppModeSystem extends createSystem({}) {
   private mode: ExperienceMode = 'menu';
+  private readonly voicePreview = new WallTonesSpeech();
 
   init(): void {
     this.mode = readStoredMode();
@@ -138,12 +147,78 @@ export class AppModeSystem extends createSystem({}) {
     const xrButton = panel.getElementById('xr-button');
     wallTonesButton?.addEventListener('click', () => this.startWallTonesFlat());
     xrButton?.addEventListener('click', () => this.enterXrIntoWallTones());
+    this.bindSettingsMenu(panel);
     if (wallTonesButton != null) {
       wallTonesButton.name = 'Btn_ModeWallTones';
     }
     if (xrButton != null) {
       xrButton.name = 'Btn_EnterXrWallTones';
     }
+  }
+
+  /**
+   * Settings submenu on the main menu (gear button). UIKitML has no overlay, so
+   * the submenu swaps in for the menu content and Back swaps it out again.
+   */
+  private bindSettingsMenu(panel: UIKitMLAsset): void {
+    const setDisplay = (id: string, display: 'flex' | 'none') =>
+      panel.getElementById(id)?.setProperties({ display });
+    const syncVoiceLabels = () => {
+      const gender = getVoiceGender();
+      panel
+        .getElementById<UIKit.Text>('voice-male-label')
+        ?.setProperties({
+          text: gender === 'male' ? 'Male voice (selected)' : 'Male voice',
+        });
+      panel
+        .getElementById<UIKit.Text>('voice-female-label')
+        ?.setProperties({
+          text: gender === 'female' ? 'Female voice (selected)' : 'Female voice',
+        });
+    };
+    const open = () => {
+      for (const id of [
+        'main-menu-content',
+        'mode-walltones-button',
+        'xr-button',
+        'exit-button',
+        'settings-button',
+      ]) {
+        setDisplay(id, 'none');
+      }
+      syncVoiceLabels();
+      setDisplay('settings-dialog', 'flex');
+    };
+    const close = () => {
+      setDisplay('settings-dialog', 'none');
+      const flat =
+        this.world.visibilityState.peek() === VisibilityState.NonImmersive;
+      setDisplay('main-menu-content', 'flex');
+      setDisplay('mode-walltones-button', 'flex');
+      setDisplay('settings-button', 'flex');
+      // Same rule PanelSystem uses: Enter XR on flat, Exit while immersive.
+      setDisplay('xr-button', flat && this.world.xrEnabled ? 'flex' : 'none');
+      setDisplay('exit-button', !flat && this.world.xrEnabled ? 'flex' : 'none');
+    };
+    const choose = (gender: WallTonesVoiceGender) => {
+      unlockSpeechFromGesture();
+      setVoiceGender(gender);
+      syncVoiceLabels();
+      // Preview the pick in the new voice.
+      this.voicePreview.cancel();
+      this.voicePreview.speak('welcome');
+    };
+    panel.getElementById('settings-button')?.addEventListener('click', open);
+    panel
+      .getElementById('settings-back-button')
+      ?.addEventListener('click', close);
+    panel
+      .getElementById('voice-male-button')
+      ?.addEventListener('click', () => choose('male'));
+    panel
+      .getElementById('voice-female-button')
+      ?.addEventListener('click', () => choose('female'));
+    syncVoiceLabels();
   }
 
   private bindWallTonesPlaceholder(): void {

@@ -85,12 +85,6 @@
     margin-bottom: 24px;
   }
 
-  .voice-dialog {
-    flex-direction: column;
-    gap: 10px;
-    padding: 24px;
-  }
-
   .drag-bar {
     flex-direction: column;
     margin-left: 16px;
@@ -150,10 +144,6 @@
         <ButtonLabel>Air place</ButtonLabel>
       </Button>
     </div>
-    <Button id="voice-settings-button" class="button" style="margin-top: 8px">
-      <ButtonIcon><Mic></Mic></ButtonIcon>
-      <ButtonLabel id="voice-settings-label">Voice: Male</ButtonLabel>
-    </Button>
     <div id="air-orient-row" class="setup-row" style="display: none">
       <div id="air-orient-hint" class="status">
         Tilt the hand you used for the menu - outline eases flat or upright, then pinch.
@@ -167,22 +157,6 @@
         <ButtonLabel>Lock table / flat</ButtonLabel>
       </Button>
     </div>
-  </div>
-  <div id="voice-dialog" class="voice-dialog" style="display: none">
-    <div class="heading">Voice</div>
-    <div class="status">Pick the host voice. A preview plays right away.</div>
-    <Button id="voice-male-button" class="button" style="margin-top: 8px">
-      <ButtonIcon><User></User></ButtonIcon>
-      <ButtonLabel>Male voice</ButtonLabel>
-    </Button>
-    <Button id="voice-female-button" class="button">
-      <ButtonIcon><User></User></ButtonIcon>
-      <ButtonLabel>Female voice</ButtonLabel>
-    </Button>
-    <Button id="voice-dialog-close" class="button" style="margin-bottom: 24px">
-      <ButtonIcon><ArrowLeft></ArrowLeft></ButtonIcon>
-      <ButtonLabel>Back</ButtonLabel>
-    </Button>
   </div>
   <div id="wall-pick-hint" class="status" style="display: none; margin-left: 24px; margin-right: 24px">
     Cyan = surfaces, orange = other items, green = pad slots. Ray + pinch to pick 4.
