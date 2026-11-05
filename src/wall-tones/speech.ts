@@ -279,6 +279,9 @@ export function milestoneClipFor(streak: number): WallTonesClipId {
 export class WallTonesSpeech {
   /** Serialize lines so consecutive speak() calls do not overlap. */
   private chain: Promise<void> = Promise.resolve();
+
+  /** Bumped by cancel() so lines queued on the old chain never start. */
+  private generation = 0;
   private currentSource: AudioBufferSourceNode | null = null;
   private currentElement: HTMLAudioElement | null = null;
 
@@ -296,7 +299,13 @@ export class WallTonesSpeech {
     if (needsSpeechUnlock() && !speechUnlocked) {
       return Promise.resolve();
     }
-    const run = this.chain.then(() => this.playClip(id));
+    const gen = this.generation;
+    const run = this.chain.then(() => {
+      if (gen !== this.generation) {
+        return; // superseded by cancel() while queued
+      }
+      return this.playClip(id, gen);
+    });
     this.chain = run.then(
       () => undefined,
       () => undefined,
@@ -304,10 +313,16 @@ export class WallTonesSpeech {
     return run;
   }
 
-  private async playClip(id: WallTonesClipId): Promise<void> {
+  private async playClip(id: WallTonesClipId, gen: number): Promise<void> {
     const buffer = await decodeClip(id);
+    if (gen !== this.generation) {
+      return; // superseded by cancel() while decoding
+    }
     if (buffer != null) {
       const context = await ensureAudioRunning();
+      if (gen !== this.generation) {
+        return; // superseded while resuming the audio context
+      }
       if (context != null) {
         return this.playBuffer(context, buffer);
       }
@@ -372,6 +387,7 @@ export class WallTonesSpeech {
   }
 
   cancel(): void {
+    this.generation += 1;
     try {
       this.currentSource?.stop();
     } catch {
