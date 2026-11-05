@@ -172,6 +172,8 @@ export class WallTonesSystem extends createSystem({
   private readonly speech = new WallTonesSpeech();
   /** Welcome clip plays once per Wall Tones visit, before the mode picker line. */
   private welcomeSpoken = false;
+  /** True once the flat-entry welcome already said "Point and press one of those panels to start". */
+  private startPromptSpoken = false;
 
   /** Entry voiceover: welcome the first time, then the choose-mode line. */
   private speakEntryLines(): void {
@@ -542,6 +544,7 @@ export class WallTonesSystem extends createSystem({
     this.game.resetAllScores();
     this.speech.cancel();
     this.welcomeSpoken = false;
+    this.startPromptSpoken = false;
     suspendAudioContext();
     resetSpeechUnlock();
     this.unbindPointerAudioUnlock();
@@ -590,6 +593,9 @@ export class WallTonesSystem extends createSystem({
     if (!this.welcomeSpoken) {
       this.welcomeSpoken = true;
       this.speech.speak('welcome');
+      // Same sentence the how-to-play clip opens with, so say it up front.
+      this.startPromptSpoken = true;
+      this.speech.speak('pointAndPress');
     }
     this.spawnDesktopPads();
     this.setRepeatUiVisible(false);
@@ -1863,7 +1869,11 @@ export class WallTonesSystem extends createSystem({
       if (!this.experienceActive || this.flowPhase !== 'playing') {
         return;
       }
-      await this.speech.speakAsync('howToPlay');
+      // Skip the opening "Point and press..." sentence if the welcome already said it.
+      await this.speech.speakAsync(
+        this.startPromptSpoken ? 'howToPlayRest' : 'howToPlay',
+      );
+      this.startPromptSpoken = false;
       await this.wait(POST_INTRO_DELAY_S);
       if (!this.experienceActive || this.flowPhase !== 'playing') {
         return;
