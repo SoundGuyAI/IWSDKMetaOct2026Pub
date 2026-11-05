@@ -2288,6 +2288,20 @@ export class WallTonesSystem extends createSystem({
     this.blinkCueEntity = this.world.createTransformEntity(root);
   }
 
+  /** Tint the arrow with the color of the pad it points at (not white). */
+  private colorBlinkCueArrow(padIndex: number): void {
+    const hex = WALL_TONE_PADS[padIndex]?.color;
+    if (hex == null || this.blinkCueRoot == null) {
+      return;
+    }
+    for (const child of this.blinkCueRoot.children) {
+      const material = (child as Mesh).material;
+      if (material instanceof MeshBasicMaterial) {
+        material.color.setHex(hex);
+      }
+    }
+  }
+
   private disposeBlinkCueArrow(): void {
     this.blinkCueEntity?.dispose({ disposeResources: true });
     this.blinkCueEntity = null;
@@ -2311,6 +2325,7 @@ export class WallTonesSystem extends createSystem({
     if (this.blinkCueRoot == null) {
       return;
     }
+    this.colorBlinkCueArrow(this.blinkCuePad.padIndex);
     this.player.head.getWorldPosition(this.viewer);
     this.player.head.getWorldQuaternion(this.headQuat);
     this.ghostForward.set(0, 0, -1).applyQuaternion(this.headQuat).normalize();
