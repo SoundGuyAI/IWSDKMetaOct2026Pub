@@ -7,7 +7,6 @@ Personal backlog for what still needs work — not an agent task list. Move item
 - [ ] Setup window: bigger threshold angle to jump back into view
 - [ ] Setup window: after mode is selected, place it a little farther away, a little higher, and make it draggable
 - [ ] Bug: first box in the pattern is not blinking in VR (arrow also not showing)
-- [ ] Blink should use the cube’s color, not white
 - [ ] Allow clicking the button with a ray
 - [ ] Sports mode that disables ray button clicks
 - [ ] Animation and juice
@@ -18,6 +17,7 @@ Personal backlog for what still needs work — not an agent task list. Move item
 
 ## Done
 
+- [x] Blink uses the cube's own color (saturated, slightly lighter), not white. Checked with before/after frames of all four pad flashes in the desktop build. Not yet checked on a headset.
 - [x] Replace the Wall Tones placeholder panel with mode choice, best streak, and round status. Keep `back-to-menu-button`.
 - [x] Add `src/wall-tones/` for setup, pad volumes, sequence state, and speech. Register the systems from `src/index.ts`. Run only while the mode is `walltones`.
 - [x] Desktop: spawn four pads in a 2 by 2 grid in front of the player, skip scanning, and accept a click as a touch.
