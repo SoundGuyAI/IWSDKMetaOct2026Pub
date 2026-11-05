@@ -50,7 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pages: write
+      actions: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -76,15 +76,32 @@ jobs:
           else
             git commit -m "Deploy dist from main@${GITHUB_SHA::7}"
             git push origin HEAD:gh-pages
-            echo 'pushed=true' >> "$GITHUB_OUTPUT"
+            echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           fi
-      - name: Request a GitHub Pages build
-        if: steps.publish.outputs.pushed == 'true'
+      - name: Verify the Pages build published this commit
+        if: steps.publish.outputs.sha != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET: ${{ steps.publish.outputs.sha }}
         run: |
-          # GitHub docs say GITHUB_TOKEN pushes do not trigger Pages builds
-          # (observed to trigger anyway in this repo, 2026-11-05). Request the
-          # build explicitly so the site updates under either behavior.
-          gh api "repos/${GITHUB_REPOSITORY}/pages/builds" -X POST \
-            || echo '::warning::explicit Pages build request failed; relying on the push-triggered build'
+          set -euo pipefail
+          # Docs say GITHUB_TOKEN pushes do not trigger Pages builds, but in
+          # this repo they provably do (runs 42045872517 and 42025039498 on
+          # 2026-11-05, each created ~3s after a github-actions[bot] push with
+          # that push as head_sha). Verify instead of assuming: fail loudly if
+          # no successful "pages build and deployment" run appears for the
+          # commit we just pushed, so a silent no-deploy can never look green.
+          deadline=$((SECONDS + 480))
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            row=$(gh api 'repos/{owner}/{repo}/actions/runs?branch=gh-pages&per_page=10' \
+              | jq -r --arg sha "$TARGET" \
+                '[.workflow_runs[] | select(.name == "pages build and deployment" and .head_sha == $sha)] | first | if . == null then "" else ((.conclusion // "pending") + " " + (.id | tostring)) end')
+            case "$row" in
+              success*) echo "Pages build ${row#* } published $TARGET"; exit 0 ;;
+              failure*|cancelled*|timed_out*|action_required*)
+                echo "::error::Pages build for $TARGET ended as ${row%% *} (run ${row#* })"; exit 1 ;;
+            esac
+            sleep 15
+          done
+          echo "::error::No Pages build run appeared for $TARGET within 8 minutes; the push did not trigger publishing"
+          exit 1
