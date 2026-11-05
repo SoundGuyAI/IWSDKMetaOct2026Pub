@@ -11,6 +11,7 @@ export class WallTonesSequence {
   inputStep = 0;
   streak = 0;
   bestStreak = 0;
+  /** Best streak when the current run began; a failed run "increased the streak" when it beat this. */
   phase: GamePhase = 'idle';
 
   resetRun(): void {
