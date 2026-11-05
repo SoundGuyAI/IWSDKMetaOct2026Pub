@@ -599,17 +599,19 @@ export class WallTonesSystem extends createSystem({
     this.bindPointerAudioUnlock();
     // Desktop entry still gets the welcome line once (chooseMode is XR-only).
     if (!this.welcomeSpoken) {
-      this.welcomeSpoken = true;
       // If speech is still locked (iOS speech lock, or Android/mobile "Sound on"
-      // not tapped yet) nothing plays, so keep the full how-to-play line for
-      // after the first press.
+      // not tapped yet) the line would be silently dropped, so keep it pending
+      // and let the first pad tap lead with it instead of losing it forever.
       const speechWillPlay =
         this.speech.canSpeakNow() &&
         !(needsExplicitMobileSoundUnlock() && !isHtmlAudioPoolUnlocked());
-      this.speech.speak('welcome');
-      // Same sentence the how-to-play clip opens with, so say it up front.
-      this.speech.speak('pointAndPress');
-      this.startPromptSpoken = speechWillPlay;
+      if (speechWillPlay) {
+        this.welcomeSpoken = true;
+        this.speech.speak('welcome');
+        // Same sentence the how-to-play clip opens with, so say it up front.
+        this.speech.speak('pointAndPress');
+        this.startPromptSpoken = true;
+      }
     }
     this.spawnDesktopPads();
     this.setRepeatUiVisible(false);
@@ -2420,7 +2422,11 @@ export class WallTonesSystem extends createSystem({
     this.setRepeatUiVisible(true);
     this.statusText = 'Get ready…';
     this.renderPanel();
-    this.beginRoundWithIntro();
+    // If the welcome was still speech-locked at entry (mobile before the
+    // "Sound on" tap), lead with it now that this tap unlocked audio.
+    const leadIn = this.welcomeSpoken ? undefined : 'welcome';
+    this.welcomeSpoken = true;
+    this.beginRoundWithIntro(leadIn);
   }
 
   /**
