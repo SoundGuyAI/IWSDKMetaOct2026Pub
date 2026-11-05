@@ -104,7 +104,8 @@ export function createPadGlow(
   padIndex: number,
 ): PadGlow {
   face.position.z = FACE_Z;
-  // Keep the face mesh for hit testing; just stop it drawing.
+  // Keep the face mesh for hit testing; just stop it drawing. It is switched
+  // back on below if the shader does not compile, so pads never disappear.
   faceMaterial.visible = false;
   const material = new ShaderMaterial({
     vertexShader: VERT,
@@ -126,6 +127,32 @@ export function createPadGlow(
   mesh.renderOrder = 12;
   mesh.position.z = GLOW_Z - FACE_Z;
   mesh.raycast = () => {};
+
+  // Safe fallback: if the shader program fails to build (or never becomes ready
+  // within ~2 s of draws) show the original flat colored face instead.
+  let draws = 0;
+  let settled = false;
+  mesh.onAfterRender = (renderer) => {
+    if (settled) {
+      return;
+    }
+    draws += 1;
+    const program = (
+      renderer as unknown as {
+        properties: { get(m: unknown): { currentProgram?: { diagnostics?: { runnable?: boolean }; isReady?: () => boolean } } };
+      }
+    ).properties.get(material).currentProgram;
+    const failed = program?.diagnostics?.runnable === false;
+    const ready = program != null && !failed && (program.isReady?.() ?? true);
+    if (ready) {
+      settled = true;
+    } else if (failed || draws > 120) {
+      settled = true;
+      faceMaterial.visible = true;
+      mesh.visible = false;
+      console.warn('[wall-tones] glass pad shader unavailable, using flat pads');
+    }
+  };
   face.add(mesh);
   return { mesh, material, faceMaterial, now: 0, pressAt: -99, state: 'idle', hover: 0 };
 }
