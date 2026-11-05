@@ -1615,7 +1615,17 @@ export class WallTonesSystem extends createSystem({
       this.renderPanel();
       return;
     }
-    this.speech.speak((`airPlace${this.airPlaceStep + 1}` as WallTonesClipId));
+    // Skip any still-queued setup lines: if the player already placed a pad,
+    // stale prompts (orientation / earlier lines) should not keep playing.
+    this.speech.cancel();
+    // Short prompts for pads 2-4; the full positioning phrase only plays for
+    // pad 1 (airPlace1 at placement start). Exact words supplied by Oded (WhatsApp, 2026-11-05): 'Pad 2' / 'Pad 3 now' / 'Aaaaaand... pad 4'.
+    const shortPrompts = [
+      'airPlaceShort2',
+      'airPlaceShort3',
+      'airPlaceShort4',
+    ] as const;
+    this.speech.speak(shortPrompts[this.airPlaceStep - 1]!);
     this.statusText = `Pinch to place outline ${this.airPlaceStep + 1} of 4.`;
     this.spawnGhostPad();
     this.renderPanel();
