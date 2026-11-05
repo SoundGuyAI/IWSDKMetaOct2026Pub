@@ -21,6 +21,27 @@ import {
 } from './constants.js';
 import { WallTonePad } from './wall-tone-pad-component.js';
 
+/**
+ * Minimum sRGB distance (0-1 per channel) between a pad's idle and hover
+ * colors. Green, red and yellow already clear it with the standard hover
+ * offset; blue (0.245) did not, so its hover looked almost like idle.
+ */
+const HOVER_MIN_SHIFT = 0.25;
+const HOVER_WHITE = new Color(0xffffff);
+
+function colorDistance(a: Color, b: Color): number {
+  // Compare in sRGB (what the eye sees), not the renderer's linear values.
+  const ha = a.getHex();
+  const hb = b.getHex();
+  return (
+    Math.hypot(
+      ((ha >> 16) & 255) - ((hb >> 16) & 255),
+      ((ha >> 8) & 255) - ((hb >> 8) & 255),
+      (ha & 255) - (hb & 255),
+    ) / 255
+  );
+}
+
 export type PadVisualState = 'idle' | 'hover' | 'pressed';
 
 export type PadRuntime = {
@@ -376,7 +397,18 @@ export function applyPadVisualState(
   }
   if (state === 'hover') {
     // Entering the wide proximity box: richer sat, slightly brighter.
+    const idle = material.color.clone();
     material.color.offsetHSL(0.02, 0.22, 0.12);
+    // Blue is already bright and saturated, so the fixed offset barely moves
+    // it. Push any pad whose hover shift is below the other pads' toward white
+    // until the shift matches them, so every pad's hover reads equally.
+    for (
+      let i = 0;
+      i < 15 && colorDistance(idle, material.color) < HOVER_MIN_SHIFT;
+      i += 1
+    ) {
+      material.color.lerp(HOVER_WHITE, 0.04);
+    }
   } else if (state === 'pressed') {
     // Confirmed press: punchier lightness / sat shift.
     material.color.offsetHSL(-0.03, 0.15, 0.32);
