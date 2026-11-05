@@ -45,7 +45,7 @@ void main() {
   vec2 q = (vUv - 0.5) * QS;                 // face edge sits at +-0.5
   float d = sdRoundBox(q, vec2(0.5), R);     // <0 inside the pad
   float aa = 0.006;
-  float inside = smoothstep(aa, -aa, d);
+  float inside = (1.0 - smoothstep(-aa, aa, d));
 
   vec3 hue = uColor;
   vec3 light = mix(hue, vec3(1.0), 0.22);    // small lift only, never white
@@ -61,13 +61,13 @@ void main() {
   face += light * sheen;
 
   // Crisp rim just inside the edge.
-  float rim = smoothstep(0.016, 0.0, abs(d + 0.012));
+  float rim = (1.0 - smoothstep(0.0, 0.016, abs(d + 0.012)));
   float outer = exp(-max(d, 0.0) * 30.0) * 0.55 * step(0.0, d);
 
   // One bright highlight travelling around the rim at a steady speed.
   float ang = atan(q.y, q.x);
   float da = mod(ang - (uTime * 0.8 + uPhase * 2.0) + 3.14159265, 6.2831853) - 3.14159265;
-  float runner = exp(-da * da * 5.0) * smoothstep(0.035, 0.0, abs(d + 0.012));
+  float runner = exp(-da * da * 5.0) * (1.0 - smoothstep(0.0, 0.035, abs(d + 0.012)));
 
   // Press: ripple from the pad center plus a short rim flash.
   float pt = uPress;
