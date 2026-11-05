@@ -75,6 +75,12 @@
     padding-right: 22px;
   }
 
+  .settings-dialog {
+    flex-direction: column;
+    gap: 10px;
+    padding: 24px;
+  }
+
   .xr-button-label {
     font-size: 30px;
     font-weight: 700;
@@ -96,6 +102,27 @@
     <ButtonIcon><RectangleGoggles></RectangleGoggles></ButtonIcon>
     <ButtonLabel id="xr-button-label" class="xr-button-label">Enter XR</ButtonLabel>
   </Button>
+  <Button id="settings-button" class="button" style="height: 64px; margin-bottom: 28px">
+    <ButtonIcon><Settings></Settings></ButtonIcon>
+    <ButtonLabel id="settings-button-label" class="button-label">Settings</ButtonLabel>
+  </Button>
+  <div id="settings-dialog" class="settings-dialog" style="display: none">
+    <div id="settings-eyebrow" class="eyebrow">SETTINGS</div>
+    <div id="settings-heading" class="heading">Voice</div>
+    <div id="settings-body" class="body">Pick the host voice. A preview plays right away.</div>
+    <Button id="voice-male-button" class="button" style="height: 64px">
+      <ButtonIcon><User></User></ButtonIcon>
+      <ButtonLabel id="voice-male-label" class="button-label">Male voice</ButtonLabel>
+    </Button>
+    <Button id="voice-female-button" class="button" style="height: 64px">
+      <ButtonIcon><User></User></ButtonIcon>
+      <ButtonLabel id="voice-female-label" class="button-label">Female voice</ButtonLabel>
+    </Button>
+    <Button id="settings-back-button" class="button" style="height: 64px; margin-bottom: 4px">
+      <ButtonIcon><ArrowLeft></ArrowLeft></ButtonIcon>
+      <ButtonLabel class="button-label">Back</ButtonLabel>
+    </Button>
+  </div>
   <Button id="exit-button" class="button" style="display: none; margin-bottom: 28px">
     <ButtonIcon><LogIn></LogIn></ButtonIcon>
     <ButtonLabel class="button-label">Exit to Browser</ButtonLabel>
