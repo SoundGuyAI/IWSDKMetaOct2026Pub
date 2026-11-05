@@ -599,12 +599,10 @@ export class WallTonesSystem extends createSystem({
     this.bindPointerAudioUnlock();
     // Desktop entry still gets the welcome line once (chooseMode is XR-only).
     if (!this.welcomeSpoken) {
-      // If speech is still locked (iOS speech lock, or Android/mobile "Sound on"
-      // not tapped yet) the line would be silently dropped, so keep it pending
-      // and let the first pad tap lead with it instead of losing it forever.
-      const speechWillPlay =
-        this.speech.canSpeakNow() &&
-        !(needsExplicitMobileSoundUnlock() && !isHtmlAudioPoolUnlocked());
+      // Start's trusted canvas tap unlocks Web Audio before the spatial menu
+      // callback enters this screen. Speech uses that context, not the separate
+      // HTMLAudio pad-tone pool. Keep the first-pad fallback for direct entry.
+      const speechWillPlay = this.speech.canSpeakNow();
       if (speechWillPlay) {
         this.welcomeSpoken = true;
         this.speech.speak('welcome');
@@ -2640,4 +2638,4 @@ export class WallTonesSystem extends createSystem({
       window.setTimeout(resolve, seconds * 1000);
     });
   }
-}
+  }
