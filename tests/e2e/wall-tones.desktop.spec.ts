@@ -173,6 +173,37 @@ test.describe('Wall Tones desktop (flat mode)', () => {
     );
   });
 
+  test('opening welcome includes the point-and-press line, and how-to-play does not repeat it', async ({
+    page,
+  }) => {
+    // Record the duration of every decoded clip handed to Web Audio, in play order.
+    await page.addInitScript(() => {
+      const played: number[] = [];
+      (window as unknown as { __played: number[] }).__played = played;
+      const orig = AudioBufferSourceNode.prototype.start;
+      AudioBufferSourceNode.prototype.start = function (...args) {
+        if (this.buffer != null && this.buffer.duration > 1.5) {
+          played.push(this.buffer.duration);
+        }
+        return orig.apply(this, args as never);
+      };
+    });
+    await bootWallTones(page);
+    const played = (): Promise<number[]> =>
+      page.evaluate(() => [...(window as unknown as { __played: number[] }).__played]);
+    // welcome (~5s) then point-and-press (~2s), in that order.
+    await expect.poll(async () => (await played()).length, { timeout: 30_000 }).toBeGreaterThanOrEqual(2);
+    const opening = await played();
+    expect(opening[0]!).toBeGreaterThan(4);
+    expect(opening[1]!).toBeLessThan(3.5);
+    await startFlatPlay(page);
+    // The how-to-play remainder (~7s) follows; the full ~9s clip must not.
+    await expect.poll(async () => (await played()).length, { timeout: 60_000 }).toBeGreaterThanOrEqual(3);
+    const all = await played();
+    expect(all.some((d, i) => i >= 2 && d > 8.5)).toBe(false);
+    expect(all.some((d, i) => i >= 2 && d > 6 && d < 8.5)).toBe(true);
+  });
+
   test('reaching a 5-streak plays the milestone voice and continues the run @slow', async ({
     page,
   }) => {
