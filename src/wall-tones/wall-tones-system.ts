@@ -1854,11 +1854,10 @@ export class WallTonesSystem extends createSystem({
       flashPad(pad, true);
       if (this.useDesktopInput()) {
         playPadToneFromUserAction(padIndex);
-        await this.wait(0.55 + BLINK_HOLD_S);
       } else {
         await playPadTone(padIndex);
-        await this.wait(BLINK_HOLD_S);
       }
+      await this.wait(BLINK_HOLD_S);
       flashPad(pad, false);
       this.setBlinkCuePad(null);
     }
