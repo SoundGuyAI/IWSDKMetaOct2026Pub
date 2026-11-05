@@ -98,7 +98,18 @@ import {
   type SlotCandidateRuntime,
 } from './room-setup-visuals.js';
 import { WallTonesSequence } from './sequence.js';
-import { WALL_TONES_SPEECH, WallTonesSpeech, unlockSpeechFromGesture, resetSpeechUnlock } from './speech.js';
+import {
+  WallTonesSpeech,
+  getVoiceGender,
+  milestoneClipFor,
+  randomCheerClip,
+  randomWrongClip,
+  resetSpeechUnlock,
+  setVoiceGender,
+  unlockSpeechFromGesture,
+  type WallTonesClipId,
+  type WallTonesVoiceGender,
+} from './speech.js';
 import {
   getActiveWorldKind,
   switchBackToHubMenu,
@@ -162,6 +173,75 @@ export class WallTonesSystem extends createSystem({
   slotPressed: { required: [WallSlotCandidate, Pressed] },
 }) {
   private readonly speech = new WallTonesSpeech();
+  /** Welcome clip plays once per Wall Tones visit, before the mode picker line. */
+  private welcomeSpoken = false;
+
+  /** Entry voiceover: welcome the first time, then the choose-mode line. */
+  private speakEntryLines(): void {
+    if (!this.welcomeSpoken) {
+      this.welcomeSpoken = true;
+      this.speech.speak('welcome');
+    }
+    this.speech.speak('chooseMode');
+  }
+
+  /** Main-screen voice setting: tapping Voice opens the male/female choice row. */
+  /**
+   * Voice settings popup: swaps the panel's main content for the dialog card.
+   * (UIKitML here has no overlay/absolute positioning, so the dialog replaces
+   * the content column instead of floating above it.)
+   */
+  private toggleVoiceChoiceRow(): void {
+    const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+    if (panel == null) {
+      return;
+    }
+    const dialogOpen =
+      panel.getElementById('voice-dialog') != null &&
+      this.voiceDialogOpen;
+    if (dialogOpen) {
+      this.closeVoiceDialog();
+    } else {
+      this.openVoiceDialog();
+    }
+  }
+
+  private voiceDialogOpen = false;
+
+  private openVoiceDialog(): void {
+    this.voiceDialogOpen = true;
+    const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+    panel?.getElementById('panel-content')?.setProperties({ display: 'none' });
+    panel?.getElementById('voice-dialog')?.setProperties({ display: 'flex' });
+    // One way back while the popup is up - the dialog's own Back button.
+    panel?.getElementById('back-to-menu-button')?.setProperties({ display: 'none' });
+  }
+
+  private closeVoiceDialog(): void {
+    this.voiceDialogOpen = false;
+    const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+    panel?.getElementById('voice-dialog')?.setProperties({ display: 'none' });
+    panel?.getElementById('panel-content')?.setProperties({ display: 'flex' });
+    panel?.getElementById('back-to-menu-button')?.setProperties({ display: 'flex' });
+  }
+
+  private chooseVoiceGender(gender: WallTonesVoiceGender): void {
+    setVoiceGender(gender);
+    this.closeVoiceDialog();
+    this.syncVoiceButton();
+    // Preview the pick in the new voice.
+    this.speech.cancel();
+    this.speech.speak('welcome');
+  }
+
+  private syncVoiceButton(): void {
+    this.world
+      .getSceneObject<UIKitMLAsset>('wall-tones-panel')
+      ?.getElementById<UIKit.Text>('voice-settings-label')
+      ?.setProperties({
+        text: `Voice: ${getVoiceGender() === 'female' ? 'Female' : 'Male'}`,
+      });
+  }
   private readonly game = new WallTonesSequence();
   private readonly viewer = new Vector3();
   private readonly cameraForward = new Vector3();
@@ -299,7 +379,7 @@ export class WallTonesSystem extends createSystem({
       this.syncDebugCollidersButton();
       this.applyTouchDebugVisibility();
       this.statusText = 'Choose room scale or sitting.';
-      this.speech.speak(WALL_TONES_SPEECH.chooseMode);
+      this.speakEntryLines();
       this.renderPanel();
     } else if (sessionStorage.getItem('iwsdk-experience-mode') === 'walltones') {
       void this.enterWallTonesMode();
@@ -323,13 +403,13 @@ export class WallTonesSystem extends createSystem({
       this.setFlatHintVisible(false);
       this.setSetupUiVisible(false);
       if (pendingSetup === 'air') {
-        this.startAirPlacement(WALL_TONES_SPEECH.chooseAirMenu);
+        this.startAirPlacement('chooseAirMenu');
       } else {
         this.flowPhase = 'scanning';
         this.scanStartedAt = performance.now() / 1000;
         this.roomCaptureInFlight = false;
         this.roomCaptureAttempted = false;
-        this.speech.speak(WALL_TONES_SPEECH.lookAround);
+        this.speech.speak('lookAround');
       }
     }
   }
@@ -436,6 +516,19 @@ export class WallTonesSystem extends createSystem({
     panel
       .getElementById('panel-drag-handle')
       ?.addEventListener('click', () => this.togglePanelDragArm());
+    panel
+      .getElementById('voice-settings-button')
+      ?.addEventListener('click', () => this.toggleVoiceChoiceRow());
+    panel
+      .getElementById('voice-male-button')
+      ?.addEventListener('click', () => this.chooseVoiceGender('male'));
+    panel
+      .getElementById('voice-female-button')
+      ?.addEventListener('click', () => this.chooseVoiceGender('female'));
+    panel
+      .getElementById('voice-dialog-close')
+      ?.addEventListener('click', () => this.closeVoiceDialog());
+    this.syncVoiceButton();
     this.syncDebugCollidersButton();
     this.applyTouchDebugVisibility();
     this.setPanelDragBarVisible(
@@ -494,7 +587,7 @@ export class WallTonesSystem extends createSystem({
     this.syncDebugCollidersButton();
     this.applyTouchDebugVisibility();
     this.statusText = 'Choose room scale or sitting.';
-    this.speech.speak(WALL_TONES_SPEECH.chooseMode);
+    this.speakEntryLines();
     this.renderPanel();
   }
 
@@ -521,6 +614,7 @@ export class WallTonesSystem extends createSystem({
     this.game.phase = 'idle';
     this.game.resetAllScores();
     this.speech.cancel();
+    this.welcomeSpoken = false;
     suspendAudioContext();
     resetSpeechUnlock();
     this.unbindPointerAudioUnlock();
@@ -565,6 +659,11 @@ export class WallTonesSystem extends createSystem({
     // Keep RayInteractable so Back stays clickable; panel sits beside the pads.
     this.restorePanelPointerCapture();
     this.bindPointerAudioUnlock();
+    // Desktop entry still gets the welcome line once (chooseMode is XR-only).
+    if (!this.welcomeSpoken) {
+      this.welcomeSpoken = true;
+      this.speech.speak('welcome');
+    }
     this.spawnDesktopPads();
     this.setRepeatUiVisible(false);
     if (needsExplicitMobileSoundUnlock() && !isHtmlAudioPoolUnlocked()) {
@@ -585,7 +684,7 @@ export class WallTonesSystem extends createSystem({
     unlockSpeechFromGesture();
     this.hideMobileSoundOverlay();
     if (speakLine) {
-      this.speech.speak(WALL_TONES_SPEECH.soundReady);
+      this.speech.speak('soundReady');
     }
     if (this.flatAwaitingStart) {
       this.statusText = 'Tap any pad to start';
@@ -923,7 +1022,7 @@ export class WallTonesSystem extends createSystem({
         this.setSetupUiVisible(true);
         this.setRepeatUiVisible(false);
         this.setRescanUiVisible(false);
-        this.speech.speak(WALL_TONES_SPEECH.chooseMode);
+        this.speakEntryLines();
         this.renderPanel();
       }
     }
@@ -1066,7 +1165,7 @@ export class WallTonesSystem extends createSystem({
   }
 
   private async onBackToMenu(): Promise<void> {
-    this.speech.speak(WALL_TONES_SPEECH.backToMenu);
+    this.speech.speak('backToMenu');
     const wasImmersive = !this.useDesktopPath();
     const fromArWorld = getActiveWorldKind() === 'walltones-ar';
     await this.leaveWallTonesMode();
@@ -1100,7 +1199,7 @@ export class WallTonesSystem extends createSystem({
     }
     this.setSetupUiVisible(false);
     if (mode === 'air') {
-      this.startAirPlacement(WALL_TONES_SPEECH.chooseAirMenu);
+      this.startAirPlacement('chooseAirMenu');
       return;
     }
     this.setSpatialMeshesVisible(true);
@@ -1108,7 +1207,7 @@ export class WallTonesSystem extends createSystem({
     this.scanStartedAt = performance.now() / 1000;
     this.roomCaptureInFlight = false;
     this.roomCaptureAttempted = false;
-    this.speech.speak(WALL_TONES_SPEECH.lookAround);
+    this.speech.speak('lookAround');
     this.statusText = 'Scanning the room…';
     this.renderPanel();
   }
@@ -1142,7 +1241,7 @@ export class WallTonesSystem extends createSystem({
       const floorY = this.viewer.y - 1.45;
       const tables = collectTablePlanes(this.planeEntityScratch, floorY);
       if (tables.length === 0) {
-        this.startAirPlacement(WALL_TONES_SPEECH.noTable);
+        this.startAirPlacement('noTable');
         return;
       }
       this.startTablePicking(tables);
@@ -1173,19 +1272,19 @@ export class WallTonesSystem extends createSystem({
       this.roomCaptureAttempted = true;
       this.statusText = 'Opening room capture…';
       this.renderPanel();
-      this.speech.speak(WALL_TONES_SPEECH.roomCapture);
+      this.speech.speak('roomCapture');
       try {
         await session.initiateRoomCapture();
         this.scanStartedAt = performance.now() / 1000;
       } catch (error) {
         console.warn('[wall-tones] room capture failed', error);
-        this.startAirPlacement(WALL_TONES_SPEECH.notEnoughWallSpace);
+        this.startAirPlacement('notEnoughWallSpace');
       } finally {
         this.roomCaptureInFlight = false;
       }
       return;
     }
-    this.startAirPlacement(WALL_TONES_SPEECH.notEnoughWallSpace);
+    this.startAirPlacement('notEnoughWallSpace');
   }
 
   private startWallPicking(
@@ -1199,9 +1298,9 @@ export class WallTonesSystem extends createSystem({
         this.viewer.y,
         HEADSET_PAD_SIZE_M,
       ),
-      speech: WALL_TONES_SPEECH.pickWallSlots,
+      speech: 'pickWallSlots',
       emptyFallback: () =>
-        this.startAirPlacement(WALL_TONES_SPEECH.notEnoughWallSpace),
+        this.startAirPlacement('notEnoughWallSpace'),
       statusLabel: 'wall slots',
     });
   }
@@ -1216,8 +1315,8 @@ export class WallTonesSystem extends createSystem({
         tables,
         AIR_PLACE_SITTING_PAD_SIZE_M,
       ),
-      speech: WALL_TONES_SPEECH.pickTableSlots,
-      emptyFallback: () => this.startAirPlacement(WALL_TONES_SPEECH.noTable),
+      speech: 'pickTableSlots',
+      emptyFallback: () => this.startAirPlacement('noTable'),
       statusLabel: 'table slots',
     });
   }
@@ -1226,7 +1325,7 @@ export class WallTonesSystem extends createSystem({
     surfaces: ReturnType<typeof collectVerticalWalls>;
     padSizeM: number;
     candidates: ReturnType<typeof generateWallPadCandidates>;
-    speech: string;
+    speech: WallTonesClipId;
     emptyFallback: () => void;
     statusLabel: string;
   }): void {
@@ -1419,8 +1518,8 @@ export class WallTonesSystem extends createSystem({
       const transforms = [...this.selectedSlotTransforms];
       const doneLine =
         this.setupMode === 'sitting'
-          ? WALL_TONES_SPEECH.tableFound
-          : WALL_TONES_SPEECH.padsOnWalls;
+          ? 'tableFound'
+          : 'padsOnWalls';
       this.clearRoomSetupVisuals();
       this.finishHeadsetPlacement(transforms, doneLine);
       return;
@@ -1461,7 +1560,7 @@ export class WallTonesSystem extends createSystem({
       : defaultHeadsetPadSize();
   }
 
-  private startAirPlacement(line: string): void {
+  private startAirPlacement(line: WallTonesClipId): void {
     this.clearRoomSetupVisuals();
     this.setSpatialMeshesVisible(false);
     this.flowPhase = 'air-placement';
@@ -1481,8 +1580,8 @@ export class WallTonesSystem extends createSystem({
     this.setRescanUiVisible(false);
     this.setRepeatUiVisible(false);
     this.speech.speak(line);
-    this.speech.speak(WALL_TONES_SPEECH.chooseAirOrient);
-    this.speech.speak(WALL_TONES_SPEECH.airPlace(1));
+    this.speech.speak('chooseAirOrient');
+    this.speech.speak('airPlace1');
     this.statusText =
       this.setupMode === 'air'
         ? 'Air place: tilt for wall or table size, then pinch.'
@@ -1569,7 +1668,7 @@ export class WallTonesSystem extends createSystem({
       this.renderPanel();
       return;
     }
-    this.speech.speak(WALL_TONES_SPEECH.airPlace(this.airPlaceStep + 1));
+    this.speech.speak((`airPlace${this.airPlaceStep + 1}` as WallTonesClipId));
     this.statusText = `Pinch to place outline ${this.airPlaceStep + 1} of 4.`;
     this.spawnGhostPad();
     this.renderPanel();
@@ -1709,7 +1808,7 @@ export class WallTonesSystem extends createSystem({
 
   private finishHeadsetPlacement(
     transforms: PlacedPadTransform[],
-    line: string,
+    line: WallTonesClipId,
   ): void {
     this.clearRoomSetupVisuals();
     this.clearPads();
@@ -1818,15 +1917,15 @@ export class WallTonesSystem extends createSystem({
     await this.wait(NOTE_GAP_S);
   }
 
-  /** Fanfare, start voiceover, pause, then the first pattern note. */
-  private beginRoundWithIntro(leadInLine?: string): void {
+  /** Fanfare, how-to-play voice line, pause, then the first pattern note. */
+  private beginRoundWithIntro(leadInLine?: WallTonesClipId): void {
     this.playbackQueue = this.playbackQueue.then(async () => {
       if (!this.experienceActive || this.flowPhase !== 'playing') {
         return;
       }
       this.statusText = 'Listen to the intro…';
       this.renderPanel();
-      if (leadInLine != null && leadInLine.length > 0) {
+      if (leadInLine != null) {
         await this.speech.speakAsync(leadInLine);
         await this.wait(0.35);
       }
@@ -1837,7 +1936,7 @@ export class WallTonesSystem extends createSystem({
       if (!this.experienceActive || this.flowPhase !== 'playing') {
         return;
       }
-      await this.speech.speakAsync(WALL_TONES_SPEECH.gameStart);
+      await this.speech.speakAsync('howToPlay');
       await this.wait(POST_INTRO_DELAY_S);
       if (!this.experienceActive || this.flowPhase !== 'playing') {
         return;
@@ -2325,7 +2424,7 @@ export class WallTonesSystem extends createSystem({
       const streak = this.game.streak;
       this.playbackQueue = this.playbackQueue.then(async () => {
         if (streak > 0 && streak % 5 === 0) {
-          await this.speech.speakAsync(WALL_TONES_SPEECH.streakMilestone(streak));
+          await this.speech.speakAsync(milestoneClipFor(streak));
           await this.wait(0.35);
         } else {
           await this.wait(BETWEEN_ROUNDS_DELAY_S);
@@ -2357,14 +2456,27 @@ export class WallTonesSystem extends createSystem({
     this.beginRoundWithIntro();
   }
 
+  /**
+   * A failed run earns a success cheer when it made progress (completed at
+   * least one pattern); missing on the first pattern gets a sympathy line.
+   * Confirmed by Oded 2026-11-05: cheers at run end with progress, no voice
+   * after ordinary rounds, milestones every 5.
+   */
+  private runEarnedCheer(): boolean {
+    return this.game.streak > 0;
+  }
+
   private async onWrongInput(): Promise<void> {
     this.game.phase = 'resetting';
     this.inputNeedsClear = true;
+    const cheer = this.runEarnedCheer();
     await playErrorTone();
     this.statusText = 'Try again';
     this.renderPanel();
     this.playbackQueue = this.playbackQueue.then(async () => {
-      await this.speech.speakAsync(WALL_TONES_SPEECH.wrongTouch);
+      await this.speech.speakAsync(
+        cheer ? randomCheerClip() : randomWrongClip(),
+      );
       await this.wait(WRONG_RESET_DELAY_S);
       if (!this.experienceActive || this.flowPhase !== 'playing') {
         return;
@@ -2434,7 +2546,7 @@ export class WallTonesSystem extends createSystem({
     ) {
       return;
     }
-    this.speech.speak(WALL_TONES_SPEECH.rescanRoom);
+    this.speech.speak('rescanRoom');
     this.statusText = 'Rescanning room…';
     this.renderPanel();
     this.clearRoomSetupVisuals();
@@ -2467,7 +2579,7 @@ export class WallTonesSystem extends createSystem({
     this.scanStartedAt = performance.now() / 1000;
     this.lackingSpatialData = false;
     this.setRescanUiVisible(false);
-    this.speech.speak(WALL_TONES_SPEECH.lookAround);
+    this.speech.speak('lookAround');
     this.renderPanel();
   }
 
@@ -2483,7 +2595,7 @@ export class WallTonesSystem extends createSystem({
     }
     this.lastInputAt = performance.now() / 1000;
     this.idleReplayQueued = false;
-    this.speech.speak(WALL_TONES_SPEECH.repeatPattern);
+    this.speech.speak('repeatPattern');
     this.game.inputStep = 0;
     this.game.phase = 'playback';
     this.inputNeedsClear = true;
@@ -2523,7 +2635,7 @@ export class WallTonesSystem extends createSystem({
     this.statusText = 'Still there? Replaying…';
     this.renderPanel();
     this.playbackQueue = this.playbackQueue.then(async () => {
-      await this.speech.speakAsync(WALL_TONES_SPEECH.idleReplay);
+      await this.speech.speakAsync('idleReplay');
       await this.wait(0.4);
       if (!this.experienceActive || this.flowPhase !== 'playing') {
         return;
