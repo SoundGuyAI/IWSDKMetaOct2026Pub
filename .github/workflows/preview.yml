@@ -9,23 +9,31 @@ name: PR preview
 on:
   pull_request:
     types: [opened, synchronize, reopened, closed]
+  # Manual rebuild of an existing PR's preview (Actions tab > PR preview > Run workflow).
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to (re)build the preview for
+        required: true
 
 permissions:
   contents: write
 
 concurrency:
-  group: pr-preview-${{ github.event.pull_request.number }}
+  group: pr-preview-${{ github.event.pull_request.number || inputs.pr_number }}
   cancel-in-progress: true
 
 jobs:
   deploy-preview:
     name: Build and publish PR preview
-    if: github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'workflow_dispatch' || (github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     env:
-      PR_NUMBER: ${{ github.event.pull_request.number }}
+      PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/pull/{0}/merge', inputs.pr_number) || '' }}
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
