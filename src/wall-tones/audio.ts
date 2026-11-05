@@ -305,6 +305,17 @@ export async function playErrorTone(): Promise<void> {
   }
   const context = await ensureAudioRunning();
   if (context == null) {
+    // A suspended Web Audio context does not imply HTML playback is blocked.
+    // Try the failure sound itself, never a normal musical pad as fallback.
+    try {
+      const audio = htmlErrorAudio ?? new Audio(wavDataUrlForTone(160, 0.32, true));
+      audio.volume = 0.95;
+      audio.currentTime = 0;
+      await audio.play();
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 320));
+    } catch {
+      // A later trusted gesture can retry media activation.
+    }
     return;
   }
   const start = context.currentTime;
@@ -331,4 +342,4 @@ export function suspendAudioContext(): void {
   htmlErrorAudio = null;
   htmlPoolUnlocked = false;
   webAudioPrimed = false;
-      }
+}
