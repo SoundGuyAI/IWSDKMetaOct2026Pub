@@ -173,7 +173,7 @@ test.describe('Wall Tones desktop (flat mode)', () => {
     );
   });
 
-  test('reaching a 5-streak plays the milestone voice and continues the run', async ({
+  test('reaching a 5-streak plays the milestone voice and continues the run @slow', async ({
     page,
   }) => {
     test.slow();
