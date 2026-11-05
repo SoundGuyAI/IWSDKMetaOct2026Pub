@@ -116,3 +116,62 @@ why the automated suite drives gameplay through `window.__wallTonesDebug`
 coordinates, and why menu/settings interaction stays on the manual checklist
 with real pointer hardware. If a future harness adds pointer-based menu
 tests, verify against the deployed site, not only a local build.
+
+## Pointer-path E2E (real mouse events) - wall-tones.desktop.pointer.spec.ts
+
+Added 2026-11-05 after live-site play showed the state-level suite above
+proves game logic but not that real pointer input reaches it. These tests
+drive the production build with real `page.mouse` movement/button events
+only. `window.__wallTonesDebug` is used READ-ONLY (phase, streak, sequence
+as the answer key); no test calls `submitPad`/`selectSlot` or injects state.
+
+1. **Real-mouse streak run** - presses the four pads at their screen
+   positions (fixed 1280x720 viewport) to the target streak (default 10,
+   `WT_STREAK_TARGET` overrides for a quicker local smoke run), asserting
+   every press registers on the FIRST attempt, then a deliberate wrong pad
+   resets the run while the best streak is kept.
+2. **Static click without hover does not press** - documents the live
+   finding that a press dispatched with no preceding pointer movement never
+   registers (4/4 on the live site): the IWSDK ray must hover the pad
+   first. This is a synthetic-input limitation, not a user-facing defect -
+   a real mouse always moves first - and it is why `locator.click()` on
+   the canvas is not a valid E2E path.
+3. **Visual stages** - screenshots attached to the report at idle,
+   input turn, and wrong-pad reset, for human review against the stage
+   checklist above.
+4. **Menu panel via real mouse (retry-tolerant, rounds counted)** - opens
+   Settings and picks Female voice, asserting the OBSERVABLE state change
+   (`localStorage.wall-tones-voice-gender === 'female'`). Because panel
+   hit-registration can miss under automation, the test retries up to 3
+   click rounds and reports the count as a test annotation; more than 3
+   fails. This is NOT a first-click reliability verification.
+
+### Pointer input findings (live site + headless, 2026-11-05)
+
+- **Pads**: with move -> ~150 ms dwell -> press (with slight movement
+  during the hold), pads registered every time across a full streak-10 run
+  on the live site plus local runs. A static down/up with no movement
+  during the hold can fall between rendered frames and be dropped
+  (observed headless); the game edge-triggers on hover+press per frame.
+- **uikit panel buttons** (main menu / settings): need a longer hover
+  dwell (~0.7 s in headless SwiftShader) and NO movement during the hold -
+  press+move reads as a drag and the click is cancelled. Even so,
+  first-click registration was flaky when driven over CDP on the live site
+  (Settings took ~3 attempts once; a Female-voice click showed hover but
+  did not activate). UNRESOLVED whether this affects real users on real
+  hardware or is automation/CDP timing only - flagged for manual check on
+  a real desktop browser.
+- **Earlier note superseded**: the "Known limitation" section above says
+  menu/settings interaction is not automatable. With the dwell + still-
+  press pattern it IS automatable (test 4); the limitation that remains is
+  first-click reliability, documented here.
+
+### Verification levels for the pointer suite
+
+- Live site, real mouse (cloud browser CDP): streak 10 reached, wrong-pad
+  reset and best-streak retention confirmed visually (screenshots).
+- Local headless: full pointer suite green; the streak test was run
+  locally with `WT_STREAK_TARGET=5` for time, default 10 is what CI runs.
+- NOT verified: milestone-5 voice/HUD observed visually during pointer
+  play (covered state-level by the bridge suite); panel first-click
+  reliability on real hardware; the CI workflow itself until it runs.
