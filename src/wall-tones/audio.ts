@@ -239,7 +239,7 @@ export function primeWallTonesAudioFromGesture(): void {
   }
 }
 
-async function ensureAudioRunning(): Promise<AudioContext | null> {
+export async function ensureAudioRunning(): Promise<AudioContext | null> {
   const context = getContext();
   if (context.state === 'suspended') {
     try {
