@@ -43,3 +43,13 @@ pids/
 .cursor/mcp.json
 .vscode/mcp.json
 .codex/config.toml
+
+# Playwright
+playwright-report/
+test-results/
+blob-report/
+
+# Playwright
+playwright-report/
+test-results/
+blob-report/
