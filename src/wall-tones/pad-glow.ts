@@ -57,7 +57,8 @@ void main() {
   face += hue * edgeIn * (0.35 + 0.45 * uHover);
   // One soft diagonal sheen that slowly travels across.
   float s = fract((q.x * 0.8 + q.y * 0.6) * 0.9 - uTime * 0.07 + uPhase);
-  float sheen = exp(-pow((s - 0.5) / 0.09, 2.0)) * 0.20;
+  float sx = (s - 0.5) / 0.09;
+  float sheen = exp(-sx * sx) * 0.20;
   face += light * sheen;
 
   // Crisp rim just inside the edge.
@@ -73,7 +74,8 @@ void main() {
   float pt = uPress;
   float live = step(pt, 0.9);
   float k = clamp(1.0 - pt / 0.9, 0.0, 1.0) * live;
-  float ring = exp(-pow((length(q) - pt * 0.85) / 0.05, 2.0)) * k;
+  float rx = (length(q) - pt * 0.85) / 0.05;
+  float ring = exp(-rx * rx) * k;
   float flash = k * k;
 
   float rimI = rim * (0.9 + 0.5 * uHover + 1.0 * flash) + runner * (0.9 + 0.5 * uHover);
