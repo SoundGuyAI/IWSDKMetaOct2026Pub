@@ -100,15 +100,12 @@ import {
 import { WallTonesSequence } from './sequence.js';
 import {
   WallTonesSpeech,
-  getVoiceGender,
   milestoneClipFor,
   randomCheerClip,
   randomWrongClip,
   resetSpeechUnlock,
-  setVoiceGender,
   unlockSpeechFromGesture,
   type WallTonesClipId,
-  type WallTonesVoiceGender,
 } from './speech.js';
 import {
   getActiveWorldKind,
@@ -185,63 +182,6 @@ export class WallTonesSystem extends createSystem({
     this.speech.speak('chooseMode');
   }
 
-  /** Main-screen voice setting: tapping Voice opens the male/female choice row. */
-  /**
-   * Voice settings popup: swaps the panel's main content for the dialog card.
-   * (UIKitML here has no overlay/absolute positioning, so the dialog replaces
-   * the content column instead of floating above it.)
-   */
-  private toggleVoiceChoiceRow(): void {
-    const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
-    if (panel == null) {
-      return;
-    }
-    const dialogOpen =
-      panel.getElementById('voice-dialog') != null &&
-      this.voiceDialogOpen;
-    if (dialogOpen) {
-      this.closeVoiceDialog();
-    } else {
-      this.openVoiceDialog();
-    }
-  }
-
-  private voiceDialogOpen = false;
-
-  private openVoiceDialog(): void {
-    this.voiceDialogOpen = true;
-    const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
-    panel?.getElementById('panel-content')?.setProperties({ display: 'none' });
-    panel?.getElementById('voice-dialog')?.setProperties({ display: 'flex' });
-    // One way back while the popup is up - the dialog's own Back button.
-    panel?.getElementById('back-to-menu-button')?.setProperties({ display: 'none' });
-  }
-
-  private closeVoiceDialog(): void {
-    this.voiceDialogOpen = false;
-    const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
-    panel?.getElementById('voice-dialog')?.setProperties({ display: 'none' });
-    panel?.getElementById('panel-content')?.setProperties({ display: 'flex' });
-    panel?.getElementById('back-to-menu-button')?.setProperties({ display: 'flex' });
-  }
-
-  private chooseVoiceGender(gender: WallTonesVoiceGender): void {
-    setVoiceGender(gender);
-    this.closeVoiceDialog();
-    this.syncVoiceButton();
-    // Preview the pick in the new voice.
-    this.speech.cancel();
-    this.speech.speak('welcome');
-  }
-
-  private syncVoiceButton(): void {
-    this.world
-      .getSceneObject<UIKitMLAsset>('wall-tones-panel')
-      ?.getElementById<UIKit.Text>('voice-settings-label')
-      ?.setProperties({
-        text: `Voice: ${getVoiceGender() === 'female' ? 'Female' : 'Male'}`,
-      });
-  }
   private readonly game = new WallTonesSequence();
   private readonly viewer = new Vector3();
   private readonly cameraForward = new Vector3();
@@ -516,19 +456,6 @@ export class WallTonesSystem extends createSystem({
     panel
       .getElementById('panel-drag-handle')
       ?.addEventListener('click', () => this.togglePanelDragArm());
-    panel
-      .getElementById('voice-settings-button')
-      ?.addEventListener('click', () => this.toggleVoiceChoiceRow());
-    panel
-      .getElementById('voice-male-button')
-      ?.addEventListener('click', () => this.chooseVoiceGender('male'));
-    panel
-      .getElementById('voice-female-button')
-      ?.addEventListener('click', () => this.chooseVoiceGender('female'));
-    panel
-      .getElementById('voice-dialog-close')
-      ?.addEventListener('click', () => this.closeVoiceDialog());
-    this.syncVoiceButton();
     this.syncDebugCollidersButton();
     this.applyTouchDebugVisibility();
     this.setPanelDragBarVisible(
