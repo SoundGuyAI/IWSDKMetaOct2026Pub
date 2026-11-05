@@ -276,6 +276,11 @@ export class WallTonesSpeech {
   private currentSource: AudioBufferSourceNode | null = null;
   private currentElement: HTMLAudioElement | null = null;
 
+  /** False while iOS-style speech is still locked, so speak() would be dropped. */
+  canSpeakNow(): boolean {
+    return !(needsSpeechUnlock() && !speechUnlocked);
+  }
+
   speak(id: WallTonesClipId): void {
     void this.speakAsync(id);
   }

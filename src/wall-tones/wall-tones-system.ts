@@ -592,10 +592,13 @@ export class WallTonesSystem extends createSystem({
     // Desktop entry still gets the welcome line once (chooseMode is XR-only).
     if (!this.welcomeSpoken) {
       this.welcomeSpoken = true;
+      // If speech is still locked (iOS before the first tap) nothing plays, so
+      // keep the full how-to-play line for after the first press.
+      const speechWillPlay = this.speech.canSpeakNow();
       this.speech.speak('welcome');
       // Same sentence the how-to-play clip opens with, so say it up front.
-      this.startPromptSpoken = true;
       this.speech.speak('pointAndPress');
+      this.startPromptSpoken = speechWillPlay;
     }
     this.spawnDesktopPads();
     this.setRepeatUiVisible(false);
