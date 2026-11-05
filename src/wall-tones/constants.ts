@@ -1,9 +1,9 @@
 /** Provisional pad palette and tones until Unity project review. */
 export const WALL_TONE_PADS = [
-  { id: 0, name: 'green', color: 0x2ecc71, frequencyHz: 392 },
-  { id: 1, name: 'red', color: 0xe74c3c, frequencyHz: 330 },
-  { id: 2, name: 'blue', color: 0x3498db, frequencyHz: 494 },
-  { id: 3, name: 'yellow', color: 0xf1c40f, frequencyHz: 587 },
+  { id: 0, name: 'green', color: 0x2ecc71, frequencyHz: 330 },
+  { id: 1, name: 'red', color: 0xe74c3c, frequencyHz: 392 },
+  { id: 2, name: 'blue', color: 0x3498db, frequencyHz: 587 },
+  { id: 3, name: 'yellow', color: 0xf1c40f, frequencyHz: 494 },
 ] as const;
 
 export type WallTonePadId = (typeof WALL_TONE_PADS)[number]['id'];
@@ -60,6 +60,9 @@ export const SIMON_FANFARE_MID_PAUSE_S = 0.5;
 export const SIMON_FANFARE_END_PAUSE_S = 0.65;
 /** Times the first pad repeats in the startup fanfare. */
 export const SIMON_FANFARE_FIRST_PAD_REPEATS = 4;
+
+/** Startup fanfare pad order: green, red, yellow, blue. */
+export const SIMON_FANFARE_PAD_ORDER: readonly number[] = [0, 1, 3, 2];
 /** If a blinking pad is outside this view cone (degrees from look), show a cue arrow. */
 export const BLINK_CUE_OFFSCREEN_DEG = 28;
 /** Ghost orientation slerp factor per frame at ~72 Hz (higher = snappier). */

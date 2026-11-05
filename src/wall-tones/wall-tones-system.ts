@@ -52,6 +52,7 @@ import {
   SCAN_WAIT_S,
   SIMON_FANFARE_END_PAUSE_S,
   SIMON_FANFARE_FIRST_PAD_REPEATS,
+  SIMON_FANFARE_PAD_ORDER,
   SIMON_FANFARE_MID_PAUSE_S,
   TOUCH_ENTER_FRAMES,
   TOUCH_EXIT_FRAMES,
@@ -1822,7 +1823,8 @@ export class WallTonesSystem extends createSystem({
   private async playSimonStartupFanfare(): Promise<void> {
     this.statusText = 'Watch the pads…';
     this.renderPanel();
-    for (let padIndex = 0; padIndex < WALL_TONE_PADS.length; padIndex += 1) {
+    // Fanfare order is green, red, yellow, blue (pad ids 0, 1, 3, 2).
+    for (const padIndex of SIMON_FANFARE_PAD_ORDER) {
       if (!this.experienceActive || this.flowPhase !== 'playing') {
         return;
       }
