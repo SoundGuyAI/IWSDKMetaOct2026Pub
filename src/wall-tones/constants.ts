@@ -1,9 +1,9 @@
 /** Provisional pad palette and tones until Unity project review. */
 export const WALL_TONE_PADS = [
-  { id: 0, name: 'green', color: 0x2ecc71, frequencyHz: 392 },
-  { id: 1, name: 'red', color: 0xe74c3c, frequencyHz: 330 },
-  { id: 2, name: 'blue', color: 0x3498db, frequencyHz: 494 },
-  { id: 3, name: 'yellow', color: 0xf1c40f, frequencyHz: 587 },
+  { id: 0, name: 'green', color: 0x2ecc71, frequencyHz: 330 },
+  { id: 1, name: 'red', color: 0xe74c3c, frequencyHz: 392 },
+  { id: 2, name: 'blue', color: 0x3498db, frequencyHz: 587 },
+  { id: 3, name: 'yellow', color: 0xf1c40f, frequencyHz: 494 },
 ] as const;
 
 export type WallTonePadId = (typeof WALL_TONE_PADS)[number]['id'];
