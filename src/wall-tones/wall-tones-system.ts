@@ -89,6 +89,7 @@ import {
   solidifyGhostPad,
   type PadRuntime,
 } from './pads.js';
+import { animatePadGlow } from './pad-glow.js';
 import {
   applyRoomSetupTints,
   clearRoomSetupTints,
@@ -360,6 +361,12 @@ export class WallTonesSystem extends createSystem({
   update(delta: number): void {
     if (!this.experienceActive) {
       return;
+    }
+    if (this.pads.length > 0) {
+      const glowTime = performance.now() / 1000;
+      for (const pad of this.pads) {
+        animatePadGlow(pad.glow, glowTime);
+      }
     }
     this.bindPanelIfNeeded();
     if (!this.useDesktopPath()) {

@@ -20,6 +20,7 @@ import {
   WALL_TONE_PADS,
 } from './constants.js';
 import { WallTonePad } from './wall-tone-pad-component.js';
+import { createPadGlow, syncPadGlow, type PadGlow } from './pad-glow.js';
 
 /**
  * Minimum sRGB distance (0-1 per channel) between a pad's idle and hover
@@ -49,6 +50,8 @@ export type PadRuntime = {
   root: Object3D;
   /** Inner press volume (legacy name kept for call sites). */
   touchVolume: Object3D;
+  /** Halo + textured face (real pads only, not the placement ghosts). */
+  glow?: PadGlow;
   hoverVolume: Object3D;
   debugHoverMesh: Mesh;
   debugPressMesh: Mesh;
@@ -201,6 +204,7 @@ export function createPadRuntime(
   face.name = 'face';
   face.renderOrder = 10;
   root.add(face);
+  const glow = createPadGlow(face, faceMaterial, sizeM, padIndex);
 
   const volumes = attachTouchVolumes(root, sizeM);
   const entity = world.createTransformEntity(root);
@@ -216,6 +220,7 @@ export function createPadRuntime(
   return {
     entity,
     root,
+    glow,
     ...basePadFields(padIndex, sizeM, volumes, false),
   };
 }
@@ -342,6 +347,7 @@ export function solidifyGhostPad(pad: PadRuntime, sizeM: number): void {
       material.opacity = 1;
       material.depthWrite = true;
       material.color.setHex(spec?.color ?? 0xffffff);
+      pad.glow = createPadGlow(face, material, sizeM, pad.padIndex);
     }
   }
   resizeTouchVolumes(pad, sizeM);
@@ -413,6 +419,7 @@ export function applyPadVisualState(
     // Confirmed press: punchier lightness / sat shift.
     material.color.offsetHSL(-0.03, 0.15, 0.32);
   }
+  syncPadGlow(pad.glow, material, state);
 }
 
 export function disposePadRuntimes(pads: PadRuntime[]): void {
@@ -441,6 +448,7 @@ export function flashPad(pad: PadRuntime, active: boolean): void {
     material.color.getHSL(hsl);
     material.color.setHSL(hsl.h, 1, Math.min(0.62, hsl.l + 0.1));
     face?.scale.set(1.14, 1.14, 1.35);
+    syncPadGlow(pad.glow, material, 'pressed');
     return;
   }
   face?.scale.set(1, 1, 1);
