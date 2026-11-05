@@ -50,6 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pages: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -59,6 +60,7 @@ jobs:
       - run: npm ci
       - run: npm run build
       - name: Publish dist/ to the gh-pages branch
+        id: publish
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
@@ -74,4 +76,15 @@ jobs:
           else
             git commit -m "Deploy dist from main@${GITHUB_SHA::7}"
             git push origin HEAD:gh-pages
+            echo 'pushed=true' >> "$GITHUB_OUTPUT"
           fi
+      - name: Request a GitHub Pages build
+        if: steps.publish.outputs.pushed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # GitHub docs say GITHUB_TOKEN pushes do not trigger Pages builds
+          # (observed to trigger anyway in this repo, 2026-11-05). Request the
+          # build explicitly so the site updates under either behavior.
+          gh api "repos/${GITHUB_REPOSITORY}/pages/builds" -X POST \
+            || echo '::warning::explicit Pages build request failed; relying on the push-triggered build'
