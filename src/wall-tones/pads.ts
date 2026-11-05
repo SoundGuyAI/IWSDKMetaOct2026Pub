@@ -21,6 +21,27 @@ import {
 } from './constants.js';
 import { WallTonePad } from './wall-tone-pad-component.js';
 
+/**
+ * Minimum sRGB distance (0-1 per channel) between a pad's idle and hover
+ * colors. Green, red and yellow already clear it with the standard hover
+ * offset; blue (0.245) did not, so its hover looked almost like idle.
+ */
+const HOVER_MIN_SHIFT = 0.25;
+const HOVER_WHITE = new Color(0xffffff);
+
+function colorDistance(a: Color, b: Color): number {
+  // Compare in sRGB (what the eye sees), not the renderer's linear values.
+  const ha = a.getHex();
+  const hb = b.getHex();
+  return (
+    Math.hypot(
+      ((ha >> 16) & 255) - ((hb >> 16) & 255),
+      ((ha >> 8) & 255) - ((hb >> 8) & 255),
+      (ha & 255) - (hb & 255),
+    ) / 255
+  );
+}
+
 export type PadVisualState = 'idle' | 'hover' | 'pressed';
 
 export type PadRuntime = {
@@ -376,7 +397,18 @@ export function applyPadVisualState(
   }
   if (state === 'hover') {
     // Entering the wide proximity box: richer sat, slightly brighter.
+    const idle = material.color.clone();
     material.color.offsetHSL(0.02, 0.22, 0.12);
+    // Blue is already bright and saturated, so the fixed offset barely moves
+    // it. Push any pad whose hover shift is below the other pads' toward white
+    // until the shift matches them, so every pad's hover reads equally.
+    for (
+      let i = 0;
+      i < 15 && colorDistance(idle, material.color) < HOVER_MIN_SHIFT;
+      i += 1
+    ) {
+      material.color.lerp(HOVER_WHITE, 0.04);
+    }
   } else if (state === 'pressed') {
     // Confirmed press: punchier lightness / sat shift.
     material.color.offsetHSL(-0.03, 0.15, 0.32);
@@ -391,8 +423,9 @@ export function disposePadRuntimes(pads: PadRuntime[]): void {
 }
 
 /**
- * High-contrast blink for fanfare / pattern playback. Yellow and other bright
- * pads lerp hard toward white and grow slightly so the flash reads in MR.
+ * Blink for fanfare / pattern playback. Keeps the cube's own hue: fully
+ * saturated and a bit lighter than idle (never pulled toward white), and the
+ * face grows slightly so the flash still reads in MR.
  */
 export function flashPad(pad: PadRuntime, active: boolean): void {
   const face = pad.root.getObjectByName('face') as Mesh | undefined;
@@ -404,9 +437,9 @@ export function flashPad(pad: PadRuntime, active: boolean): void {
   if (active) {
     pad.visualState = 'pressed';
     material.color.setHex(spec?.color ?? 0xffffff);
-    // Strong flash: pull toward white (yellow especially needs this).
-    material.color.lerp(new Color(0xffffff), 0.78);
-    material.color.offsetHSL(0, 0.05, 0.08);
+    const hsl = { h: 0, s: 0, l: 0 };
+    material.color.getHSL(hsl);
+    material.color.setHSL(hsl.h, 1, Math.min(0.62, hsl.l + 0.1));
     face?.scale.set(1.14, 1.14, 1.35);
     return;
   }
