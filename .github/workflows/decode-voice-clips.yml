@@ -1,0 +1,31 @@
+name: Decode prerecorded voice clips
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'public/audio/voice-clips-*.tar.gz.b64'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  decode:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Decode and extract voice clips
+        run: |
+          set -e
+          mkdir -p public/audio/speech
+          for f in public/audio/voice-clips-*.tar.gz.b64; do
+            [ -e "$f" ] || continue
+            base64 -d "$f" > /tmp/clips.tar.gz
+            tar -xzf /tmp/clips.tar.gz -C public/audio/speech/
+            rm "$f"
+          done
+      - name: Commit decoded clips
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Decode prerecorded voice clips into public/audio/speech" || echo "nothing to commit"
+          git push
