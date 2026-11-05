@@ -1,0 +1,97 @@
+name: PR preview
+
+# Builds every same-repo pull request and publishes it to
+#   https://<owner>.github.io/<repo>/pr-preview/pr-<number>/
+# on the gh-pages branch, next to (never replacing) the production site.
+# The CI deploy job keeps the pr-preview/ folder when it republishes main.
+# Closing the PR removes its folder. Fork PRs are skipped (no write token).
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  deploy-preview:
+    name: Build and publish PR preview
+    if: github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Publish dist/ to gh-pages under pr-preview/
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3 4 5; do
+            git fetch origin gh-pages
+            git worktree prune
+            rm -rf __ghpages
+            git worktree add --force --detach __ghpages origin/gh-pages
+            dest="__ghpages/pr-preview/pr-${PR_NUMBER}"
+            rm -rf "$dest"
+            mkdir -p "$dest"
+            cp -a dist/. "$dest"/
+            cd __ghpages
+            git add -A
+            if git diff --cached --quiet; then
+              echo 'preview unchanged'
+              break
+            fi
+            git commit -m "Preview PR #${PR_NUMBER} at ${GITHUB_SHA::7}"
+            if git push origin HEAD:gh-pages; then
+              break
+            fi
+            cd ..
+            [ "$attempt" = 5 ] && exit 1
+            sleep $((attempt * 5))
+          done
+          echo "Preview: https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${GITHUB_REPOSITORY#*/}/pr-preview/pr-${PR_NUMBER}/" >> "$GITHUB_STEP_SUMMARY"
+
+  remove-preview:
+    name: Remove PR preview
+    if: github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Delete pr-preview/pr-N from gh-pages
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3 4 5; do
+            git fetch origin gh-pages
+            git worktree prune
+            rm -rf __ghpages
+            git worktree add --force --detach __ghpages origin/gh-pages
+            cd __ghpages
+            rm -rf "pr-preview/pr-${PR_NUMBER}"
+            git add -A
+            if git diff --cached --quiet; then
+              echo 'nothing to remove'
+              break
+            fi
+            git commit -m "Remove preview for PR #${PR_NUMBER}"
+            if git push origin HEAD:gh-pages; then
+              break
+            fi
+            cd ..
+            [ "$attempt" = 5 ] && exit 1
+            sleep $((attempt * 5))
+          done
