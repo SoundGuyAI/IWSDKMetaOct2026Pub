@@ -47,6 +47,9 @@ export type WallTonesClipId =
   | 'airPlace2'
   | 'airPlace3'
   | 'airPlace4'
+  | 'airPlaceShort2'
+  | 'airPlaceShort3'
+  | 'airPlaceShort4'
   | 'soundReady'
   | 'idleReplay'
   | 'repeatPattern'
@@ -92,6 +95,9 @@ export const WALL_TONES_CLIP_FILES: Record<WallTonesClipId, string> = {
   airPlace2: 'air-place-2.mp3',
   airPlace3: 'air-place-3.mp3',
   airPlace4: 'air-place-4.mp3',
+  airPlaceShort2: 'air-place-short-2.mp3',
+  airPlaceShort3: 'air-place-short-3.mp3',
+  airPlaceShort4: 'air-place-short-4.mp3',
   soundReady: 'sound-ready.mp3',
   idleReplay: 'idle-replay.mp3',
   repeatPattern: 'repeat-pattern.mp3',
