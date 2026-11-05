@@ -1,18 +1,54 @@
-# IWSDK App
+# Wall Tones
 
-This project uses `iwsdk.config.json` for declarative scene, asset, component,
-XR, and emulator configuration. Application systems remain explicit in
-`src/index.ts`.
+Wall Tones is a Simon-style memory game built with the Immersive Web SDK
+(IWSDK) and Vite. Four colored pads light up and play a tone in a growing
+sequence. Repeat the sequence by touching the pads in the same order. A wrong
+pad ends the run and starts a fresh one. Your best streak is kept.
+
+Live build (GitHub Pages): https://soundguyai.github.io/IWSDKMetaOct2026Pub/
+
+## Play
+
+- **Start Wall Tones** plays on a flat screen. Click a pad to begin.
+- **Enter XR** launches an immersive session and starts Wall Tones in your room.
+  Setup modes are room scale (pick four wall slots), sitting (table), and air
+  placement (place pads with your hand).
+- **Settings** (gear button on the main menu) opens the voice submenu, where you
+  pick a male or female host voice. The choice is remembered in the browser.
+- A recorded host voice introduces the game, cheers on a run that made progress,
+  and calls out milestones every 5 patterns.
+
+Planning notes live in `WALL_TONES_PLAN.md` and `WALL_TONES_TODO.md`.
+
+## Project layout
+
+- `src/wall-tones/` - game logic, pads, audio, speech and room placement.
+  `wall-tones-system.ts` runs the game, `speech.ts` plays the voice clips.
+- `src/app-mode.ts` - main menu wiring, including the Settings submenu.
+- `public/ui/` - UIKitML panels (`main-menu.uikitml`, `wall-tones-placeholder.uikitml`).
+- `public/audio/speech/{male,female}/` - prerecorded voice clips, one set per voice.
+- `iwsdk.config.json` - IWSDK scene, asset and XR configuration.
+
+## Develop
+
+This is an IWSDK project, so it is configured by `iwsdk.config.json` and run
+through the IWSDK CLI rather than plain `vite`. Application systems are
+registered in `src/index.ts`.
 
 ```sh
 npm install
 npm run dev
 ```
 
+Other scripts: `npm run typecheck` and `npm run build`.
+
 Use the Runtime and Editor controls in the managed browser to switch between
 the running experience and its authored scene.
 
-## Starter content
+## Starter template notes
+
+The repo started from the IWSDK starter. Its demo content (robot, welcome panel
+and the three numbered stations) is still in the scene.
 
 The robot and welcome panel are small examples of authored scene content plus
 runtime systems. The robot turns toward the player's head and plays a sound
