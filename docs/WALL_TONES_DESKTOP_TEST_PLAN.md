@@ -81,7 +81,7 @@ npm run test:e2e:ci       # fast suite only (skips the slow milestone test)
 
 1. **build-and-typecheck** - `npm ci`, `npm run typecheck`, `npm run build`
    (catches TS and bundling regressions on every PR).
-2. **e2e-desktop** - Playwright fast suite (tests 1-5) against the production
+2. **e2e-desktop** - Playwright fast suite (all tests except the `@slow` milestone test) against the production
    build; uploads the HTML report on failure.
 
 Deliberately not changed: the gh-pages deploy flow stays as-is; merging a PR
