@@ -391,8 +391,9 @@ export function disposePadRuntimes(pads: PadRuntime[]): void {
 }
 
 /**
- * High-contrast blink for fanfare / pattern playback. Yellow and other bright
- * pads lerp hard toward white and grow slightly so the flash reads in MR.
+ * Blink for fanfare / pattern playback. Keeps the cube's own hue: fully
+ * saturated and a bit lighter than idle (never pulled toward white), and the
+ * face grows slightly so the flash still reads in MR.
  */
 export function flashPad(pad: PadRuntime, active: boolean): void {
   const face = pad.root.getObjectByName('face') as Mesh | undefined;
@@ -404,9 +405,9 @@ export function flashPad(pad: PadRuntime, active: boolean): void {
   if (active) {
     pad.visualState = 'pressed';
     material.color.setHex(spec?.color ?? 0xffffff);
-    // Strong flash: pull toward white (yellow especially needs this).
-    material.color.lerp(new Color(0xffffff), 0.78);
-    material.color.offsetHSL(0, 0.05, 0.08);
+    const hsl = { h: 0, s: 0, l: 0 };
+    material.color.getHSL(hsl);
+    material.color.setHSL(hsl.h, 1, Math.min(0.62, hsl.l + 0.1));
     face?.scale.set(1.14, 1.14, 1.35);
     return;
   }
