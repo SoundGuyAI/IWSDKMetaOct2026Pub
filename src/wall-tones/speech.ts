@@ -13,6 +13,8 @@ export type WallTonesClipId =
   | 'welcome'
   | 'chooseMode'
   | 'howToPlay'
+  | 'pointAndPress'
+  | 'howToPlayRest'
   | 'cheer1'
   | 'cheer2'
   | 'cheer3'
@@ -56,6 +58,8 @@ export const WALL_TONES_CLIP_FILES: Record<WallTonesClipId, string> = {
   welcome: 'welcome.mp3',
   chooseMode: 'choose-mode.mp3',
   howToPlay: 'how-to-play.mp3',
+  pointAndPress: 'point-and-press.mp3',
+  howToPlayRest: 'how-to-play-rest.mp3',
   cheer1: 'cheer-1.mp3',
   cheer2: 'cheer-2.mp3',
   cheer3: 'cheer-3.mp3',
@@ -119,6 +123,8 @@ const PRIORITY_CLIPS: readonly WallTonesClipId[] = [
   'welcome',
   'chooseMode',
   'howToPlay',
+  'pointAndPress',
+  'howToPlayRest',
   'cheer1',
   'wrong1',
 ];
@@ -269,6 +275,11 @@ export class WallTonesSpeech {
   private chain: Promise<void> = Promise.resolve();
   private currentSource: AudioBufferSourceNode | null = null;
   private currentElement: HTMLAudioElement | null = null;
+
+  /** False while iOS-style speech is still locked, so speak() would be dropped. */
+  canSpeakNow(): boolean {
+    return !(needsSpeechUnlock() && !speechUnlocked);
+  }
 
   speak(id: WallTonesClipId): void {
     void this.speakAsync(id);
