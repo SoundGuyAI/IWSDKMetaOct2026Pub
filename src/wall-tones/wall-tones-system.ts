@@ -1603,6 +1603,9 @@ export class WallTonesSystem extends createSystem({
     this.applyTouchDebugVisibility();
     this.ghostPad = null;
     this.airPlaceStep += 1;
+    // Every stage advance invalidates stale setup speech, including the final
+    // pad, which must stop its placement prompt before the game intro starts.
+    this.speech.cancel();
     if (this.airPlaceStep >= 4) {
       this.flowPhase = 'playing';
       this.layoutPanelForMrPlay();
@@ -1615,11 +1618,8 @@ export class WallTonesSystem extends createSystem({
       this.renderPanel();
       return;
     }
-    // Skip any still-queued setup lines: if the player already placed a pad,
-    // stale prompts (orientation / earlier lines) should not keep playing.
-    this.speech.cancel();
     // Short prompts for pads 2-4; the full positioning phrase only plays for
-    // pad 1 (airPlace1 at placement start). Exact words supplied by Oded (WhatsApp, 2026-11-05): 'Pad 2' / 'Pad 3 now' / 'Aaaaaand... pad 4'.
+    // pad 1 (airPlace1 at placement start).
     const shortPrompts = [
       'airPlaceShort2',
       'airPlaceShort3',
@@ -2644,4 +2644,4 @@ export class WallTonesSystem extends createSystem({
       window.setTimeout(resolve, seconds * 1000);
     });
   }
-}
+      }
