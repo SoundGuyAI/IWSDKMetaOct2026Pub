@@ -4,6 +4,7 @@ let sharedContext: AudioContext | null = null;
 const htmlToneCache = new Map<number, string>();
 const htmlAudioPool: HTMLAudioElement[] = [];
 let htmlPoolUnlocked = false;
+let htmlErrorAudio: HTMLAudioElement | null = null;
 let webAudioPrimed = false;
 
 function createContext(): AudioContext {
@@ -76,7 +77,7 @@ function schedulePadToneWebAudio(
   oscillator.stop(start + durationS + 0.05);
 }
 
-function wavDataUrlForTone(frequencyHz: number, durationS: number): string {
+function wavDataUrlForTone(frequencyHz: number, durationS: number, buzzer = false): string {
   const sampleRate = 22050;
   const numSamples = Math.floor(sampleRate * durationS);
   const dataSize = numSamples * 2;
@@ -103,8 +104,18 @@ function wavDataUrlForTone(frequencyHz: number, durationS: number): string {
   for (let i = 0; i < numSamples; i += 1) {
     const t = i / sampleRate;
     const envelope = Math.min(1, t * 40) * Math.max(0, 1 - (t - 0.05) * 8);
-    const sample =
-      Math.sin(2 * Math.PI * frequencyHz * t) * envelope * 0.55 * 32767;
+    // A soft triangle sweep for failure, distinct from all four musical pads.
+    const ratio = 110 / frequencyHz;
+    const phase = buzzer
+      ? 2 * Math.PI * frequencyHz * durationS / Math.log(ratio) *
+        (Math.pow(ratio, t / durationS) - 1)
+      : 2 * Math.PI * frequencyHz * t;
+    const wave = buzzer ? 2 / Math.PI * Math.asin(Math.sin(phase)) : Math.sin(phase);
+    const level = buzzer ? 0.24 : 0.55;
+    const shape = buzzer
+      ? Math.min(1, t / 0.018) * Math.max(0, (durationS - t) / 0.12)
+      : envelope;
+    const sample = wave * Math.min(1, shape) * level * 32767;
     view.setInt16(44 + i * 2, sample, true);
   }
   const bytes = new Uint8Array(buffer);
@@ -134,6 +145,8 @@ function ensureHtmlAudioPool(): void {
     audio.preload = 'auto';
     htmlAudioPool[padId] = audio;
   }
+  htmlErrorAudio = new Audio(wavDataUrlForTone(160, 0.32, true));
+  htmlErrorAudio.preload = 'auto';
 }
 
 /**
@@ -146,8 +159,7 @@ export function unlockHtmlAudioPoolFromGesture(): boolean {
     return true;
   }
   let started = false;
-  for (let padId = 0; padId < htmlAudioPool.length; padId += 1) {
-    const audio = htmlAudioPool[padId];
+  for (const audio of [...htmlAudioPool, htmlErrorAudio]) {
     if (audio == null) {
       continue;
     }
@@ -278,28 +290,37 @@ export async function playPadTone(
 }
 
 export async function playErrorTone(): Promise<void> {
-  if (htmlPoolUnlocked) {
-    playPooledPadTone(0);
-    window.setTimeout(() => playPooledPadTone(0), 120);
-    return;
+  ensureHtmlAudioPool();
+  if (htmlPoolUnlocked && htmlErrorAudio != null) {
+    const audio = htmlErrorAudio;
+    audio.volume = 0.95;
+    audio.currentTime = 0;
+    try {
+      await audio.play();
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 320));
+      return;
+    } catch {
+      // Use the same gentle buzzer through Web Audio if HTML playback fails.
+    }
   }
   const context = await ensureAudioRunning();
   if (context == null) {
-    playHtmlPadTone(0);
     return;
   }
   const start = context.currentTime;
   const oscillator = context.createOscillator();
   const gain = context.createGain();
-  oscillator.type = 'sine';
-  oscillator.frequency.setValueAtTime(180, start);
-  oscillator.frequency.exponentialRampToValueAtTime(120, start + 0.25);
+  oscillator.type = 'triangle';
+  oscillator.frequency.setValueAtTime(160, start);
+  oscillator.frequency.exponentialRampToValueAtTime(110, start + 0.32);
   gain.gain.setValueAtTime(0.0001, start);
-  gain.gain.exponentialRampToValueAtTime(0.28, start + 0.02);
-  gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.35);
+  gain.gain.linearRampToValueAtTime(0.24, start + 0.018);
+  gain.gain.setValueAtTime(0.24, start + 0.20);
+  gain.gain.linearRampToValueAtTime(0.0001, start + 0.32);
   oscillator.connect(gain).connect(context.destination);
   oscillator.start(start);
-  oscillator.stop(start + 0.4);
+  oscillator.stop(start + 0.32);
+  await new Promise<void>((resolve) => window.setTimeout(resolve, 320));
 }
 
 export function suspendAudioContext(): void {
@@ -307,6 +328,7 @@ export function suspendAudioContext(): void {
   sharedContext = null;
   htmlToneCache.clear();
   htmlAudioPool.length = 0;
+  htmlErrorAudio = null;
   htmlPoolUnlocked = false;
   webAudioPrimed = false;
-}
+      }
