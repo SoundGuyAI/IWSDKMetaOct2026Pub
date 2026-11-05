@@ -1,108 +1,168 @@
-/** Browser speech lines for Wall Tones (English). */
-export const WALL_TONES_SPEECH = {
-  chooseMode:
-    'Choose room scale for walls, sitting for a table, or air place to put the pads by hand.',
-  chooseAirMenu:
-    'Air place works for wall or table style. Tilt your hand to snap upright or flat, then pinch four times.',
-  lookAround:
-    'I am looking at your room. Give me a few seconds to find the walls.',
-  roomCapture:
-    'I could not see enough surfaces. Open room capture on your headset, then we will look again.',
-  padsOnWalls: 'I placed four buttons on your walls. Listen and repeat the pattern.',
-  pickWallSlots:
-    'I found walls. Cyan shows walls, orange shows other room mesh. Point at a green square and pinch to place each one-meter button. Pick four.',
-  pickTableSlots:
-    'I found table surfaces. Cyan shows flat surfaces, orange shows other room items. Point at a green square and pinch to place four buttons. Pick four.',
-  notEnoughWallSpace:
-    'There is not enough wall space for automatic placement. Point at the green squares on the walls if you see them, or move the outlined buttons with your hand and pinch to place them in the air.',
-  tableFound: 'I found a table. Listen and repeat the pattern.',
-  noTable:
-    'I could not find a table or room mesh. Tilt your placing hand so the outline snaps flat or upright, then pinch to place. You can also rescan the room from the panel.',
-  airPlace: (step: number) =>
-    `Outline ${step} of 4. Tilt your hand, then pinch to place.`,
-  desktopReady:
-    'Tap any colored pad once to turn sound on and start. All four pads take part in the pattern.',
-  gameStart:
-    'The game is starting. Watch the pads, listen to the tone, then repeat the pattern.',
-  streakMilestone: (streak: number) =>
-    streak >= 10
-      ? `Great run. ${streak} in a row.`
-      : `Nice. ${streak} in a row.`,
-  wrongTouch: 'That was wrong. Let us start again.',
-  backToMenu: 'Back to the main menu.',
-  soundReady: 'Sound is on. Tap a pad to start.',
-  idleReplay:
-    'Still there? Here is the pattern again. Touch the pads to repeat it.',
-  repeatPattern: 'Playing the pattern again.',
-  chooseAirOrient:
-    'Tilt the hand you place with — the outline eases to flat or upright. Pinch to drop each pad. Use Rescan room if you want Quest to map your space again.',
-  rescanRoom:
-    'Opening room capture. Look around, then we will scan again.',
-} as const;
+/**
+ * Prerecorded voice lines for Wall Tones (English).
+ *
+ * Replaces the old browser speechSynthesis robot voice: every line is an
+ * audio clip in public/audio/speech/, generated once and shipped with the
+ * app. Playback shares the game's Web Audio unlock flow, so the iPhone /
+ * Quest gesture rules stay identical to the pad tones.
+ */
 
-/** Prime iOS Safari speech — call from the same tap as audio unlock. */
-export function warmSpeechSynthesisFromGesture(): void {
-  if (!('speechSynthesis' in globalThis)) {
-    return;
+import { ensureAudioRunning, primeWallTonesAudioFromGesture } from './audio.js';
+
+export type WallTonesClipId =
+  | 'welcome'
+  | 'chooseMode'
+  | 'howToPlay'
+  | 'cheer1'
+  | 'cheer2'
+  | 'cheer3'
+  | 'cheer4'
+  | 'cheer5'
+  | 'cheer6'
+  | 'milestone5'
+  | 'milestone10'
+  | 'milestone15'
+  | 'milestone20'
+  | 'hype1'
+  | 'hype2'
+  | 'hype3'
+  | 'wrong1'
+  | 'wrong2'
+  | 'wrong3'
+  | 'wrong4'
+  | 'wrong5'
+  | 'lookAround'
+  | 'roomCapture'
+  | 'pickWallSlots'
+  | 'pickTableSlots'
+  | 'notEnoughWallSpace'
+  | 'tableFound'
+  | 'padsOnWalls'
+  | 'noTable'
+  | 'chooseAirMenu'
+  | 'chooseAirOrient'
+  | 'airPlace1'
+  | 'airPlace2'
+  | 'airPlace3'
+  | 'airPlace4'
+  | 'soundReady'
+  | 'idleReplay'
+  | 'repeatPattern'
+  | 'backToMenu'
+  | 'rescanRoom';
+
+/** Clip files under public/audio/speech/. */
+export const WALL_TONES_CLIP_FILES: Record<WallTonesClipId, string> = {
+  welcome: 'welcome.mp3',
+  chooseMode: 'choose-mode.mp3',
+  howToPlay: 'how-to-play.mp3',
+  cheer1: 'cheer-1.mp3',
+  cheer2: 'cheer-2.mp3',
+  cheer3: 'cheer-3.mp3',
+  cheer4: 'cheer-4.mp3',
+  cheer5: 'cheer-5.mp3',
+  cheer6: 'cheer-6.mp3',
+  milestone5: 'milestone-5.mp3',
+  milestone10: 'milestone-10.mp3',
+  milestone15: 'milestone-15.mp3',
+  milestone20: 'milestone-20.mp3',
+  hype1: 'hype-1.mp3',
+  hype2: 'hype-2.mp3',
+  hype3: 'hype-3.mp3',
+  wrong1: 'wrong-1.mp3',
+  wrong2: 'wrong-2.mp3',
+  wrong3: 'wrong-3.mp3',
+  wrong4: 'wrong-4.mp3',
+  wrong5: 'wrong-5.mp3',
+  lookAround: 'look-around.mp3',
+  roomCapture: 'room-capture.mp3',
+  pickWallSlots: 'pick-wall-slots.mp3',
+  pickTableSlots: 'pick-table-slots.mp3',
+  notEnoughWallSpace: 'not-enough-wall-space.mp3',
+  tableFound: 'table-found.mp3',
+  padsOnWalls: 'pads-on-walls.mp3',
+  noTable: 'no-table.mp3',
+  chooseAirMenu: 'choose-air-menu.mp3',
+  chooseAirOrient: 'choose-air-orient.mp3',
+  airPlace1: 'air-place-1.mp3',
+  airPlace2: 'air-place-2.mp3',
+  airPlace3: 'air-place-3.mp3',
+  airPlace4: 'air-place-4.mp3',
+  soundReady: 'sound-ready.mp3',
+  idleReplay: 'idle-replay.mp3',
+  repeatPattern: 'repeat-pattern.mp3',
+  backToMenu: 'back-to-menu.mp3',
+  rescanRoom: 'rescan-room.mp3',
+};
+
+const CHEER_IDS: readonly WallTonesClipId[] = [
+  'cheer1',
+  'cheer2',
+  'cheer3',
+  'cheer4',
+  'cheer5',
+  'cheer6',
+];
+
+const WRONG_IDS: readonly WallTonesClipId[] = [
+  'wrong1',
+  'wrong2',
+  'wrong3',
+  'wrong4',
+  'wrong5',
+];
+
+const HYPE_IDS: readonly WallTonesClipId[] = ['hype1', 'hype2', 'hype3'];
+
+/** Clips fetched and decoded up front so the first lines start instantly. */
+const PRIORITY_CLIPS: readonly WallTonesClipId[] = [
+  'welcome',
+  'chooseMode',
+  'howToPlay',
+  'cheer1',
+  'wrong1',
+];
+
+export type WallTonesVoiceGender = 'male' | 'female';
+
+const VOICE_GENDER_STORAGE_KEY = 'wall-tones-voice-gender';
+
+function readStoredGender(): WallTonesVoiceGender {
+  try {
+    return globalThis.localStorage?.getItem(VOICE_GENDER_STORAGE_KEY) === 'female'
+      ? 'female'
+      : 'male';
+  } catch {
+    return 'male';
   }
-  globalThis.speechSynthesis.getVoices();
-  const utterance = new SpeechSynthesisUtterance('Sound on.');
-  utterance.lang = 'en-US';
-  utterance.volume = 0.85;
-  utterance.rate = 0.95;
-  globalThis.speechSynthesis.speak(utterance);
 }
 
-export class WallTonesSpeech {
-  /** Serialize lines so consecutive speak() calls do not cancel each other. */
-  private chain: Promise<void> = Promise.resolve();
+let currentGender: WallTonesVoiceGender = readStoredGender();
 
-  speak(line: string): void {
-    void this.speakAsync(line);
-  }
+export function getVoiceGender(): WallTonesVoiceGender {
+  return currentGender;
+}
 
-  /** Speak a line and resolve when it finishes (or after a safety timeout). */
-  speakAsync(line: string): Promise<void> {
-    if (!('speechSynthesis' in globalThis)) {
-      return Promise.resolve();
-    }
-    if (needsSpeechUnlock() && !speechUnlocked) {
-      return Promise.resolve();
-    }
-    const run = this.chain.then(() => this.utter(line));
-    this.chain = run.then(
-      () => undefined,
-      () => undefined,
-    );
-    return run;
+/** Switch voice set. Drops decoded clips so the next line uses the new voice. */
+export function setVoiceGender(gender: WallTonesVoiceGender): void {
+  if (gender === currentGender) {
+    return;
   }
+  currentGender = gender;
+  try {
+    globalThis.localStorage?.setItem(VOICE_GENDER_STORAGE_KEY, gender);
+  } catch {
+    /* private mode - session-only choice */
+  }
+  bufferCache.clear();
+}
 
-  private utter(line: string): Promise<void> {
-    const utterance = new SpeechSynthesisUtterance(line);
-    utterance.lang = 'en-US';
-    utterance.rate = 0.92;
-    utterance.pitch = 0.95;
-    const estimatedMs = Math.max(2500, line.split(/\s+/).length * 420);
-    return new Promise((resolve) => {
-      let settled = false;
-      const finish = () => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        resolve();
-      };
-      utterance.onend = finish;
-      utterance.onerror = finish;
-      window.setTimeout(finish, estimatedMs + 800);
-      globalThis.speechSynthesis.speak(utterance);
-    });
-  }
-
-  cancel(): void {
-    globalThis.speechSynthesis?.cancel();
-    this.chain = Promise.resolve();
-  }
+function clipUrl(id: WallTonesClipId): string {
+  const file = WALL_TONES_CLIP_FILES[id];
+  // document.baseURI keeps the path correct under Vite's relative base ('./'),
+  // including GitHub Pages subpaths and the dev tunnel. Each voice gender is a
+  // full clip set under its own folder.
+  return new URL(`audio/speech/${currentGender}/${file}`, document.baseURI).href;
 }
 
 let speechUnlocked = false;
@@ -114,11 +174,203 @@ function needsSpeechUnlock(): boolean {
   return /iPhone|iPad|iPod/i.test(navigator.userAgent);
 }
 
+/**
+ * Called from the same tap that unlocks game audio. Resumes the shared audio
+ * context and starts preloading the first clips.
+ */
 export function unlockSpeechFromGesture(): void {
   speechUnlocked = true;
-  warmSpeechSynthesisFromGesture();
+  primeWallTonesAudioFromGesture();
+  void preloadPriorityClips();
 }
 
 export function resetSpeechUnlock(): void {
   speechUnlocked = !needsSpeechUnlock();
+}
+
+const bufferCache = new Map<WallTonesClipId, AudioBuffer | null>();
+const pendingDecodes = new Map<WallTonesClipId, Promise<AudioBuffer | null>>();
+
+async function decodeClip(id: WallTonesClipId): Promise<AudioBuffer | null> {
+  const cached = bufferCache.get(id);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const pending = pendingDecodes.get(id);
+  if (pending != null) {
+    return pending;
+  }
+  const job = (async (): Promise<AudioBuffer | null> => {
+    try {
+      const context = await ensureAudioRunning();
+      if (context == null) {
+        return null;
+      }
+      const response = await fetch(clipUrl(id));
+      if (!response.ok) {
+        console.warn(`[wall-tones] missing voice clip ${id} (${response.status})`);
+        return null;
+      }
+      const bytes = await response.arrayBuffer();
+      return await context.decodeAudioData(bytes);
+    } catch (error) {
+      console.warn(`[wall-tones] voice clip ${id} unavailable`, error);
+      return null;
+    }
+  })();
+  pendingDecodes.set(id, job);
+  const buffer = await job;
+  pendingDecodes.delete(id);
+  bufferCache.set(id, buffer);
+  return buffer;
+}
+
+export function preloadPriorityClips(): Promise<unknown> {
+  return Promise.all(PRIORITY_CLIPS.map((id) => decodeClip(id)));
+}
+
+/** Pick a random id from a pool, avoiding an immediate repeat. */
+let lastRandomIds = new Set<WallTonesClipId>();
+
+export function randomClipFrom(pool: readonly WallTonesClipId[]): WallTonesClipId {
+  const fresh = pool.filter((id) => !lastRandomIds.has(id));
+  const choices = fresh.length > 0 ? fresh : pool;
+  const pick = choices[Math.floor(Math.random() * choices.length)]!;
+  lastRandomIds = new Set([pick]);
+  return pick;
+}
+
+export function randomCheerClip(): WallTonesClipId {
+  return randomClipFrom(CHEER_IDS);
+}
+
+export function randomWrongClip(): WallTonesClipId {
+  return randomClipFrom(WRONG_IDS);
+}
+
+/** Milestone lines are fixed recordings, so they cannot say arbitrary numbers. */
+export function milestoneClipFor(streak: number): WallTonesClipId {
+  switch (streak) {
+    case 5:
+      return 'milestone5';
+    case 10:
+      return 'milestone10';
+    case 15:
+      return 'milestone15';
+    case 20:
+      return 'milestone20';
+    default:
+      return randomClipFrom(HYPE_IDS);
+  }
+}
+
+export class WallTonesSpeech {
+  /** Serialize lines so consecutive speak() calls do not overlap. */
+  private chain: Promise<void> = Promise.resolve();
+  private currentSource: AudioBufferSourceNode | null = null;
+  private currentElement: HTMLAudioElement | null = null;
+
+  speak(id: WallTonesClipId): void {
+    void this.speakAsync(id);
+  }
+
+  /** Play a clip and resolve when it finishes, fails, or times out. */
+  speakAsync(id: WallTonesClipId): Promise<void> {
+    if (needsSpeechUnlock() && !speechUnlocked) {
+      return Promise.resolve();
+    }
+    const run = this.chain.then(() => this.playClip(id));
+    this.chain = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
+  private async playClip(id: WallTonesClipId): Promise<void> {
+    const buffer = await decodeClip(id);
+    if (buffer != null) {
+      const context = await ensureAudioRunning();
+      if (context != null) {
+        return this.playBuffer(context, buffer);
+      }
+    }
+    // Fallback: plain HTMLAudio (e.g. Web Audio blocked before the first gesture).
+    return this.playElement(id);
+  }
+
+  private playBuffer(
+    context: AudioContext,
+    buffer: AudioBuffer,
+  ): Promise<void> {
+    return new Promise((resolve) => {
+      const source = context.createBufferSource();
+      source.buffer = buffer;
+      source.connect(context.destination);
+      this.currentSource = source;
+      let settled = false;
+      const finish = () => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        if (this.currentSource === source) {
+          this.currentSource = null;
+        }
+        resolve();
+      };
+      source.onended = finish;
+      // Safety net: onended does not fire when cancel() stops the source.
+      window.setTimeout(finish, buffer.duration * 1000 + 800);
+      try {
+        source.start();
+      } catch {
+        finish();
+      }
+    });
+  }
+
+  private playElement(id: WallTonesClipId): Promise<void> {
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        this.currentElement = null;
+        resolve();
+      };
+      try {
+        const audio = new Audio(clipUrl(id));
+        this.currentElement = audio;
+        audio.onended = finish;
+        audio.onerror = finish;
+        window.setTimeout(finish, 10000);
+        void audio.play().catch(finish);
+      } catch {
+        finish();
+      }
+    });
+  }
+
+  cancel(): void {
+    try {
+      this.currentSource?.stop();
+    } catch {
+      /* already stopped */
+    }
+    this.currentSource = null;
+    if (this.currentElement != null) {
+      this.currentElement.pause();
+      this.currentElement = null;
+    }
+    this.chain = Promise.resolve();
+  }
+}
+
+// Back-compat alias: the flat desktop entry primed speech with a silent
+// utterance; with recorded clips the gesture simply unlocks audio + preload.
+export function warmSpeechFromGesture(): void {
+  unlockSpeechFromGesture();
 }
