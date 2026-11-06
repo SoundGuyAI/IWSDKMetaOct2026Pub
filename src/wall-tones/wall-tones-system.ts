@@ -191,6 +191,7 @@ export class WallTonesSystem extends createSystem({
 
   private readonly game = new WallTonesSequence();
   private readonly viewer = new Vector3();
+  private readonly captionProjection = new Vector3();
   private readonly cameraForward = new Vector3();
   private readonly cameraPosition = new Vector3();
   private readonly tipLeft = new Vector3();
@@ -2739,8 +2740,8 @@ export class WallTonesSystem extends createSystem({
     this.flatCaptions.style.display = 'block';
     let minX = Infinity, maxX = -Infinity, bottom = 0;
     for (const pad of this.pads) {
-      for (const side of [-1, 1]) {
-        const v = new Vector3(side * pad.sizeM / 2, -pad.sizeM / 2, 0);
+      for (let side = -1; side <= 1; side += 2) {
+        const v = this.captionProjection.set(side * pad.sizeM / 2, -pad.sizeM / 2, 0);
         pad.root.localToWorld(v); v.project(this.world.camera);
         const x = (v.x + 1) * window.innerWidth / 2;
         minX = Math.min(minX, x); maxX = Math.max(maxX, x);
@@ -2780,4 +2781,4 @@ export class WallTonesSystem extends createSystem({
       window.setTimeout(resolve, seconds * 1000);
     });
   }
-  }
+      }
