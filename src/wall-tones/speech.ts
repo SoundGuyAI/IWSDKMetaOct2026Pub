@@ -7,7 +7,7 @@
  * Quest gesture rules stay identical to the pad tones.
  */
 
-import { ensureAudioRunning, primeWallTonesAudioFromGesture } from './audio.js';
+import { ensureAudioRunning, primeWallTonesAudioFromGesture, needsExplicitMobileSoundUnlock } from './audio.js';
 
 export type WallTonesClipId =
   | 'welcome'
@@ -171,6 +171,43 @@ function clipUrl(id: WallTonesClipId): string {
   return new URL(`audio/speech/${currentGender}/${file}`, document.baseURI).href;
 }
 
+// Keep the same media element for the whole visit. Safari grants playback to
+// the element played by the trusted Start tap, not to future new Audio() calls.
+let mobileVoice: HTMLAudioElement | null = null;
+let startupWelcome: Promise<void> | null = null;
+
+export function prepareMobileWelcome(): void {
+  if (!needsExplicitMobileSoundUnlock() || mobileVoice != null) return;
+  mobileVoice = new Audio(clipUrl('welcome'));
+  mobileVoice.preload = 'auto';
+  mobileVoice.load();
+}
+
+/** Must be invoked directly in the native Start click, before any await. */
+export function startMobileWelcomeFromGesture(): Promise<void> {
+  prepareMobileWelcome();
+  if (mobileVoice == null) return Promise.resolve();
+  const audio = mobileVoice;
+  audio.src = clipUrl('welcome');
+  audio.currentTime = 0;
+  // play() itself, not a Promise callback, must run during trusted activation.
+  const started = audio.play();
+  const finished = new Promise<void>((resolve) => {
+    const finish = () => {
+      audio.removeEventListener('ended', finish);
+      audio.removeEventListener('error', finish);
+      resolve();
+    };
+    audio.addEventListener('ended', finish);
+    audio.addEventListener('error', finish);
+    window.setTimeout(finish, 15000);
+  });
+  startupWelcome = started.then(() => finished);
+  // The boot path observes rejection and leaves Start available for retry.
+  void startupWelcome.catch(() => { startupWelcome = null; });
+  return started;
+}
+
 let speechUnlocked = false;
 
 function needsSpeechUnlock(): boolean {
@@ -187,7 +224,9 @@ function needsSpeechUnlock(): boolean {
 export function unlockSpeechFromGesture(): void {
   speechUnlocked = true;
   primeWallTonesAudioFromGesture();
-  void preloadPriorityClips();
+  // Mobile speech uses the persistent HTML media route, not a decode job that
+  // can hang behind a suspended/interrupted AudioContext on Safari.
+  if (!needsExplicitMobileSoundUnlock()) void preloadPriorityClips();
 }
 
 export function resetSpeechUnlock(): void {
@@ -299,6 +338,14 @@ export class WallTonesSpeech {
   }
 
   private async playClip(id: WallTonesClipId): Promise<void> {
+    if (needsExplicitMobileSoundUnlock() && mobileVoice != null) {
+      if (id === 'welcome' && startupWelcome != null) {
+        const welcome = startupWelcome;
+        startupWelcome = null;
+        return welcome;
+      }
+      return this.playElement(id);
+    }
     const buffer = await decodeClip(id);
     if (buffer != null) {
       const context = await ensureAudioRunning();
@@ -353,7 +400,11 @@ export class WallTonesSpeech {
         resolve();
       };
       try {
-        const audio = new Audio(clipUrl(id));
+        const audio = needsExplicitMobileSoundUnlock() && mobileVoice != null
+          ? mobileVoice
+          : new Audio(clipUrl(id));
+        audio.src = clipUrl(id);
+        audio.currentTime = 0;
         this.currentElement = audio;
         audio.onended = finish;
         audio.onerror = finish;
