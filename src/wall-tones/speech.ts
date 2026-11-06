@@ -365,6 +365,10 @@ export class WallTonesSpeech {
    * line still awaiting decode/playback stops counting immediately instead of
    * whenever its promise happens to resolve. */
   private busyRuns = new Set<() => void>();
+  /** One settle hook per in-flight speakAsync run; cancel() resolves them so
+   * playback-queue callbacks awaiting a superseded line resume at once instead
+   * of whenever its decode/fetch happens to complete. */
+  private runSettlers = new Set<() => void>();
 
   /** False while iOS-style speech is still locked, so speak() would be dropped. */
   canSpeakNow(): boolean {
@@ -393,17 +397,28 @@ export class WallTonesSpeech {
       }
     };
     this.busyRuns.add(uncount);
+    let settleRun!: () => void;
+    const cancelled = new Promise<void>((resolve) => {
+      settleRun = resolve;
+    });
+    this.runSettlers.add(settleRun);
     const run = this.chain.then(() => {
       if (gen !== this.generation) {
         return; // superseded by cancel() while queued
       }
-      return this.playClip(id, gen, startupEntry);
+      // Race the line against cancel(): a superseded line stuck awaiting a
+      // stalled decode/fetch still resolves its run, so callers awaiting
+      // speakAsync (round intro, milestone chains) resume immediately.
+      return Promise.race([this.playClip(id, gen, startupEntry), cancelled]);
     });
     this.chain = run.then(
       () => undefined,
       () => undefined,
     );
-    return run.finally(uncount);
+    return run.finally(() => {
+      this.runSettlers.delete(settleRun);
+      uncount();
+    });
   }
 
   private async playClip(id: WallTonesClipId, gen: number, startupEntry: boolean): Promise<void> {
@@ -535,9 +550,13 @@ export class WallTonesSpeech {
     this.activeElementFinish?.();
     this.activeElementFinish = null;
     // Superseded lines can still be awaiting decode/fetch; stop counting them
-    // now rather than when their promises happen to settle.
+    // now rather than when their promises happen to settle, and resolve those
+    // runs so anything awaiting speakAsync resumes immediately.
     for (const uncount of [...this.busyRuns]) {
       uncount();
+    }
+    for (const settleRun of [...this.runSettlers]) {
+      settleRun();
     }
     this.chain = Promise.resolve();
   }
