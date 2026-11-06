@@ -361,6 +361,10 @@ export class WallTonesSpeech {
   private activeElementFinish: (() => void) | null = null;
   /** Lines queued or playing right now; drives the Skip voice button. */
   private pendingLines = 0;
+  /** One settle hook per counted line; cancel() flushes them so a superseded
+   * line still awaiting decode/playback stops counting immediately instead of
+   * whenever its promise happens to resolve. */
+  private busyRuns = new Set<() => void>();
 
   /** False while iOS-style speech is still locked, so speak() would be dropped. */
   canSpeakNow(): boolean {
@@ -383,6 +387,12 @@ export class WallTonesSpeech {
     }
     this.pendingLines += 1;
     const gen = this.generation;
+    const uncount = () => {
+      if (this.busyRuns.delete(uncount)) {
+        this.pendingLines -= 1;
+      }
+    };
+    this.busyRuns.add(uncount);
     const run = this.chain.then(() => {
       if (gen !== this.generation) {
         return; // superseded by cancel() while queued
@@ -393,9 +403,7 @@ export class WallTonesSpeech {
       () => undefined,
       () => undefined,
     );
-    return run.finally(() => {
-      this.pendingLines -= 1;
-    });
+    return run.finally(uncount);
   }
 
   private async playClip(id: WallTonesClipId, gen: number, startupEntry: boolean): Promise<void> {
@@ -526,6 +534,11 @@ export class WallTonesSpeech {
     // otherwise wait for its watchdog and keep isBusy() (Skip voice) stuck on.
     this.activeElementFinish?.();
     this.activeElementFinish = null;
+    // Superseded lines can still be awaiting decode/fetch; stop counting them
+    // now rather than when their promises happen to settle.
+    for (const uncount of [...this.busyRuns]) {
+      uncount();
+    }
     this.chain = Promise.resolve();
   }
 }
