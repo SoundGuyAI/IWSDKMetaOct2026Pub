@@ -329,12 +329,12 @@ export class WallTonesSpeech {
     return !(needsSpeechUnlock() && !speechUnlocked);
   }
 
-  speak(id: WallTonesClipId): void {
-    void this.speakAsync(id);
+  speak(id: WallTonesClipId, startupEntry = false): void {
+    void this.speakAsync(id, startupEntry);
   }
 
   /** Play a clip and resolve when it finishes, fails, or times out. */
-  speakAsync(id: WallTonesClipId): Promise<void> {
+  speakAsync(id: WallTonesClipId, startupEntry = false): Promise<void> {
     if (needsSpeechUnlock() && !speechUnlocked) {
       return Promise.resolve();
     }
@@ -343,7 +343,7 @@ export class WallTonesSpeech {
       if (gen !== this.generation) {
         return; // superseded by cancel() while queued
       }
-      return this.playClip(id, gen);
+      return this.playClip(id, gen, startupEntry);
     });
     this.chain = run.then(
       () => undefined,
@@ -352,9 +352,9 @@ export class WallTonesSpeech {
     return run;
   }
 
-  private async playClip(id: WallTonesClipId, gen: number): Promise<void> {
+  private async playClip(id: WallTonesClipId, gen: number, startupEntry: boolean): Promise<void> {
     if (needsExplicitMobileSoundUnlock() && mobileVoice != null) {
-      if (id === 'welcome' && startupWelcome != null) {
+      if (id === 'welcome' && startupEntry && startupWelcome != null) {
         const welcome = startupWelcome;
         startupWelcome = null;
         this.currentElement = mobileVoice;
