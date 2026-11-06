@@ -102,6 +102,65 @@ test.describe('Wall Tones polish: fade + skip voice', () => {
     expect(await speechBusy(page)).toBe(false);
   });
 
+  test('flat skip button floats bottom-right outside the panel and skips', async ({
+    page,
+  }) => {
+    await bootWallTones(page);
+    // Entry narration starts; the overlay appears outside the menu panel.
+    await expect.poll(() => speechBusy(page), { timeout: 60_000 }).toBe(true);
+    const button = page.locator('#wall-tones-skip-voice-flat');
+    await expect(button).toBeVisible();
+
+    // Bottom-right corner of the screen, inside a small edge margin.
+    const box = await button.boundingBox();
+    const viewport = page.viewportSize();
+    expect(box).not.toBeNull();
+    expect(box!.x + box!.width).toBeGreaterThan(viewport!.width - 40);
+    expect(box!.y + box!.height).toBeGreaterThan(viewport!.height - 40);
+
+    // Clicking the actual overlay button skips the narration and hides it.
+    await button.click();
+    await expect.poll(() => speechBusy(page)).toBe(false);
+    await expect(button).toBeHidden();
+  });
+
+  test('flat skip button stays clear of the subtitle strip on a phone', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem('iwsdk-experience-mode', 'walltones');
+      window.localStorage.clear();
+      window.localStorage.setItem('wall-tones-hearing-subtitles', 'true');
+    });
+    await page.goto('/');
+    await page.waitForFunction(
+      () =>
+        Boolean(
+          (window as unknown as { __wallTonesDebug?: unknown })
+            .__wallTonesDebug,
+        ),
+      undefined,
+      { timeout: 60_000 },
+    );
+    await expect.poll(() => speechBusy(page), { timeout: 60_000 }).toBe(true);
+    const button = page.locator('#wall-tones-skip-voice-flat');
+    await expect(button).toBeVisible();
+    // With the bottom subtitle strip up, the corner has no safe room: the
+    // button must sit fully above the strip (never overlapping it).
+    const gap = await page.evaluate(() => {
+      const b = document
+        .getElementById('wall-tones-skip-voice-flat')!
+        .getBoundingClientRect();
+      const strip = document.getElementById('wall-tones-flat-subtitles');
+      if (strip == null || strip.style.display === 'none') return null;
+      const s = strip.getBoundingClientRect();
+      return s.top - b.bottom;
+    });
+    expect(gap).not.toBeNull();
+    expect(gap!).toBeGreaterThan(0);
+  });
+
   test('pad flash cross-fades in and back out instead of snapping', async ({
     page,
   }) => {
