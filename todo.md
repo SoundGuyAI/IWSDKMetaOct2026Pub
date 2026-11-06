@@ -17,6 +17,16 @@
 - [x] User preview/merge approval received November 6 at17:54; final checks still required.
 
 
+## Economy PR (backlog 11/12/12a/18/19) - in progress November 7
+- [x] Gold Bars: 1 for streaks 1-5, 2 for 6-10, 4 for 11-15, doubling every five; persisted balance and lifetime total.
+- [x] Store: persistent Your Turn hint unlocks at 10/15/22 Bars then ~1.3x growth (his examples + 'each next 5 costs more'), open-ended, tunable.
+- [x] Your Turn hint gating per user November 7: row hidden without a hint owned (subtitles no longer reveal it), first 5 boxes per owned level, Listen unchanged.
+- [x] Persist best streak, Bars, hint level, achievements, first-time flags (18).
+- [x] Achievements: streak 5/10/15/20, Bars 25/100 lifetime, first pattern, first purchase, all hints; visual-only toast (19).
+- [x] Approved voice lines (both host voices): first Bars earned, store welcome, hint explanation; each once per install.
+- [ ] Score (11): interpretation still open with the user; not in this PR unless he answers before handover.
+- [ ] Typecheck/build, e2e economy spec, CI/Codex review, deployed preview and test checklist.
+
 ## Approved merges
 - [x] PR21: startup/restart fanfare timing. Merged 10e6419.
 - [x] PR23: short pad-placement prompts and cancellation safety. Merged 235d94e.
