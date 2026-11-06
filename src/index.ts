@@ -27,7 +27,7 @@ if (needsExplicitMobileSoundUnlock()) {
       unlockSpeechFromGesture();
       // Narration is optional. A missing/blocked clip must not trap the player
       // outside the game; the normal Sound on / pad gestures remain available.
-      await welcomeStarted.catch((error) => {
+      void welcomeStarted.catch((error) => {
         console.warn('[wall-tones] welcome playback unavailable', error);
       });
       await startInitialWorld(container);
