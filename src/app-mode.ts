@@ -250,10 +250,10 @@ export class AppModeSystem extends createSystem({}) {
 
   private syncDocumentChrome(mode: ExperienceMode): void {
     const titles: Record<ExperienceMode, string> = {
-      menu: 'Wall Tones',
+      menu: 'Wall Tones 2: too fast to wall',
       demo: 'Starter demo',
       meditation: 'Breath & gaze rest',
-      walltones: 'Wall Tones',
+      walltones: 'Wall Tones 2: too fast to wall',
     };
     document.title = titles[mode];
 
