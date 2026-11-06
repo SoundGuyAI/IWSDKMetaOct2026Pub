@@ -4,40 +4,41 @@ Personal backlog for what still needs work — not an agent task list. Move item
 
 ## Not started
 
-- [ ] Setup window: bigger threshold angle to jump back into view
-- [ ] Setup window: after mode is selected, place it a little farther away, a little higher, and make it draggable
-- [ ] Bug: first box in the pattern is not blinking in VR (arrow also not showing)
-- [ ] Allow clicking the button with a ray
-- [ ] Sports mode that disables ray button clicks
-- [ ] Animation and juice
-- [ ] Wrist band that shows the buttons playing the pattern
-- [ ] Incremental features (park smaller follow-ups here as they come up)
+1. [ ] Setup window: bigger threshold angle to jump back into view
+2. [ ] Setup window: after mode is selected, place it a little farther away, a little higher, and make it draggable
+3. [ ] Bug: first box in the pattern is not blinking in VR (arrow also not showing)
+4. [ ] Allow clicking the button with a ray
+5. [ ] Sports mode that disables ray button clicks
+6. [ ] Animation and juice
+7. [ ] Wrist band that shows the buttons playing the pattern
+8. [ ] Incremental features (park smaller follow-ups here as they come up)
 
 ### Minor polish - November 6
-- [ ] Fade button transitions between lit and dim states in both directions.
-- [ ] Add a skip dialog button.
+9. [ ] Fade button transitions between lit and dim states in both directions.
+10. [ ] Add a skip dialog button.
 
 ### Future ideas - November 6,18:02 (backlog only, not implementation approval)
-- [ ] Add a score that grows exponentially with streak length.
-- [ ] Add a store where players can buy modifiers.
-  - [ ] Your Turn hint modifier: each level gives 5 boxes of hints; buy upgrades for longer hints.
-  - [ ] Auto-presser modifier.
-  - [ ] Two more colored pads. In VR, the player would need to add them.
-- [ ] Secret unlock: brainstorm what it should be.
-- [ ] Story mode, told through the narrator. Open question: unlock it through the secret?
-- [ ] New trailer hinting that this is an ARG game.
-- [ ] Something flies out of the walls in MR after certain scores; in flat mode it flies into the screen, with a button to look at it. Details to brainstorm.
-- [ ] Rickroll fanfare. Open question: how many buttons does it need, and are 6 enough?
-- [ ] Save score, streak and settings locally.
-- [ ] Achievements for streak, score, story and other milestones.
+11. [ ] Add a score that grows exponentially with streak length.
+   - [ ] 11a. Add player-applied multipliers to the scoring system; mechanics unspecified.
+12. [ ] Add a store where players can buy modifiers.
+   - [ ] 12a. Your Turn hint modifier: each level gives 5 boxes of hints; buy upgrades for longer hints.
+   - [ ] 12b. Auto-presser modifier.
+   - [ ] 12c. Two more colored pads. In VR, the player would need to add them.
+13. [ ] Secret unlock: brainstorm what it should be.
+14. [ ] Story mode, told through the narrator. Open question: unlock it through the secret?
+15. [ ] New trailer hinting that this is an ARG game.
+16. [ ] Something flies out of the walls in MR after certain scores; in flat mode it flies into the screen, with a button to look at it. Details to brainstorm.
+17. [ ] Rickroll fanfare. Open question: how many buttons does it need, and are 6 enough?
+18. [ ] Save score, streak and settings locally.
+19. [ ] Achievements for streak, score, story and other milestones.
 
 ### MR and menu polish - November 6
 
-- [ ] In mixed reality, investigate whether the boundary can be ignored.
-- [ ] In MR, show subtitles at the bottom of the view, statically attached to the head, in a readable position.
-- [ ] In the game menu, make the window draggable by default; remove the top button's drag-mode toggle.
-- [ ] In setup mode, hide scoring info; show it only while the game loop is active.
-- [ ] Before play-mode selection in setup mode, show the scanning data and allow a rescan.
+20. [ ] In mixed reality, investigate whether the boundary can be ignored.
+21. [ ] In MR, show subtitles at the bottom of the view, statically attached to the head, in a readable position.
+22. [ ] In the game menu, make the window draggable by default; remove the top button's drag-mode toggle.
+23. [ ] In setup mode, hide scoring info; show it only while the game loop is active.
+24. [ ] Before play-mode selection in setup mode, show the scanning data and allow a rescan.
 
 ## In progress
 
