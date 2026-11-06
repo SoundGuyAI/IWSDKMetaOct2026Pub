@@ -1603,6 +1603,9 @@ export class WallTonesSystem extends createSystem({
     this.applyTouchDebugVisibility();
     this.ghostPad = null;
     this.airPlaceStep += 1;
+    // Every stage advance invalidates stale setup speech, including the final
+    // pad, which must stop its placement prompt before the game intro starts.
+    this.speech.cancel();
     if (this.airPlaceStep >= 4) {
       this.flowPhase = 'playing';
       this.layoutPanelForMrPlay();
@@ -1615,7 +1618,14 @@ export class WallTonesSystem extends createSystem({
       this.renderPanel();
       return;
     }
-    this.speech.speak((`airPlace${this.airPlaceStep + 1}` as WallTonesClipId));
+    // Short prompts for pads 2-4; the full positioning phrase only plays for
+    // pad 1 (airPlace1 at placement start).
+    const shortPrompts = [
+      'airPlaceShort2',
+      'airPlaceShort3',
+      'airPlaceShort4',
+    ] as const;
+    this.speech.speak(shortPrompts[this.airPlaceStep - 1]!);
     this.statusText = `Pinch to place outline ${this.airPlaceStep + 1} of 4.`;
     this.spawnGhostPad();
     this.renderPanel();
@@ -2633,4 +2643,4 @@ export class WallTonesSystem extends createSystem({
       window.setTimeout(resolve, seconds * 1000);
     });
   }
-}
+      }

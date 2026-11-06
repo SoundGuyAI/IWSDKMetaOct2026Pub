@@ -47,6 +47,9 @@ export type WallTonesClipId =
   | 'airPlace2'
   | 'airPlace3'
   | 'airPlace4'
+  | 'airPlaceShort2'
+  | 'airPlaceShort3'
+  | 'airPlaceShort4'
   | 'soundReady'
   | 'idleReplay'
   | 'repeatPattern'
@@ -92,6 +95,9 @@ export const WALL_TONES_CLIP_FILES: Record<WallTonesClipId, string> = {
   airPlace2: 'air-place-2.mp3',
   airPlace3: 'air-place-3.mp3',
   airPlace4: 'air-place-4.mp3',
+  airPlaceShort2: 'air-place-short-2.mp3',
+  airPlaceShort3: 'air-place-short-3.mp3',
+  airPlaceShort4: 'air-place-short-4.mp3',
   soundReady: 'sound-ready.mp3',
   idleReplay: 'idle-replay.mp3',
   repeatPattern: 'repeat-pattern.mp3',
@@ -273,6 +279,9 @@ export function milestoneClipFor(streak: number): WallTonesClipId {
 export class WallTonesSpeech {
   /** Serialize lines so consecutive speak() calls do not overlap. */
   private chain: Promise<void> = Promise.resolve();
+
+  /** Bumped by cancel() so lines queued on the old chain never start. */
+  private generation = 0;
   private currentSource: AudioBufferSourceNode | null = null;
   private currentElement: HTMLAudioElement | null = null;
 
@@ -290,7 +299,13 @@ export class WallTonesSpeech {
     if (needsSpeechUnlock() && !speechUnlocked) {
       return Promise.resolve();
     }
-    const run = this.chain.then(() => this.playClip(id));
+    const gen = this.generation;
+    const run = this.chain.then(() => {
+      if (gen !== this.generation) {
+        return; // superseded by cancel() while queued
+      }
+      return this.playClip(id, gen);
+    });
     this.chain = run.then(
       () => undefined,
       () => undefined,
@@ -298,10 +313,16 @@ export class WallTonesSpeech {
     return run;
   }
 
-  private async playClip(id: WallTonesClipId): Promise<void> {
+  private async playClip(id: WallTonesClipId, gen: number): Promise<void> {
     const buffer = await decodeClip(id);
+    if (gen !== this.generation) {
+      return; // superseded by cancel() while decoding
+    }
     if (buffer != null) {
       const context = await ensureAudioRunning();
+      if (gen !== this.generation) {
+        return; // superseded while resuming the audio context
+      }
       if (context != null) {
         return this.playBuffer(context, buffer);
       }
@@ -366,6 +387,7 @@ export class WallTonesSpeech {
   }
 
   cancel(): void {
+    this.generation += 1;
     try {
       this.currentSource?.stop();
     } catch {
