@@ -357,6 +357,8 @@ export class WallTonesSpeech {
   private generation = 0;
   private currentSource: AudioBufferSourceNode | null = null;
   private currentElement: HTMLAudioElement | null = null;
+  /** Lines queued or playing right now; drives the Skip voice button. */
+  private pendingLines = 0;
 
   /** False while iOS-style speech is still locked, so speak() would be dropped. */
   canSpeakNow(): boolean {
@@ -367,11 +369,17 @@ export class WallTonesSpeech {
     void this.speakAsync(id, startupEntry);
   }
 
+  /** True while any narration line is queued or playing (skip can cancel it). */
+  isBusy(): boolean {
+    return this.pendingLines > 0;
+  }
+
   /** Play a clip and resolve when it finishes, fails, or times out. */
   speakAsync(id: WallTonesClipId, startupEntry = false): Promise<void> {
     if (needsSpeechUnlock() && !speechUnlocked) {
       return Promise.resolve();
     }
+    this.pendingLines += 1;
     const gen = this.generation;
     const run = this.chain.then(() => {
       if (gen !== this.generation) {
@@ -383,7 +391,9 @@ export class WallTonesSpeech {
       () => undefined,
       () => undefined,
     );
-    return run;
+    return run.finally(() => {
+      this.pendingLines -= 1;
+    });
   }
 
   private async playClip(id: WallTonesClipId, gen: number, startupEntry: boolean): Promise<void> {
@@ -511,4 +521,4 @@ export function warmSpeechFromGesture(): void {
 export function randomNewBestClip(firstRecord = false): WallTonesClipId {
   if (firstRecord) return 'newBest1';
   return (['newBest1', 'newBest2', 'newBest3'] as const)[Math.floor(Math.random() * 3)]!;
-    }
+}
