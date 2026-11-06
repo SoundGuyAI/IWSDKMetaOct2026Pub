@@ -268,6 +268,15 @@ private flatLayoutValues: number[] = [];
 private flatLayoutCursor = 0;
 private flatLayoutDirty = true;
 private sequenceIconKey = '';
+private sequenceIconPendingPanel: UIKitMLAsset | null = null;
+private sequenceIconUpdateQueued = false;
+private readonly sequenceCueSquares: UIKit.Container[] = [];
+private readonly sequenceCueNames: UIKit.Text[] = [];
+private readonly flushSequenceIcons = () => {
+this.sequenceIconUpdateQueued = false;
+const panel = this.sequenceIconPendingPanel;
+if (panel) this.reconcileSequenceIcons(panel);
+};
 private accessibilityPanel: UIKitMLAsset | undefined;
 private accessibilityState: { show: boolean; flat: boolean; active: boolean; caption: string; phase: string; status: string; names: boolean; sequence: number[] } | undefined;
 private sequenceIconRow: UIKit.Container | null = null;
@@ -2685,28 +2694,47 @@ panel
 
 /** Real colored geometry avoids emoji / font fallback rendering white boxes. */
 private renderSequenceIcons(panel: UIKitMLAsset): void {
+this.sequenceIconPendingPanel = panel;
+if (this.sequenceIconUpdateQueued) return;
+this.sequenceIconUpdateQueued = true;
+queueMicrotask(this.flushSequenceIcons);
+}
+
+/** Reconcile after the frame callback; retain cues instead of rebuilding each round. */
+private reconcileSequenceIcons(panel: UIKitMLAsset): void {
 const row = panel.getElementById<UIKit.Container>('wall-tones-sequence-icons');
 if (row == null) return;
 const visible = this.game.phase === 'input' || this.statusText === 'Listen:';
-const key = this.game.sequence.join(',') + ':' + colorNamesEnabled() + ':' + visible;
+const names = colorNamesEnabled();
+const key = this.game.sequence.join(',') + ':' + names + ':' + visible;
 if (this.sequenceIconRow === row && this.sequenceIconKey === key) return;
-row.setProperties({ display: visible ? 'flex' : 'none' });
-for (const child of [...row.children]) {
-if (child instanceof UIKit.Container) child.dispose();
-row.remove(child);
-}
+if (this.sequenceIconRow !== row) {
+this.sequenceCueSquares.length = 0;
+this.sequenceCueNames.length = 0;
 this.sequenceIconRow = row;
+}
 this.sequenceIconKey = key;
-this.game.sequence.forEach((id) => {
-row.add(new UIKit.Container({
-width: 16, height: 16, borderRadius: 2,
-backgroundColor: WALL_TONE_PADS[id].color,
-flexShrink: 0,
-}));
-if (colorNamesEnabled()) row.add(new UIKit.Text({
-text: WALL_TONE_PADS[id].name, fontSize: 15, color: 0xffffff,
-}));
+row.setProperties({ display: visible ? 'flex' : 'none' });
+for (let i = 0; i < this.game.sequence.length; i++) {
+if (!this.sequenceCueSquares[i]) {
+const square = new UIKit.Container({width: 16, height: 16, borderRadius: 2, flexShrink: 0});
+const name = new UIKit.Text({fontSize: 15, color: 0xffffff});
+this.sequenceCueSquares.push(square);
+this.sequenceCueNames.push(name);
+row.add(square); row.add(name);
+}
+}
+for (let i = 0; i < this.sequenceCueSquares.length; i++) {
+const id = this.game.sequence[i];
+this.sequenceCueSquares[i]!.setProperties({
+display: id == null ? 'none' : 'flex',
+backgroundColor: id == null ? 0 : WALL_TONE_PADS[id].color,
 });
+this.sequenceCueNames[i]!.setProperties({
+display: id != null && names ? 'flex' : 'none',
+text: id == null ? '' : WALL_TONE_PADS[id].name,
+});
+}
 }
 
 private trackFlatLayout(value: number): void {
@@ -2833,4 +2861,4 @@ return new Promise((resolve) => {
 window.setTimeout(resolve, seconds * 1000);
 });
 }
-  }
+}
