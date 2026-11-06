@@ -59,6 +59,24 @@ export class AppModeSystem extends createSystem({}) {
 
   init(): void {
     this.mode = readStoredMode();
+    // Spatial UIKit clicks are dispatched from the render loop, after Safari's
+    // trusted DOM gesture has ended. Resume audio in the original canvas tap
+    // instead, before Start changes the mode and queues the welcome.
+    const unlockMenuAudio = (event: Event) => {
+      if (
+        this.mode === 'menu' &&
+        event.isTrusted &&
+        event.target === this.renderer.domElement
+      ) {
+        unlockSpeechFromGesture();
+      }
+    };
+    for (const type of ['pointerdown', 'pointerup', 'touchend'] as const) {
+      window.addEventListener(type, unlockMenuAudio, { capture: true, passive: true });
+      this.cleanupFuncs.push(() =>
+        window.removeEventListener(type, unlockMenuAudio, true),
+      );
+    }
     this.bindMainMenu();
     this.bindWallTonesPlaceholder();
     this.bindDemoNav();
