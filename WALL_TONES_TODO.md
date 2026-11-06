@@ -40,6 +40,10 @@ Personal backlog for what still needs work — not an agent task list. Move item
 - [ ] 24. Before play-mode selection in setup mode, show the scanning data and allow a rescan.
 - [ ] 25. In setup mode, keep the menu panel from hiding behind the selection ray when it points at something in the environment to scan: ray-aware placement, a smart reverse of follow-the-look. Maybe also move the panel a little up, since there will probably not be things on the ceiling to select (tentative).
 - [ ] 26. Tabletop pads: shrink the panel buttons on the table from 25x25 to 20x20 if four of them cannot fit on one table.
+- [ ] 27. Add another play mode that combines both walls and tables.
+- [ ] 28. When selecting the 4 pad spots in wall or table setup mode, also allow walking up and touching the surface with the hand - the same two-collider mechanism as the pad buttons: highlight when the hand gets close, select when touching it. Ray/pinch selection stays available.
+- [ ] 29. MR achievement for playing standing at walls, or on a mixed wall+table layout.
+- [ ] 30. Research: can the SDK track how much a player moves (fitness-style) in wall or mixed wall+table modes? If not, estimate from the distances between the placed pads. For later score use; no health or calorie claims.
 
 ## In progress
 
@@ -69,4 +73,5 @@ Personal backlog for what still needs work — not an agent task list. Move item
 - **2026-11-03 (Asia/Jerusalem):** Fixed Quest/browser audio (unlock Web Audio on menu + first pad tap) and flat start (pads were ignored until tap-to-start). Moved/shrank HUD and enlarged pad hit boxes so all four grid pads are reachable.
 - **2026-11-03 (Asia/Jerusalem):** Quieter voice (streak praise every 5 only); stronger pad tones (pointerdown audio priming + HTML WAV fallback).
 - **2026-11-03 (Asia/Jerusalem):** Air placement no longer sticks a solid pad on the face — ghost follows the hand as a hollow outline, stays ≥ ~0.7 m from the eyes, uses smaller sitting pads, and solidifies on pinch.
+
 
