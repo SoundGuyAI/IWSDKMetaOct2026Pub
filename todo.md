@@ -1,0 +1,25 @@
+# Wall Tones 2 - November 6 notes
+
+## Misc PR (awaiting preview review, do not merge yet)
+- [x] Debug colliders off by default; manual tuning toggle retained.
+- [x] Page title: Wall Tones 2: too fast to wall. Game title: Wall Tones 2.
+- [x] Original four-pad logo/favicon.
+- [x] Shorten the first air-placement narration; keep useful auto-placement failure explanation.
+- [x] Stop stale placement speech on progress; stop welcome/press instruction when first pad is pressed.
+- [x] Disabled pads actually look dark/off. Demonstration notes still light; normal appearance returns for input.
+- [x] Your Turn: inline colored square icons, no note/color names or missing-font squares.
+- [x] Follow five-in-a-row milestones with random existing encouragement.
+- [x] Every extension of the personal best gets a new-best line plus existing random praise.
+  Approved: "New best streak!", "You beat your best again!", "Another new best!" (both voices).
+- Declined / out of scope: shared overall high score. User chose to avoid backend complexity on November 6. No backend or score sharing added.
+- [ ] Typecheck/build, pointer play, screenshot checks, CI/Codex review, deployed preview and test checklist.
+- [ ] User preview approval before merge.
+
+## Approved merges
+- [x] PR21: startup/restart fanfare timing. Merged 10e6419.
+- [x] PR23: short pad-placement prompts and cancellation safety. Merged 235d94e.
+- [x] PR24: failure encouragement / gentle single buzzer. Merged 12723fc.
+- [ ] Verify combined main deployment.
+
+## Separate PR22 - not approved to merge
+- [ ] iPhone welcome still silent until pad press on actual device. Focused repair in PR22, physical iPhone re-test required.
