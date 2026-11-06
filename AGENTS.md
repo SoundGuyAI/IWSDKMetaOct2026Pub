@@ -14,6 +14,13 @@ session), IWER (IWSDK's browser-based XR emulator), ECS (entity-component
 system), and controller target-ray versus grip poses with a link to the
 applicable IWSDK guide or concept page.
 
+## Backlog files
+
+`WALL_TONES_TODO.md` is the owner's personal backlog: his ideas, future features,
+and polish notes. `todo.md` is the working list for you and other agents: active
+work, approvals, and verification state. Record the owner's ideas in
+`WALL_TONES_TODO.md`; track agent work in `todo.md`.
+
 ## What is not standard Vite
 
 **`iwsdk.config.json` is the project authority, not `vite.config.ts`.** It selects
