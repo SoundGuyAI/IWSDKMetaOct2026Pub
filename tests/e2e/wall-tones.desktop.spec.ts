@@ -80,7 +80,7 @@ test.describe('Wall Tones desktop (flat mode)', () => {
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(String(error)));
     await bootWallTones(page);
-    expect(await page.title()).toBe('Wall Tones');
+    expect(await page.title()).toBe('Wall Tones 2: too fast to wall');
     const snap = await readDebug(page);
     expect(snap.flowPhase).toBe('playing');
     expect(snap.phase).toBe('idle');
@@ -100,7 +100,7 @@ test.describe('Wall Tones desktop (flat mode)', () => {
       undefined,
       { timeout: 60_000 },
     );
-    expect(await page.title()).toBe('Wall Tones');
+    expect(await page.title()).toBe('Wall Tones 2: too fast to wall');
     const snap = await readDebug(page);
     expect(snap.flatAwaitingStart).toBe(false);
     expect(snap.phase).toBe('idle');
