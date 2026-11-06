@@ -1,121 +1,121 @@
 import { shouldAnnounceRecord } from './record-feedback.js';
 import { hearingSubtitlesEnabled, colorNamesEnabled, currentSpokenCaption } from './accessibility.js';
 import {
-  ConeGeometry,
-  CylinderGeometry,
-  DoubleSide,
-  Hovered,
-  Mesh,
-  MeshBasicMaterial,
-  Object3D,
-  Pressed,
-  Quaternion,
-  RayInteractable,
-  Transform,
-  UIKit,
-  Visibility,
-  UIKitMLAsset,
-  VisibilityState,
-  Vector3,
-  XRAnchor,
-  XRMesh,
-  XRPlane,
-  createSystem,
-  type Entity,
+ConeGeometry,
+CylinderGeometry,
+DoubleSide,
+Hovered,
+Mesh,
+MeshBasicMaterial,
+Object3D,
+Pressed,
+Quaternion,
+RayInteractable,
+Transform,
+UIKit,
+Visibility,
+UIKitMLAsset,
+VisibilityState,
+Vector3,
+XRAnchor,
+XRMesh,
+XRPlane,
+createSystem,
+type Entity,
 } from '@iwsdk/core';
 import { XRHandVisualAdapter } from '@iwsdk/xr-input';
 import type { ExperienceMode } from '../app-mode.js';
 import { playErrorTone, playPadTone, playPadToneFromUserAction, primeWallTonesAudioFromGesture, suspendAudioContext, needsExplicitMobileSoundUnlock, isHtmlAudioPoolUnlocked } from './audio.js';
 import {
-  AIR_GHOST_HAND_OFFSET_M,
-  AIR_GHOST_MIN_HEAD_DISTANCE_M,
-  AIR_ORIENT_SLERP,
-  AIR_ORIENT_SNAP_FLAT,
-  AIR_ORIENT_SNAP_UPRIGHT,
-  AIR_PLACE_ROOM_PAD_SIZE_M,
-  AIR_PLACE_SITTING_PAD_SIZE_M,
-  HEADSET_PAD_SIZE_M,
-  PHONE_PAD_SIZE_M,
-  PHONE_PANEL_FLAT,
-  BLINK_CUE_OFFSCREEN_DEG,
-  BLINK_HOLD_S,
-  NOTE_GAP_S,
-  BETWEEN_ROUNDS_DELAY_S,
-  IDLE_REPLAY_S,
-  POST_INTRO_DELAY_S,
-  PANEL_FOLLOW_DISTANCE_M,
-  PANEL_FOLLOW_SCALE,
-  PANEL_FOLLOW_SLERP,
-  PANEL_FOLLOW_Y_OFFSET_M,
-  PANEL_LOOK_AWAY_DEG,
-  PANEL_PLAY_DISTANCE_M,
-  PANEL_PLAY_SCALE,
-  PANEL_SNAP_ARRIVE_M,
-  SCAN_WAIT_S,
-  SIMON_FANFARE_END_PAUSE_S,
-  SIMON_FANFARE_FIRST_PAD_REPEATS,
-  SIMON_FANFARE_PAD_ORDER,
-  SIMON_FANFARE_MID_PAUSE_S,
-  TOUCH_ENTER_FRAMES,
-  TOUCH_EXIT_FRAMES,
-  TOUCH_HOVER_CENTER_MARGIN_M,
-  TOUCH_HOVER_DEPTH_M,
-  TOUCH_HOVER_SCALE,
-  TOUCH_PRESS_CENTER_MARGIN_M,
-  TOUCH_PRESS_COOLDOWN_S,
-  TOUCH_PRESS_DEPTH_M,
-  TOUCH_PRESS_SCALE,
-  TOUCH_TIP_GRIP_MAX_M,
-  WALL_TONE_PADS,
-  WRONG_RESET_DELAY_S,
-  type WallTonePadId,
+AIR_GHOST_HAND_OFFSET_M,
+AIR_GHOST_MIN_HEAD_DISTANCE_M,
+AIR_ORIENT_SLERP,
+AIR_ORIENT_SNAP_FLAT,
+AIR_ORIENT_SNAP_UPRIGHT,
+AIR_PLACE_ROOM_PAD_SIZE_M,
+AIR_PLACE_SITTING_PAD_SIZE_M,
+HEADSET_PAD_SIZE_M,
+PHONE_PAD_SIZE_M,
+PHONE_PANEL_FLAT,
+BLINK_CUE_OFFSCREEN_DEG,
+BLINK_HOLD_S,
+NOTE_GAP_S,
+BETWEEN_ROUNDS_DELAY_S,
+IDLE_REPLAY_S,
+POST_INTRO_DELAY_S,
+PANEL_FOLLOW_DISTANCE_M,
+PANEL_FOLLOW_SCALE,
+PANEL_FOLLOW_SLERP,
+PANEL_FOLLOW_Y_OFFSET_M,
+PANEL_LOOK_AWAY_DEG,
+PANEL_PLAY_DISTANCE_M,
+PANEL_PLAY_SCALE,
+PANEL_SNAP_ARRIVE_M,
+SCAN_WAIT_S,
+SIMON_FANFARE_END_PAUSE_S,
+SIMON_FANFARE_FIRST_PAD_REPEATS,
+SIMON_FANFARE_PAD_ORDER,
+SIMON_FANFARE_MID_PAUSE_S,
+TOUCH_ENTER_FRAMES,
+TOUCH_EXIT_FRAMES,
+TOUCH_HOVER_CENTER_MARGIN_M,
+TOUCH_HOVER_DEPTH_M,
+TOUCH_HOVER_SCALE,
+TOUCH_PRESS_CENTER_MARGIN_M,
+TOUCH_PRESS_COOLDOWN_S,
+TOUCH_PRESS_DEPTH_M,
+TOUCH_PRESS_SCALE,
+TOUCH_TIP_GRIP_MAX_M,
+WALL_TONE_PADS,
+WRONG_RESET_DELAY_S,
+type WallTonePadId,
 } from './constants.js';
 import {
-  collectTablePlanes,
-  collectVerticalWalls,
-  generateTablePadCandidates,
-  generateWallPadCandidates,
-  PHONE_FLAT_GRID,
-  planDesktopGridFromCamera,
-  type PlacedPadTransform,
+collectTablePlanes,
+collectVerticalWalls,
+generateTablePadCandidates,
+generateWallPadCandidates,
+PHONE_FLAT_GRID,
+planDesktopGridFromCamera,
+type PlacedPadTransform,
 } from './plane-placement.js';
 import {
-  applyPadVisualState,
-  createGhostPadRuntime,
-  createPadRuntime,
-  defaultDesktopPadSize,
-  defaultHeadsetPadSize,
-  disposePadRuntimes,
-  flashPad,
-  setPadDebugCollidersVisible,
-  solidifyGhostPad,
-  type PadRuntime,
+applyPadVisualState,
+createGhostPadRuntime,
+createPadRuntime,
+defaultDesktopPadSize,
+defaultHeadsetPadSize,
+disposePadRuntimes,
+flashPad,
+setPadDebugCollidersVisible,
+solidifyGhostPad,
+type PadRuntime,
 } from './pads.js';
 import { animatePadGlow, setPadGlowPower } from './pad-glow.js';
 import {
-  applyRoomSetupTints,
-  clearRoomSetupTints,
-  createSlotCandidateRuntime,
-  createWallOverlay,
-  disposeSlotCandidates,
-  setCandidateVisualState,
-  type SlotCandidateRuntime,
+applyRoomSetupTints,
+clearRoomSetupTints,
+createSlotCandidateRuntime,
+createWallOverlay,
+disposeSlotCandidates,
+setCandidateVisualState,
+type SlotCandidateRuntime,
 } from './room-setup-visuals.js';
 import { WallTonesSequence } from './sequence.js';
 import {
-  WallTonesSpeech,
-  milestoneClipFor,
-  randomCheerClip,
-  randomNewBestClip,
-  randomWrongClip,
-  resetSpeechUnlock,
-  unlockSpeechFromGesture,
-  type WallTonesClipId,
+WallTonesSpeech,
+milestoneClipFor,
+randomCheerClip,
+randomNewBestClip,
+randomWrongClip,
+resetSpeechUnlock,
+unlockSpeechFromGesture,
+type WallTonesClipId,
 } from './speech.js';
 import {
-  getActiveWorldKind,
-  switchBackToHubMenu,
-  switchToWallTonesArWorld,
+getActiveWorldKind,
+switchBackToHubMenu,
+switchToWallTonesArWorld,
 } from './world-host.js';
 import { WallSlotCandidate } from './wall-slot-candidate-component.js';
 import { WallTonePad } from './wall-tone-pad-component.js';
@@ -124,2680 +124,2713 @@ import { WallTonePad } from './wall-tone-pad-component.js';
 const XR_HANDS = ['right', 'left'] as const;
 
 const FLAT_BACKDROP_NODE_IDS = [
-  'studio-floor',
-  'stage',
-  'gallery-set',
-  'sideboard-set',
-  'key-light',
-  'fill-light',
+'studio-floor',
+'stage',
+'gallery-set',
+'sideboard-set',
+'key-light',
+'fill-light',
 ] as const;
 
 type WallTonesDebugBridge = {
-  phase: string;
-  flowPhase: string;
-  sequence: readonly number[];
-  inputStep: number;
-  streak: number;
-  bestStreak: number;
-  flatAwaitingStart: boolean;
-  slotCandidateCount: number;
-  selectedSlotCount: number;
-  submitPad: (padIndex: number) => void;
-  /** Emulator helper: spawn 4 ray-pickable wall slots in front of the player. */
-  startFakeWallPick: () => void;
-  selectSlot: (candidateIndex: number) => void;
+phase: string;
+flowPhase: string;
+sequence: readonly number[];
+inputStep: number;
+streak: number;
+bestStreak: number;
+flatAwaitingStart: boolean;
+slotCandidateCount: number;
+selectedSlotCount: number;
+submitPad: (padIndex: number) => void;
+/** Emulator helper: spawn 4 ray-pickable wall slots in front of the player. */
+startFakeWallPick: () => void;
+selectSlot: (candidateIndex: number) => void;
 };
 
 declare global {
-  interface Window {
-    __wallTonesDebug?: WallTonesDebugBridge;
-  }
+interface Window {
+__wallTonesDebug?: WallTonesDebugBridge;
+}
 }
 
 type SetupMode = 'room-scale' | 'sitting' | 'air';
 type AirOrientation = 'vertical' | 'horizontal';
 
 type FlowPhase =
-  | 'inactive'
-  | 'choose-mode'
-  | 'scanning'
-  | 'wall-picking'
-  | 'air-placement'
-  | 'playing';
+| 'inactive'
+| 'choose-mode'
+| 'scanning'
+| 'wall-picking'
+| 'air-placement'
+| 'playing';
 
 export class WallTonesSystem extends createSystem({
-  pads: { required: [WallTonePad] },
-  planes: { required: [XRPlane] },
-  meshes: { required: [XRMesh] },
-  padHovered: { required: [WallTonePad, Hovered] },
-  padPressed: { required: [WallTonePad, Pressed] },
-  slotHovered: { required: [WallSlotCandidate, Hovered] },
-  slotPressed: { required: [WallSlotCandidate, Pressed] },
+pads: { required: [WallTonePad] },
+planes: { required: [XRPlane] },
+meshes: { required: [XRMesh] },
+padHovered: { required: [WallTonePad, Hovered] },
+padPressed: { required: [WallTonePad, Pressed] },
+slotHovered: { required: [WallSlotCandidate, Hovered] },
+slotPressed: { required: [WallSlotCandidate, Pressed] },
 }) {
-  private readonly speech = new WallTonesSpeech();
-  /** Welcome clip plays once per Wall Tones visit, before the mode picker line. */
-  private welcomeSpoken = false;
-  /** True once the flat-entry welcome already said "Point and press one of those panels to start". */
-  private startPromptSpoken = false;
-
-  /** Entry voiceover: welcome the first time, then the choose-mode line. */
-  private speakEntryLines(): void {
-    if (!this.welcomeSpoken) {
-      this.welcomeSpoken = true;
-      this.speech.speak('welcome');
-    }
-    this.speech.speak('chooseMode');
+private readonly speech = new WallTonesSpeech();
+/** Welcome clip plays once per Wall Tones visit, before the mode picker line. */
+private welcomeSpoken = false;
+/** True once the flat-entry welcome already said "Point and press one of those panels to start". */
+private startPromptSpoken = false;
+
+/** Entry voiceover: welcome the first time, then the choose-mode line. */
+private speakEntryLines(): void {
+if (!this.welcomeSpoken) {
+this.welcomeSpoken = true;
+this.speech.speak('welcome');
+}
+this.speech.speak('chooseMode');
+}
+
+private readonly game = new WallTonesSequence();
+private readonly viewer = new Vector3();
+private readonly captionProjection = new Vector3();
+private readonly cameraForward = new Vector3();
+private readonly cameraPosition = new Vector3();
+private readonly tipLeft = new Vector3();
+private readonly tipRight = new Vector3();
+private readonly tipLocal = new Vector3();
+private readonly gripWorld = new Vector3();
+private readonly ghostForward = new Vector3();
+private readonly ghostTarget = new Vector3();
+private readonly awayFromHead = new Vector3();
+private readonly handUp = new Vector3();
+private readonly handForward = new Vector3();
+private readonly gripQuat = new Quaternion();
+private readonly ghostQuat = new Quaternion();
+private readonly targetGhostQuat = new Quaternion();
+private readonly scratchQuat = new Quaternion();
+private readonly padWorldPos = new Vector3();
+private readonly tipScratch = new Vector3();
+private readonly rayOrigin = new Vector3();
+private readonly rayDir = new Vector3();
+private readonly rayToSlot = new Vector3();
+private readonly rayClosest = new Vector3();
+private readonly axisX = new Vector3(1, 0, 0);
+private readonly panelFollowPos = new Vector3();
+private readonly panelFollowTargetPos = new Vector3();
+private readonly panelFollowQuat = new Quaternion();
+private readonly panelFollowTargetQuat = new Quaternion();
+private readonly headQuat = new Quaternion();
+private readonly toPanel = new Vector3();
+
+private experienceActive = false;
+private flowPhase: FlowPhase = 'inactive';
+private setupMode: SetupMode | null = null;
+private pads: PadRuntime[] = [];
+private playbackQueue: Promise<void> = Promise.resolve();
+private scanStartedAt = -1;
+/** One-shot room capture while scanning; blocks repeat initiateRoomCapture calls. */
+private roomCaptureInFlight = false;
+private roomCaptureAttempted = false;
+/** Reused when materializing the XRPlane query (no per-frame Array.from). */
+private readonly planeEntityScratch: Entity[] = [];
+private airPlaceStep = 0;
+private airPadSizeM = AIR_PLACE_ROOM_PAD_SIZE_M;
+private ghostPad: PadRuntime | null = null;
+private statusText = '';
+private panelBound = false;
+private flatBackdropHidden = false;
+private wasNonImmersive = true;
+private flatAwaitingStart = false;
+/** After playback, ignore touches until every pad is clear (avoids stuck finger auto-hitting). */
+private inputNeedsClear = false;
+private airOrientation: AirOrientation = 'vertical';
+/** When set, panel lock overrides hand-driven snap. */
+private airOrientationLocked: AirOrientation | null = null;
+private dominantHand: 'left' | 'right' | null = null;
+private lastInputAt = 0;
+private idleReplayQueued = false;
+private panelRayRemoved = false;
+private lackingSpatialData = false;
+private slotCandidates: SlotCandidateRuntime[] = [];
+private wallOverlayEntities: Entity[] = [];
+private selectedSlotTransforms: PlacedPadTransform[] = [];
+private readonly slotArmed = new Map<number, boolean>();
+private slotSelectLatched = false;
+private readonly touchEnterFrames = new Map<number, number>();
+private readonly touchExitFrames = new Map<number, number>();
+private pointerAudioBound = false;
+private mobileSoundButton: HTMLButtonElement | null = null;
+private mediaUnlockApplied = false;
+/** Wireframe hover/press volumes on pads; VR only, off by default; opt in for tuning. */
+private showTouchDebug = false;
+private flatCaptions: HTMLDivElement | null = null;
+private firstRun = true;
+private flatLayoutValues: number[] = [];
+private flatLayoutCursor = 0;
+private flatLayoutDirty = true;
+private sequenceIconKey = '';
+private accessibilityPanel: UIKitMLAsset | undefined;
+private accessibilityState: { show: boolean; flat: boolean; active: boolean; caption: string; phase: string; status: string; names: boolean; sequence: number[] } | undefined;
+private sequenceIconRow: UIKit.Container | null = null;
+/** Setup HUD is world-anchored; look-away past a threshold re-snaps it. */
+private panelWorldAnchored = false;
+private panelSnapActive = false;
+/** Click drag handle, then hold select to reposition the in-game HUD. */
+private panelDragArmed = false;
+private panelDragging = false;
+private blinkCuePad: PadRuntime | null = null;
+private blinkCueRoot: Object3D | null = null;
+private blinkCueEntity: Entity | null = null;
+private readonly onPointerDownForAudio = (): void => {
+if (needsExplicitMobileSoundUnlock() && !isHtmlAudioPoolUnlocked()) {
+this.applyUserGestureMediaUnlock(false);
+return;
+}
+primeWallTonesAudioFromGesture();
+};
+private readonly savedPanelPosition = new Float32Array(3);
+private readonly savedPanelScale = new Float32Array(3);
+private panelPositionSaved = false;
+
+init(): void {
+this.bindPanelIfNeeded();
+const onModeChange = (event: Event) => {
+const mode = (event as CustomEvent<{ mode: ExperienceMode }>).detail.mode;
+if (mode === 'walltones') {
+void this.enterWallTonesMode();
+} else {
+void this.leaveWallTonesMode();
+}
+};
+window.addEventListener('experience-mode-changed', onModeChange);
+this.wasNonImmersive =
+this.world.visibilityState.peek() === VisibilityState.NonImmersive;
+this.cleanupFuncs.push(
+this.world.visibilityState.subscribe((state) => {
+this.onVisibilityForFlatPlay(state);
+}),
+);
+this.publishDebugBridge();
+this.cleanupFuncs.push(() => {
+window.removeEventListener('experience-mode-changed', onModeChange);
+delete window.__wallTonesDebug;
+void this.leaveWallTonesMode();
+});
+
+// Enter XR boots the AR world while still NonImmersive. Handle awaiting
+// setup BEFORE the stored-mode path, or beginFlatPlay would spawn the
+// four desktop pads and leave them floating through VR choose-mode.
+const awaitingMode = sessionStorage.getItem('wall-tones-awaiting-mode');
+if (awaitingMode === '1' && getActiveWorldKind() === 'walltones-ar') {
+sessionStorage.removeItem('wall-tones-awaiting-mode');
+this.experienceActive = true;
+document.title = 'Wall Tones 2: too fast to wall';
+this.bindPanelIfNeeded();
+this.clearPads();
+this.flatAwaitingStart = false;
+this.flowPhase = 'choose-mode';
+this.resetSetupPanelAnchor();
+this.setFlatHintVisible(false);
+this.setSetupUiVisible(true);
+this.setRepeatUiVisible(false);
+this.setRescanUiVisible(false);
+this.syncDebugCollidersButton();
+this.applyTouchDebugVisibility();
+this.statusText = 'Choose room scale or sitting.';
+this.speakEntryLines();
+this.renderPanel();
+} else if (sessionStorage.getItem('iwsdk-experience-mode') === 'walltones') {
+void this.enterWallTonesMode();
+}
+
+const pendingSetup = sessionStorage.getItem('wall-tones-setup-mode');
+if (
+pendingSetup === 'room-scale' ||
+pendingSetup === 'sitting' ||
+pendingSetup === 'air'
+) {
+sessionStorage.removeItem('wall-tones-setup-mode');
+this.setupMode = pendingSetup;
+this.experienceActive = true;
+document.title = 'Wall Tones 2: too fast to wall';
+const storedHand = sessionStorage.getItem('wall-tones-dominant-hand');
+if (storedHand === 'left' || storedHand === 'right') {
+this.dominantHand = storedHand;
+}
+this.bindPanelIfNeeded();
+this.setFlatHintVisible(false);
+this.setSetupUiVisible(false);
+if (pendingSetup === 'air') {
+this.startAirPlacement('chooseAirMenu');
+} else {
+this.flowPhase = 'scanning';
+this.scanStartedAt = performance.now() / 1000;
+this.roomCaptureInFlight = false;
+this.roomCaptureAttempted = false;
+this.speech.speak('lookAround');
+}
+}
+}
+
+update(delta: number): void {
+this.updateAccessibilityCaptions();
+if (!this.experienceActive) {
+return;
+}
+if (this.pads.length > 0) {
+const glowTime = performance.now() / 1000;
+for (const pad of this.pads) {
+const pressable = this.flowPhase === 'playing' &&
+(this.flatAwaitingStart || this.game.phase === 'input');
+// The demonstrated note still lights during playback; all other
+// disabled pads look switched off until the player's turn.
+setPadGlowPower(pad.glow, pressable || this.blinkCuePad === pad ||
+(pad.visualState === 'pressed' && !pad.fingerInside));
+animatePadGlow(pad.glow, glowTime);
+}
+}
+this.bindPanelIfNeeded();
+if (!this.useDesktopPath()) {
+this.noteDominantHandFromInput();
+this.tickSetupPanelFollow(delta);
+this.tickPanelDrag();
+this.tickBlinkCueArrow();
+}
+if (
+this.useDesktopPath() &&
+this.flowPhase === 'playing' &&
+this.pads.length === 0
+) {
+this.spawnDesktopPads();
+if (this.game.phase === 'idle') {
+this.flatAwaitingStart = true;
+this.statusText = 'Tap any pad to start (sound on)';
+}
+}
+if (this.flowPhase === 'scanning') {
+this.tickScan(delta);
+}
+if (this.flowPhase === 'wall-picking') {
+this.tickWallPicking();
+}
+if (this.flowPhase === 'air-placement') {
+this.tickAirPlacement(delta);
+}
+if (this.useDesktopInput()) {
+if (this.flatAwaitingStart || this.game.phase === 'input') {
+this.readDesktopTouches();
+}
+} else if (
+this.flowPhase === 'playing' &&
+(this.game.phase === 'input' || this.inputNeedsClear)
+) {
+this.readFingertipTouches();
+}
+this.tickIdleReplay();
+}
+
+/** First pinch / trigger that selects UI or places becomes the orientation hand. */
+private noteDominantHandFromInput(): void {
+if (this.dominantHand != null) {
+return;
+}
+const stored = sessionStorage.getItem('wall-tones-dominant-hand');
+if (stored === 'left' || stored === 'right') {
+this.dominantHand = stored;
+return;
+}
+for (const hand of XR_HANDS) {
+if (this.input.xr.getSelectState(hand).start) {
+this.dominantHand = hand;
+sessionStorage.setItem('wall-tones-dominant-hand', hand);
+return;
+}
+}
+}
+
+private bindPanelIfNeeded(): void {
+if (this.panelBound) {
+return;
+}
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+if (panel == null) {
+return;
+}
+this.panelBound = true;
+panel.getElementById('back-to-menu-button')?.addEventListener('click', () => {
+void this.onBackToMenu();
+});
+panel
+.getElementById('mode-room-scale-button')
+?.addEventListener('click', () => void this.onChooseSetup('room-scale'));
+panel
+.getElementById('mode-sitting-button')
+?.addEventListener('click', () => void this.onChooseSetup('sitting'));
+panel
+.getElementById('mode-air-place-button')
+?.addEventListener('click', () => void this.onChooseSetup('air'));
+panel
+.getElementById('orient-vertical-button')
+?.addEventListener('click', () => this.setAirOrientation('vertical'));
+panel
+.getElementById('orient-horizontal-button')
+?.addEventListener('click', () => this.setAirOrientation('horizontal'));
+panel
+.getElementById('repeat-pattern-button')
+?.addEventListener('click', () => void this.onRepeatPattern());
+panel
+.getElementById('rescan-room-button')
+?.addEventListener('click', () => void this.onRescanRoom());
+panel
+.getElementById('debug-colliders-button')
+?.addEventListener('click', () => this.toggleTouchDebug());
+panel
+.getElementById('panel-drag-handle')
+?.addEventListener('click', () => this.togglePanelDragArm());
+this.syncDebugCollidersButton();
+this.applyTouchDebugVisibility();
+this.setPanelDragBarVisible(
+this.flowPhase === 'playing' && !this.useDesktopPath(),
+);
+if (this.experienceActive && this.useDesktopPath()) {
+this.setSetupUiVisible(false);
+}
+// Never show Repeat during mode / placement selection.
+if (this.flowPhase !== 'playing' || this.flatAwaitingStart) {
+this.setRepeatUiVisible(false);
+}
+this.renderPanel();
+}
+
+private async enterWallTonesMode(): Promise<void> {
+if (this.experienceActive) {
+return;
+}
+this.experienceActive = true;
+this.game.resetAllScores();
+this.firstRun = true;
+document.title = 'Wall Tones 2: too fast to wall';
+this.bindPanelIfNeeded();
+this.bindPointerAudioUnlock();
+
+// XR boot / world swap in progress — never spawn the flat 2×2 here.
+if (sessionStorage.getItem('wall-tones-awaiting-mode') === '1') {
+this.clearPads();
+this.flatAwaitingStart = false;
+this.flowPhase = 'choose-mode';
+this.resetSetupPanelAnchor();
+this.setFlatHintVisible(false);
+this.setSetupUiVisible(true);
+this.setRepeatUiVisible(false);
+this.setRescanUiVisible(false);
+this.syncDebugCollidersButton();
+this.applyTouchDebugVisibility();
+this.statusText = 'Opening passthrough…';
+this.renderPanel();
+return;
+}
+
+if (this.useDesktopPath()) {
+this.beginFlatPlay();
+return;
+}
+
+this.clearPads();
+this.flatAwaitingStart = false;
+this.flowPhase = 'choose-mode';
+this.resetSetupPanelAnchor();
+this.setFlatHintVisible(false);
+this.setSetupUiVisible(true);
+this.setRepeatUiVisible(false);
+this.setRescanUiVisible(false);
+this.syncDebugCollidersButton();
+this.applyTouchDebugVisibility();
+this.statusText = 'Choose room scale or sitting.';
+this.speakEntryLines();
+this.renderPanel();
+}
+
+private async leaveWallTonesMode(): Promise<void> {
+if (!this.experienceActive) {
+return;
+}
+this.experienceActive = false;
+this.flowPhase = 'inactive';
+this.flatAwaitingStart = false;
+this.inputNeedsClear = false;
+this.mediaUnlockApplied = false;
+this.airOrientationLocked = null;
+this.dominantHand = null;
+// Keep wall-tones-dominant-hand across world swaps so AR restore can read it.
+// Cleared only when returning to the hub menu (switchBackToHubMenu).
+sessionStorage.removeItem('wall-tones-awaiting-mode');
+this.lackingSpatialData = false;
+this.roomCaptureInFlight = false;
+this.roomCaptureAttempted = false;
+this.touchEnterFrames.clear();
+this.touchExitFrames.clear();
+this.playbackQueue = Promise.resolve();
+this.game.phase = 'idle';
+this.game.resetAllScores();
+this.speech.cancel();
+this.welcomeSpoken = false;
+this.startPromptSpoken = false;
+suspendAudioContext();
+resetSpeechUnlock();
+this.unbindPointerAudioUnlock();
+this.hideMobileSoundOverlay();
+this.clearRoomSetupVisuals();
+this.clearPads();
+this.ghostPad = null;
+this.setupMode = null;
+this.setFlatHintVisible(false);
+this.setWallPickHintVisible(false);
+this.setAirOrientUiVisible(false);
+this.setRescanUiVisible(false);
+this.setRepeatUiVisible(false);
+this.setPanelDragBarVisible(false);
+this.panelDragArmed = false;
+this.panelDragging = false;
+this.setBlinkCuePad(null);
+this.disposeBlinkCueArrow();
+this.resetSetupPanelAnchor();
+this.restorePanelLayout();
+this.restorePanelPointerCapture();
+this.showStudioBackdrop();
+this.renderPanel();
+}
+
+private beginFlatPlay(): void {
+if (!this.useDesktopPath()) {
+return;
+}
+if (sessionStorage.getItem('wall-tones-awaiting-mode') === '1') {
+return;
+}
+this.flowPhase = 'playing';
+this.flatAwaitingStart = true;
+this.statusText = 'Tap any pad to start (sound on)';
+this.setSetupUiVisible(false);
+this.setAirOrientUiVisible(false);
+this.setFlatHintVisible(true);
+this.setPanelDragBarVisible(false);
+this.hideStudioBackdrop();
+this.layoutPanelForFlatPlay();
+// Keep RayInteractable so Back stays clickable; panel sits beside the pads.
+this.restorePanelPointerCapture();
+this.bindPointerAudioUnlock();
+// Desktop entry still gets the welcome line once (chooseMode is XR-only).
+if (!this.welcomeSpoken) {
+// Start's trusted canvas tap unlocks audio before the spatial callback.
+// Direct mobile restores still need their first gesture, so keep both
+// flags pending until then rather than consuming a blocked welcome.
+const speechWillPlay =
+this.speech.canSpeakNow() &&
+!(needsExplicitMobileSoundUnlock() && !isHtmlAudioPoolUnlocked());
+if (speechWillPlay) {
+this.welcomeSpoken = true;
+this.speech.speak('welcome', true);
+// Same sentence the how-to-play clip opens with, so say it up front.
+this.speech.speak('pointAndPress');
+this.startPromptSpoken = true;
+}
+}
+this.spawnDesktopPads();
+this.setRepeatUiVisible(false);
+if (needsExplicitMobileSoundUnlock() && !isHtmlAudioPoolUnlocked()) {
+this.statusText = 'Tap “Sound on” below, then any pad';
+this.showMobileSoundOverlay();
+} else {
+this.statusText = 'Tap any pad to start (sound on)';
+}
+this.renderPanel();
+}
+
+private applyUserGestureMediaUnlock(speakLine: boolean): void {
+if (this.mediaUnlockApplied && isHtmlAudioPoolUnlocked()) {
+return;
+}
+this.mediaUnlockApplied = true;
+primeWallTonesAudioFromGesture();
+unlockSpeechFromGesture();
+this.hideMobileSoundOverlay();
+if (speakLine) {
+this.speech.speak('soundReady');
+}
+if (this.flatAwaitingStart) {
+this.statusText = 'Tap any pad to start';
+}
+this.renderPanel();
+}
+
+private showMobileSoundOverlay(): void {
+if (!needsExplicitMobileSoundUnlock()) {
+return;
+}
+if (this.mobileSoundButton == null) {
+const button = document.createElement('button');
+button.type = 'button';
+button.textContent = 'Sound on — tap here';
+button.id = 'wall-tones-mobile-sound';
+Object.assign(button.style, {
+position: 'fixed',
+left: '50%',
+bottom: 'max(24px, env(safe-area-inset-bottom))',
+transform: 'translateX(-50%)',
+zIndex: '99999',
+fontSize: '18px',
+padding: '14px 22px',
+borderRadius: '12px',
+border: 'none',
+background: '#f5d90a',
+color: '#1c1d20',
+fontWeight: '700',
+boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
+});
+button.addEventListener('click', (event) => {
+event.preventDefault();
+this.applyUserGestureMediaUnlock(true);
+});
+document.body.appendChild(button);
+this.mobileSoundButton = button;
+}
+this.mobileSoundButton.style.display = 'block';
+}
+
+private hideMobileSoundOverlay(): void {
+if (this.mobileSoundButton != null) {
+this.mobileSoundButton.style.display = 'none';
+}
+}
+
+private bindPointerAudioUnlock(): void {
+if (this.pointerAudioBound) {
+return;
+}
+this.pointerAudioBound = true;
+window.addEventListener('pointerdown', this.onPointerDownForAudio, true);
+window.addEventListener('touchstart', this.onPointerDownForAudio, {
+capture: true,
+passive: true,
+});
+}
+
+private unbindPointerAudioUnlock(): void {
+if (!this.pointerAudioBound) {
+return;
+}
+this.pointerAudioBound = false;
+window.removeEventListener('pointerdown', this.onPointerDownForAudio, true);
+window.removeEventListener('touchstart', this.onPointerDownForAudio, true);
+}
+
+private isPhoneFlatViewport(): boolean {
+if (typeof window === 'undefined') {
+return false;
+}
+const width = window.innerWidth;
+const height = window.innerHeight;
+return width <= 480 || (height <= 480 && width <= 950);
+}
+
+private layoutPanelForFlatPlay(): void {
+// Desktop: park right of the pad grid. Phones: HUD on top of the portrait
+// frame (closer + higher) so pads sit clear below — VR follow unchanged.
+if (this.isPhoneFlatViewport()) {
+this.applyPanelLayout(
+PHONE_PANEL_FLAT.position[0],
+PHONE_PANEL_FLAT.position[1],
+PHONE_PANEL_FLAT.position[2],
+PHONE_PANEL_FLAT.scale,
+);
+return;
+}
+this.applyPanelLayout(1.95, 1.48, -1.55, 0.26);
+}
+
+private layoutPanelForMrPlay(): void {
+// Park the HUD in front of the player when play starts (not a stale side offset).
+this.panelDragArmed = false;
+this.panelDragging = false;
+this.player.head.getWorldPosition(this.viewer);
+this.player.head.getWorldQuaternion(this.headQuat);
+this.ghostForward.set(0, 0, -1).applyQuaternion(this.headQuat).normalize();
+this.panelFollowTargetPos
+.copy(this.viewer)
+.addScaledVector(this.ghostForward, PANEL_PLAY_DISTANCE_M);
+this.panelFollowTargetPos.y += PANEL_FOLLOW_Y_OFFSET_M;
+this.applyPanelLayout(
+this.panelFollowTargetPos.x,
+this.panelFollowTargetPos.y,
+this.panelFollowTargetPos.z,
+PANEL_PLAY_SCALE,
+this.headQuat,
+);
+this.setPanelDragBarVisible(true);
+this.syncPanelDragLabel();
+}
+
+private isSetupPanelFollowActive(): boolean {
+return (
+this.experienceActive &&
+!this.useDesktopPath() &&
+(this.flowPhase === 'choose-mode' ||
+this.flowPhase === 'scanning' ||
+this.flowPhase === 'wall-picking' ||
+this.flowPhase === 'air-placement')
+);
+}
+
+/**
+* World-anchored setup HUD: place once in front, then only slerp-snap when the
+* player looks ~PANEL_LOOK_AWAY_DEG away from the panel.
+*/
+private tickSetupPanelFollow(delta: number): void {
+if (!this.isSetupPanelFollowActive()) {
+this.panelSnapActive = false;
+return;
+}
+const entity = this.world.getSceneEntity('wall-tones-panel');
+if (entity == null) {
+return;
+}
+const position = entity.getVectorView(Transform, 'position');
+const orientation = entity.getVectorView(Transform, 'orientation');
+const scale = entity.getVectorView(Transform, 'scale');
+if (!this.panelPositionSaved) {
+this.savedPanelPosition.set(position);
+this.savedPanelScale.set(scale);
+this.panelPositionSaved = true;
+}
+
+this.player.head.getWorldPosition(this.viewer);
+this.player.head.getWorldQuaternion(this.headQuat);
+this.ghostForward.set(0, 0, -1).applyQuaternion(this.headQuat).normalize();
+this.panelFollowTargetPos
+.copy(this.viewer)
+.addScaledVector(this.ghostForward, PANEL_FOLLOW_DISTANCE_M);
+this.panelFollowTargetPos.y += PANEL_FOLLOW_Y_OFFSET_M;
+this.panelFollowTargetQuat.copy(this.headQuat);
+
+this.panelFollowPos.set(position[0]!, position[1]!, position[2]!);
+this.panelFollowQuat.set(
+orientation[0]!,
+orientation[1]!,
+orientation[2]!,
+orientation[3]!,
+);
+
+if (!this.panelWorldAnchored) {
+position[0] = this.panelFollowTargetPos.x;
+position[1] = this.panelFollowTargetPos.y;
+position[2] = this.panelFollowTargetPos.z;
+orientation[0] = this.panelFollowTargetQuat.x;
+orientation[1] = this.panelFollowTargetQuat.y;
+orientation[2] = this.panelFollowTargetQuat.z;
+orientation[3] = this.panelFollowTargetQuat.w;
+scale[0] = PANEL_FOLLOW_SCALE;
+scale[1] = PANEL_FOLLOW_SCALE;
+scale[2] = PANEL_FOLLOW_SCALE;
+this.panelWorldAnchored = true;
+this.panelSnapActive = false;
+this.restorePanelPointerCapture();
+return;
+}
+
+this.toPanel.copy(this.panelFollowPos).sub(this.viewer);
+if (this.toPanel.lengthSq() > 1e-6) {
+this.toPanel.normalize();
+const lookDot = Math.min(
+1,
+Math.max(-1, this.ghostForward.dot(this.toPanel)),
+);
+const lookAwayDeg = (Math.acos(lookDot) * 180) / Math.PI;
+if (lookAwayDeg >= PANEL_LOOK_AWAY_DEG) {
+this.panelSnapActive = true;
+}
+}
+
+if (!this.panelSnapActive) {
+scale[0] = PANEL_FOLLOW_SCALE;
+scale[1] = PANEL_FOLLOW_SCALE;
+scale[2] = PANEL_FOLLOW_SCALE;
+return;
+}
+
+const alpha =
+1 - Math.pow(1 - PANEL_FOLLOW_SLERP, Math.max(delta, 1 / 120) * 72);
+this.panelFollowPos.lerp(this.panelFollowTargetPos, alpha);
+this.panelFollowQuat.slerp(this.panelFollowTargetQuat, alpha);
+position[0] = this.panelFollowPos.x;
+position[1] = this.panelFollowPos.y;
+position[2] = this.panelFollowPos.z;
+orientation[0] = this.panelFollowQuat.x;
+orientation[1] = this.panelFollowQuat.y;
+orientation[2] = this.panelFollowQuat.z;
+orientation[3] = this.panelFollowQuat.w;
+scale[0] = PANEL_FOLLOW_SCALE;
+scale[1] = PANEL_FOLLOW_SCALE;
+scale[2] = PANEL_FOLLOW_SCALE;
+if (this.panelFollowPos.distanceTo(this.panelFollowTargetPos) <= PANEL_SNAP_ARRIVE_M) {
+this.panelSnapActive = false;
+}
+this.restorePanelPointerCapture();
+}
+
+private resetSetupPanelAnchor(): void {
+this.panelWorldAnchored = false;
+this.panelSnapActive = false;
+}
+
+private applyPanelLayout(
+x: number,
+y: number,
+z: number,
+scaleValue: number,
+orientationQuat?: Quaternion,
+): void {
+const entity = this.world.getSceneEntity('wall-tones-panel');
+if (entity == null) {
+return;
+}
+const position = entity.getVectorView(Transform, 'position');
+if (!this.panelPositionSaved) {
+this.savedPanelPosition.set(position);
+const scale = entity.getVectorView(Transform, 'scale');
+this.savedPanelScale.set(scale);
+this.panelPositionSaved = true;
+}
+position[0] = x;
+position[1] = y;
+position[2] = z;
+if (orientationQuat != null) {
+const orientation = entity.getVectorView(Transform, 'orientation');
+orientation[0] = orientationQuat.x;
+orientation[1] = orientationQuat.y;
+orientation[2] = orientationQuat.z;
+orientation[3] = orientationQuat.w;
+}
+const scale = entity.getVectorView(Transform, 'scale');
+scale[0] = scaleValue;
+scale[1] = scaleValue;
+scale[2] = scaleValue;
+// Ensure the panel stays ray-targetable in MR and on desktop.
+this.restorePanelPointerCapture();
+if (!entity.hasComponent(RayInteractable)) {
+entity.addComponent(RayInteractable);
+this.panelRayRemoved = false;
+}
+}
+
+private restorePanelLayout(): void {
+if (!this.panelPositionSaved) {
+return;
+}
+const entity = this.world.getSceneEntity('wall-tones-panel');
+const position = entity?.getVectorView(Transform, 'position');
+if (entity == null || position == null) {
+return;
+}
+position[0] = this.savedPanelPosition[0]!;
+position[1] = this.savedPanelPosition[1]!;
+position[2] = this.savedPanelPosition[2]!;
+const scale = entity.getVectorView(Transform, 'scale');
+scale[0] = this.savedPanelScale[0]!;
+scale[1] = this.savedPanelScale[1]!;
+scale[2] = this.savedPanelScale[2]!;
+}
+
+private disablePanelPointerCapture(): void {
+const entity = this.world.getSceneEntity('wall-tones-panel');
+if (entity == null || this.panelRayRemoved) {
+return;
+}
+if (entity.hasComponent(RayInteractable)) {
+entity.removeComponent(RayInteractable);
+this.panelRayRemoved = true;
+}
+}
+
+private restorePanelPointerCapture(): void {
+const entity = this.world.getSceneEntity('wall-tones-panel');
+if (entity == null || !this.panelRayRemoved) {
+return;
+}
+entity.addComponent(RayInteractable);
+this.panelRayRemoved = false;
+}
+
+private formatSequenceLabel(): string {
+return this.game.sequence
+.map((padId) => WALL_TONE_PADS[padId]?.name ?? '?')
+.join(' → ');
+}
+
+private onVisibilityForFlatPlay(state: VisibilityState): void {
+const nonImmersive = state === VisibilityState.NonImmersive;
+if (
+this.experienceActive &&
+nonImmersive &&
+!this.wasNonImmersive &&
+getActiveWorldKind() === 'hub-vr' &&
+this.setupMode == null
+) {
+this.beginFlatPlay();
+} else if (
+this.experienceActive &&
+!nonImmersive &&
+this.wasNonImmersive
+) {
+// Always drop the flat 2×2 when entering XR — setup must not show it.
+this.clearPads();
+this.flatAwaitingStart = false;
+this.showStudioBackdrop();
+this.setFlatHintVisible(false);
+if (this.setupMode == null && this.flowPhase !== 'scanning') {
+this.flowPhase = 'choose-mode';
+this.resetSetupPanelAnchor();
+this.statusText = 'Choose room scale or sitting.';
+this.setSetupUiVisible(true);
+this.setRepeatUiVisible(false);
+this.setRescanUiVisible(false);
+this.speakEntryLines();
+this.renderPanel();
+}
+}
+this.wasNonImmersive = nonImmersive;
+this.syncDebugCollidersButton();
+this.applyTouchDebugVisibility();
+}
+
+private hideStudioBackdrop(): void {
+if (this.flatBackdropHidden) {
+return;
+}
+for (const nodeId of FLAT_BACKDROP_NODE_IDS) {
+const entity = this.world.getSceneEntity(nodeId);
+if (entity != null) {
+entity.setValue(Visibility, 'isVisible', false);
+}
+}
+this.flatBackdropHidden = true;
+}
+
+private showStudioBackdrop(): void {
+if (!this.flatBackdropHidden) {
+return;
+}
+for (const nodeId of FLAT_BACKDROP_NODE_IDS) {
+const entity = this.world.getSceneEntity(nodeId);
+if (entity != null) {
+entity.setValue(Visibility, 'isVisible', true);
+}
+}
+this.flatBackdropHidden = false;
+}
+
+private setFlatHintVisible(visible: boolean): void {
+this.world
+.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('flat-play-hint')
+?.setProperties({ display: visible ? 'flex' : 'none' });
+}
+
+private publishDebugBridge(): void {
+const system = this;
+window.__wallTonesDebug = {
+get phase() {
+return system.game.phase;
+},
+get flowPhase() {
+return system.flowPhase;
+},
+get sequence() {
+return [...system.game.sequence];
+},
+get inputStep() {
+return system.game.inputStep;
+},
+get streak() {
+return system.game.streak;
+},
+get bestStreak() {
+return system.game.bestStreak;
+},
+get flatAwaitingStart() {
+return system.flatAwaitingStart;
+},
+get slotCandidateCount() {
+return system.slotCandidates.length;
+},
+get selectedSlotCount() {
+return system.selectedSlotTransforms.length;
+},
+submitPad: (padIndex: number) => {
+system.handlePadInput(padIndex);
+},
+startFakeWallPick: () => {
+system.debugStartFakeWallPick();
+},
+selectSlot: (candidateIndex: number) => {
+const slot = system.slotCandidates.find(
+(entry) => entry.candidateIndex === candidateIndex,
+);
+if (slot != null) {
+system.selectWallSlot(slot);
+}
+},
+};
+}
+
+/** Emulator-only path: four 1x1m slots ahead of the headset for ray-pick tests. */
+private debugStartFakeWallPick(): void {
+if (!this.experienceActive) {
+this.experienceActive = true;
+}
+this.setupMode = 'room-scale';
+this.player.head.getWorldPosition(this.viewer);
+this.clearRoomSetupVisuals();
+this.clearPads();
+this.flowPhase = 'wall-picking';
+this.selectedSlotTransforms = [];
+this.slotSelectLatched = false;
+// Panel stays head-followed until play starts.
+this.setSetupUiVisible(false);
+this.setFlatHintVisible(false);
+this.setAirOrientUiVisible(false);
+this.setWallPickHintVisible(true);
+this.setRescanUiVisible(true);
+this.setRepeatUiVisible(false);
+// Place a 2x2 of slots in front of the headset along -Z (common XR forward).
+this.player.head.getWorldPosition(this.viewer);
+const forward = new Vector3(0, 0, -1);
+const right = new Vector3(1, 0, 0);
+const offsets = [
+[-1.1, 0.35],
+[1.1, 0.35],
+[-1.1, -0.95],
+[1.1, -0.95],
+];
+const quat: [number, number, number, number] = [0, 0, 0, 1];
+offsets.forEach(([ox, oy], index) => {
+const pos = new Vector3(
+this.viewer.x + right.x * ox + forward.x * 1.6,
+this.viewer.y + oy,
+this.viewer.z + right.z * ox + forward.z * 1.6,
+);
+const slot = createSlotCandidateRuntime(
+this.world,
+{
+position: [pos.x, pos.y, pos.z],
+quaternion: quat,
+wallIndex: 0,
+candidateIndex: index,
+},
+HEADSET_PAD_SIZE_M,
+);
+this.slotCandidates.push(slot);
+this.slotArmed.set(index, true);
+});
+this.statusText = 'Debug wall pick: ray + select 4 green slots';
+this.renderPanel();
+}
+
+private async onBackToMenu(): Promise<void> {
+this.speech.speak('backToMenu');
+const wasImmersive = !this.useDesktopPath();
+const fromArWorld = getActiveWorldKind() === 'walltones-ar';
+await this.leaveWallTonesMode();
+// Always return to the hub main menu. Immersive AR rebuilds the hub world
+// and re-enters XR so Back does not dump the player to a flat browser view.
+if (fromArWorld) {
+await switchBackToHubMenu({ reenterXr: wasImmersive });
+return;
+}
+window.dispatchEvent(
+new CustomEvent('experience-mode-changed', {
+detail: { mode: 'menu' satisfies ExperienceMode },
+}),
+);
+sessionStorage.setItem('iwsdk-experience-mode', 'menu');
+}
+
+private async onChooseSetup(mode: SetupMode): Promise<void> {
+if (!this.experienceActive || this.flowPhase !== 'choose-mode') {
+return;
+}
+this.setupMode = mode;
+sessionStorage.setItem('wall-tones-setup-mode', mode);
+// Never destroy an active XR session to swap worlds — that looked like leaving MR.
+// Enter XR boots the AR world up front; this path only swaps while still flat.
+if (getActiveWorldKind() === 'hub-vr' && this.useDesktopPath()) {
+this.statusText = 'Opening passthrough…';
+this.renderPanel();
+await switchToWallTonesArWorld();
+return;
+}
+this.setSetupUiVisible(false);
+if (mode === 'air') {
+this.startAirPlacement('chooseAirMenu');
+return;
+}
+this.setSpatialMeshesVisible(true);
+this.flowPhase = 'scanning';
+this.scanStartedAt = performance.now() / 1000;
+this.roomCaptureInFlight = false;
+this.roomCaptureAttempted = false;
+this.speech.speak('lookAround');
+this.statusText = 'Scanning the room…';
+this.renderPanel();
+}
+
+private tickScan(_delta: number): void {
+const elapsed = performance.now() / 1000 - this.scanStartedAt;
+if (elapsed < SCAN_WAIT_S) {
+const planeCount = this.queries.planes.entities.size;
+const meshCount = this.queries.meshes.entities.size;
+this.statusText = `Scanning… ${Math.ceil(SCAN_WAIT_S - elapsed)}s (${planeCount} planes, ${meshCount} meshes)`;
+this.renderPanel();
+return;
+}
+
+if (this.roomCaptureInFlight) {
+return;
+}
+
+this.player.head.getWorldPosition(this.viewer);
+if (this.queries.planes.entities.size === 0) {
+void this.offerRoomCaptureOrAir();
+return;
+}
+
+this.planeEntityScratch.length = 0;
+for (const entity of this.queries.planes.entities) {
+this.planeEntityScratch.push(entity);
+}
+
+if (this.setupMode === 'sitting') {
+const floorY = this.viewer.y - 1.45;
+const tables = collectTablePlanes(this.planeEntityScratch, floorY);
+if (tables.length === 0) {
+this.startAirPlacement('noTable');
+return;
+}
+this.startTablePicking(tables);
+return;
+}
+
+const walls = collectVerticalWalls(this.planeEntityScratch, this.viewer);
+if (walls.length === 0) {
+void this.offerRoomCaptureOrAir();
+return;
+}
+// Interactive pick: show wall/mesh tints + candidate 1x1m slots.
+this.startWallPicking(walls);
+}
+
+private async offerRoomCaptureOrAir(): Promise<void> {
+if (this.roomCaptureInFlight) {
+return;
+}
+const session = this.xrManager.getSession() as XRSession & {
+initiateRoomCapture?: () => Promise<undefined>;
+};
+if (
+typeof session?.initiateRoomCapture === 'function' &&
+!this.roomCaptureAttempted
+) {
+this.roomCaptureInFlight = true;
+this.roomCaptureAttempted = true;
+this.statusText = 'Opening room capture…';
+this.renderPanel();
+this.speech.speak('roomCapture');
+try {
+await session.initiateRoomCapture();
+this.scanStartedAt = performance.now() / 1000;
+} catch (error) {
+console.warn('[wall-tones] room capture failed', error);
+this.startAirPlacement('notEnoughWallSpace');
+} finally {
+this.roomCaptureInFlight = false;
+}
+return;
+}
+this.startAirPlacement('notEnoughWallSpace');
+}
+
+private startWallPicking(
+walls: ReturnType<typeof collectVerticalWalls>,
+): void {
+this.beginSurfacePicking({
+surfaces: walls,
+padSizeM: HEADSET_PAD_SIZE_M,
+candidates: generateWallPadCandidates(
+walls,
+this.viewer.y,
+HEADSET_PAD_SIZE_M,
+),
+speech: 'pickWallSlots',
+emptyFallback: () =>
+this.startAirPlacement('notEnoughWallSpace'),
+statusLabel: 'wall slots',
+});
+}
+
+private startTablePicking(
+tables: ReturnType<typeof collectTablePlanes>,
+): void {
+this.beginSurfacePicking({
+surfaces: tables,
+padSizeM: AIR_PLACE_SITTING_PAD_SIZE_M,
+candidates: generateTablePadCandidates(
+tables,
+AIR_PLACE_SITTING_PAD_SIZE_M,
+),
+speech: 'pickTableSlots',
+emptyFallback: () => this.startAirPlacement('noTable'),
+statusLabel: 'table slots',
+});
+}
+
+private beginSurfacePicking(options: {
+surfaces: ReturnType<typeof collectVerticalWalls>;
+padSizeM: number;
+candidates: ReturnType<typeof generateWallPadCandidates>;
+speech: WallTonesClipId;
+emptyFallback: () => void;
+statusLabel: string;
+}): void {
+this.clearRoomSetupVisuals();
+this.clearPads();
+this.setSpatialMeshesVisible(true);
+this.flowPhase = 'wall-picking';
+this.lackingSpatialData = false;
+this.selectedSlotTransforms = [];
+this.slotSelectLatched = false;
+this.setFlatHintVisible(false);
+this.setAirOrientUiVisible(false);
+this.setWallPickHintVisible(true);
+this.setRescanUiVisible(true);
+this.setRepeatUiVisible(false);
+
+applyRoomSetupTints(
+options.surfaces.map((surface) => surface.entity),
+this.queries.meshes.entities,
+);
+for (const surface of options.surfaces) {
+this.wallOverlayEntities.push(createWallOverlay(this.world, surface));
+}
+
+for (const candidate of options.candidates) {
+const slot = createSlotCandidateRuntime(
+this.world,
+candidate,
+options.padSizeM,
+);
+this.slotCandidates.push(slot);
+this.slotArmed.set(slot.candidateIndex, true);
+}
+
+// Need four distinct picks; fewer candidates traps the player in wall-picking.
+if (this.slotCandidates.length < 4) {
+this.clearRoomSetupVisuals();
+options.emptyFallback();
+return;
+}
+
+this.speech.speak(options.speech);
+this.statusText = `Pick pad 1 of 4 — ${this.slotCandidates.length} ${options.statusLabel}`;
+this.renderPanel();
+}
+
+private tickWallPicking(): void {
+const rayHovered = this.findRayHoveredSlot();
+if (
+rayHovered != null &&
+!rayHovered.selected &&
+!this.statusText.startsWith(`Hover slot ${rayHovered.candidateIndex}`)
+) {
+this.statusText = `Hover slot ${rayHovered.candidateIndex} — pinch to pick (${this.selectedSlotTransforms.length}/4)`;
+this.renderPanel();
+}
+for (const slot of this.slotCandidates) {
+if (slot.selected) {
+setCandidateVisualState(slot, 'selected');
+continue;
+}
+const ecsHovered = this.entityInQuery(
+slot.entity,
+this.queries.slotHovered.entities,
+);
+const hovered = ecsHovered || slot === rayHovered;
+const ecsPressed =
+ecsHovered &&
+this.entityInQuery(slot.entity, this.queries.slotPressed.entities);
+setCandidateVisualState(slot, hovered ? 'hovered' : 'idle');
+if (!ecsPressed) {
+this.slotArmed.set(slot.candidateIndex, true);
+}
+if (ecsPressed && this.slotArmed.get(slot.candidateIndex)) {
+this.slotArmed.set(slot.candidateIndex, false);
+this.selectWallSlot(slot);
+}
+}
+
+// Select via controller/hand trigger while the ray (or tip) is on a slot.
+let anySelectActive = false;
+for (const hand of XR_HANDS) {
+const select = this.input.xr.getSelectState(hand);
+if (!select.active && !select.start) {
+continue;
+}
+anySelectActive = true;
+if (this.slotSelectLatched && !select.start) {
+continue;
+}
+const aimed =
+this.findRayHoveredSlot(hand) ?? this.findTipHoveredSlot(hand);
+if (aimed != null && !aimed.selected) {
+this.slotSelectLatched = true;
+this.selectWallSlot(aimed);
+return;
+}
+}
+if (!anySelectActive) {
+this.slotSelectLatched = false;
+}
+}
+
+/** Closest slot under a controller/hand target ray within pad half-extent. */
+private findRayHoveredSlot(
+preferredHand?: 'left' | 'right',
+): SlotCandidateRuntime | null {
+let best: SlotCandidateRuntime | null = null;
+let bestAlong = Number.POSITIVE_INFINITY;
+const hitRadius = this.placementPadSizeM() * 0.55;
+for (const hand of XR_HANDS) {
+if (preferredHand != null && hand !== preferredHand) {
+continue;
+}
+const adapter = this.input.xr.visualAdapters[hand].peek();
+if (adapter != null && !adapter.connected) {
+continue;
+}
+const raySpace = this.player.raySpaces[hand];
+raySpace.updateWorldMatrix(true, false);
+raySpace.getWorldPosition(this.rayOrigin);
+raySpace.getWorldQuaternion(this.gripQuat);
+// XR target rays point along local -Z.
+this.rayDir.set(0, 0, -1).applyQuaternion(this.gripQuat).normalize();
+for (const slot of this.slotCandidates) {
+if (slot.selected) {
+continue;
+}
+slot.root.getWorldPosition(this.padWorldPos);
+this.rayToSlot.copy(this.padWorldPos).sub(this.rayOrigin);
+const along = this.rayToSlot.dot(this.rayDir);
+if (along < 0.05 || along > 6) {
+continue;
+}
+this.rayClosest.copy(this.rayOrigin).addScaledVector(this.rayDir, along);
+const lateral = this.rayClosest.distanceTo(this.padWorldPos);
+if (lateral <= hitRadius && along < bestAlong) {
+bestAlong = along;
+best = slot;
+}
+}
+}
+return best;
+}
+
+private findTipHoveredSlot(
+hand: 'left' | 'right',
+): SlotCandidateRuntime | null {
+this.player.indexTipSpaces[hand].getWorldPosition(this.tipScratch);
+let best: SlotCandidateRuntime | null = null;
+let bestDist = this.placementPadSizeM() * 0.55;
+for (const slot of this.slotCandidates) {
+if (slot.selected) {
+continue;
+}
+slot.root.getWorldPosition(this.padWorldPos);
+const dist = this.tipScratch.distanceTo(this.padWorldPos);
+if (dist < bestDist) {
+bestDist = dist;
+best = slot;
+}
+}
+return best;
+}
+
+private selectWallSlot(slot: SlotCandidateRuntime): void {
+if (slot.selected || this.selectedSlotTransforms.length >= 4) {
+return;
+}
+// Keep picks spread out so pads do not stack.
+const minSpacing = this.placementPadSizeM() * 0.75;
+const tooClose = this.selectedSlotTransforms.some((prior) => {
+const dx = prior.position[0] - slot.transform.position[0];
+const dy = prior.position[1] - slot.transform.position[1];
+const dz = prior.position[2] - slot.transform.position[2];
+return Math.hypot(dx, dy, dz) < minSpacing;
+});
+if (tooClose) {
+this.statusText = 'Too close to another pick - choose a farther slot';
+this.renderPanel();
+return;
+}
+setCandidateVisualState(slot, 'selected');
+this.selectedSlotTransforms.push({
+position: slot.transform.position,
+quaternion: slot.transform.quaternion,
+});
+const count = this.selectedSlotTransforms.length;
+if (count >= 4) {
+const transforms = [...this.selectedSlotTransforms];
+const doneLine =
+this.setupMode === 'sitting'
+? 'tableFound'
+: 'padsOnWalls';
+this.clearRoomSetupVisuals();
+this.finishHeadsetPlacement(transforms, doneLine);
+return;
+}
+this.statusText = `Pick pad ${count + 1} of 4`;
+this.renderPanel();
+}
+
+private clearRoomSetupVisuals(): void {
+disposeSlotCandidates(this.slotCandidates);
+this.slotArmed.clear();
+this.selectedSlotTransforms = [];
+for (const entity of this.wallOverlayEntities) {
+entity.dispose({ disposeResources: true });
+}
+this.wallOverlayEntities = [];
+clearRoomSetupTints();
+this.setWallPickHintVisible(false);
+}
+
+/** Hide Quest plane/mesh proxies during play so only the pads remain visible. */
+private setSpatialMeshesVisible(visible: boolean): void {
+for (const entity of this.queries.planes.entities) {
+if (entity.object3D != null) {
+entity.object3D.visible = visible;
+}
+}
+for (const entity of this.queries.meshes.entities) {
+if (entity.object3D != null) {
+entity.object3D.visible = visible;
+}
+}
+}
+
+private placementPadSizeM(): number {
+return this.setupMode === 'sitting'
+? AIR_PLACE_SITTING_PAD_SIZE_M
+: defaultHeadsetPadSize();
+}
+
+private startAirPlacement(line: WallTonesClipId): void {
+this.clearRoomSetupVisuals();
+this.setSpatialMeshesVisible(false);
+this.flowPhase = 'air-placement';
+this.airPlaceStep = 0;
+this.lackingSpatialData = true;
+this.airOrientationLocked = null;
+// Keep dominantHand from the first panel select so ghost orientation
+// follows that placing hand; only clear it when leaving the experience.
+// Menu "Air place" covers both wall and table styles via hand tilt / locks.
+this.airOrientation =
+this.setupMode === 'sitting' ? 'horizontal' : 'vertical';
+this.syncAirPadSizeFromOrientation();
+this.clearPads();
+this.setFlatHintVisible(false);
+this.setWallPickHintVisible(false);
+this.setAirOrientUiVisible(true);
+this.setRescanUiVisible(false);
+this.setRepeatUiVisible(false);
+// Placement is already visible. Skip queued mode/orientation speeches and
+// give only the existing concise first-pad positioning instruction.
+this.speech.cancel();
+// Keep useful failure context when automatic placement could not find space.
+if (line !== 'chooseAirMenu') this.speech.speak(line);
+this.speech.speak('airPlace1');
+this.statusText =
+this.setupMode === 'air'
+? 'Air place: tilt for wall or table size, then pinch.'
+: 'Tilt placing hand to snap flat/upright, then pinch.';
+this.spawnGhostPad();
+this.syncDebugCollidersButton();
+this.renderPanel();
+}
+
+/** Room-scale air pads when upright; sitting-sized pads when flat. */
+private syncAirPadSizeFromOrientation(): void {
+if (this.setupMode === 'sitting') {
+this.airPadSizeM = AIR_PLACE_SITTING_PAD_SIZE_M;
+return;
+}
+if (this.setupMode === 'room-scale') {
+this.airPadSizeM = AIR_PLACE_ROOM_PAD_SIZE_M;
+return;
+}
+// Explicit Air place menu option: size follows orientation snap/lock.
+this.airPadSizeM =
+this.airOrientation === 'horizontal'
+? AIR_PLACE_SITTING_PAD_SIZE_M
+: AIR_PLACE_ROOM_PAD_SIZE_M;
+}
+
+private setAirOrientation(orientation: AirOrientation): void {
+const sizeChanged =
+this.setupMode === 'air' && orientation !== this.airOrientation;
+this.airOrientation = orientation;
+this.airOrientationLocked = orientation;
+this.syncAirPadSizeFromOrientation();
+if (sizeChanged && this.flowPhase === 'air-placement' && this.ghostPad != null) {
+this.spawnGhostPad();
+}
+this.statusText =
+orientation === 'horizontal'
+? 'Locked table / flat. Pinch to place.'
+: 'Locked wall / vertical. Pinch to place.';
+this.renderPanel();
+}
+
+private spawnGhostPad(): void {
+this.ghostPad?.entity.dispose({ disposeResources: true });
+this.ghostPad = createGhostPadRuntime(
+this.world,
+(this.airPlaceStep % 4) as WallTonePadId,
+this.airPadSizeM,
+);
+this.applyTouchDebugVisibility();
+}
+
+private tickAirPlacement(delta: number): void {
+const hand = this.resolvePlacementHand();
+if (hand == null || this.ghostPad == null) {
+return;
+}
+this.updateGhostPadPose(hand, delta);
+
+const select = this.input.xr.getSelectState(hand);
+if (!select.start) {
+return;
+}
+if (this.dominantHand == null) {
+this.dominantHand = hand;
+sessionStorage.setItem('wall-tones-dominant-hand', hand);
+}
+const placed = this.ghostPad;
+solidifyGhostPad(placed, this.airPadSizeM);
+placed.entity.addComponent(XRAnchor);
+this.pads.push(placed);
+this.applyTouchDebugVisibility();
+this.ghostPad = null;
+this.airPlaceStep += 1;
+// Every stage advance invalidates stale setup speech, including the final
+// pad, which must stop its placement prompt before the game intro starts.
+this.speech.cancel();
+if (this.airPlaceStep >= 4) {
+this.flowPhase = 'playing';
+this.layoutPanelForMrPlay();
+this.setAirOrientUiVisible(false);
+this.setRescanUiVisible(false);
+this.setRepeatUiVisible(true);
+this.setSpatialMeshesVisible(false);
+this.statusText = 'Get ready…';
+this.beginRoundWithIntro();
+this.renderPanel();
+return;
+}
+// Short prompts for pads 2-4; the full positioning phrase only plays for
+// pad 1 (airPlace1 at placement start).
+const shortPrompts = [
+'airPlaceShort2',
+'airPlaceShort3',
+'airPlaceShort4',
+] as const;
+this.speech.speak(shortPrompts[this.airPlaceStep - 1]!);
+this.statusText = `Pinch to place outline ${this.airPlaceStep + 1} of 4.`;
+this.spawnGhostPad();
+this.renderPanel();
+}
+
+private updateGhostPadPose(hand: 'left' | 'right', delta: number): void {
+if (this.ghostPad == null) {
+return;
+}
+this.player.head.getWorldPosition(this.viewer);
+this.player.gripSpaces[hand].getWorldPosition(this.gripWorld);
+this.readGripWorldQuaternion(hand, this.gripQuat);
+
+this.ghostForward.set(
+this.gripWorld.x - this.viewer.x,
+0,
+this.gripWorld.z - this.viewer.z,
+);
+if (this.ghostForward.lengthSq() < 1e-6) {
+this.player.head.getWorldDirection(this.ghostForward);
+this.ghostForward.y = 0;
+}
+this.ghostForward.normalize();
+
+this.ghostTarget
+.copy(this.gripWorld)
+.addScaledVector(this.ghostForward, AIR_GHOST_HAND_OFFSET_M);
+const preferredY =
+this.setupMode === 'sitting'
+? this.viewer.y - 0.55
+: this.viewer.y - 0.35;
+this.ghostTarget.y = preferredY * 0.35 + this.gripWorld.y * 0.65;
+
+this.awayFromHead.copy(this.ghostTarget).sub(this.viewer);
+const minDist = Math.max(
+AIR_GHOST_MIN_HEAD_DISTANCE_M,
+this.airPadSizeM * 0.5 + 0.45,
+);
+if (this.awayFromHead.length() < minDist) {
+if (this.awayFromHead.lengthSq() < 1e-6) {
+this.awayFromHead.copy(this.ghostForward);
+}
+this.awayFromHead.setLength(minDist);
+this.ghostTarget.copy(this.viewer).add(this.awayFromHead);
+this.ghostTarget.y = preferredY * 0.35 + this.gripWorld.y * 0.65;
+this.awayFromHead.copy(this.ghostTarget).sub(this.viewer);
+if (this.awayFromHead.length() < minDist) {
+this.awayFromHead.setLength(minDist);
+this.ghostTarget.copy(this.viewer).add(this.awayFromHead);
+}
+}
+
+this.ghostPad.root.position.copy(this.ghostTarget);
+this.updateAirOrientationFromHand();
+this.buildTargetGhostQuaternion(this.targetGhostQuat);
+// Slerp in local space toward the snapped target (frame-rate independent).
+const alpha = 1 - Math.pow(1 - AIR_ORIENT_SLERP, Math.max(delta, 1 / 120) * 72);
+this.ghostQuat.copy(this.ghostPad.root.quaternion);
+this.ghostQuat.slerp(this.targetGhostQuat, alpha);
+this.ghostPad.root.quaternion.copy(this.ghostQuat);
+}
+
+private updateAirOrientationFromHand(): void {
+if (this.airOrientationLocked != null) {
+this.airOrientation = this.airOrientationLocked;
+return;
+}
+// Grip local +Y follows the hand long axis: high |world Y| ⇒ upright hand ⇒ wall.
+this.handUp.set(0, 1, 0).applyQuaternion(this.gripQuat).normalize();
+const uprightness = Math.abs(this.handUp.y);
+let next = this.airOrientation;
+if (uprightness >= AIR_ORIENT_SNAP_UPRIGHT) {
+next = 'vertical';
+} else if (uprightness <= AIR_ORIENT_SNAP_FLAT) {
+next = 'horizontal';
+}
+if (next !== this.airOrientation) {
+this.airOrientation = next;
+const prevSize = this.airPadSizeM;
+this.syncAirPadSizeFromOrientation();
+if (
+this.setupMode === 'air' &&
+this.airPadSizeM !== prevSize &&
+this.ghostPad != null
+) {
+this.spawnGhostPad();
+}
+this.statusText =
+next === 'horizontal'
+? 'Snapped flat - pinch to place'
+: 'Snapped upright - pinch to place';
+this.renderPanel();
+}
+}
+
+private buildTargetGhostQuaternion(out: Quaternion): void {
+const yaw = Math.atan2(
+this.viewer.x - this.ghostTarget.x,
+this.viewer.z - this.ghostTarget.z,
+);
+const halfYaw = yaw * 0.5;
+out.set(0, Math.sin(halfYaw), 0, Math.cos(halfYaw));
+if (this.airOrientation === 'horizontal') {
+this.scratchQuat.setFromAxisAngle(this.axisX, -Math.PI / 2);
+out.multiply(this.scratchQuat);
+}
+}
+
+private readGripWorldQuaternion(
+hand: 'left' | 'right',
+out: Quaternion,
+): void {
+const grip = this.player.gripSpaces[hand];
+grip.updateWorldMatrix(true, false);
+grip.getWorldQuaternion(out);
+}
+
+private resolvePlacementHand(): 'left' | 'right' | null {
+if (this.dominantHand != null) {
+return this.dominantHand;
+}
+// Prefer a connected hand (right first) until the first UI/pinch sets dominant.
+for (const hand of XR_HANDS) {
+const adapter = this.input.xr.visualAdapters[hand].peek();
+if (adapter?.connected) {
+return hand;
+}
+}
+for (const hand of XR_HANDS) {
+const adapter = this.input.xr.visualAdapters[hand].peek();
+if (adapter instanceof XRHandVisualAdapter) {
+return hand;
+}
+}
+return 'right';
+}
+
+private finishHeadsetPlacement(
+transforms: PlacedPadTransform[],
+line: WallTonesClipId,
+): void {
+this.clearRoomSetupVisuals();
+this.clearPads();
+this.lackingSpatialData = false;
+this.setWallPickHintVisible(false);
+this.setRescanUiVisible(false);
+this.setAirOrientUiVisible(false);
+// Play mode: only the four pads — hide plane/mesh proxies.
+this.setSpatialMeshesVisible(false);
+const size = this.placementPadSizeM();
+transforms.forEach((transform, index) => {
+const pad = createPadRuntime(this.world, index as WallTonePadId, size, {
+rayInteractable: false,
+anchor: true,
+});
+pad.root.position.set(...transform.position);
+pad.root.quaternion.set(...transform.quaternion);
+this.pads.push(pad);
+});
+this.applyTouchDebugVisibility();
+this.flowPhase = 'playing';
+this.layoutPanelForMrPlay();
+this.setRescanUiVisible(false);
+this.setRepeatUiVisible(true);
+this.syncDebugCollidersButton();
+this.statusText = 'Get ready…';
+this.beginRoundWithIntro(line);
+this.renderPanel();
+}
+
+private spawnDesktopPads(): void {
+if (!this.useDesktopPath()) {
+return;
+}
+this.clearPads();
+this.world.camera.getWorldPosition(this.cameraPosition);
+this.world.camera.getWorldDirection(this.cameraForward);
+const phoneFlat = this.isPhoneFlatViewport();
+const size = phoneFlat ? PHONE_PAD_SIZE_M : defaultDesktopPadSize();
+const transforms = planDesktopGridFromCamera(
+this.cameraPosition,
+this.cameraForward,
+size,
+phoneFlat ? PHONE_FLAT_GRID : undefined,
+);
+transforms.forEach((transform, index) => {
+const pad = createPadRuntime(this.world, index as WallTonePadId, size, {
+rayInteractable: true,
+anchor: false,
+});
+pad.root.position.set(...transform.position);
+pad.root.quaternion.set(...transform.quaternion);
+this.pads.push(pad);
+});
+this.applyTouchDebugVisibility();
+if (!this.flatAwaitingStart) {
+this.statusText = 'Watch the sequence';
+}
+this.renderPanel();
+}
+
+private clearPads(): void {
+disposePadRuntimes(this.pads);
+this.ghostPad?.entity.dispose({ disposeResources: true });
+this.ghostPad = null;
+}
+
+/**
+* Simon-style startup fanfare: each pad once, pause, first pad four times,
+* then a short pause before voice / the real pattern.
+*/
+private async playSimonStartupFanfare(): Promise<void> {
+this.statusText = 'Watch the pads…';
+this.renderPanel();
+// Fanfare order is green, red, yellow, blue (pad ids 0, 1, 3, 2).
+for (const padIndex of SIMON_FANFARE_PAD_ORDER) {
+if (!this.experienceActive || this.flowPhase !== 'playing') {
+return;
+}
+await this.blinkPadNote(padIndex);
+}
+await this.wait(SIMON_FANFARE_MID_PAUSE_S);
+for (let repeat = 0; repeat < SIMON_FANFARE_FIRST_PAD_REPEATS; repeat += 1) {
+if (!this.experienceActive || this.flowPhase !== 'playing') {
+return;
+}
+await this.blinkPadNote(0);
+}
+await this.wait(SIMON_FANFARE_END_PAUSE_S);
+}
+
+private async blinkPadNote(padIndex: number): Promise<void> {
+const pad = this.pads[padIndex];
+if (pad != null) {
+this.setBlinkCuePad(pad);
+flashPad(pad, true);
+if (this.useDesktopInput()) {
+playPadToneFromUserAction(padIndex);
+} else {
+await playPadTone(padIndex);
+}
+await this.wait(BLINK_HOLD_S);
+flashPad(pad, false);
+this.setBlinkCuePad(null);
+}
+await this.wait(NOTE_GAP_S);
+}
+
+/** Fanfare, how-to-play voice line, pause, then the first pattern note. */
+private beginRoundWithIntro(leadInLine?: WallTonesClipId): void {
+this.playbackQueue = this.playbackQueue.then(async () => {
+if (!this.experienceActive || this.flowPhase !== 'playing') {
+return;
+}
+this.statusText = 'Listen to the intro…';
+this.renderPanel();
+if (leadInLine != null) {
+await this.speech.speakAsync(leadInLine);
+await this.wait(0.35);
+}
+if (!this.experienceActive || this.flowPhase !== 'playing') {
+return;
+}
+await this.playSimonStartupFanfare();
+if (!this.experienceActive || this.flowPhase !== 'playing') {
+return;
+}
+// Skip the opening "Point and press..." sentence if the welcome already said it.
+await this.speech.speakAsync(
+this.startPromptSpoken ? 'howToPlayRest' : 'howToPlay',
+);
+this.startPromptSpoken = false;
+await this.wait(POST_INTRO_DELAY_S);
+if (!this.experienceActive || this.flowPhase !== 'playing') {
+return;
+}
+this.game.startNewRun();
+this.renderPanel();
+await this.playSequence();
+});
+}
+
+private async playSequence(): Promise<void> {
+if (!this.experienceActive) {
+return;
+}
+this.game.phase = 'playback';
+this.inputNeedsClear = true;
+this.armAllPads();
+this.statusText = 'Listen:';
+this.renderPanel();
+for (let index = 0; index < this.game.sequence.length; index += 1) {
+const padId = this.game.sequence[index]!;
+const pad = this.pads[padId];
+if (pad != null) {
+this.setBlinkCuePad(pad);
+flashPad(pad, true);
+await playPadTone(padId);
+await this.wait(NOTE_GAP_S + BLINK_HOLD_S + 0.2);
+flashPad(pad, false);
+this.setBlinkCuePad(null);
+}
+await this.wait(NOTE_GAP_S);
+}
+this.game.phase = 'input';
+this.game.inputStep = 0;
+this.inputNeedsClear = true;
+this.lastInputAt = performance.now() / 1000;
+this.idleReplayQueued = false;
+this.setRepeatUiVisible(true);
+this.setPanelDragBarVisible(!this.useDesktopPath());
+this.statusText = `Your turn: ${this.formatSequenceLabel()}`;
+this.renderPanel();
+}
+
+private armAllPads(): void {
+for (const pad of this.pads) {
+pad.pointerArmed = true;
+pad.fingerInside = false;
+pad.hoverInside = false;
+pad.pressCooldownUntil = 0;
+applyPadVisualState(pad, 'idle');
+}
+}
+
+private entityInQuery(entity: import('@iwsdk/core').Entity, set: Set<import('@iwsdk/core').Entity>): boolean {
+for (const candidate of set) {
+if (candidate === entity) {
+return true;
+}
+}
+return false;
+}
+
+private readDesktopTouches(): void {
+if (this.inputNeedsClear) {
+let anyPressed = false;
+for (const pad of this.pads) {
+const hovered = this.entityInQuery(pad.entity, this.queries.padHovered.entities);
+const pressed =
+hovered &&
+this.entityInQuery(pad.entity, this.queries.padPressed.entities);
+pad.hoverInside = hovered;
+pad.fingerInside = pressed;
+this.syncPadProximityVisual(pad, 0);
+if (pressed) {
+anyPressed = true;
+}
+// Re-arm on release even while still hovered (same-pad twice in a row).
+if (!pressed) {
+pad.pointerArmed = true;
+}
+}
+if (!anyPressed) {
+this.inputNeedsClear = false;
+this.armAllPads();
+}
+return;
+}
+for (const pad of this.pads) {
+const hovered = this.entityInQuery(pad.entity, this.queries.padHovered.entities);
+const pressed =
+hovered &&
+this.entityInQuery(pad.entity, this.queries.padPressed.entities);
+pad.hoverInside = hovered;
+pad.fingerInside = pressed;
+this.syncPadProximityVisual(pad, 0);
+// Edge-trigger on press; re-arm when the button is released while hovered
+// so sequences like green→green register the second press.
+if (!pressed) {
+pad.pointerArmed = true;
+continue;
+}
+if (pad.pointerArmed) {
+pad.pointerArmed = false;
+this.handlePadInput(pad.padIndex);
+}
+}
+}
+
+private readFingertipTouches(): void {
+const now = performance.now() / 1000;
+
+if (this.inputNeedsClear) {
+let anyPressInside = false;
+for (const pad of this.pads) {
+const pressDist = this.sampleTipInVolume(pad, 'press');
+const hoverDist = this.sampleTipInVolume(pad, 'hover');
+pad.fingerInside = pressDist != null;
+pad.hoverInside = hoverDist != null;
+if (pressDist != null) {
+anyPressInside = true;
+}
+this.syncPadProximityVisual(pad, now);
+}
+// Must leave the smaller press box before the next note can arm.
+if (!anyPressInside) {
+this.inputNeedsClear = false;
+this.armAllPads();
+this.touchEnterFrames.clear();
+this.touchExitFrames.clear();
+}
+return;
+}
+
+// Closest pad under the tip for press — avoids multi-pad ghosts.
+let bestPress: PadRuntime | null = null;
+let bestPressDist = Number.POSITIVE_INFINITY;
+for (const pad of this.pads) {
+const hoverDist = this.sampleTipInVolume(pad, 'hover');
+pad.hoverInside = hoverDist != null;
+
+const pressDist = this.sampleTipInVolume(pad, 'press');
+if (pressDist == null) {
+const exit = (this.touchExitFrames.get(pad.padIndex) ?? 0) + 1;
+this.touchExitFrames.set(pad.padIndex, exit);
+if (exit >= TOUCH_EXIT_FRAMES) {
+// Leaving the inner box re-arms this pad (after cooldown).
+pad.fingerInside = false;
+pad.pointerArmed = true;
+this.touchEnterFrames.set(pad.padIndex, 0);
+}
+this.syncPadProximityVisual(pad, now);
+continue;
+}
+this.touchExitFrames.set(pad.padIndex, 0);
+if (pressDist < bestPressDist) {
+bestPressDist = pressDist;
+bestPress = pad;
+}
+this.syncPadProximityVisual(pad, now);
+}
+
+for (const pad of this.pads) {
+if (pad !== bestPress) {
+if (bestPress != null) {
+this.touchEnterFrames.set(pad.padIndex, 0);
+}
+continue;
+}
+const enter = (this.touchEnterFrames.get(pad.padIndex) ?? 0) + 1;
+this.touchEnterFrames.set(pad.padIndex, enter);
+// Rising edge only: enter the small box, never fire on exit.
+if (
+!pad.fingerInside &&
+pad.pointerArmed &&
+now >= pad.pressCooldownUntil &&
+enter >= TOUCH_ENTER_FRAMES
+) {
+pad.fingerInside = true;
+pad.pointerArmed = false;
+pad.pressCooldownUntil = now + TOUCH_PRESS_COOLDOWN_S;
+this.handlePadInput(pad.padIndex);
+}
+this.syncPadProximityVisual(pad, now);
+}
+}
+
+private syncPadProximityVisual(pad: PadRuntime, _now: number): void {
+if (pad.fingerInside) {
+if (pad.visualState !== 'pressed') {
+applyPadVisualState(pad, 'pressed');
+}
+return;
+}
+if (pad.hoverInside) {
+if (pad.visualState !== 'hover') {
+applyPadVisualState(pad, 'hover');
+}
+return;
+}
+if (pad.visualState !== 'idle') {
+applyPadVisualState(pad, 'idle');
+}
+}
+
+/**
+* Distance from tip to pad center when inside hover or press volume; else null.
+* Requires a connected hand tip near that hand's grip.
+*/
+private sampleTipInVolume(
+pad: PadRuntime,
+kind: 'hover' | 'press',
+): number | null {
+const volume = kind === 'hover' ? pad.hoverVolume : pad.touchVolume;
+pad.root.updateWorldMatrix(true, false);
+volume.updateWorldMatrix(true, false);
+pad.root.getWorldPosition(this.padWorldPos);
+const margin =
+kind === 'hover'
+? TOUCH_HOVER_CENTER_MARGIN_M
+: TOUCH_PRESS_CENTER_MARGIN_M;
+const scale = kind === 'hover' ? TOUCH_HOVER_SCALE : TOUCH_PRESS_SCALE;
+const maxCenter = pad.sizeM * 0.5 * Math.SQRT2 * scale + margin;
+const fallbackDepth =
+kind === 'hover' ? TOUCH_HOVER_DEPTH_M : TOUCH_PRESS_DEPTH_M;
+
+for (const hand of XR_HANDS) {
+const adapter = this.input.xr.visualAdapters[hand].peek();
+if (adapter == null || !adapter.connected) {
+continue;
+}
+this.player.indexTipSpaces[hand].getWorldPosition(this.tipScratch);
+this.player.gripSpaces[hand].getWorldPosition(this.gripWorld);
+if (this.tipScratch.distanceTo(this.gripWorld) > TOUCH_TIP_GRIP_MAX_M) {
+continue;
+}
+const centerDist = this.tipScratch.distanceTo(this.padWorldPos);
+if (centerDist > maxCenter) {
+continue;
+}
+this.tipLocal.copy(this.tipScratch);
+volume.worldToLocal(this.tipLocal);
+const touchMesh = volume as import('@iwsdk/core').Mesh;
+const geom = touchMesh.geometry as {
+parameters?: { width?: number; height?: number; depth?: number };
+};
+const hx = (geom.parameters?.width ?? pad.sizeM) * 0.5;
+const hy = (geom.parameters?.height ?? pad.sizeM) * 0.5;
+const hz = (geom.parameters?.depth ?? fallbackDepth) * 0.5;
+// Front-biased slab around the face; no deep punch-through.
+if (
+Math.abs(this.tipLocal.x) <= hx &&
+Math.abs(this.tipLocal.y) <= hy &&
+this.tipLocal.z >= -hz * 0.25 &&
+this.tipLocal.z <= hz
+) {
+return centerDist;
+}
+}
+return null;
+}
+
+private toggleTouchDebug(): void {
+this.showTouchDebug = !this.showTouchDebug;
+this.applyTouchDebugVisibility();
+this.syncDebugCollidersButton();
+}
+
+private applyTouchDebugVisibility(): void {
+// Flat/desktop: no collider wireframes. VR/MR only.
+const visible = this.showTouchDebug && !this.useDesktopPath();
+for (const pad of this.pads) {
+setPadDebugCollidersVisible(pad, visible);
+}
+if (this.ghostPad != null) {
+setPadDebugCollidersVisible(this.ghostPad, visible);
+}
+}
+
+private syncDebugCollidersButton(): void {
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+// Show in any immersive / MR session, including setup before pads exist.
+const showButton = !this.useDesktopPath() && this.experienceActive;
+panel
+?.getElementById('debug-colliders-button')
+?.setProperties({ display: showButton ? 'flex' : 'none' });
+panel
+?.getElementById<UIKit.Text>('debug-colliders-label')
+?.setProperties({
+text: this.showTouchDebug ? 'Debug colliders: ON' : 'Debug colliders: OFF',
+});
+}
+
+private setPanelDragBarVisible(visible: boolean): void {
+this.world
+.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('panel-drag-bar')
+?.setProperties({ display: visible ? 'flex' : 'none' });
+}
+
+private syncPanelDragLabel(): void {
+this.world
+.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById<UIKit.Text>('panel-drag-label')
+?.setProperties({
+text: this.panelDragArmed
+? 'Pinch and point to place…'
+: 'Drag to move panel',
+});
+}
+
+private togglePanelDragArm(): void {
+if (this.useDesktopPath() || this.flowPhase !== 'playing') {
+return;
+}
+this.panelDragArmed = !this.panelDragArmed;
+this.panelDragging = false;
+this.syncPanelDragLabel();
+this.statusText = this.panelDragArmed
+? 'Point at a spot and pinch to move the panel'
+: 'Panel move cancelled';
+this.renderPanel();
+}
+
+private tickPanelDrag(): void {
+if (
+!this.panelDragArmed ||
+this.flowPhase !== 'playing' ||
+this.useDesktopPath()
+) {
+return;
+}
+let selectHeld = false;
+for (const hand of XR_HANDS) {
+const select = this.input.xr.getSelectState(hand);
+if (!select.active && !select.start) {
+continue;
+}
+selectHeld = true;
+const raySpace = this.player.raySpaces[hand];
+raySpace.getWorldPosition(this.rayOrigin);
+raySpace.getWorldQuaternion(this.gripQuat);
+this.rayDir.set(0, 0, -1).applyQuaternion(this.gripQuat).normalize();
+this.panelFollowTargetPos
+.copy(this.rayOrigin)
+.addScaledVector(this.rayDir, PANEL_PLAY_DISTANCE_M);
+this.player.head.getWorldPosition(this.viewer);
+this.player.head.getWorldQuaternion(this.headQuat);
+this.applyPanelLayout(
+this.panelFollowTargetPos.x,
+this.panelFollowTargetPos.y,
+this.panelFollowTargetPos.z,
+PANEL_PLAY_SCALE,
+this.headQuat,
+);
+this.panelDragging = true;
+break;
+}
+if (this.panelDragging && !selectHeld) {
+this.panelDragArmed = false;
+this.panelDragging = false;
+this.syncPanelDragLabel();
+this.statusText = 'Panel placed';
+this.renderPanel();
+}
+}
+
+private setBlinkCuePad(pad: PadRuntime | null): void {
+this.blinkCuePad = pad;
+if (pad == null) {
+if (this.blinkCueRoot != null) {
+this.blinkCueRoot.visible = false;
+}
+}
+}
+
+private ensureBlinkCueArrow(): void {
+if (this.blinkCueRoot != null) {
+return;
+}
+const root = new Object3D();
+root.name = 'wall-tones-blink-cue';
+const mat = new MeshBasicMaterial({
+color: 0xffffff,
+transparent: true,
+opacity: 0.45,
+depthWrite: false,
+side: DoubleSide,
+});
+const shaft = new Mesh(new CylinderGeometry(0.012, 0.012, 0.16, 8), mat);
+shaft.position.y = 0.08;
+const head = new Mesh(new ConeGeometry(0.045, 0.1, 10), mat.clone());
+head.position.y = 0.2;
+root.add(shaft);
+root.add(head);
+root.visible = false;
+this.blinkCueRoot = root;
+this.blinkCueEntity = this.world.createTransformEntity(root);
+}
+
+/** Tint the arrow with the color of the pad it points at (not white). */
+private colorBlinkCueArrow(padIndex: number): void {
+const hex = WALL_TONE_PADS[padIndex]?.color;
+if (hex == null || this.blinkCueRoot == null) {
+return;
+}
+for (const child of this.blinkCueRoot.children) {
+const material = (child as Mesh).material;
+if (material instanceof MeshBasicMaterial) {
+material.color.setHex(hex);
+}
+}
+}
+
+private disposeBlinkCueArrow(): void {
+this.blinkCueEntity?.dispose({ disposeResources: true });
+this.blinkCueEntity = null;
+this.blinkCueRoot = null;
+this.blinkCuePad = null;
+}
+
+/** Half-transparent arrow in front of the headset when the blinking pad is off-screen. */
+private tickBlinkCueArrow(): void {
+if (
+this.blinkCuePad == null ||
+this.useDesktopPath() ||
+this.flowPhase !== 'playing'
+) {
+if (this.blinkCueRoot != null) {
+this.blinkCueRoot.visible = false;
+}
+return;
+}
+this.ensureBlinkCueArrow();
+if (this.blinkCueRoot == null) {
+return;
+}
+this.colorBlinkCueArrow(this.blinkCuePad.padIndex);
+this.player.head.getWorldPosition(this.viewer);
+this.player.head.getWorldQuaternion(this.headQuat);
+this.ghostForward.set(0, 0, -1).applyQuaternion(this.headQuat).normalize();
+this.blinkCuePad.root.getWorldPosition(this.padWorldPos);
+this.toPanel.copy(this.padWorldPos).sub(this.viewer);
+if (this.toPanel.lengthSq() < 1e-6) {
+this.blinkCueRoot.visible = false;
+return;
+}
+this.toPanel.normalize();
+const lookDot = Math.min(1, Math.max(-1, this.ghostForward.dot(this.toPanel)));
+const offscreenDeg = (Math.acos(lookDot) * 180) / Math.PI;
+if (offscreenDeg < BLINK_CUE_OFFSCREEN_DEG) {
+this.blinkCueRoot.visible = false;
+return;
+}
+this.panelFollowTargetPos
+.copy(this.viewer)
+.addScaledVector(this.ghostForward, 0.85);
+this.blinkCueRoot.position.copy(this.panelFollowTargetPos);
+// Point the local +Y arrow toward the pad.
+this.handUp.set(0, 1, 0);
+this.blinkCueRoot.quaternion.setFromUnitVectors(this.handUp, this.toPanel);
+this.blinkCueRoot.visible = true;
+}
+
+private handlePadInput(padIndex: number): void {
+if (this.flatAwaitingStart && this.useDesktopPath()) {
+void this.startFlatPlayFromPad(padIndex);
+return;
+}
+if (this.game.phase !== 'input') {
+return;
+}
+this.lastInputAt = performance.now() / 1000;
+this.idleReplayQueued = false;
+const expected = this.game.sequence[this.game.inputStep];
+if (expected == null) {
+return;
+}
+const pad = this.pads[padIndex];
+if (pad != null) {
+flashPad(pad, true);
+// A wrong pad gets only the failure buzzer, not its musical pad note.
+if (padIndex === expected) {
+if (this.useDesktopInput()) {
+playPadToneFromUserAction(padIndex);
+} else {
+void playPadTone(padIndex);
+}
+}
+window.setTimeout(() => flashPad(pad, false), 350);
+}
+if (padIndex !== expected) {
+void this.onWrongInput();
+return;
+}
+// Any instruction still finishing is obsolete once a correct pad is hit.
+this.speech.cancel();
+const previousBest = this.game.bestStreak;
+const completed = this.game.onCorrectInput();
+this.renderPanel();
+if (completed) {
+// Lock input immediately so a held finger/click cannot eat the next round.
+this.game.phase = 'playback';
+this.inputNeedsClear = true;
+this.statusText = `Nice - streak ${this.game.streak}. Next pattern…`;
+this.renderPanel();
+const streak = this.game.streak;
+const increasedRecord = shouldAnnounceRecord(streak, previousBest, this.firstRun);
+this.playbackQueue = this.playbackQueue.then(async () => {
+if (increasedRecord) {
+await this.speech.speakAsync(randomNewBestClip(previousBest === 0));
+if (!this.experienceActive || this.flowPhase !== 'playing') return;
+}
+if (streak > 0 && streak % 5 === 0) {
+await this.speech.speakAsync(milestoneClipFor(streak));
+if (this.experienceActive && this.flowPhase === 'playing') {
+await this.speech.speakAsync(randomCheerClip());
+}
+await this.wait(0.35);
+} else {
+if (increasedRecord) await this.speech.speakAsync(randomCheerClip());
+await this.wait(BETWEEN_ROUNDS_DELAY_S);
+}
+if (!this.experienceActive || this.flowPhase !== 'playing') {
+return;
+}
+await this.playSequence();
+});
+}
+}
+
+private async startFlatPlayFromPad(padIndex: number): Promise<void> {
+if (!this.flatAwaitingStart || !this.experienceActive) {
+return;
+}
+this.flatAwaitingStart = false;
+// A pad press demonstrates progress: stop any welcome / press instruction.
+this.speech.cancel();
+this.startPromptSpoken = true;
+primeWallTonesAudioFromGesture();
+// Confirm the tap briefly, then run the spoken intro before the first sequence tone.
+const pad = this.pads[padIndex];
+if (pad != null) {
+flashPad(pad, true);
+playPadToneFromUserAction(padIndex);
+window.setTimeout(() => flashPad(pad, false), 280);
+}
+this.setRepeatUiVisible(true);
+this.statusText = 'Get ready…';
+this.renderPanel();
+// If the welcome was still speech-locked at entry (mobile before the
+// "Sound on" tap), lead with it now that this tap unlocked audio.
+const leadIn = this.welcomeSpoken ? undefined : 'welcome';
+this.welcomeSpoken = true;
+this.beginRoundWithIntro(leadIn);
+}
+
+/** Praise a failed run only if it beat the best from before that run. */
+private runEarnedCheer(): boolean {
+return this.game.runImprovedBest;
+}
+
+private async onWrongInput(): Promise<void> {
+this.firstRun = false;
+this.game.phase = 'resetting';
+this.inputNeedsClear = true;
+const cheer = this.runEarnedCheer();
+await playErrorTone();
+this.statusText = 'Try again';
+this.renderPanel();
+this.playbackQueue = this.playbackQueue.then(async () => {
+await this.speech.speakAsync(
+cheer ? randomCheerClip() : randomWrongClip(),
+);
+await this.wait(WRONG_RESET_DELAY_S);
+if (!this.experienceActive || this.flowPhase !== 'playing') {
+return;
+}
+this.game.onWrongInput();
+this.renderPanel();
+// Same Simon fanfare as a fresh start, pause, then the first note again.
+await this.playSimonStartupFanfare();
+if (!this.experienceActive || this.flowPhase !== 'playing') {
+return;
+}
+await this.playSequence();
+});
+}
+
+private useDesktopPath(): boolean {
+return this.world.visibilityState.peek() === VisibilityState.NonImmersive;
+}
+
+private useDesktopInput(): boolean {
+return this.useDesktopPath();
+}
+
+private setSetupUiVisible(visible: boolean): void {
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+panel
+?.getElementById('setup-mode-row')
+?.setProperties({ display: visible ? 'flex' : 'none' });
+}
+
+private setAirOrientUiVisible(visible: boolean): void {
+this.world
+.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('air-orient-row')
+?.setProperties({ display: visible ? 'flex' : 'none' });
+}
+
+private setRepeatUiVisible(visible: boolean): void {
+this.world
+.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('repeat-pattern-button')
+?.setProperties({ display: visible ? 'flex' : 'none' });
+}
+
+private setRescanUiVisible(visible: boolean): void {
+this.world
+.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('rescan-room-button')
+?.setProperties({ display: visible ? 'flex' : 'none' });
+}
+
+private setWallPickHintVisible(visible: boolean): void {
+this.world
+.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('wall-pick-hint')
+?.setProperties({ display: visible ? 'flex' : 'none' });
+}
+
+private async onRescanRoom(): Promise<void> {
+if (!this.experienceActive) {
+return;
+}
+if (
+this.flowPhase !== 'air-placement' &&
+this.flowPhase !== 'playing' &&
+this.flowPhase !== 'wall-picking'
+) {
+return;
+}
+this.speech.speak('rescanRoom');
+this.statusText = 'Rescanning room…';
+this.renderPanel();
+this.clearRoomSetupVisuals();
+this.clearPads();
+this.ghostPad = null;
+this.airPlaceStep = 0;
+this.game.phase = 'idle';
+this.playbackQueue = Promise.resolve();
+this.roomCaptureInFlight = false;
+this.roomCaptureAttempted = false;
+this.setAirOrientUiVisible(false);
+this.setRepeatUiVisible(false);
+
+const session = this.xrManager.getSession() as XRSession & {
+initiateRoomCapture?: () => Promise<undefined>;
+};
+if (typeof session?.initiateRoomCapture === 'function') {
+this.roomCaptureInFlight = true;
+this.roomCaptureAttempted = true;
+try {
+await session.initiateRoomCapture();
+} catch (error) {
+console.warn('[wall-tones] rescan room capture failed', error);
+} finally {
+this.roomCaptureInFlight = false;
+}
+}
+this.setSpatialMeshesVisible(true);
+this.flowPhase = 'scanning';
+this.scanStartedAt = performance.now() / 1000;
+this.lackingSpatialData = false;
+this.setRescanUiVisible(false);
+this.speech.speak('lookAround');
+this.renderPanel();
+}
+
+private async onRepeatPattern(): Promise<void> {
+if (!this.experienceActive || this.flowPhase !== 'playing') {
+return;
+}
+if (this.game.sequence.length === 0) {
+return;
+}
+if (this.game.phase === 'playback' || this.game.phase === 'resetting') {
+return;
+}
+this.lastInputAt = performance.now() / 1000;
+this.idleReplayQueued = false;
+this.speech.speak('repeatPattern');
+this.game.inputStep = 0;
+this.game.phase = 'playback';
+this.inputNeedsClear = true;
+this.statusText = 'Repeating pattern…';
+this.renderPanel();
+this.playbackQueue = this.playbackQueue.then(async () => {
+if (!this.experienceActive || this.flowPhase !== 'playing') {
+return;
+}
+await this.playSequence();
+});
+}
+
+private tickIdleReplay(): void {
+if (
+!this.experienceActive ||
+this.flowPhase !== 'playing' ||
+this.game.phase !== 'input' ||
+this.game.sequence.length === 0 ||
+this.idleReplayQueued
+) {
+return;
+}
+const now = performance.now() / 1000;
+if (this.lastInputAt <= 0) {
+this.lastInputAt = now;
+return;
+}
+if (now - this.lastInputAt < IDLE_REPLAY_S) {
+return;
+}
+this.idleReplayQueued = true;
+this.lastInputAt = now;
+this.game.inputStep = 0;
+this.game.phase = 'playback';
+this.inputNeedsClear = true;
+this.statusText = 'Still there? Replaying…';
+this.renderPanel();
+this.playbackQueue = this.playbackQueue.then(async () => {
+await this.speech.speakAsync('idleReplay');
+await this.wait(0.4);
+if (!this.experienceActive || this.flowPhase !== 'playing') {
+return;
+}
+await this.playSequence();
+});
+}
+
+private renderPanel(): void {
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+if (panel == null) {
+return;
+}
+panel
+.getElementById<UIKit.Text>('wall-tones-best-streak')
+?.setProperties({ text: String(this.game.bestStreak) });
+this.renderSequenceIcons(panel);
+panel
+.getElementById<UIKit.Text>('wall-tones-status')
+?.setProperties({
+text: this.game.phase === 'input' ? 'Your Turn:' : this.statusText || 'Ready',
+});
+panel
+.getElementById<UIKit.Text>('wall-tones-current-streak')
+?.setProperties({ text: String(this.game.streak) });
+}
+
+/** Real colored geometry avoids emoji / font fallback rendering white boxes. */
+private renderSequenceIcons(panel: UIKitMLAsset): void {
+const row = panel.getElementById<UIKit.Container>('wall-tones-sequence-icons');
+if (row == null) return;
+const visible = this.game.phase === 'input' || this.statusText === 'Listen:';
+const key = this.game.sequence.join(',') + ':' + colorNamesEnabled() + ':' + visible;
+if (this.sequenceIconRow === row && this.sequenceIconKey === key) return;
+row.setProperties({ display: visible ? 'flex' : 'none' });
+for (const child of [...row.children]) {
+if (child instanceof UIKit.Container) child.dispose();
+row.remove(child);
+}
+this.sequenceIconRow = row;
+this.sequenceIconKey = key;
+this.game.sequence.forEach((id) => {
+row.add(new UIKit.Container({
+width: 16, height: 16, borderRadius: 2,
+backgroundColor: WALL_TONE_PADS[id].color,
+flexShrink: 0,
+}));
+if (colorNamesEnabled()) row.add(new UIKit.Text({
+text: WALL_TONE_PADS[id].name, fontSize: 15, color: 0xffffff,
+}));
+});
+}
+
+private trackFlatLayout(value: number): void {
+const i = this.flatLayoutCursor++;
+if (this.flatLayoutValues[i] !== value) {
+this.flatLayoutValues[i] = value;
+this.flatLayoutDirty = true;
+}
+}
+
+private flatCaptionLayoutChanged(): boolean {
+this.flatLayoutDirty = false;
+this.flatLayoutCursor = 0;
+this.trackFlatLayout(window.innerWidth);
+this.trackFlatLayout(window.innerHeight);
+this.trackFlatLayout(this.experienceActive ? 1 : 0);
+this.trackFlatLayout(this.pads.length);
+const camera = this.world.camera;
+for (let i = 0; i < 16; i++) {
+this.trackFlatLayout(camera.matrixWorldInverse.elements[i]!);
+this.trackFlatLayout(camera.projectionMatrix.elements[i]!);
+}
+for (const pad of this.pads) {
+pad.root.updateWorldMatrix(true, false);
+this.trackFlatLayout(pad.sizeM);
+for (let i = 0; i < 16; i++) this.trackFlatLayout(pad.root.matrixWorld.elements[i]!);
+}
+return this.flatLayoutDirty;
+}
+
+/** Flat captions are anchored under the pad grid, never on top of a pad. */
+private updateAccessibilityCaptions(): void {
+const enabled = hearingSubtitlesEnabled();
+const flat = this.world.visibilityState.peek() === VisibilityState.NonImmersive;
+const show = enabled && this.experienceActive;
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+const caption = currentSpokenCaption();
+const names = colorNamesEnabled();
+const previous = this.accessibilityState;
+let sequenceChanged = !previous || previous.sequence.length !== this.game.sequence.length;
+if (previous && !sequenceChanged) {
+for (let i = 0; i < this.game.sequence.length; i++) {
+if (previous.sequence[i] !== this.game.sequence[i]) { sequenceChanged = true; break; }
+}
+}
+const accessibilityChanged = this.accessibilityPanel !== panel || !previous ||
+previous.show !== show || previous.flat !== flat ||
+previous.active !== this.experienceActive || previous.caption !== caption ||
+previous.phase !== this.game.phase || previous.status !== this.statusText ||
+previous.names !== names || sequenceChanged;
+if (accessibilityChanged) {
+this.accessibilityPanel = panel;
+this.accessibilityState = { show, flat, active: this.experienceActive, caption,
+phase: this.game.phase, status: this.statusText, names, sequence: [...this.game.sequence] };
+if (panel && this.experienceActive) this.renderSequenceIcons(panel);
+panel?.getElementById('wall-tones-info-row')?.setProperties({
+display: show && !flat ? 'flex' : 'none',
+});
+panel?.getElementById<UIKit.Text>('wall-tones-spoken-caption')?.setProperties({
+display: show && !flat && caption ? 'flex' : 'none', text: caption,
+});
+}
+const menuCaption = enabled && flat && !this.experienceActive && Boolean(caption);
+if ((!show && !menuCaption) || !flat) {
+if (this.flatCaptions && this.flatCaptions.style.display !== 'none') this.flatCaptions.style.display = 'none';
+return;
+}
+if (!this.flatCaptions) {
+document.getElementById('wall-tones-flat-subtitles')?.remove();
+this.flatCaptions = document.createElement('div');
+this.flatCaptions.id = 'wall-tones-flat-subtitles';
+this.flatCaptions.setAttribute('aria-live', 'polite');
+Object.assign(this.flatCaptions.style, {
+position: 'fixed', zIndex: '30', color: '#fff', background: '#081019e8',
+padding: '10px 14px', borderRadius: '10px', font: '16px/1.4 sans-serif',
+textAlign: 'center', pointerEvents: 'none', boxSizing: 'border-box',
+transform: 'translateX(-50%)',
+});
+document.body.appendChild(this.flatCaptions);
+this.flatLayoutValues.length = 0;
+}
+if (this.flatCaptions.style.display !== 'block') this.flatCaptions.style.display = 'block';
+document.getElementById('wall-tones-startup-subtitle')?.remove();
+if (this.flatCaptionLayoutChanged()) {
+let minX = Infinity, maxX = -Infinity, bottom = 0;
+for (const pad of this.pads) {
+for (let side = -1; side <= 1; side += 2) {
+const v = this.captionProjection.set(side * pad.sizeM / 2, -pad.sizeM / 2, 0);
+pad.root.localToWorld(v); v.project(this.world.camera);
+const x = (v.x + 1) * window.innerWidth / 2;
+minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+bottom = Math.max(bottom, (1 - v.y) * window.innerHeight / 2);
+}
+}
+const phone = this.isPhoneFlatViewport();
+if (this.pads.length === 0 || !this.experienceActive) { minX = window.innerWidth * 0.2; maxX = window.innerWidth * 0.8; bottom = window.innerHeight - 160; }
+const width = phone ? window.innerWidth - 24 : Math.min(window.innerWidth - 24, Math.max(300, maxX - minX));
+this.flatCaptions.style.fontSize = phone ? '13px' : '16px';
+this.flatCaptions.style.lineHeight = phone ? '1.25' : '1.4';
+this.flatCaptions.style.width = `${width}px`;
+this.flatCaptions.style.left = `${Math.max(width / 2 + 12, Math.min(window.innerWidth - width / 2 - 12, (minX + maxX) / 2))}px`;
+this.flatCaptions.style.top = `${bottom + 14}px`;
+}
+const seqVisible = this.experienceActive && (this.game.phase === 'input' || this.statusText === 'Listen:');
+const info = !this.experienceActive ? '' : this.game.phase === 'input' ? 'Your Turn:' : this.statusText;
+if (!accessibilityChanged && this.flatCaptions.childElementCount > 0) return;
+this.flatCaptions.replaceChildren();
+const line = document.createElement('div');
+Object.assign(line.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexWrap: 'wrap' });
+const label = document.createElement('span'); label.textContent = info; line.append(label);
+if (seqVisible) for (const id of this.game.sequence) {
+const square = document.createElement('span');
+Object.assign(square.style, { width: '16px', height: '16px', borderRadius: '2px', background: `#${WALL_TONE_PADS[id].color.toString(16).padStart(6, '0')}`, display: 'inline-block', flexShrink: '0' });
+square.setAttribute('aria-label', WALL_TONE_PADS[id].name);
+line.append(square);
+if (colorNamesEnabled()) { const word = document.createElement('span'); word.textContent = WALL_TONE_PADS[id].name; line.append(word); }
+}
+this.flatCaptions.append(line);
+if (caption) { const text = document.createElement('div'); text.textContent = caption; text.style.marginTop = '5px'; this.flatCaptions.append(text); }
+}
+
+private wait(seconds: number): Promise<void> {
+return new Promise((resolve) => {
+window.setTimeout(resolve, seconds * 1000);
+});
+}
   }
-
-  private readonly game = new WallTonesSequence();
-  private readonly viewer = new Vector3();
-  private readonly captionProjection = new Vector3();
-  private readonly cameraForward = new Vector3();
-  private readonly cameraPosition = new Vector3();
-  private readonly tipLeft = new Vector3();
-  private readonly tipRight = new Vector3();
-  private readonly tipLocal = new Vector3();
-  private readonly gripWorld = new Vector3();
-  private readonly ghostForward = new Vector3();
-  private readonly ghostTarget = new Vector3();
-  private readonly awayFromHead = new Vector3();
-  private readonly handUp = new Vector3();
-  private readonly handForward = new Vector3();
-  private readonly gripQuat = new Quaternion();
-  private readonly ghostQuat = new Quaternion();
-  private readonly targetGhostQuat = new Quaternion();
-  private readonly scratchQuat = new Quaternion();
-  private readonly padWorldPos = new Vector3();
-  private readonly tipScratch = new Vector3();
-  private readonly rayOrigin = new Vector3();
-  private readonly rayDir = new Vector3();
-  private readonly rayToSlot = new Vector3();
-  private readonly rayClosest = new Vector3();
-  private readonly axisX = new Vector3(1, 0, 0);
-  private readonly panelFollowPos = new Vector3();
-  private readonly panelFollowTargetPos = new Vector3();
-  private readonly panelFollowQuat = new Quaternion();
-  private readonly panelFollowTargetQuat = new Quaternion();
-  private readonly headQuat = new Quaternion();
-  private readonly toPanel = new Vector3();
-
-  private experienceActive = false;
-  private flowPhase: FlowPhase = 'inactive';
-  private setupMode: SetupMode | null = null;
-  private pads: PadRuntime[] = [];
-  private playbackQueue: Promise<void> = Promise.resolve();
-  private scanStartedAt = -1;
-  /** One-shot room capture while scanning; blocks repeat initiateRoomCapture calls. */
-  private roomCaptureInFlight = false;
-  private roomCaptureAttempted = false;
-  /** Reused when materializing the XRPlane query (no per-frame Array.from). */
-  private readonly planeEntityScratch: Entity[] = [];
-  private airPlaceStep = 0;
-  private airPadSizeM = AIR_PLACE_ROOM_PAD_SIZE_M;
-  private ghostPad: PadRuntime | null = null;
-  private statusText = '';
-  private panelBound = false;
-  private flatBackdropHidden = false;
-  private wasNonImmersive = true;
-  private flatAwaitingStart = false;
-  /** After playback, ignore touches until every pad is clear (avoids stuck finger auto-hitting). */
-  private inputNeedsClear = false;
-  private airOrientation: AirOrientation = 'vertical';
-  /** When set, panel lock overrides hand-driven snap. */
-  private airOrientationLocked: AirOrientation | null = null;
-  private dominantHand: 'left' | 'right' | null = null;
-  private lastInputAt = 0;
-  private idleReplayQueued = false;
-  private panelRayRemoved = false;
-  private lackingSpatialData = false;
-  private slotCandidates: SlotCandidateRuntime[] = [];
-  private wallOverlayEntities: Entity[] = [];
-  private selectedSlotTransforms: PlacedPadTransform[] = [];
-  private readonly slotArmed = new Map<number, boolean>();
-  private slotSelectLatched = false;
-  private readonly touchEnterFrames = new Map<number, number>();
-  private readonly touchExitFrames = new Map<number, number>();
-  private pointerAudioBound = false;
-  private mobileSoundButton: HTMLButtonElement | null = null;
-  private mediaUnlockApplied = false;
-  /** Wireframe hover/press volumes on pads; VR only, off by default; opt in for tuning. */
-  private showTouchDebug = false;
-  private flatCaptions: HTMLDivElement | null = null;
-  private firstRun = true;
-  private flatCaptionKey = '';
-  private sequenceIconKey = '';
-  private accessibilityPanel: UIKitMLAsset | undefined;
-  private accessibilityState: { show: boolean; flat: boolean; active: boolean; caption: string; phase: string; status: string; names: boolean; sequence: number[] } | undefined;
-  private sequenceIconRow: UIKit.Container | null = null;
-  /** Setup HUD is world-anchored; look-away past a threshold re-snaps it. */
-  private panelWorldAnchored = false;
-  private panelSnapActive = false;
-  /** Click drag handle, then hold select to reposition the in-game HUD. */
-  private panelDragArmed = false;
-  private panelDragging = false;
-  private blinkCuePad: PadRuntime | null = null;
-  private blinkCueRoot: Object3D | null = null;
-  private blinkCueEntity: Entity | null = null;
-  private readonly onPointerDownForAudio = (): void => {
-    if (needsExplicitMobileSoundUnlock() && !isHtmlAudioPoolUnlocked()) {
-      this.applyUserGestureMediaUnlock(false);
-      return;
-    }
-    primeWallTonesAudioFromGesture();
-  };
-  private readonly savedPanelPosition = new Float32Array(3);
-  private readonly savedPanelScale = new Float32Array(3);
-  private panelPositionSaved = false;
-
-  init(): void {
-    this.bindPanelIfNeeded();
-    const onModeChange = (event: Event) => {
-      const mode = (event as CustomEvent<{ mode: ExperienceMode }>).detail.mode;
-      if (mode === 'walltones') {
-        void this.enterWallTonesMode();
-      } else {
-        void this.leaveWallTonesMode();
-      }
-    };
-    window.addEventListener('experience-mode-changed', onModeChange);
-    this.wasNonImmersive =
-      this.world.visibilityState.peek() === VisibilityState.NonImmersive;
-    this.cleanupFuncs.push(
-      this.world.visibilityState.subscribe((state) => {
-        this.onVisibilityForFlatPlay(state);
-      }),
-    );
-    this.publishDebugBridge();
-    this.cleanupFuncs.push(() => {
-      window.removeEventListener('experience-mode-changed', onModeChange);
-      delete window.__wallTonesDebug;
-      void this.leaveWallTonesMode();
-    });
-
-    // Enter XR boots the AR world while still NonImmersive. Handle awaiting
-    // setup BEFORE the stored-mode path, or beginFlatPlay would spawn the
-    // four desktop pads and leave them floating through VR choose-mode.
-    const awaitingMode = sessionStorage.getItem('wall-tones-awaiting-mode');
-    if (awaitingMode === '1' && getActiveWorldKind() === 'walltones-ar') {
-      sessionStorage.removeItem('wall-tones-awaiting-mode');
-      this.experienceActive = true;
-      document.title = 'Wall Tones 2: too fast to wall';
-      this.bindPanelIfNeeded();
-      this.clearPads();
-      this.flatAwaitingStart = false;
-      this.flowPhase = 'choose-mode';
-      this.resetSetupPanelAnchor();
-      this.setFlatHintVisible(false);
-      this.setSetupUiVisible(true);
-      this.setRepeatUiVisible(false);
-      this.setRescanUiVisible(false);
-      this.syncDebugCollidersButton();
-      this.applyTouchDebugVisibility();
-      this.statusText = 'Choose room scale or sitting.';
-      this.speakEntryLines();
-      this.renderPanel();
-    } else if (sessionStorage.getItem('iwsdk-experience-mode') === 'walltones') {
-      void this.enterWallTonesMode();
-    }
-
-    const pendingSetup = sessionStorage.getItem('wall-tones-setup-mode');
-    if (
-      pendingSetup === 'room-scale' ||
-      pendingSetup === 'sitting' ||
-      pendingSetup === 'air'
-    ) {
-      sessionStorage.removeItem('wall-tones-setup-mode');
-      this.setupMode = pendingSetup;
-      this.experienceActive = true;
-      document.title = 'Wall Tones 2: too fast to wall';
-      const storedHand = sessionStorage.getItem('wall-tones-dominant-hand');
-      if (storedHand === 'left' || storedHand === 'right') {
-        this.dominantHand = storedHand;
-      }
-      this.bindPanelIfNeeded();
-      this.setFlatHintVisible(false);
-      this.setSetupUiVisible(false);
-      if (pendingSetup === 'air') {
-        this.startAirPlacement('chooseAirMenu');
-      } else {
-        this.flowPhase = 'scanning';
-        this.scanStartedAt = performance.now() / 1000;
-        this.roomCaptureInFlight = false;
-        this.roomCaptureAttempted = false;
-        this.speech.speak('lookAround');
-      }
-    }
-  }
-
-  update(delta: number): void {
-    this.updateAccessibilityCaptions();
-    if (!this.experienceActive) {
-      return;
-    }
-    if (this.pads.length > 0) {
-      const glowTime = performance.now() / 1000;
-      for (const pad of this.pads) {
-        const pressable = this.flowPhase === 'playing' &&
-          (this.flatAwaitingStart || this.game.phase === 'input');
-        // The demonstrated note still lights during playback; all other
-        // disabled pads look switched off until the player's turn.
-        setPadGlowPower(pad.glow, pressable || this.blinkCuePad === pad ||
-          (pad.visualState === 'pressed' && !pad.fingerInside));
-        animatePadGlow(pad.glow, glowTime);
-      }
-    }
-    this.bindPanelIfNeeded();
-    if (!this.useDesktopPath()) {
-      this.noteDominantHandFromInput();
-      this.tickSetupPanelFollow(delta);
-      this.tickPanelDrag();
-      this.tickBlinkCueArrow();
-    }
-    if (
-      this.useDesktopPath() &&
-      this.flowPhase === 'playing' &&
-      this.pads.length === 0
-    ) {
-      this.spawnDesktopPads();
-      if (this.game.phase === 'idle') {
-        this.flatAwaitingStart = true;
-        this.statusText = 'Tap any pad to start (sound on)';
-      }
-    }
-    if (this.flowPhase === 'scanning') {
-      this.tickScan(delta);
-    }
-    if (this.flowPhase === 'wall-picking') {
-      this.tickWallPicking();
-    }
-    if (this.flowPhase === 'air-placement') {
-      this.tickAirPlacement(delta);
-    }
-    if (this.useDesktopInput()) {
-      if (this.flatAwaitingStart || this.game.phase === 'input') {
-        this.readDesktopTouches();
-      }
-    } else if (
-      this.flowPhase === 'playing' &&
-      (this.game.phase === 'input' || this.inputNeedsClear)
-    ) {
-      this.readFingertipTouches();
-    }
-    this.tickIdleReplay();
-  }
-
-  /** First pinch / trigger that selects UI or places becomes the orientation hand. */
-  private noteDominantHandFromInput(): void {
-    if (this.dominantHand != null) {
-      return;
-    }
-    const stored = sessionStorage.getItem('wall-tones-dominant-hand');
-    if (stored === 'left' || stored === 'right') {
-      this.dominantHand = stored;
-      return;
-    }
-    for (const hand of XR_HANDS) {
-      if (this.input.xr.getSelectState(hand).start) {
-        this.dominantHand = hand;
-        sessionStorage.setItem('wall-tones-dominant-hand', hand);
-        return;
-      }
-    }
-  }
-
-  private bindPanelIfNeeded(): void {
-    if (this.panelBound) {
-      return;
-    }
-    const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
-    if (panel == null) {
-      return;
-    }
-    this.panelBound = true;
-    panel.getElementById('back-to-menu-button')?.addEventListener('click', () => {
-      void this.onBackToMenu();
-    });
-    panel
-      .getElementById('mode-room-scale-button')
-      ?.addEventListener('click', () => void this.onChooseSetup('room-scale'));
-    panel
-      .getElementById('mode-sitting-button')
-      ?.addEventListener('click', () => void this.onChooseSetup('sitting'));
-    panel
-      .getElementById('mode-air-place-button')
-      ?.addEventListener('click', () => void this.onChooseSetup('air'));
-    panel
-      .getElementById('orient-vertical-button')
-      ?.addEventListener('click', () => this.setAirOrientation('vertical'));
-    panel
-      .getElementById('orient-horizontal-button')
-      ?.addEventListener('click', () => this.setAirOrientation('horizontal'));
-    panel
-      .getElementById('repeat-pattern-button')
-      ?.addEventListener('click', () => void this.onRepeatPattern());
-    panel
-      .getElementById('rescan-room-button')
-      ?.addEventListener('click', () => void this.onRescanRoom());
-    panel
-      .getElementById('debug-colliders-button')
-      ?.addEventListener('click', () => this.toggleTouchDebug());
-    panel
-      .getElementById('panel-drag-handle')
-      ?.addEventListener('click', () => this.togglePanelDragArm());
-    this.syncDebugCollidersButton();
-    this.applyTouchDebugVisibility();
-    this.setPanelDragBarVisible(
-      this.flowPhase === 'playing' && !this.useDesktopPath(),
-    );
-    if (this.experienceActive && this.useDesktopPath()) {
-      this.setSetupUiVisible(false);
-    }
-    // Never show Repeat during mode / placement selection.
-    if (this.flowPhase !== 'playing' || this.flatAwaitingStart) {
-      this.setRepeatUiVisible(false);
-    }
-    this.renderPanel();
-  }
-
-  private async enterWallTonesMode(): Promise<void> {
-    if (this.experienceActive) {
-      return;
-    }
-    this.experienceActive = true;
-    this.game.resetAllScores();
-    this.firstRun = true;
-    document.title = 'Wall Tones 2: too fast to wall';
-    this.bindPanelIfNeeded();
-    this.bindPointerAudioUnlock();
-
-    // XR boot / world swap in progress — never spawn the flat 2×2 here.
-    if (sessionStorage.getItem('wall-tones-awaiting-mode') === '1') {
-      this.clearPads();
-      this.flatAwaitingStart = false;
-      this.flowPhase = 'choose-mode';
-      this.resetSetupPanelAnchor();
-      this.setFlatHintVisible(false);
-      this.setSetupUiVisible(true);
-      this.setRepeatUiVisible(false);
-      this.setRescanUiVisible(false);
-      this.syncDebugCollidersButton();
-      this.applyTouchDebugVisibility();
-      this.statusText = 'Opening passthrough…';
-      this.renderPanel();
-      return;
-    }
-
-    if (this.useDesktopPath()) {
-      this.beginFlatPlay();
-      return;
-    }
-
-    this.clearPads();
-    this.flatAwaitingStart = false;
-    this.flowPhase = 'choose-mode';
-    this.resetSetupPanelAnchor();
-    this.setFlatHintVisible(false);
-    this.setSetupUiVisible(true);
-    this.setRepeatUiVisible(false);
-    this.setRescanUiVisible(false);
-    this.syncDebugCollidersButton();
-    this.applyTouchDebugVisibility();
-    this.statusText = 'Choose room scale or sitting.';
-    this.speakEntryLines();
-    this.renderPanel();
-  }
-
-  private async leaveWallTonesMode(): Promise<void> {
-    if (!this.experienceActive) {
-      return;
-    }
-    this.experienceActive = false;
-    this.flowPhase = 'inactive';
-    this.flatAwaitingStart = false;
-    this.inputNeedsClear = false;
-    this.mediaUnlockApplied = false;
-    this.airOrientationLocked = null;
-    this.dominantHand = null;
-    // Keep wall-tones-dominant-hand across world swaps so AR restore can read it.
-    // Cleared only when returning to the hub menu (switchBackToHubMenu).
-    sessionStorage.removeItem('wall-tones-awaiting-mode');
-    this.lackingSpatialData = false;
-    this.roomCaptureInFlight = false;
-    this.roomCaptureAttempted = false;
-    this.touchEnterFrames.clear();
-    this.touchExitFrames.clear();
-    this.playbackQueue = Promise.resolve();
-    this.game.phase = 'idle';
-    this.game.resetAllScores();
-    this.speech.cancel();
-    this.welcomeSpoken = false;
-    this.startPromptSpoken = false;
-    suspendAudioContext();
-    resetSpeechUnlock();
-    this.unbindPointerAudioUnlock();
-    this.hideMobileSoundOverlay();
-    this.clearRoomSetupVisuals();
-    this.clearPads();
-    this.ghostPad = null;
-    this.setupMode = null;
-    this.setFlatHintVisible(false);
-    this.setWallPickHintVisible(false);
-    this.setAirOrientUiVisible(false);
-    this.setRescanUiVisible(false);
-    this.setRepeatUiVisible(false);
-    this.setPanelDragBarVisible(false);
-    this.panelDragArmed = false;
-    this.panelDragging = false;
-    this.setBlinkCuePad(null);
-    this.disposeBlinkCueArrow();
-    this.resetSetupPanelAnchor();
-    this.restorePanelLayout();
-    this.restorePanelPointerCapture();
-    this.showStudioBackdrop();
-    this.renderPanel();
-  }
-
-  private beginFlatPlay(): void {
-    if (!this.useDesktopPath()) {
-      return;
-    }
-    if (sessionStorage.getItem('wall-tones-awaiting-mode') === '1') {
-      return;
-    }
-    this.flowPhase = 'playing';
-    this.flatAwaitingStart = true;
-    this.statusText = 'Tap any pad to start (sound on)';
-    this.setSetupUiVisible(false);
-    this.setAirOrientUiVisible(false);
-    this.setFlatHintVisible(true);
-    this.setPanelDragBarVisible(false);
-    this.hideStudioBackdrop();
-    this.layoutPanelForFlatPlay();
-    // Keep RayInteractable so Back stays clickable; panel sits beside the pads.
-    this.restorePanelPointerCapture();
-    this.bindPointerAudioUnlock();
-    // Desktop entry still gets the welcome line once (chooseMode is XR-only).
-    if (!this.welcomeSpoken) {
-      // Start's trusted canvas tap unlocks audio before the spatial callback.
-      // Direct mobile restores still need their first gesture, so keep both
-      // flags pending until then rather than consuming a blocked welcome.
-      const speechWillPlay =
-        this.speech.canSpeakNow() &&
-        !(needsExplicitMobileSoundUnlock() && !isHtmlAudioPoolUnlocked());
-      if (speechWillPlay) {
-        this.welcomeSpoken = true;
-        this.speech.speak('welcome', true);
-        // Same sentence the how-to-play clip opens with, so say it up front.
-        this.speech.speak('pointAndPress');
-        this.startPromptSpoken = true;
-      }
-    }
-    this.spawnDesktopPads();
-    this.setRepeatUiVisible(false);
-    if (needsExplicitMobileSoundUnlock() && !isHtmlAudioPoolUnlocked()) {
-      this.statusText = 'Tap “Sound on” below, then any pad';
-      this.showMobileSoundOverlay();
-    } else {
-      this.statusText = 'Tap any pad to start (sound on)';
-    }
-    this.renderPanel();
-  }
-
-  private applyUserGestureMediaUnlock(speakLine: boolean): void {
-    if (this.mediaUnlockApplied && isHtmlAudioPoolUnlocked()) {
-      return;
-    }
-    this.mediaUnlockApplied = true;
-    primeWallTonesAudioFromGesture();
-    unlockSpeechFromGesture();
-    this.hideMobileSoundOverlay();
-    if (speakLine) {
-      this.speech.speak('soundReady');
-    }
-    if (this.flatAwaitingStart) {
-      this.statusText = 'Tap any pad to start';
-    }
-    this.renderPanel();
-  }
-
-  private showMobileSoundOverlay(): void {
-    if (!needsExplicitMobileSoundUnlock()) {
-      return;
-    }
-    if (this.mobileSoundButton == null) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.textContent = 'Sound on — tap here';
-      button.id = 'wall-tones-mobile-sound';
-      Object.assign(button.style, {
-        position: 'fixed',
-        left: '50%',
-        bottom: 'max(24px, env(safe-area-inset-bottom))',
-        transform: 'translateX(-50%)',
-        zIndex: '99999',
-        fontSize: '18px',
-        padding: '14px 22px',
-        borderRadius: '12px',
-        border: 'none',
-        background: '#f5d90a',
-        color: '#1c1d20',
-        fontWeight: '700',
-        boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
-      });
-      button.addEventListener('click', (event) => {
-        event.preventDefault();
-        this.applyUserGestureMediaUnlock(true);
-      });
-      document.body.appendChild(button);
-      this.mobileSoundButton = button;
-    }
-    this.mobileSoundButton.style.display = 'block';
-  }
-
-  private hideMobileSoundOverlay(): void {
-    if (this.mobileSoundButton != null) {
-      this.mobileSoundButton.style.display = 'none';
-    }
-  }
-
-  private bindPointerAudioUnlock(): void {
-    if (this.pointerAudioBound) {
-      return;
-    }
-    this.pointerAudioBound = true;
-    window.addEventListener('pointerdown', this.onPointerDownForAudio, true);
-    window.addEventListener('touchstart', this.onPointerDownForAudio, {
-      capture: true,
-      passive: true,
-    });
-  }
-
-  private unbindPointerAudioUnlock(): void {
-    if (!this.pointerAudioBound) {
-      return;
-    }
-    this.pointerAudioBound = false;
-    window.removeEventListener('pointerdown', this.onPointerDownForAudio, true);
-    window.removeEventListener('touchstart', this.onPointerDownForAudio, true);
-  }
-
-  private isPhoneFlatViewport(): boolean {
-    if (typeof window === 'undefined') {
-      return false;
-    }
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-    return width <= 480 || (height <= 480 && width <= 950);
-  }
-
-  private layoutPanelForFlatPlay(): void {
-    // Desktop: park right of the pad grid. Phones: HUD on top of the portrait
-    // frame (closer + higher) so pads sit clear below — VR follow unchanged.
-    if (this.isPhoneFlatViewport()) {
-      this.applyPanelLayout(
-        PHONE_PANEL_FLAT.position[0],
-        PHONE_PANEL_FLAT.position[1],
-        PHONE_PANEL_FLAT.position[2],
-        PHONE_PANEL_FLAT.scale,
-      );
-      return;
-    }
-    this.applyPanelLayout(1.95, 1.48, -1.55, 0.26);
-  }
-
-  private layoutPanelForMrPlay(): void {
-    // Park the HUD in front of the player when play starts (not a stale side offset).
-    this.panelDragArmed = false;
-    this.panelDragging = false;
-    this.player.head.getWorldPosition(this.viewer);
-    this.player.head.getWorldQuaternion(this.headQuat);
-    this.ghostForward.set(0, 0, -1).applyQuaternion(this.headQuat).normalize();
-    this.panelFollowTargetPos
-      .copy(this.viewer)
-      .addScaledVector(this.ghostForward, PANEL_PLAY_DISTANCE_M);
-    this.panelFollowTargetPos.y += PANEL_FOLLOW_Y_OFFSET_M;
-    this.applyPanelLayout(
-      this.panelFollowTargetPos.x,
-      this.panelFollowTargetPos.y,
-      this.panelFollowTargetPos.z,
-      PANEL_PLAY_SCALE,
-      this.headQuat,
-    );
-    this.setPanelDragBarVisible(true);
-    this.syncPanelDragLabel();
-  }
-
-  private isSetupPanelFollowActive(): boolean {
-    return (
-      this.experienceActive &&
-      !this.useDesktopPath() &&
-      (this.flowPhase === 'choose-mode' ||
-        this.flowPhase === 'scanning' ||
-        this.flowPhase === 'wall-picking' ||
-        this.flowPhase === 'air-placement')
-    );
-  }
-
-  /**
-   * World-anchored setup HUD: place once in front, then only slerp-snap when the
-   * player looks ~PANEL_LOOK_AWAY_DEG away from the panel.
-   */
-  private tickSetupPanelFollow(delta: number): void {
-    if (!this.isSetupPanelFollowActive()) {
-      this.panelSnapActive = false;
-      return;
-    }
-    const entity = this.world.getSceneEntity('wall-tones-panel');
-    if (entity == null) {
-      return;
-    }
-    const position = entity.getVectorView(Transform, 'position');
-    const orientation = entity.getVectorView(Transform, 'orientation');
-    const scale = entity.getVectorView(Transform, 'scale');
-    if (!this.panelPositionSaved) {
-      this.savedPanelPosition.set(position);
-      this.savedPanelScale.set(scale);
-      this.panelPositionSaved = true;
-    }
-
-    this.player.head.getWorldPosition(this.viewer);
-    this.player.head.getWorldQuaternion(this.headQuat);
-    this.ghostForward.set(0, 0, -1).applyQuaternion(this.headQuat).normalize();
-    this.panelFollowTargetPos
-      .copy(this.viewer)
-      .addScaledVector(this.ghostForward, PANEL_FOLLOW_DISTANCE_M);
-    this.panelFollowTargetPos.y += PANEL_FOLLOW_Y_OFFSET_M;
-    this.panelFollowTargetQuat.copy(this.headQuat);
-
-    this.panelFollowPos.set(position[0]!, position[1]!, position[2]!);
-    this.panelFollowQuat.set(
-      orientation[0]!,
-      orientation[1]!,
-      orientation[2]!,
-      orientation[3]!,
-    );
-
-    if (!this.panelWorldAnchored) {
-      position[0] = this.panelFollowTargetPos.x;
-      position[1] = this.panelFollowTargetPos.y;
-      position[2] = this.panelFollowTargetPos.z;
-      orientation[0] = this.panelFollowTargetQuat.x;
-      orientation[1] = this.panelFollowTargetQuat.y;
-      orientation[2] = this.panelFollowTargetQuat.z;
-      orientation[3] = this.panelFollowTargetQuat.w;
-      scale[0] = PANEL_FOLLOW_SCALE;
-      scale[1] = PANEL_FOLLOW_SCALE;
-      scale[2] = PANEL_FOLLOW_SCALE;
-      this.panelWorldAnchored = true;
-      this.panelSnapActive = false;
-      this.restorePanelPointerCapture();
-      return;
-    }
-
-    this.toPanel.copy(this.panelFollowPos).sub(this.viewer);
-    if (this.toPanel.lengthSq() > 1e-6) {
-      this.toPanel.normalize();
-      const lookDot = Math.min(
-        1,
-        Math.max(-1, this.ghostForward.dot(this.toPanel)),
-      );
-      const lookAwayDeg = (Math.acos(lookDot) * 180) / Math.PI;
-      if (lookAwayDeg >= PANEL_LOOK_AWAY_DEG) {
-        this.panelSnapActive = true;
-      }
-    }
-
-    if (!this.panelSnapActive) {
-      scale[0] = PANEL_FOLLOW_SCALE;
-      scale[1] = PANEL_FOLLOW_SCALE;
-      scale[2] = PANEL_FOLLOW_SCALE;
-      return;
-    }
-
-    const alpha =
-      1 - Math.pow(1 - PANEL_FOLLOW_SLERP, Math.max(delta, 1 / 120) * 72);
-    this.panelFollowPos.lerp(this.panelFollowTargetPos, alpha);
-    this.panelFollowQuat.slerp(this.panelFollowTargetQuat, alpha);
-    position[0] = this.panelFollowPos.x;
-    position[1] = this.panelFollowPos.y;
-    position[2] = this.panelFollowPos.z;
-    orientation[0] = this.panelFollowQuat.x;
-    orientation[1] = this.panelFollowQuat.y;
-    orientation[2] = this.panelFollowQuat.z;
-    orientation[3] = this.panelFollowQuat.w;
-    scale[0] = PANEL_FOLLOW_SCALE;
-    scale[1] = PANEL_FOLLOW_SCALE;
-    scale[2] = PANEL_FOLLOW_SCALE;
-    if (this.panelFollowPos.distanceTo(this.panelFollowTargetPos) <= PANEL_SNAP_ARRIVE_M) {
-      this.panelSnapActive = false;
-    }
-    this.restorePanelPointerCapture();
-  }
-
-  private resetSetupPanelAnchor(): void {
-    this.panelWorldAnchored = false;
-    this.panelSnapActive = false;
-  }
-
-  private applyPanelLayout(
-    x: number,
-    y: number,
-    z: number,
-    scaleValue: number,
-    orientationQuat?: Quaternion,
-  ): void {
-    const entity = this.world.getSceneEntity('wall-tones-panel');
-    if (entity == null) {
-      return;
-    }
-    const position = entity.getVectorView(Transform, 'position');
-    if (!this.panelPositionSaved) {
-      this.savedPanelPosition.set(position);
-      const scale = entity.getVectorView(Transform, 'scale');
-      this.savedPanelScale.set(scale);
-      this.panelPositionSaved = true;
-    }
-    position[0] = x;
-    position[1] = y;
-    position[2] = z;
-    if (orientationQuat != null) {
-      const orientation = entity.getVectorView(Transform, 'orientation');
-      orientation[0] = orientationQuat.x;
-      orientation[1] = orientationQuat.y;
-      orientation[2] = orientationQuat.z;
-      orientation[3] = orientationQuat.w;
-    }
-    const scale = entity.getVectorView(Transform, 'scale');
-    scale[0] = scaleValue;
-    scale[1] = scaleValue;
-    scale[2] = scaleValue;
-    // Ensure the panel stays ray-targetable in MR and on desktop.
-    this.restorePanelPointerCapture();
-    if (!entity.hasComponent(RayInteractable)) {
-      entity.addComponent(RayInteractable);
-      this.panelRayRemoved = false;
-    }
-  }
-
-  private restorePanelLayout(): void {
-    if (!this.panelPositionSaved) {
-      return;
-    }
-    const entity = this.world.getSceneEntity('wall-tones-panel');
-    const position = entity?.getVectorView(Transform, 'position');
-    if (entity == null || position == null) {
-      return;
-    }
-    position[0] = this.savedPanelPosition[0]!;
-    position[1] = this.savedPanelPosition[1]!;
-    position[2] = this.savedPanelPosition[2]!;
-    const scale = entity.getVectorView(Transform, 'scale');
-    scale[0] = this.savedPanelScale[0]!;
-    scale[1] = this.savedPanelScale[1]!;
-    scale[2] = this.savedPanelScale[2]!;
-  }
-
-  private disablePanelPointerCapture(): void {
-    const entity = this.world.getSceneEntity('wall-tones-panel');
-    if (entity == null || this.panelRayRemoved) {
-      return;
-    }
-    if (entity.hasComponent(RayInteractable)) {
-      entity.removeComponent(RayInteractable);
-      this.panelRayRemoved = true;
-    }
-  }
-
-  private restorePanelPointerCapture(): void {
-    const entity = this.world.getSceneEntity('wall-tones-panel');
-    if (entity == null || !this.panelRayRemoved) {
-      return;
-    }
-    entity.addComponent(RayInteractable);
-    this.panelRayRemoved = false;
-  }
-
-  private formatSequenceLabel(): string {
-    return this.game.sequence
-      .map((padId) => WALL_TONE_PADS[padId]?.name ?? '?')
-      .join(' → ');
-  }
-
-  private onVisibilityForFlatPlay(state: VisibilityState): void {
-    const nonImmersive = state === VisibilityState.NonImmersive;
-    if (
-      this.experienceActive &&
-      nonImmersive &&
-      !this.wasNonImmersive &&
-      getActiveWorldKind() === 'hub-vr' &&
-      this.setupMode == null
-    ) {
-      this.beginFlatPlay();
-    } else if (
-      this.experienceActive &&
-      !nonImmersive &&
-      this.wasNonImmersive
-    ) {
-      // Always drop the flat 2×2 when entering XR — setup must not show it.
-      this.clearPads();
-      this.flatAwaitingStart = false;
-      this.showStudioBackdrop();
-      this.setFlatHintVisible(false);
-      if (this.setupMode == null && this.flowPhase !== 'scanning') {
-        this.flowPhase = 'choose-mode';
-        this.resetSetupPanelAnchor();
-        this.statusText = 'Choose room scale or sitting.';
-        this.setSetupUiVisible(true);
-        this.setRepeatUiVisible(false);
-        this.setRescanUiVisible(false);
-        this.speakEntryLines();
-        this.renderPanel();
-      }
-    }
-    this.wasNonImmersive = nonImmersive;
-    this.syncDebugCollidersButton();
-    this.applyTouchDebugVisibility();
-  }
-
-  private hideStudioBackdrop(): void {
-    if (this.flatBackdropHidden) {
-      return;
-    }
-    for (const nodeId of FLAT_BACKDROP_NODE_IDS) {
-      const entity = this.world.getSceneEntity(nodeId);
-      if (entity != null) {
-        entity.setValue(Visibility, 'isVisible', false);
-      }
-    }
-    this.flatBackdropHidden = true;
-  }
-
-  private showStudioBackdrop(): void {
-    if (!this.flatBackdropHidden) {
-      return;
-    }
-    for (const nodeId of FLAT_BACKDROP_NODE_IDS) {
-      const entity = this.world.getSceneEntity(nodeId);
-      if (entity != null) {
-        entity.setValue(Visibility, 'isVisible', true);
-      }
-    }
-    this.flatBackdropHidden = false;
-  }
-
-  private setFlatHintVisible(visible: boolean): void {
-    this.world
-      .getSceneObject<UIKitMLAsset>('wall-tones-panel')
-      ?.getElementById('flat-play-hint')
-      ?.setProperties({ display: visible ? 'flex' : 'none' });
-  }
-
-  private publishDebugBridge(): void {
-    const system = this;
-    window.__wallTonesDebug = {
-      get phase() {
-        return system.game.phase;
-      },
-      get flowPhase() {
-        return system.flowPhase;
-      },
-      get sequence() {
-        return [...system.game.sequence];
-      },
-      get inputStep() {
-        return system.game.inputStep;
-      },
-      get streak() {
-        return system.game.streak;
-      },
-      get bestStreak() {
-        return system.game.bestStreak;
-      },
-      get flatAwaitingStart() {
-        return system.flatAwaitingStart;
-      },
-      get slotCandidateCount() {
-        return system.slotCandidates.length;
-      },
-      get selectedSlotCount() {
-        return system.selectedSlotTransforms.length;
-      },
-      submitPad: (padIndex: number) => {
-        system.handlePadInput(padIndex);
-      },
-      startFakeWallPick: () => {
-        system.debugStartFakeWallPick();
-      },
-      selectSlot: (candidateIndex: number) => {
-        const slot = system.slotCandidates.find(
-          (entry) => entry.candidateIndex === candidateIndex,
-        );
-        if (slot != null) {
-          system.selectWallSlot(slot);
-        }
-      },
-    };
-  }
-
-  /** Emulator-only path: four 1x1m slots ahead of the headset for ray-pick tests. */
-  private debugStartFakeWallPick(): void {
-    if (!this.experienceActive) {
-      this.experienceActive = true;
-    }
-    this.setupMode = 'room-scale';
-    this.player.head.getWorldPosition(this.viewer);
-    this.clearRoomSetupVisuals();
-    this.clearPads();
-    this.flowPhase = 'wall-picking';
-    this.selectedSlotTransforms = [];
-    this.slotSelectLatched = false;
-    // Panel stays head-followed until play starts.
-    this.setSetupUiVisible(false);
-    this.setFlatHintVisible(false);
-    this.setAirOrientUiVisible(false);
-    this.setWallPickHintVisible(true);
-    this.setRescanUiVisible(true);
-    this.setRepeatUiVisible(false);
-    // Place a 2x2 of slots in front of the headset along -Z (common XR forward).
-    this.player.head.getWorldPosition(this.viewer);
-    const forward = new Vector3(0, 0, -1);
-    const right = new Vector3(1, 0, 0);
-    const offsets = [
-      [-1.1, 0.35],
-      [1.1, 0.35],
-      [-1.1, -0.95],
-      [1.1, -0.95],
-    ];
-    const quat: [number, number, number, number] = [0, 0, 0, 1];
-    offsets.forEach(([ox, oy], index) => {
-      const pos = new Vector3(
-        this.viewer.x + right.x * ox + forward.x * 1.6,
-        this.viewer.y + oy,
-        this.viewer.z + right.z * ox + forward.z * 1.6,
-      );
-      const slot = createSlotCandidateRuntime(
-        this.world,
-        {
-          position: [pos.x, pos.y, pos.z],
-          quaternion: quat,
-          wallIndex: 0,
-          candidateIndex: index,
-        },
-        HEADSET_PAD_SIZE_M,
-      );
-      this.slotCandidates.push(slot);
-      this.slotArmed.set(index, true);
-    });
-    this.statusText = 'Debug wall pick: ray + select 4 green slots';
-    this.renderPanel();
-  }
-
-  private async onBackToMenu(): Promise<void> {
-    this.speech.speak('backToMenu');
-    const wasImmersive = !this.useDesktopPath();
-    const fromArWorld = getActiveWorldKind() === 'walltones-ar';
-    await this.leaveWallTonesMode();
-    // Always return to the hub main menu. Immersive AR rebuilds the hub world
-    // and re-enters XR so Back does not dump the player to a flat browser view.
-    if (fromArWorld) {
-      await switchBackToHubMenu({ reenterXr: wasImmersive });
-      return;
-    }
-    window.dispatchEvent(
-      new CustomEvent('experience-mode-changed', {
-        detail: { mode: 'menu' satisfies ExperienceMode },
-      }),
-    );
-    sessionStorage.setItem('iwsdk-experience-mode', 'menu');
-  }
-
-  private async onChooseSetup(mode: SetupMode): Promise<void> {
-    if (!this.experienceActive || this.flowPhase !== 'choose-mode') {
-      return;
-    }
-    this.setupMode = mode;
-    sessionStorage.setItem('wall-tones-setup-mode', mode);
-    // Never destroy an active XR session to swap worlds — that looked like leaving MR.
-    // Enter XR boots the AR world up front; this path only swaps while still flat.
-    if (getActiveWorldKind() === 'hub-vr' && this.useDesktopPath()) {
-      this.statusText = 'Opening passthrough…';
-      this.renderPanel();
-      await switchToWallTonesArWorld();
-      return;
-    }
-    this.setSetupUiVisible(false);
-    if (mode === 'air') {
-      this.startAirPlacement('chooseAirMenu');
-      return;
-    }
-    this.setSpatialMeshesVisible(true);
-    this.flowPhase = 'scanning';
-    this.scanStartedAt = performance.now() / 1000;
-    this.roomCaptureInFlight = false;
-    this.roomCaptureAttempted = false;
-    this.speech.speak('lookAround');
-    this.statusText = 'Scanning the room…';
-    this.renderPanel();
-  }
-
-  private tickScan(_delta: number): void {
-    const elapsed = performance.now() / 1000 - this.scanStartedAt;
-    if (elapsed < SCAN_WAIT_S) {
-      const planeCount = this.queries.planes.entities.size;
-      const meshCount = this.queries.meshes.entities.size;
-      this.statusText = `Scanning… ${Math.ceil(SCAN_WAIT_S - elapsed)}s (${planeCount} planes, ${meshCount} meshes)`;
-      this.renderPanel();
-      return;
-    }
-
-    if (this.roomCaptureInFlight) {
-      return;
-    }
-
-    this.player.head.getWorldPosition(this.viewer);
-    if (this.queries.planes.entities.size === 0) {
-      void this.offerRoomCaptureOrAir();
-      return;
-    }
-
-    this.planeEntityScratch.length = 0;
-    for (const entity of this.queries.planes.entities) {
-      this.planeEntityScratch.push(entity);
-    }
-
-    if (this.setupMode === 'sitting') {
-      const floorY = this.viewer.y - 1.45;
-      const tables = collectTablePlanes(this.planeEntityScratch, floorY);
-      if (tables.length === 0) {
-        this.startAirPlacement('noTable');
-        return;
-      }
-      this.startTablePicking(tables);
-      return;
-    }
-
-    const walls = collectVerticalWalls(this.planeEntityScratch, this.viewer);
-    if (walls.length === 0) {
-      void this.offerRoomCaptureOrAir();
-      return;
-    }
-    // Interactive pick: show wall/mesh tints + candidate 1x1m slots.
-    this.startWallPicking(walls);
-  }
-
-  private async offerRoomCaptureOrAir(): Promise<void> {
-    if (this.roomCaptureInFlight) {
-      return;
-    }
-    const session = this.xrManager.getSession() as XRSession & {
-      initiateRoomCapture?: () => Promise<undefined>;
-    };
-    if (
-      typeof session?.initiateRoomCapture === 'function' &&
-      !this.roomCaptureAttempted
-    ) {
-      this.roomCaptureInFlight = true;
-      this.roomCaptureAttempted = true;
-      this.statusText = 'Opening room capture…';
-      this.renderPanel();
-      this.speech.speak('roomCapture');
-      try {
-        await session.initiateRoomCapture();
-        this.scanStartedAt = performance.now() / 1000;
-      } catch (error) {
-        console.warn('[wall-tones] room capture failed', error);
-        this.startAirPlacement('notEnoughWallSpace');
-      } finally {
-        this.roomCaptureInFlight = false;
-      }
-      return;
-    }
-    this.startAirPlacement('notEnoughWallSpace');
-  }
-
-  private startWallPicking(
-    walls: ReturnType<typeof collectVerticalWalls>,
-  ): void {
-    this.beginSurfacePicking({
-      surfaces: walls,
-      padSizeM: HEADSET_PAD_SIZE_M,
-      candidates: generateWallPadCandidates(
-        walls,
-        this.viewer.y,
-        HEADSET_PAD_SIZE_M,
-      ),
-      speech: 'pickWallSlots',
-      emptyFallback: () =>
-        this.startAirPlacement('notEnoughWallSpace'),
-      statusLabel: 'wall slots',
-    });
-  }
-
-  private startTablePicking(
-    tables: ReturnType<typeof collectTablePlanes>,
-  ): void {
-    this.beginSurfacePicking({
-      surfaces: tables,
-      padSizeM: AIR_PLACE_SITTING_PAD_SIZE_M,
-      candidates: generateTablePadCandidates(
-        tables,
-        AIR_PLACE_SITTING_PAD_SIZE_M,
-      ),
-      speech: 'pickTableSlots',
-      emptyFallback: () => this.startAirPlacement('noTable'),
-      statusLabel: 'table slots',
-    });
-  }
-
-  private beginSurfacePicking(options: {
-    surfaces: ReturnType<typeof collectVerticalWalls>;
-    padSizeM: number;
-    candidates: ReturnType<typeof generateWallPadCandidates>;
-    speech: WallTonesClipId;
-    emptyFallback: () => void;
-    statusLabel: string;
-  }): void {
-    this.clearRoomSetupVisuals();
-    this.clearPads();
-    this.setSpatialMeshesVisible(true);
-    this.flowPhase = 'wall-picking';
-    this.lackingSpatialData = false;
-    this.selectedSlotTransforms = [];
-    this.slotSelectLatched = false;
-    this.setFlatHintVisible(false);
-    this.setAirOrientUiVisible(false);
-    this.setWallPickHintVisible(true);
-    this.setRescanUiVisible(true);
-    this.setRepeatUiVisible(false);
-
-    applyRoomSetupTints(
-      options.surfaces.map((surface) => surface.entity),
-      this.queries.meshes.entities,
-    );
-    for (const surface of options.surfaces) {
-      this.wallOverlayEntities.push(createWallOverlay(this.world, surface));
-    }
-
-    for (const candidate of options.candidates) {
-      const slot = createSlotCandidateRuntime(
-        this.world,
-        candidate,
-        options.padSizeM,
-      );
-      this.slotCandidates.push(slot);
-      this.slotArmed.set(slot.candidateIndex, true);
-    }
-
-    // Need four distinct picks; fewer candidates traps the player in wall-picking.
-    if (this.slotCandidates.length < 4) {
-      this.clearRoomSetupVisuals();
-      options.emptyFallback();
-      return;
-    }
-
-    this.speech.speak(options.speech);
-    this.statusText = `Pick pad 1 of 4 — ${this.slotCandidates.length} ${options.statusLabel}`;
-    this.renderPanel();
-  }
-
-  private tickWallPicking(): void {
-    const rayHovered = this.findRayHoveredSlot();
-    if (
-      rayHovered != null &&
-      !rayHovered.selected &&
-      !this.statusText.startsWith(`Hover slot ${rayHovered.candidateIndex}`)
-    ) {
-      this.statusText = `Hover slot ${rayHovered.candidateIndex} — pinch to pick (${this.selectedSlotTransforms.length}/4)`;
-      this.renderPanel();
-    }
-    for (const slot of this.slotCandidates) {
-      if (slot.selected) {
-        setCandidateVisualState(slot, 'selected');
-        continue;
-      }
-      const ecsHovered = this.entityInQuery(
-        slot.entity,
-        this.queries.slotHovered.entities,
-      );
-      const hovered = ecsHovered || slot === rayHovered;
-      const ecsPressed =
-        ecsHovered &&
-        this.entityInQuery(slot.entity, this.queries.slotPressed.entities);
-      setCandidateVisualState(slot, hovered ? 'hovered' : 'idle');
-      if (!ecsPressed) {
-        this.slotArmed.set(slot.candidateIndex, true);
-      }
-      if (ecsPressed && this.slotArmed.get(slot.candidateIndex)) {
-        this.slotArmed.set(slot.candidateIndex, false);
-        this.selectWallSlot(slot);
-      }
-    }
-
-    // Select via controller/hand trigger while the ray (or tip) is on a slot.
-    let anySelectActive = false;
-    for (const hand of XR_HANDS) {
-      const select = this.input.xr.getSelectState(hand);
-      if (!select.active && !select.start) {
-        continue;
-      }
-      anySelectActive = true;
-      if (this.slotSelectLatched && !select.start) {
-        continue;
-      }
-      const aimed =
-        this.findRayHoveredSlot(hand) ?? this.findTipHoveredSlot(hand);
-      if (aimed != null && !aimed.selected) {
-        this.slotSelectLatched = true;
-        this.selectWallSlot(aimed);
-        return;
-      }
-    }
-    if (!anySelectActive) {
-      this.slotSelectLatched = false;
-    }
-  }
-
-  /** Closest slot under a controller/hand target ray within pad half-extent. */
-  private findRayHoveredSlot(
-    preferredHand?: 'left' | 'right',
-  ): SlotCandidateRuntime | null {
-    let best: SlotCandidateRuntime | null = null;
-    let bestAlong = Number.POSITIVE_INFINITY;
-    const hitRadius = this.placementPadSizeM() * 0.55;
-    for (const hand of XR_HANDS) {
-      if (preferredHand != null && hand !== preferredHand) {
-        continue;
-      }
-      const adapter = this.input.xr.visualAdapters[hand].peek();
-      if (adapter != null && !adapter.connected) {
-        continue;
-      }
-      const raySpace = this.player.raySpaces[hand];
-      raySpace.updateWorldMatrix(true, false);
-      raySpace.getWorldPosition(this.rayOrigin);
-      raySpace.getWorldQuaternion(this.gripQuat);
-      // XR target rays point along local -Z.
-      this.rayDir.set(0, 0, -1).applyQuaternion(this.gripQuat).normalize();
-      for (const slot of this.slotCandidates) {
-        if (slot.selected) {
-          continue;
-        }
-        slot.root.getWorldPosition(this.padWorldPos);
-        this.rayToSlot.copy(this.padWorldPos).sub(this.rayOrigin);
-        const along = this.rayToSlot.dot(this.rayDir);
-        if (along < 0.05 || along > 6) {
-          continue;
-        }
-        this.rayClosest.copy(this.rayOrigin).addScaledVector(this.rayDir, along);
-        const lateral = this.rayClosest.distanceTo(this.padWorldPos);
-        if (lateral <= hitRadius && along < bestAlong) {
-          bestAlong = along;
-          best = slot;
-        }
-      }
-    }
-    return best;
-  }
-
-  private findTipHoveredSlot(
-    hand: 'left' | 'right',
-  ): SlotCandidateRuntime | null {
-    this.player.indexTipSpaces[hand].getWorldPosition(this.tipScratch);
-    let best: SlotCandidateRuntime | null = null;
-    let bestDist = this.placementPadSizeM() * 0.55;
-    for (const slot of this.slotCandidates) {
-      if (slot.selected) {
-        continue;
-      }
-      slot.root.getWorldPosition(this.padWorldPos);
-      const dist = this.tipScratch.distanceTo(this.padWorldPos);
-      if (dist < bestDist) {
-        bestDist = dist;
-        best = slot;
-      }
-    }
-    return best;
-  }
-
-  private selectWallSlot(slot: SlotCandidateRuntime): void {
-    if (slot.selected || this.selectedSlotTransforms.length >= 4) {
-      return;
-    }
-    // Keep picks spread out so pads do not stack.
-    const minSpacing = this.placementPadSizeM() * 0.75;
-    const tooClose = this.selectedSlotTransforms.some((prior) => {
-      const dx = prior.position[0] - slot.transform.position[0];
-      const dy = prior.position[1] - slot.transform.position[1];
-      const dz = prior.position[2] - slot.transform.position[2];
-      return Math.hypot(dx, dy, dz) < minSpacing;
-    });
-    if (tooClose) {
-      this.statusText = 'Too close to another pick - choose a farther slot';
-      this.renderPanel();
-      return;
-    }
-    setCandidateVisualState(slot, 'selected');
-    this.selectedSlotTransforms.push({
-      position: slot.transform.position,
-      quaternion: slot.transform.quaternion,
-    });
-    const count = this.selectedSlotTransforms.length;
-    if (count >= 4) {
-      const transforms = [...this.selectedSlotTransforms];
-      const doneLine =
-        this.setupMode === 'sitting'
-          ? 'tableFound'
-          : 'padsOnWalls';
-      this.clearRoomSetupVisuals();
-      this.finishHeadsetPlacement(transforms, doneLine);
-      return;
-    }
-    this.statusText = `Pick pad ${count + 1} of 4`;
-    this.renderPanel();
-  }
-
-  private clearRoomSetupVisuals(): void {
-    disposeSlotCandidates(this.slotCandidates);
-    this.slotArmed.clear();
-    this.selectedSlotTransforms = [];
-    for (const entity of this.wallOverlayEntities) {
-      entity.dispose({ disposeResources: true });
-    }
-    this.wallOverlayEntities = [];
-    clearRoomSetupTints();
-    this.setWallPickHintVisible(false);
-  }
-
-  /** Hide Quest plane/mesh proxies during play so only the pads remain visible. */
-  private setSpatialMeshesVisible(visible: boolean): void {
-    for (const entity of this.queries.planes.entities) {
-      if (entity.object3D != null) {
-        entity.object3D.visible = visible;
-      }
-    }
-    for (const entity of this.queries.meshes.entities) {
-      if (entity.object3D != null) {
-        entity.object3D.visible = visible;
-      }
-    }
-  }
-
-  private placementPadSizeM(): number {
-    return this.setupMode === 'sitting'
-      ? AIR_PLACE_SITTING_PAD_SIZE_M
-      : defaultHeadsetPadSize();
-  }
-
-  private startAirPlacement(line: WallTonesClipId): void {
-    this.clearRoomSetupVisuals();
-    this.setSpatialMeshesVisible(false);
-    this.flowPhase = 'air-placement';
-    this.airPlaceStep = 0;
-    this.lackingSpatialData = true;
-    this.airOrientationLocked = null;
-    // Keep dominantHand from the first panel select so ghost orientation
-    // follows that placing hand; only clear it when leaving the experience.
-    // Menu "Air place" covers both wall and table styles via hand tilt / locks.
-    this.airOrientation =
-      this.setupMode === 'sitting' ? 'horizontal' : 'vertical';
-    this.syncAirPadSizeFromOrientation();
-    this.clearPads();
-    this.setFlatHintVisible(false);
-    this.setWallPickHintVisible(false);
-    this.setAirOrientUiVisible(true);
-    this.setRescanUiVisible(false);
-    this.setRepeatUiVisible(false);
-    // Placement is already visible. Skip queued mode/orientation speeches and
-    // give only the existing concise first-pad positioning instruction.
-    this.speech.cancel();
-    // Keep useful failure context when automatic placement could not find space.
-    if (line !== 'chooseAirMenu') this.speech.speak(line);
-    this.speech.speak('airPlace1');
-    this.statusText =
-      this.setupMode === 'air'
-        ? 'Air place: tilt for wall or table size, then pinch.'
-        : 'Tilt placing hand to snap flat/upright, then pinch.';
-    this.spawnGhostPad();
-    this.syncDebugCollidersButton();
-    this.renderPanel();
-  }
-
-  /** Room-scale air pads when upright; sitting-sized pads when flat. */
-  private syncAirPadSizeFromOrientation(): void {
-    if (this.setupMode === 'sitting') {
-      this.airPadSizeM = AIR_PLACE_SITTING_PAD_SIZE_M;
-      return;
-    }
-    if (this.setupMode === 'room-scale') {
-      this.airPadSizeM = AIR_PLACE_ROOM_PAD_SIZE_M;
-      return;
-    }
-    // Explicit Air place menu option: size follows orientation snap/lock.
-    this.airPadSizeM =
-      this.airOrientation === 'horizontal'
-        ? AIR_PLACE_SITTING_PAD_SIZE_M
-        : AIR_PLACE_ROOM_PAD_SIZE_M;
-  }
-
-  private setAirOrientation(orientation: AirOrientation): void {
-    const sizeChanged =
-      this.setupMode === 'air' && orientation !== this.airOrientation;
-    this.airOrientation = orientation;
-    this.airOrientationLocked = orientation;
-    this.syncAirPadSizeFromOrientation();
-    if (sizeChanged && this.flowPhase === 'air-placement' && this.ghostPad != null) {
-      this.spawnGhostPad();
-    }
-    this.statusText =
-      orientation === 'horizontal'
-        ? 'Locked table / flat. Pinch to place.'
-        : 'Locked wall / vertical. Pinch to place.';
-    this.renderPanel();
-  }
-
-  private spawnGhostPad(): void {
-    this.ghostPad?.entity.dispose({ disposeResources: true });
-    this.ghostPad = createGhostPadRuntime(
-      this.world,
-      (this.airPlaceStep % 4) as WallTonePadId,
-      this.airPadSizeM,
-    );
-    this.applyTouchDebugVisibility();
-  }
-
-  private tickAirPlacement(delta: number): void {
-    const hand = this.resolvePlacementHand();
-    if (hand == null || this.ghostPad == null) {
-      return;
-    }
-    this.updateGhostPadPose(hand, delta);
-
-    const select = this.input.xr.getSelectState(hand);
-    if (!select.start) {
-      return;
-    }
-    if (this.dominantHand == null) {
-      this.dominantHand = hand;
-      sessionStorage.setItem('wall-tones-dominant-hand', hand);
-    }
-    const placed = this.ghostPad;
-    solidifyGhostPad(placed, this.airPadSizeM);
-    placed.entity.addComponent(XRAnchor);
-    this.pads.push(placed);
-    this.applyTouchDebugVisibility();
-    this.ghostPad = null;
-    this.airPlaceStep += 1;
-    // Every stage advance invalidates stale setup speech, including the final
-    // pad, which must stop its placement prompt before the game intro starts.
-    this.speech.cancel();
-    if (this.airPlaceStep >= 4) {
-      this.flowPhase = 'playing';
-      this.layoutPanelForMrPlay();
-      this.setAirOrientUiVisible(false);
-      this.setRescanUiVisible(false);
-      this.setRepeatUiVisible(true);
-      this.setSpatialMeshesVisible(false);
-      this.statusText = 'Get ready…';
-      this.beginRoundWithIntro();
-      this.renderPanel();
-      return;
-    }
-    // Short prompts for pads 2-4; the full positioning phrase only plays for
-    // pad 1 (airPlace1 at placement start).
-    const shortPrompts = [
-      'airPlaceShort2',
-      'airPlaceShort3',
-      'airPlaceShort4',
-    ] as const;
-    this.speech.speak(shortPrompts[this.airPlaceStep - 1]!);
-    this.statusText = `Pinch to place outline ${this.airPlaceStep + 1} of 4.`;
-    this.spawnGhostPad();
-    this.renderPanel();
-  }
-
-  private updateGhostPadPose(hand: 'left' | 'right', delta: number): void {
-    if (this.ghostPad == null) {
-      return;
-    }
-    this.player.head.getWorldPosition(this.viewer);
-    this.player.gripSpaces[hand].getWorldPosition(this.gripWorld);
-    this.readGripWorldQuaternion(hand, this.gripQuat);
-
-    this.ghostForward.set(
-      this.gripWorld.x - this.viewer.x,
-      0,
-      this.gripWorld.z - this.viewer.z,
-    );
-    if (this.ghostForward.lengthSq() < 1e-6) {
-      this.player.head.getWorldDirection(this.ghostForward);
-      this.ghostForward.y = 0;
-    }
-    this.ghostForward.normalize();
-
-    this.ghostTarget
-      .copy(this.gripWorld)
-      .addScaledVector(this.ghostForward, AIR_GHOST_HAND_OFFSET_M);
-    const preferredY =
-      this.setupMode === 'sitting'
-        ? this.viewer.y - 0.55
-        : this.viewer.y - 0.35;
-    this.ghostTarget.y = preferredY * 0.35 + this.gripWorld.y * 0.65;
-
-    this.awayFromHead.copy(this.ghostTarget).sub(this.viewer);
-    const minDist = Math.max(
-      AIR_GHOST_MIN_HEAD_DISTANCE_M,
-      this.airPadSizeM * 0.5 + 0.45,
-    );
-    if (this.awayFromHead.length() < minDist) {
-      if (this.awayFromHead.lengthSq() < 1e-6) {
-        this.awayFromHead.copy(this.ghostForward);
-      }
-      this.awayFromHead.setLength(minDist);
-      this.ghostTarget.copy(this.viewer).add(this.awayFromHead);
-      this.ghostTarget.y = preferredY * 0.35 + this.gripWorld.y * 0.65;
-      this.awayFromHead.copy(this.ghostTarget).sub(this.viewer);
-      if (this.awayFromHead.length() < minDist) {
-        this.awayFromHead.setLength(minDist);
-        this.ghostTarget.copy(this.viewer).add(this.awayFromHead);
-      }
-    }
-
-    this.ghostPad.root.position.copy(this.ghostTarget);
-    this.updateAirOrientationFromHand();
-    this.buildTargetGhostQuaternion(this.targetGhostQuat);
-    // Slerp in local space toward the snapped target (frame-rate independent).
-    const alpha = 1 - Math.pow(1 - AIR_ORIENT_SLERP, Math.max(delta, 1 / 120) * 72);
-    this.ghostQuat.copy(this.ghostPad.root.quaternion);
-    this.ghostQuat.slerp(this.targetGhostQuat, alpha);
-    this.ghostPad.root.quaternion.copy(this.ghostQuat);
-  }
-
-  private updateAirOrientationFromHand(): void {
-    if (this.airOrientationLocked != null) {
-      this.airOrientation = this.airOrientationLocked;
-      return;
-    }
-    // Grip local +Y follows the hand long axis: high |world Y| ⇒ upright hand ⇒ wall.
-    this.handUp.set(0, 1, 0).applyQuaternion(this.gripQuat).normalize();
-    const uprightness = Math.abs(this.handUp.y);
-    let next = this.airOrientation;
-    if (uprightness >= AIR_ORIENT_SNAP_UPRIGHT) {
-      next = 'vertical';
-    } else if (uprightness <= AIR_ORIENT_SNAP_FLAT) {
-      next = 'horizontal';
-    }
-    if (next !== this.airOrientation) {
-      this.airOrientation = next;
-      const prevSize = this.airPadSizeM;
-      this.syncAirPadSizeFromOrientation();
-      if (
-        this.setupMode === 'air' &&
-        this.airPadSizeM !== prevSize &&
-        this.ghostPad != null
-      ) {
-        this.spawnGhostPad();
-      }
-      this.statusText =
-        next === 'horizontal'
-          ? 'Snapped flat - pinch to place'
-          : 'Snapped upright - pinch to place';
-      this.renderPanel();
-    }
-  }
-
-  private buildTargetGhostQuaternion(out: Quaternion): void {
-    const yaw = Math.atan2(
-      this.viewer.x - this.ghostTarget.x,
-      this.viewer.z - this.ghostTarget.z,
-    );
-    const halfYaw = yaw * 0.5;
-    out.set(0, Math.sin(halfYaw), 0, Math.cos(halfYaw));
-    if (this.airOrientation === 'horizontal') {
-      this.scratchQuat.setFromAxisAngle(this.axisX, -Math.PI / 2);
-      out.multiply(this.scratchQuat);
-    }
-  }
-
-  private readGripWorldQuaternion(
-    hand: 'left' | 'right',
-    out: Quaternion,
-  ): void {
-    const grip = this.player.gripSpaces[hand];
-    grip.updateWorldMatrix(true, false);
-    grip.getWorldQuaternion(out);
-  }
-
-  private resolvePlacementHand(): 'left' | 'right' | null {
-    if (this.dominantHand != null) {
-      return this.dominantHand;
-    }
-    // Prefer a connected hand (right first) until the first UI/pinch sets dominant.
-    for (const hand of XR_HANDS) {
-      const adapter = this.input.xr.visualAdapters[hand].peek();
-      if (adapter?.connected) {
-        return hand;
-      }
-    }
-    for (const hand of XR_HANDS) {
-      const adapter = this.input.xr.visualAdapters[hand].peek();
-      if (adapter instanceof XRHandVisualAdapter) {
-        return hand;
-      }
-    }
-    return 'right';
-  }
-
-  private finishHeadsetPlacement(
-    transforms: PlacedPadTransform[],
-    line: WallTonesClipId,
-  ): void {
-    this.clearRoomSetupVisuals();
-    this.clearPads();
-    this.lackingSpatialData = false;
-    this.setWallPickHintVisible(false);
-    this.setRescanUiVisible(false);
-    this.setAirOrientUiVisible(false);
-    // Play mode: only the four pads — hide plane/mesh proxies.
-    this.setSpatialMeshesVisible(false);
-    const size = this.placementPadSizeM();
-    transforms.forEach((transform, index) => {
-      const pad = createPadRuntime(this.world, index as WallTonePadId, size, {
-        rayInteractable: false,
-        anchor: true,
-      });
-      pad.root.position.set(...transform.position);
-      pad.root.quaternion.set(...transform.quaternion);
-      this.pads.push(pad);
-    });
-    this.applyTouchDebugVisibility();
-    this.flowPhase = 'playing';
-    this.layoutPanelForMrPlay();
-    this.setRescanUiVisible(false);
-    this.setRepeatUiVisible(true);
-    this.syncDebugCollidersButton();
-    this.statusText = 'Get ready…';
-    this.beginRoundWithIntro(line);
-    this.renderPanel();
-  }
-
-  private spawnDesktopPads(): void {
-    if (!this.useDesktopPath()) {
-      return;
-    }
-    this.clearPads();
-    this.world.camera.getWorldPosition(this.cameraPosition);
-    this.world.camera.getWorldDirection(this.cameraForward);
-    const phoneFlat = this.isPhoneFlatViewport();
-    const size = phoneFlat ? PHONE_PAD_SIZE_M : defaultDesktopPadSize();
-    const transforms = planDesktopGridFromCamera(
-      this.cameraPosition,
-      this.cameraForward,
-      size,
-      phoneFlat ? PHONE_FLAT_GRID : undefined,
-    );
-    transforms.forEach((transform, index) => {
-      const pad = createPadRuntime(this.world, index as WallTonePadId, size, {
-        rayInteractable: true,
-        anchor: false,
-      });
-      pad.root.position.set(...transform.position);
-      pad.root.quaternion.set(...transform.quaternion);
-      this.pads.push(pad);
-    });
-    this.applyTouchDebugVisibility();
-    if (!this.flatAwaitingStart) {
-      this.statusText = 'Watch the sequence';
-    }
-    this.renderPanel();
-  }
-
-  private clearPads(): void {
-    disposePadRuntimes(this.pads);
-    this.ghostPad?.entity.dispose({ disposeResources: true });
-    this.ghostPad = null;
-  }
-
-  /**
-   * Simon-style startup fanfare: each pad once, pause, first pad four times,
-   * then a short pause before voice / the real pattern.
-   */
-  private async playSimonStartupFanfare(): Promise<void> {
-    this.statusText = 'Watch the pads…';
-    this.renderPanel();
-    // Fanfare order is green, red, yellow, blue (pad ids 0, 1, 3, 2).
-    for (const padIndex of SIMON_FANFARE_PAD_ORDER) {
-      if (!this.experienceActive || this.flowPhase !== 'playing') {
-        return;
-      }
-      await this.blinkPadNote(padIndex);
-    }
-    await this.wait(SIMON_FANFARE_MID_PAUSE_S);
-    for (let repeat = 0; repeat < SIMON_FANFARE_FIRST_PAD_REPEATS; repeat += 1) {
-      if (!this.experienceActive || this.flowPhase !== 'playing') {
-        return;
-      }
-      await this.blinkPadNote(0);
-    }
-    await this.wait(SIMON_FANFARE_END_PAUSE_S);
-  }
-
-  private async blinkPadNote(padIndex: number): Promise<void> {
-    const pad = this.pads[padIndex];
-    if (pad != null) {
-      this.setBlinkCuePad(pad);
-      flashPad(pad, true);
-      if (this.useDesktopInput()) {
-        playPadToneFromUserAction(padIndex);
-      } else {
-        await playPadTone(padIndex);
-      }
-      await this.wait(BLINK_HOLD_S);
-      flashPad(pad, false);
-      this.setBlinkCuePad(null);
-    }
-    await this.wait(NOTE_GAP_S);
-  }
-
-  /** Fanfare, how-to-play voice line, pause, then the first pattern note. */
-  private beginRoundWithIntro(leadInLine?: WallTonesClipId): void {
-    this.playbackQueue = this.playbackQueue.then(async () => {
-      if (!this.experienceActive || this.flowPhase !== 'playing') {
-        return;
-      }
-      this.statusText = 'Listen to the intro…';
-      this.renderPanel();
-      if (leadInLine != null) {
-        await this.speech.speakAsync(leadInLine);
-        await this.wait(0.35);
-      }
-      if (!this.experienceActive || this.flowPhase !== 'playing') {
-        return;
-      }
-      await this.playSimonStartupFanfare();
-      if (!this.experienceActive || this.flowPhase !== 'playing') {
-        return;
-      }
-      // Skip the opening "Point and press..." sentence if the welcome already said it.
-      await this.speech.speakAsync(
-        this.startPromptSpoken ? 'howToPlayRest' : 'howToPlay',
-      );
-      this.startPromptSpoken = false;
-      await this.wait(POST_INTRO_DELAY_S);
-      if (!this.experienceActive || this.flowPhase !== 'playing') {
-        return;
-      }
-      this.game.startNewRun();
-      this.renderPanel();
-      await this.playSequence();
-    });
-  }
-
-  private async playSequence(): Promise<void> {
-    if (!this.experienceActive) {
-      return;
-    }
-    this.game.phase = 'playback';
-    this.inputNeedsClear = true;
-    this.armAllPads();
-    this.statusText = 'Listen:';
-    this.renderPanel();
-    for (let index = 0; index < this.game.sequence.length; index += 1) {
-      const padId = this.game.sequence[index]!;
-      const pad = this.pads[padId];
-      if (pad != null) {
-        this.setBlinkCuePad(pad);
-        flashPad(pad, true);
-        await playPadTone(padId);
-        await this.wait(NOTE_GAP_S + BLINK_HOLD_S + 0.2);
-        flashPad(pad, false);
-        this.setBlinkCuePad(null);
-      }
-      await this.wait(NOTE_GAP_S);
-    }
-    this.game.phase = 'input';
-    this.game.inputStep = 0;
-    this.inputNeedsClear = true;
-    this.lastInputAt = performance.now() / 1000;
-    this.idleReplayQueued = false;
-    this.setRepeatUiVisible(true);
-    this.setPanelDragBarVisible(!this.useDesktopPath());
-    this.statusText = `Your turn: ${this.formatSequenceLabel()}`;
-    this.renderPanel();
-  }
-
-  private armAllPads(): void {
-    for (const pad of this.pads) {
-      pad.pointerArmed = true;
-      pad.fingerInside = false;
-      pad.hoverInside = false;
-      pad.pressCooldownUntil = 0;
-      applyPadVisualState(pad, 'idle');
-    }
-  }
-
-  private entityInQuery(entity: import('@iwsdk/core').Entity, set: Set<import('@iwsdk/core').Entity>): boolean {
-    for (const candidate of set) {
-      if (candidate === entity) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  private readDesktopTouches(): void {
-    if (this.inputNeedsClear) {
-      let anyPressed = false;
-      for (const pad of this.pads) {
-        const hovered = this.entityInQuery(pad.entity, this.queries.padHovered.entities);
-        const pressed =
-          hovered &&
-          this.entityInQuery(pad.entity, this.queries.padPressed.entities);
-        pad.hoverInside = hovered;
-        pad.fingerInside = pressed;
-        this.syncPadProximityVisual(pad, 0);
-        if (pressed) {
-          anyPressed = true;
-        }
-        // Re-arm on release even while still hovered (same-pad twice in a row).
-        if (!pressed) {
-          pad.pointerArmed = true;
-        }
-      }
-      if (!anyPressed) {
-        this.inputNeedsClear = false;
-        this.armAllPads();
-      }
-      return;
-    }
-    for (const pad of this.pads) {
-      const hovered = this.entityInQuery(pad.entity, this.queries.padHovered.entities);
-      const pressed =
-        hovered &&
-        this.entityInQuery(pad.entity, this.queries.padPressed.entities);
-      pad.hoverInside = hovered;
-      pad.fingerInside = pressed;
-      this.syncPadProximityVisual(pad, 0);
-      // Edge-trigger on press; re-arm when the button is released while hovered
-      // so sequences like green→green register the second press.
-      if (!pressed) {
-        pad.pointerArmed = true;
-        continue;
-      }
-      if (pad.pointerArmed) {
-        pad.pointerArmed = false;
-        this.handlePadInput(pad.padIndex);
-      }
-    }
-  }
-
-  private readFingertipTouches(): void {
-    const now = performance.now() / 1000;
-
-    if (this.inputNeedsClear) {
-      let anyPressInside = false;
-      for (const pad of this.pads) {
-        const pressDist = this.sampleTipInVolume(pad, 'press');
-        const hoverDist = this.sampleTipInVolume(pad, 'hover');
-        pad.fingerInside = pressDist != null;
-        pad.hoverInside = hoverDist != null;
-        if (pressDist != null) {
-          anyPressInside = true;
-        }
-        this.syncPadProximityVisual(pad, now);
-      }
-      // Must leave the smaller press box before the next note can arm.
-      if (!anyPressInside) {
-        this.inputNeedsClear = false;
-        this.armAllPads();
-        this.touchEnterFrames.clear();
-        this.touchExitFrames.clear();
-      }
-      return;
-    }
-
-    // Closest pad under the tip for press — avoids multi-pad ghosts.
-    let bestPress: PadRuntime | null = null;
-    let bestPressDist = Number.POSITIVE_INFINITY;
-    for (const pad of this.pads) {
-      const hoverDist = this.sampleTipInVolume(pad, 'hover');
-      pad.hoverInside = hoverDist != null;
-
-      const pressDist = this.sampleTipInVolume(pad, 'press');
-      if (pressDist == null) {
-        const exit = (this.touchExitFrames.get(pad.padIndex) ?? 0) + 1;
-        this.touchExitFrames.set(pad.padIndex, exit);
-        if (exit >= TOUCH_EXIT_FRAMES) {
-          // Leaving the inner box re-arms this pad (after cooldown).
-          pad.fingerInside = false;
-          pad.pointerArmed = true;
-          this.touchEnterFrames.set(pad.padIndex, 0);
-        }
-        this.syncPadProximityVisual(pad, now);
-        continue;
-      }
-      this.touchExitFrames.set(pad.padIndex, 0);
-      if (pressDist < bestPressDist) {
-        bestPressDist = pressDist;
-        bestPress = pad;
-      }
-      this.syncPadProximityVisual(pad, now);
-    }
-
-    for (const pad of this.pads) {
-      if (pad !== bestPress) {
-        if (bestPress != null) {
-          this.touchEnterFrames.set(pad.padIndex, 0);
-        }
-        continue;
-      }
-      const enter = (this.touchEnterFrames.get(pad.padIndex) ?? 0) + 1;
-      this.touchEnterFrames.set(pad.padIndex, enter);
-      // Rising edge only: enter the small box, never fire on exit.
-      if (
-        !pad.fingerInside &&
-        pad.pointerArmed &&
-        now >= pad.pressCooldownUntil &&
-        enter >= TOUCH_ENTER_FRAMES
-      ) {
-        pad.fingerInside = true;
-        pad.pointerArmed = false;
-        pad.pressCooldownUntil = now + TOUCH_PRESS_COOLDOWN_S;
-        this.handlePadInput(pad.padIndex);
-      }
-      this.syncPadProximityVisual(pad, now);
-    }
-  }
-
-  private syncPadProximityVisual(pad: PadRuntime, _now: number): void {
-    if (pad.fingerInside) {
-      if (pad.visualState !== 'pressed') {
-        applyPadVisualState(pad, 'pressed');
-      }
-      return;
-    }
-    if (pad.hoverInside) {
-      if (pad.visualState !== 'hover') {
-        applyPadVisualState(pad, 'hover');
-      }
-      return;
-    }
-    if (pad.visualState !== 'idle') {
-      applyPadVisualState(pad, 'idle');
-    }
-  }
-
-  /**
-   * Distance from tip to pad center when inside hover or press volume; else null.
-   * Requires a connected hand tip near that hand's grip.
-   */
-  private sampleTipInVolume(
-    pad: PadRuntime,
-    kind: 'hover' | 'press',
-  ): number | null {
-    const volume = kind === 'hover' ? pad.hoverVolume : pad.touchVolume;
-    pad.root.updateWorldMatrix(true, false);
-    volume.updateWorldMatrix(true, false);
-    pad.root.getWorldPosition(this.padWorldPos);
-    const margin =
-      kind === 'hover'
-        ? TOUCH_HOVER_CENTER_MARGIN_M
-        : TOUCH_PRESS_CENTER_MARGIN_M;
-    const scale = kind === 'hover' ? TOUCH_HOVER_SCALE : TOUCH_PRESS_SCALE;
-    const maxCenter = pad.sizeM * 0.5 * Math.SQRT2 * scale + margin;
-    const fallbackDepth =
-      kind === 'hover' ? TOUCH_HOVER_DEPTH_M : TOUCH_PRESS_DEPTH_M;
-
-    for (const hand of XR_HANDS) {
-      const adapter = this.input.xr.visualAdapters[hand].peek();
-      if (adapter == null || !adapter.connected) {
-        continue;
-      }
-      this.player.indexTipSpaces[hand].getWorldPosition(this.tipScratch);
-      this.player.gripSpaces[hand].getWorldPosition(this.gripWorld);
-      if (this.tipScratch.distanceTo(this.gripWorld) > TOUCH_TIP_GRIP_MAX_M) {
-        continue;
-      }
-      const centerDist = this.tipScratch.distanceTo(this.padWorldPos);
-      if (centerDist > maxCenter) {
-        continue;
-      }
-      this.tipLocal.copy(this.tipScratch);
-      volume.worldToLocal(this.tipLocal);
-      const touchMesh = volume as import('@iwsdk/core').Mesh;
-      const geom = touchMesh.geometry as {
-        parameters?: { width?: number; height?: number; depth?: number };
-      };
-      const hx = (geom.parameters?.width ?? pad.sizeM) * 0.5;
-      const hy = (geom.parameters?.height ?? pad.sizeM) * 0.5;
-      const hz = (geom.parameters?.depth ?? fallbackDepth) * 0.5;
-      // Front-biased slab around the face; no deep punch-through.
-      if (
-        Math.abs(this.tipLocal.x) <= hx &&
-        Math.abs(this.tipLocal.y) <= hy &&
-        this.tipLocal.z >= -hz * 0.25 &&
-        this.tipLocal.z <= hz
-      ) {
-        return centerDist;
-      }
-    }
-    return null;
-  }
-
-  private toggleTouchDebug(): void {
-    this.showTouchDebug = !this.showTouchDebug;
-    this.applyTouchDebugVisibility();
-    this.syncDebugCollidersButton();
-  }
-
-  private applyTouchDebugVisibility(): void {
-    // Flat/desktop: no collider wireframes. VR/MR only.
-    const visible = this.showTouchDebug && !this.useDesktopPath();
-    for (const pad of this.pads) {
-      setPadDebugCollidersVisible(pad, visible);
-    }
-    if (this.ghostPad != null) {
-      setPadDebugCollidersVisible(this.ghostPad, visible);
-    }
-  }
-
-  private syncDebugCollidersButton(): void {
-    const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
-    // Show in any immersive / MR session, including setup before pads exist.
-    const showButton = !this.useDesktopPath() && this.experienceActive;
-    panel
-      ?.getElementById('debug-colliders-button')
-      ?.setProperties({ display: showButton ? 'flex' : 'none' });
-    panel
-      ?.getElementById<UIKit.Text>('debug-colliders-label')
-      ?.setProperties({
-        text: this.showTouchDebug ? 'Debug colliders: ON' : 'Debug colliders: OFF',
-      });
-  }
-
-  private setPanelDragBarVisible(visible: boolean): void {
-    this.world
-      .getSceneObject<UIKitMLAsset>('wall-tones-panel')
-      ?.getElementById('panel-drag-bar')
-      ?.setProperties({ display: visible ? 'flex' : 'none' });
-  }
-
-  private syncPanelDragLabel(): void {
-    this.world
-      .getSceneObject<UIKitMLAsset>('wall-tones-panel')
-      ?.getElementById<UIKit.Text>('panel-drag-label')
-      ?.setProperties({
-        text: this.panelDragArmed
-          ? 'Pinch and point to place…'
-          : 'Drag to move panel',
-      });
-  }
-
-  private togglePanelDragArm(): void {
-    if (this.useDesktopPath() || this.flowPhase !== 'playing') {
-      return;
-    }
-    this.panelDragArmed = !this.panelDragArmed;
-    this.panelDragging = false;
-    this.syncPanelDragLabel();
-    this.statusText = this.panelDragArmed
-      ? 'Point at a spot and pinch to move the panel'
-      : 'Panel move cancelled';
-    this.renderPanel();
-  }
-
-  private tickPanelDrag(): void {
-    if (
-      !this.panelDragArmed ||
-      this.flowPhase !== 'playing' ||
-      this.useDesktopPath()
-    ) {
-      return;
-    }
-    let selectHeld = false;
-    for (const hand of XR_HANDS) {
-      const select = this.input.xr.getSelectState(hand);
-      if (!select.active && !select.start) {
-        continue;
-      }
-      selectHeld = true;
-      const raySpace = this.player.raySpaces[hand];
-      raySpace.getWorldPosition(this.rayOrigin);
-      raySpace.getWorldQuaternion(this.gripQuat);
-      this.rayDir.set(0, 0, -1).applyQuaternion(this.gripQuat).normalize();
-      this.panelFollowTargetPos
-        .copy(this.rayOrigin)
-        .addScaledVector(this.rayDir, PANEL_PLAY_DISTANCE_M);
-      this.player.head.getWorldPosition(this.viewer);
-      this.player.head.getWorldQuaternion(this.headQuat);
-      this.applyPanelLayout(
-        this.panelFollowTargetPos.x,
-        this.panelFollowTargetPos.y,
-        this.panelFollowTargetPos.z,
-        PANEL_PLAY_SCALE,
-        this.headQuat,
-      );
-      this.panelDragging = true;
-      break;
-    }
-    if (this.panelDragging && !selectHeld) {
-      this.panelDragArmed = false;
-      this.panelDragging = false;
-      this.syncPanelDragLabel();
-      this.statusText = 'Panel placed';
-      this.renderPanel();
-    }
-  }
-
-  private setBlinkCuePad(pad: PadRuntime | null): void {
-    this.blinkCuePad = pad;
-    if (pad == null) {
-      if (this.blinkCueRoot != null) {
-        this.blinkCueRoot.visible = false;
-      }
-    }
-  }
-
-  private ensureBlinkCueArrow(): void {
-    if (this.blinkCueRoot != null) {
-      return;
-    }
-    const root = new Object3D();
-    root.name = 'wall-tones-blink-cue';
-    const mat = new MeshBasicMaterial({
-      color: 0xffffff,
-      transparent: true,
-      opacity: 0.45,
-      depthWrite: false,
-      side: DoubleSide,
-    });
-    const shaft = new Mesh(new CylinderGeometry(0.012, 0.012, 0.16, 8), mat);
-    shaft.position.y = 0.08;
-    const head = new Mesh(new ConeGeometry(0.045, 0.1, 10), mat.clone());
-    head.position.y = 0.2;
-    root.add(shaft);
-    root.add(head);
-    root.visible = false;
-    this.blinkCueRoot = root;
-    this.blinkCueEntity = this.world.createTransformEntity(root);
-  }
-
-  /** Tint the arrow with the color of the pad it points at (not white). */
-  private colorBlinkCueArrow(padIndex: number): void {
-    const hex = WALL_TONE_PADS[padIndex]?.color;
-    if (hex == null || this.blinkCueRoot == null) {
-      return;
-    }
-    for (const child of this.blinkCueRoot.children) {
-      const material = (child as Mesh).material;
-      if (material instanceof MeshBasicMaterial) {
-        material.color.setHex(hex);
-      }
-    }
-  }
-
-  private disposeBlinkCueArrow(): void {
-    this.blinkCueEntity?.dispose({ disposeResources: true });
-    this.blinkCueEntity = null;
-    this.blinkCueRoot = null;
-    this.blinkCuePad = null;
-  }
-
-  /** Half-transparent arrow in front of the headset when the blinking pad is off-screen. */
-  private tickBlinkCueArrow(): void {
-    if (
-      this.blinkCuePad == null ||
-      this.useDesktopPath() ||
-      this.flowPhase !== 'playing'
-    ) {
-      if (this.blinkCueRoot != null) {
-        this.blinkCueRoot.visible = false;
-      }
-      return;
-    }
-    this.ensureBlinkCueArrow();
-    if (this.blinkCueRoot == null) {
-      return;
-    }
-    this.colorBlinkCueArrow(this.blinkCuePad.padIndex);
-    this.player.head.getWorldPosition(this.viewer);
-    this.player.head.getWorldQuaternion(this.headQuat);
-    this.ghostForward.set(0, 0, -1).applyQuaternion(this.headQuat).normalize();
-    this.blinkCuePad.root.getWorldPosition(this.padWorldPos);
-    this.toPanel.copy(this.padWorldPos).sub(this.viewer);
-    if (this.toPanel.lengthSq() < 1e-6) {
-      this.blinkCueRoot.visible = false;
-      return;
-    }
-    this.toPanel.normalize();
-    const lookDot = Math.min(1, Math.max(-1, this.ghostForward.dot(this.toPanel)));
-    const offscreenDeg = (Math.acos(lookDot) * 180) / Math.PI;
-    if (offscreenDeg < BLINK_CUE_OFFSCREEN_DEG) {
-      this.blinkCueRoot.visible = false;
-      return;
-    }
-    this.panelFollowTargetPos
-      .copy(this.viewer)
-      .addScaledVector(this.ghostForward, 0.85);
-    this.blinkCueRoot.position.copy(this.panelFollowTargetPos);
-    // Point the local +Y arrow toward the pad.
-    this.handUp.set(0, 1, 0);
-    this.blinkCueRoot.quaternion.setFromUnitVectors(this.handUp, this.toPanel);
-    this.blinkCueRoot.visible = true;
-  }
-
-  private handlePadInput(padIndex: number): void {
-    if (this.flatAwaitingStart && this.useDesktopPath()) {
-      void this.startFlatPlayFromPad(padIndex);
-      return;
-    }
-    if (this.game.phase !== 'input') {
-      return;
-    }
-    this.lastInputAt = performance.now() / 1000;
-    this.idleReplayQueued = false;
-    const expected = this.game.sequence[this.game.inputStep];
-    if (expected == null) {
-      return;
-    }
-    const pad = this.pads[padIndex];
-    if (pad != null) {
-      flashPad(pad, true);
-      // A wrong pad gets only the failure buzzer, not its musical pad note.
-      if (padIndex === expected) {
-        if (this.useDesktopInput()) {
-          playPadToneFromUserAction(padIndex);
-        } else {
-          void playPadTone(padIndex);
-        }
-      }
-      window.setTimeout(() => flashPad(pad, false), 350);
-    }
-    if (padIndex !== expected) {
-      void this.onWrongInput();
-      return;
-    }
-    // Any instruction still finishing is obsolete once a correct pad is hit.
-    this.speech.cancel();
-    const previousBest = this.game.bestStreak;
-    const completed = this.game.onCorrectInput();
-    this.renderPanel();
-    if (completed) {
-      // Lock input immediately so a held finger/click cannot eat the next round.
-      this.game.phase = 'playback';
-      this.inputNeedsClear = true;
-      this.statusText = `Nice - streak ${this.game.streak}. Next pattern…`;
-      this.renderPanel();
-      const streak = this.game.streak;
-      const increasedRecord = shouldAnnounceRecord(streak, previousBest, this.firstRun);
-      this.playbackQueue = this.playbackQueue.then(async () => {
-        if (increasedRecord) {
-          await this.speech.speakAsync(randomNewBestClip(previousBest === 0));
-          if (!this.experienceActive || this.flowPhase !== 'playing') return;
-        }
-        if (streak > 0 && streak % 5 === 0) {
-          await this.speech.speakAsync(milestoneClipFor(streak));
-          if (this.experienceActive && this.flowPhase === 'playing') {
-            await this.speech.speakAsync(randomCheerClip());
-          }
-          await this.wait(0.35);
-        } else {
-          if (increasedRecord) await this.speech.speakAsync(randomCheerClip());
-          await this.wait(BETWEEN_ROUNDS_DELAY_S);
-        }
-        if (!this.experienceActive || this.flowPhase !== 'playing') {
-          return;
-        }
-        await this.playSequence();
-      });
-    }
-  }
-
-  private async startFlatPlayFromPad(padIndex: number): Promise<void> {
-    if (!this.flatAwaitingStart || !this.experienceActive) {
-      return;
-    }
-    this.flatAwaitingStart = false;
-    // A pad press demonstrates progress: stop any welcome / press instruction.
-    this.speech.cancel();
-    this.startPromptSpoken = true;
-    primeWallTonesAudioFromGesture();
-    // Confirm the tap briefly, then run the spoken intro before the first sequence tone.
-    const pad = this.pads[padIndex];
-    if (pad != null) {
-      flashPad(pad, true);
-      playPadToneFromUserAction(padIndex);
-      window.setTimeout(() => flashPad(pad, false), 280);
-    }
-    this.setRepeatUiVisible(true);
-    this.statusText = 'Get ready…';
-    this.renderPanel();
-    // If the welcome was still speech-locked at entry (mobile before the
-    // "Sound on" tap), lead with it now that this tap unlocked audio.
-    const leadIn = this.welcomeSpoken ? undefined : 'welcome';
-    this.welcomeSpoken = true;
-    this.beginRoundWithIntro(leadIn);
-  }
-
-  /** Praise a failed run only if it beat the best from before that run. */
-  private runEarnedCheer(): boolean {
-    return this.game.runImprovedBest;
-  }
-
-  private async onWrongInput(): Promise<void> {
-    this.firstRun = false;
-    this.game.phase = 'resetting';
-    this.inputNeedsClear = true;
-    const cheer = this.runEarnedCheer();
-    await playErrorTone();
-    this.statusText = 'Try again';
-    this.renderPanel();
-    this.playbackQueue = this.playbackQueue.then(async () => {
-      await this.speech.speakAsync(
-        cheer ? randomCheerClip() : randomWrongClip(),
-      );
-      await this.wait(WRONG_RESET_DELAY_S);
-      if (!this.experienceActive || this.flowPhase !== 'playing') {
-        return;
-      }
-      this.game.onWrongInput();
-      this.renderPanel();
-      // Same Simon fanfare as a fresh start, pause, then the first note again.
-      await this.playSimonStartupFanfare();
-      if (!this.experienceActive || this.flowPhase !== 'playing') {
-        return;
-      }
-      await this.playSequence();
-    });
-  }
-
-  private useDesktopPath(): boolean {
-    return this.world.visibilityState.peek() === VisibilityState.NonImmersive;
-  }
-
-  private useDesktopInput(): boolean {
-    return this.useDesktopPath();
-  }
-
-  private setSetupUiVisible(visible: boolean): void {
-    const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
-    panel
-      ?.getElementById('setup-mode-row')
-      ?.setProperties({ display: visible ? 'flex' : 'none' });
-  }
-
-  private setAirOrientUiVisible(visible: boolean): void {
-    this.world
-      .getSceneObject<UIKitMLAsset>('wall-tones-panel')
-      ?.getElementById('air-orient-row')
-      ?.setProperties({ display: visible ? 'flex' : 'none' });
-  }
-
-  private setRepeatUiVisible(visible: boolean): void {
-    this.world
-      .getSceneObject<UIKitMLAsset>('wall-tones-panel')
-      ?.getElementById('repeat-pattern-button')
-      ?.setProperties({ display: visible ? 'flex' : 'none' });
-  }
-
-  private setRescanUiVisible(visible: boolean): void {
-    this.world
-      .getSceneObject<UIKitMLAsset>('wall-tones-panel')
-      ?.getElementById('rescan-room-button')
-      ?.setProperties({ display: visible ? 'flex' : 'none' });
-  }
-
-  private setWallPickHintVisible(visible: boolean): void {
-    this.world
-      .getSceneObject<UIKitMLAsset>('wall-tones-panel')
-      ?.getElementById('wall-pick-hint')
-      ?.setProperties({ display: visible ? 'flex' : 'none' });
-  }
-
-  private async onRescanRoom(): Promise<void> {
-    if (!this.experienceActive) {
-      return;
-    }
-    if (
-      this.flowPhase !== 'air-placement' &&
-      this.flowPhase !== 'playing' &&
-      this.flowPhase !== 'wall-picking'
-    ) {
-      return;
-    }
-    this.speech.speak('rescanRoom');
-    this.statusText = 'Rescanning room…';
-    this.renderPanel();
-    this.clearRoomSetupVisuals();
-    this.clearPads();
-    this.ghostPad = null;
-    this.airPlaceStep = 0;
-    this.game.phase = 'idle';
-    this.playbackQueue = Promise.resolve();
-    this.roomCaptureInFlight = false;
-    this.roomCaptureAttempted = false;
-    this.setAirOrientUiVisible(false);
-    this.setRepeatUiVisible(false);
-
-    const session = this.xrManager.getSession() as XRSession & {
-      initiateRoomCapture?: () => Promise<undefined>;
-    };
-    if (typeof session?.initiateRoomCapture === 'function') {
-      this.roomCaptureInFlight = true;
-      this.roomCaptureAttempted = true;
-      try {
-        await session.initiateRoomCapture();
-      } catch (error) {
-        console.warn('[wall-tones] rescan room capture failed', error);
-      } finally {
-        this.roomCaptureInFlight = false;
-      }
-    }
-    this.setSpatialMeshesVisible(true);
-    this.flowPhase = 'scanning';
-    this.scanStartedAt = performance.now() / 1000;
-    this.lackingSpatialData = false;
-    this.setRescanUiVisible(false);
-    this.speech.speak('lookAround');
-    this.renderPanel();
-  }
-
-  private async onRepeatPattern(): Promise<void> {
-    if (!this.experienceActive || this.flowPhase !== 'playing') {
-      return;
-    }
-    if (this.game.sequence.length === 0) {
-      return;
-    }
-    if (this.game.phase === 'playback' || this.game.phase === 'resetting') {
-      return;
-    }
-    this.lastInputAt = performance.now() / 1000;
-    this.idleReplayQueued = false;
-    this.speech.speak('repeatPattern');
-    this.game.inputStep = 0;
-    this.game.phase = 'playback';
-    this.inputNeedsClear = true;
-    this.statusText = 'Repeating pattern…';
-    this.renderPanel();
-    this.playbackQueue = this.playbackQueue.then(async () => {
-      if (!this.experienceActive || this.flowPhase !== 'playing') {
-        return;
-      }
-      await this.playSequence();
-    });
-  }
-
-  private tickIdleReplay(): void {
-    if (
-      !this.experienceActive ||
-      this.flowPhase !== 'playing' ||
-      this.game.phase !== 'input' ||
-      this.game.sequence.length === 0 ||
-      this.idleReplayQueued
-    ) {
-      return;
-    }
-    const now = performance.now() / 1000;
-    if (this.lastInputAt <= 0) {
-      this.lastInputAt = now;
-      return;
-    }
-    if (now - this.lastInputAt < IDLE_REPLAY_S) {
-      return;
-    }
-    this.idleReplayQueued = true;
-    this.lastInputAt = now;
-    this.game.inputStep = 0;
-    this.game.phase = 'playback';
-    this.inputNeedsClear = true;
-    this.statusText = 'Still there? Replaying…';
-    this.renderPanel();
-    this.playbackQueue = this.playbackQueue.then(async () => {
-      await this.speech.speakAsync('idleReplay');
-      await this.wait(0.4);
-      if (!this.experienceActive || this.flowPhase !== 'playing') {
-        return;
-      }
-      await this.playSequence();
-    });
-  }
-
-  private renderPanel(): void {
-    const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
-    if (panel == null) {
-      return;
-    }
-    panel
-      .getElementById<UIKit.Text>('wall-tones-best-streak')
-      ?.setProperties({ text: String(this.game.bestStreak) });
-    this.renderSequenceIcons(panel);
-    panel
-      .getElementById<UIKit.Text>('wall-tones-status')
-      ?.setProperties({
-        text: this.game.phase === 'input' ? 'Your Turn:' : this.statusText || 'Ready',
-      });
-    panel
-      .getElementById<UIKit.Text>('wall-tones-current-streak')
-      ?.setProperties({ text: String(this.game.streak) });
-  }
-
-  /** Real colored geometry avoids emoji / font fallback rendering white boxes. */
-  private renderSequenceIcons(panel: UIKitMLAsset): void {
-    const row = panel.getElementById<UIKit.Container>('wall-tones-sequence-icons');
-    if (row == null) return;
-    const visible = this.game.phase === 'input' || this.statusText === 'Listen:';
-    const key = this.game.sequence.join(',') + ':' + colorNamesEnabled() + ':' + visible;
-    if (this.sequenceIconRow === row && this.sequenceIconKey === key) return;
-    row.setProperties({ display: visible ? 'flex' : 'none' });
-    for (const child of [...row.children]) {
-      if (child instanceof UIKit.Container) child.dispose();
-      row.remove(child);
-    }
-    this.sequenceIconRow = row;
-    this.sequenceIconKey = key;
-    this.game.sequence.forEach((id) => {
-      row.add(new UIKit.Container({
-        width: 16, height: 16, borderRadius: 2,
-        backgroundColor: WALL_TONE_PADS[id].color,
-        flexShrink: 0,
-      }));
-      if (colorNamesEnabled()) row.add(new UIKit.Text({
-        text: WALL_TONE_PADS[id].name, fontSize: 15, color: 0xffffff,
-      }));
-    });
-  }
-
-  /** Flat captions are anchored under the pad grid, never on top of a pad. */
-  private updateAccessibilityCaptions(): void {
-    const enabled = hearingSubtitlesEnabled();
-    const flat = this.world.visibilityState.peek() === VisibilityState.NonImmersive;
-    const show = enabled && this.experienceActive;
-    const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
-    const caption = currentSpokenCaption();
-    const names = colorNamesEnabled();
-    const previous = this.accessibilityState;
-    let sequenceChanged = !previous || previous.sequence.length !== this.game.sequence.length;
-    if (previous && !sequenceChanged) {
-      for (let i = 0; i < this.game.sequence.length; i++) {
-        if (previous.sequence[i] !== this.game.sequence[i]) { sequenceChanged = true; break; }
-      }
-    }
-    if (this.accessibilityPanel !== panel || !previous ||
-        previous.show !== show || previous.flat !== flat ||
-        previous.active !== this.experienceActive || previous.caption !== caption ||
-        previous.phase !== this.game.phase || previous.status !== this.statusText ||
-        previous.names !== names || sequenceChanged) {
-      this.accessibilityPanel = panel;
-      this.accessibilityState = { show, flat, active: this.experienceActive, caption,
-        phase: this.game.phase, status: this.statusText, names, sequence: [...this.game.sequence] };
-      if (panel && this.experienceActive) this.renderSequenceIcons(panel);
-      panel?.getElementById('wall-tones-info-row')?.setProperties({
-        display: show && !flat ? 'flex' : 'none',
-      });
-      panel?.getElementById<UIKit.Text>('wall-tones-spoken-caption')?.setProperties({
-        display: show && !flat && caption ? 'flex' : 'none', text: caption,
-      });
-    }
-    const menuCaption = enabled && flat && !this.experienceActive && Boolean(caption);
-    if ((!show && !menuCaption) || !flat) {
-      if (this.flatCaptions) this.flatCaptions.style.display = 'none';
-      return;
-    }
-    if (!this.flatCaptions) {
-      document.getElementById('wall-tones-flat-subtitles')?.remove();
-      this.flatCaptions = document.createElement('div');
-      this.flatCaptions.id = 'wall-tones-flat-subtitles';
-      this.flatCaptions.setAttribute('aria-live', 'polite');
-      Object.assign(this.flatCaptions.style, {
-        position: 'fixed', zIndex: '30', color: '#fff', background: '#081019e8',
-        padding: '10px 14px', borderRadius: '10px', font: '16px/1.4 sans-serif',
-        textAlign: 'center', pointerEvents: 'none', boxSizing: 'border-box',
-        transform: 'translateX(-50%)',
-      });
-      document.body.appendChild(this.flatCaptions);
-    }
-    this.flatCaptions.style.display = 'block';
-    let minX = Infinity, maxX = -Infinity, bottom = 0;
-    for (const pad of this.pads) {
-      for (let side = -1; side <= 1; side += 2) {
-        const v = this.captionProjection.set(side * pad.sizeM / 2, -pad.sizeM / 2, 0);
-        pad.root.localToWorld(v); v.project(this.world.camera);
-        const x = (v.x + 1) * window.innerWidth / 2;
-        minX = Math.min(minX, x); maxX = Math.max(maxX, x);
-        bottom = Math.max(bottom, (1 - v.y) * window.innerHeight / 2);
-      }
-    }
-    const phone = this.isPhoneFlatViewport();
-    if (this.pads.length === 0 || !this.experienceActive) { minX = window.innerWidth * 0.2; maxX = window.innerWidth * 0.8; bottom = window.innerHeight - 160; }
-    const width = phone ? window.innerWidth - 24 : Math.min(window.innerWidth - 24, Math.max(300, maxX - minX));
-    this.flatCaptions.style.fontSize = phone ? '13px' : '16px';
-    this.flatCaptions.style.lineHeight = phone ? '1.25' : '1.4';
-    this.flatCaptions.style.width = `${width}px`;
-    this.flatCaptions.style.left = `${Math.max(width / 2 + 12, Math.min(window.innerWidth - width / 2 - 12, (minX + maxX) / 2))}px`;
-    this.flatCaptions.style.top = `${bottom + 14}px`;
-    const seqVisible = this.experienceActive && (this.game.phase === 'input' || this.statusText === 'Listen:');
-    const info = !this.experienceActive ? '' : this.game.phase === 'input' ? 'Your Turn:' : this.statusText;
-    const key = info + caption + (seqVisible ? this.game.sequence.join(',') : '') + colorNamesEnabled();
-    if (key === this.flatCaptionKey) return;
-    this.flatCaptionKey = key;
-    this.flatCaptions.replaceChildren();
-    const line = document.createElement('div');
-    Object.assign(line.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexWrap: 'wrap' });
-    const label = document.createElement('span'); label.textContent = info; line.append(label);
-    if (seqVisible) for (const id of this.game.sequence) {
-      const square = document.createElement('span');
-      Object.assign(square.style, { width: '16px', height: '16px', borderRadius: '2px', background: `#${WALL_TONE_PADS[id].color.toString(16).padStart(6, '0')}`, display: 'inline-block', flexShrink: '0' });
-      square.setAttribute('aria-label', WALL_TONE_PADS[id].name);
-      line.append(square);
-      if (colorNamesEnabled()) { const word = document.createElement('span'); word.textContent = WALL_TONE_PADS[id].name; line.append(word); }
-    }
-    this.flatCaptions.append(line);
-    if (caption) { const text = document.createElement('div'); text.textContent = caption; text.style.marginTop = '5px'; this.flatCaptions.append(text); }
-  }
-
-  private wait(seconds: number): Promise<void> {
-    return new Promise((resolve) => {
-      window.setTimeout(resolve, seconds * 1000);
-    });
-  }
-        }
