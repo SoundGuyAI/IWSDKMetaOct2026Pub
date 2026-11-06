@@ -227,4 +227,50 @@ test.describe('Wall Tones polish: fade + skip voice', () => {
     expect(cheerRequests.length).toBe(cheersBefore);
     expect(await speechBusy(page)).toBe(false);
   });
+
+  // Regression for codex finding: cancel() cleared the Skip voice busy state
+  // but left the superseded speakAsync() promise suspended on the stalled
+  // decode, so the round flow stayed stuck until the fetch completed.
+  test('skip during a stalled milestone still lets the round flow resume', async ({
+    page,
+  }) => {
+    test.slow();
+    // Stall only the streak-5 milestone clip; every other clip plays normally.
+    await page.route('**/audio/speech/**/milestone-5.mp3', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 12_000));
+      await route.continue();
+    });
+    await bootWallTones(page);
+    await skipSpeech(page); // entry lines out of the timing picture
+    await submitPad(page, 0); // start tap: flash + first round
+
+    // Play correct rounds until the streak hits 5 (pattern from desktop.spec).
+    for (let round = 0; round < 5; round += 1) {
+      await expect
+        .poll(async () => (await readState(page)).phase, { timeout: 90_000 })
+        .toBe('input');
+      const snap = await readState(page);
+      await submitPad(page, snap.sequence[snap.inputStep]!);
+      if (snap.inputStep + 1 < snap.sequence.length) {
+        round -= 1; // multi-note round: keep stepping through the pattern
+      }
+    }
+
+    // The milestone line starts; its fetch is now stalled for 12s. Skip it.
+    await expect.poll(() => speechBusy(page), { timeout: 60_000 }).toBe(true);
+    await skipSpeech(page);
+    expect(await speechBusy(page)).toBe(false);
+
+    // The round flow must not wait on the stalled fetch: the next pattern
+    // plays and input opens well before the 12s stall would elapse.
+    await expect
+      .poll(
+        async () => {
+          const s = await readState(page);
+          return s.phase === 'input' && s.sequence.length === 6;
+        },
+        { timeout: 10_000 },
+      )
+      .toBe(true);
+  });
 });
