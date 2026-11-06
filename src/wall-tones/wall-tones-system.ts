@@ -309,6 +309,11 @@ private skipVoiceViewFlat: boolean | null = null;
 /** Scratch pad-bounds + last applied offset (no allocations in update()). */
 private readonly padScreenBoundsScratch = { minX: 0, maxX: 0, minY: 0, maxY: 0 };
 private lastFlatSkipBottom = -1;
+/** Cached subtitle rects (codex P2: no per-frame getBoundingClientRect).
+ * Recomputed only when caption layout/content marks them dirty. */
+private flatCaptionsRect: DOMRect | null = null;
+private flatCaptionsRectDirty = true;
+private startupStripRect: DOMRect | null = null;
 private readonly onPointerDownForAudio = (): void => {
 if (needsExplicitMobileSoundUnlock() && !isHtmlAudioPoolUnlocked()) {
 this.applyUserGestureMediaUnlock(false);
@@ -1177,19 +1182,31 @@ const RIGHT = 12;
 const BASE = 24;
 const M = 10;
 let bottom = BASE;
-// Two known strips, checked directly: no per-frame array allocation.
-const startupStrip = typeof document !== 'undefined'
-? document.getElementById('wall-tones-startup-subtitle')
-: null;
+// Two known strips via cached rects: no per-frame layout reads.
+// The startup strip is CSS-static; read it once while it lives.
+if (this.startupStripRect == null && typeof document !== 'undefined') {
+const startupStrip = document.getElementById('wall-tones-startup-subtitle');
 if (startupStrip != null && startupStrip.style.display !== 'none') {
-const r = startupStrip.getBoundingClientRect();
-if (r.right > w - bw - RIGHT - M && r.bottom > h - bh - BASE - M) {
-bottom = Math.max(bottom, h - r.top + M);
+this.startupStripRect = startupStrip.getBoundingClientRect();
+}
+}
+const startupRect = this.startupStripRect;
+if (startupRect != null) {
+if (typeof document !== 'undefined' &&
+document.getElementById('wall-tones-startup-subtitle') == null) {
+this.startupStripRect = null;
+} else if (startupRect.right > w - bw - RIGHT - M &&
+startupRect.bottom > h - bh - BASE - M) {
+bottom = Math.max(bottom, h - startupRect.top + M);
 }
 }
 const captions = this.flatCaptions;
 if (captions != null && captions.style.display !== 'none') {
-const r = captions.getBoundingClientRect();
+if (this.flatCaptionsRectDirty || this.flatCaptionsRect == null) {
+this.flatCaptionsRect = captions.getBoundingClientRect();
+this.flatCaptionsRectDirty = false;
+}
+const r = this.flatCaptionsRect;
 if (r.right > w - bw - RIGHT - M && r.bottom > h - bh - BASE - M) {
 bottom = Math.max(bottom, h - r.top + M);
 }
@@ -2985,6 +3002,7 @@ display: show && !flat && caption ? 'flex' : 'none', text: caption,
 const menuCaption = enabled && flat && !this.experienceActive && Boolean(caption);
 if ((!show && !menuCaption) || !flat) {
 if (this.flatCaptions && this.flatCaptions.style.display !== 'none') this.flatCaptions.style.display = 'none';
+this.flatCaptionsRect = null;
 return;
 }
 if (!this.flatCaptions) {
@@ -3022,6 +3040,7 @@ this.flatCaptions.style.lineHeight = phone ? '1.25' : '1.4';
 this.flatCaptions.style.width = `${width}px`;
 this.flatCaptions.style.left = `${Math.max(width / 2 + 12, Math.min(window.innerWidth - width / 2 - 12, (minX + maxX) / 2))}px`;
 this.flatCaptions.style.top = `${bottom + 14}px`;
+this.flatCaptionsRectDirty = true;
 }
 const seqVisible = this.experienceActive && (this.game.phase === 'input' || this.statusText === 'Listen:');
 const info = !this.experienceActive ? '' : this.game.phase === 'input' ? 'Your Turn:' : this.statusText;
@@ -3039,6 +3058,7 @@ if (colorNamesEnabled()) { const word = document.createElement('span'); word.tex
 }
 this.flatCaptions.append(line);
 if (caption) { const text = document.createElement('div'); text.textContent = caption; text.style.marginTop = '5px'; this.flatCaptions.append(text); }
+this.flatCaptionsRectDirty = true;
 }
 
 private wait(seconds: number): Promise<void> {
