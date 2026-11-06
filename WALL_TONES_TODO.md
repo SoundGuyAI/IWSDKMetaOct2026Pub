@@ -13,6 +13,32 @@ Personal backlog for what still needs work — not an agent task list. Move item
 - [ ] Wrist band that shows the buttons playing the pattern
 - [ ] Incremental features (park smaller follow-ups here as they come up)
 
+### Minor polish - November 6
+- [ ] Fade button transitions between lit and dim states in both directions.
+- [ ] Add a skip dialog button.
+
+### Future ideas - November 6,18:02 (backlog only, not implementation approval)
+- [ ] Add a score that grows exponentially with streak length.
+- [ ] Add a store where players can buy modifiers.
+  - [ ] Your Turn hint modifier: each level gives 5 boxes of hints; buy upgrades for longer hints.
+  - [ ] Auto-presser modifier.
+  - [ ] Two more colored pads. In VR, the player would need to add them.
+- [ ] Secret unlock: brainstorm what it should be.
+- [ ] Story mode, told through the narrator. Open question: unlock it through the secret?
+- [ ] New trailer hinting that this is an ARG game.
+- [ ] Something flies out of the walls in MR after certain scores; in flat mode it flies into the screen, with a button to look at it. Details to brainstorm.
+- [ ] Rickroll fanfare. Open question: how many buttons does it need, and are 6 enough?
+- [ ] Save score, streak and settings locally.
+- [ ] Achievements for streak, score, story and other milestones.
+
+### MR and menu polish - November 6
+
+- [ ] In mixed reality, investigate whether the boundary can be ignored.
+- [ ] In MR, show subtitles at the bottom of the view, statically attached to the head, in a readable position.
+- [ ] In the game menu, make the window draggable by default; remove the top button's drag-mode toggle.
+- [ ] In setup mode, hide scoring info; show it only while the game loop is active.
+- [ ] Before play-mode selection in setup mode, show the scanning data and allow a rescan.
+
 ## In progress
 
 ## Done
@@ -31,6 +57,8 @@ Personal backlog for what still needs work — not an agent task list. Move item
 - [x] Verify desktop play and leave Quest plane, anchor, and fingertip checks noted here if a headset was not available.
 
 ## Notes
+
+- **2026-11-06 (Asia/Jerusalem):** Moved the future ideas and polish lists in from `todo.md` at the owner's request.
 
 - **2026-11-03 (Asia/Jerusalem):** Desktop round verified in the managed browser (screenshot + recording). Quest passthrough, plane placement, anchors, and live fingertip hits were not run in this session — no headset attached to the cloud agent. Use the dev tunnel URL on a Quest to validate AR setup.
 - **2026-11-03 (Asia/Jerusalem):** Fixed flat/desktop pad placement (camera-relative grid; was spawning under the floor at player origin). Automated flat play reached **best streak 10** via `scripts/wall-tones-streak-10.mjs`.
