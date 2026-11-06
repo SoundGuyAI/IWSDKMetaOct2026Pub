@@ -18,10 +18,7 @@ Personal backlog for what still needs work — not an agent task list. Move item
 - [ ] 10. Add a skip dialog button.
 
 ### Future ideas - November 6,18:02 (backlog only, not implementation approval)
-- [ ] 11. Add a score that grows exponentially with streak length.
    - [ ] 11a. Add player-applied multipliers to the scoring system; mechanics unspecified.
-- [ ] 12. Add a store where players can buy modifiers.
-   - [ ] 12a. Your Turn hint modifier: each level gives 5 boxes of hints; buy upgrades for longer hints.
    - [ ] 12b. Auto-presser modifier.
    - [ ] 12c. Two more colored pads. In VR, the player would need to add them.
 - [ ] 13. Secret unlock: brainstorm what it should be.
@@ -29,27 +26,26 @@ Personal backlog for what still needs work — not an agent task list. Move item
 - [ ] 15. New trailer hinting that this is an ARG game.
 - [ ] 16. Something flies out of the walls in MR after certain scores; in flat mode it flies into the screen, with a button to look at it. Details to brainstorm.
 - [ ] 17. Rickroll fanfare. Open question: how many buttons does it need, and are 6 enough?
-- [ ] 18. Save score, streak and settings locally.
-- [ ] 19. Achievements for streak, score, story and other milestones.
 
 ### MR and menu polish - November 6
 
+- [ ] 20. In mixed reality, investigate whether the boundary can be ignored.
 - [ ] 21. In MR, show subtitles at the bottom of the view, statically attached to the head, in a readable position.
 - [ ] 22. In the game menu, make the window draggable by default; remove the top button's drag-mode toggle.
 - [ ] 23. In setup mode, hide scoring info; show it only while the game loop is active.
 - [ ] 24. Before play-mode selection in setup mode, show the scanning data and allow a rescan.
 - [ ] 25. In setup mode, keep the menu panel from hiding behind the selection ray when it points at something in the environment to scan: ray-aware placement, a smart reverse of follow-the-look. Maybe also move the panel a little up, since there will probably not be things on the ceiling to select (tentative).
 - [ ] 26. Tabletop pads: shrink the panel buttons on the table from 25x25 to 20x20 if four of them cannot fit on one table.
-- [ ] 27. Add another play mode that combines both walls and tables.
-- [ ] 28. When selecting the 4 pad spots in wall or table setup mode, also allow walking up and touching the surface with the hand - the same two-collider mechanism as the pad buttons: highlight when the hand gets close, select when touching it. Ray/pinch selection stays available.
-- [ ] 29. MR achievement for playing standing at walls, or on a mixed wall+table layout.
-- [ ] 30. Research: can the SDK track how much a player moves (fitness-style) in wall or mixed wall+table modes? If not, estimate from the distances between the placed pads. For later score use; no health or calorie claims.
 
 ## In progress
 
-## Done
+- [~] 11. Score that grows exponentially with streak length (economy PR; PENDING the user's score-interpretation answer - Bars and streak persist meanwhile, no score display yet).
+- [~] 12. Store where players buy modifiers (economy PR: gold Bars, hint store).
+   - [~] 12a. Your Turn hint modifier: each level gives 5 boxes of hints; buy upgrades for longer hints (economy PR: 10/15/22 Bars then ~1.3x growth, open-ended, tunable; persistent unlocks; Your Turn row hidden without a hint, per user November 7).
+- [~] 18. Save score, streak and settings locally (economy PR: best streak, Bars, hints, achievements, first-time flags persist; score persists once 11 lands).
+- [~] 19. Achievements for streak, score, story and other milestones (economy PR: streak/Bar/store achievements, visual-only; score achievements once 11 lands).
 
-- [x] 20. In mixed reality, investigate whether the boundary can be ignored. Resolved in PR #28 (merged 2026-11-07): the MR session now requests an unbounded reference space with local-floor fallback; the user verified the boundary no longer appears on his headset.
+## Done
 
 - [x] Blink uses the cube's own color (saturated, slightly lighter), not white. Checked with before/after frames of all four pad flashes in the desktop build. Not yet checked on a headset.
 - [x] Replace the Wall Tones placeholder panel with mode choice, best streak, and round status. Keep `back-to-menu-button`.
@@ -73,5 +69,3 @@ Personal backlog for what still needs work — not an agent task list. Move item
 - **2026-11-03 (Asia/Jerusalem):** Fixed Quest/browser audio (unlock Web Audio on menu + first pad tap) and flat start (pads were ignored until tap-to-start). Moved/shrank HUD and enlarged pad hit boxes so all four grid pads are reachable.
 - **2026-11-03 (Asia/Jerusalem):** Quieter voice (streak praise every 5 only); stronger pad tones (pointerdown audio priming + HTML WAV fallback).
 - **2026-11-03 (Asia/Jerusalem):** Air placement no longer sticks a solid pad on the face — ghost follows the hand as a hollow outline, stays ≥ ~0.7 m from the eyes, uses smaller sitting pads, and solidifies on pinch.
-
-
