@@ -357,6 +357,8 @@ export class WallTonesSpeech {
   private generation = 0;
   private currentSource: AudioBufferSourceNode | null = null;
   private currentElement: HTMLAudioElement | null = null;
+  /** Settles the active HTMLAudio playback; pause() alone never resolves it. */
+  private activeElementFinish: (() => void) | null = null;
   /** Lines queued or playing right now; drives the Skip voice button. */
   private pendingLines = 0;
 
@@ -474,6 +476,7 @@ export class WallTonesSpeech {
         }
         settled = true;
         this.currentElement = null;
+        this.activeElementFinish = null;
         resolve();
       };
       try {
@@ -483,6 +486,7 @@ export class WallTonesSpeech {
         audio.src = clipUrl(id);
         audio.currentTime = 0;
         this.currentElement = audio;
+        this.activeElementFinish = finish;
         audio.onended = finish;
         audio.onerror = finish;
         // Long setup clips must not be cut by a short media watchdog.
@@ -508,6 +512,10 @@ export class WallTonesSpeech {
       this.currentElement.pause();
       this.currentElement = null;
     }
+    // pause() fires neither ended nor error, so the playElement promise would
+    // otherwise wait for its watchdog and keep isBusy() (Skip voice) stuck on.
+    this.activeElementFinish?.();
+    this.activeElementFinish = null;
     this.chain = Promise.resolve();
   }
 }
