@@ -36,41 +36,6 @@
 - [x] Subtitle transcripts grounded in shipped recordings, captions start with playback and clear on completion/cancel.
 - [ ] Test updated preview on phone/Quest before merge.
 
+## Moved to WALL_TONES_TODO.md
 
-## Minor polish - November 6
-- [ ] Fade button transitions between lit and dim states in both directions.
-- [ ] Add a skip dialog button.
-
-
-## Future ideas - November 6,18:02 (backlog only, not implementation approval)
-- [ ] Add a score that grows exponentially with streak length.
-- [ ] Add a store where players can buy modifiers.
-  - [ ] Your Turn hint modifier: each level gives 5 boxes of hints; buy upgrades for longer hints.
-  - [ ] Auto-presser modifier.
-  - [ ] Two more colored pads. In VR, the player would need to add them.
-- [ ] Secret unlock: brainstorm what it should be.
-- [ ] Story mode, told through the narrator. Open question: unlock it through the secret?
-- [ ] New trailer hinting that this is an ARG game.
-- [ ] Something flies out of the walls in MR after certain scores; in flat mode it flies into the screen, with a button to look at it. Details to brainstorm.
-- [ ] Rickroll fanfare. Open question: how many buttons does it need, and are 6 enough?
-- [ ] Save score, streak and settings locally.
-- [ ] Achievements for streak, score, story and other milestones.
-
-
-
-
-## MR and menu polish - November 6
-
-
-- [ ] In mixed reality, investigate whether the boundary can be ignored.
-- [ ] In MR, show subtitles at the bottom of the view, statically attached to the head, in a readable position.
-- [ ] In the game menu, make the window draggable by default; remove the top button's drag-mode toggle.
-- [ ] In setup mode, hide scoring info; show it only while the game loop is active.
-- [ ] Before play-mode selection in setup mode, show the scanning data and allow a rescan.
-
-
-
-
-
-
-
+Future ideas and polish lists moved to [WALL_TONES_TODO.md](WALL_TONES_TODO.md) on November 6.
