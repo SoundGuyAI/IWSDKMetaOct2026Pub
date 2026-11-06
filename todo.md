@@ -36,6 +36,11 @@
 - [x] Subtitle transcripts grounded in shipped recordings, captions start with playback and clear on completion/cancel.
 - [ ] Test updated preview on phone/Quest before merge.
 
+## PR pending: polish - fade + skip voice (November 6)
+- [ ] Backlog 9: pads cross-fade between lit and dim in both directions (color, power, flash scale).
+- [ ] Backlog 10: Skip voice button cancels playing/queued narration.
+- [ ] Awaiting preview test and user approval; do not merge before then.
+
 ## Moved to WALL_TONES_TODO.md
 
 Future ideas and polish lists moved to [WALL_TONES_TODO.md](WALL_TONES_TODO.md) on November 6.
