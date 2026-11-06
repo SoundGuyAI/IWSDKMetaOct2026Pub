@@ -405,9 +405,19 @@ export class WallTonesSpeech {
         startupWelcome = null;
         this.currentElement = mobileVoice;
         try {
-          await welcome;
+          // Await the gesture-primed welcome, but let cancel() settle it too:
+          // pausing the element never resolves this promise on its own, which
+          // would keep isBusy() (Skip voice) stuck until the clip's watchdog.
+          await new Promise<void>((resolve) => {
+            this.activeElementFinish = resolve;
+            void Promise.resolve(welcome).then(
+              () => resolve(),
+              () => resolve(),
+            );
+          });
         } finally {
           if (gen === this.generation) this.currentElement = null;
+          this.activeElementFinish = null;
         }
         return;
       }
