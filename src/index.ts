@@ -6,8 +6,8 @@
  */
 
 import { startInitialWorld } from './wall-tones/world-host.js';
-import { needsExplicitMobileSoundUnlock, ensureAudioRunning } from './wall-tones/audio.js';
-import { unlockSpeechFromGesture } from './wall-tones/speech.js';
+import { needsExplicitMobileSoundUnlock } from './wall-tones/audio.js';
+import { unlockSpeechFromGesture, prepareMobileWelcome, startMobileWelcomeFromGesture } from './wall-tones/speech.js';
 
 const container = document.getElementById('scene-container') as HTMLDivElement;
 const gate = document.getElementById('audio-start-gate') as HTMLDivElement;
@@ -16,16 +16,16 @@ const start = document.getElementById('audio-start-button') as HTMLButtonElement
 if (needsExplicitMobileSoundUnlock()) {
   // A real HTML button before the 3D menu: Safari activation must happen in
   // this trusted click, never in a spatial UI callback on a later frame.
+  prepareMobileWelcome();
   gate.hidden = false;
   start.addEventListener('click', async () => {
     start.disabled = true;
     try {
-      unlockSpeechFromGesture(); // resumes Web Audio and primes HTML audio now
-      const context = await ensureAudioRunning();
-      if (context == null) {
-        start.disabled = false; // stay on the gate and allow another real tap
-        return;
-      }
+      // Start the real voice clip in this click, before async world startup or
+      // Web Audio work can lose Safari's transient user activation.
+      const welcomeStarted = startMobileWelcomeFromGesture();
+      unlockSpeechFromGesture();
+      await welcomeStarted;
       await startInitialWorld(container);
       gate.remove();
     } catch (error) {
