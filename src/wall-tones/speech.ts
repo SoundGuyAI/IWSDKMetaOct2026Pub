@@ -222,7 +222,7 @@ export function startMobileWelcomeFromGesture(): Promise<void> {
       Object.assign(earlyCaption.style, {
         position: 'fixed', bottom: '24px', left: '12px', right: '12px',
         padding: '12px', background: '#081019', color: '#fff', borderRadius: '10px',
-        font: '16px/1.4 sans-serif', textAlign: 'center', zIndex: '10000',
+        font: '16px/1.4 sans-serif', textAlign: 'center', zIndex: '100001',
       });
       document.body.appendChild(earlyCaption);
     }
@@ -511,4 +511,4 @@ export function warmSpeechFromGesture(): void {
 export function randomNewBestClip(firstRecord = false): WallTonesClipId {
   if (firstRecord) return 'newBest1';
   return (['newBest1', 'newBest2', 'newBest3'] as const)[Math.floor(Math.random() * 3)]!;
-}
+    }
