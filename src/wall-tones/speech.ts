@@ -208,7 +208,8 @@ export function startMobileWelcomeFromGesture(): Promise<void> {
     audio.addEventListener('error', finish);
     window.setTimeout(finish, 15000);
   });
-  startupWelcome = started.then(() => finished);
+  // Bound the entire operation, including a play() promise that never starts.
+  startupWelcome = Promise.race([started.then(() => finished), finished]);
   // The boot path observes rejection and leaves Start available for retry.
   void startupWelcome.catch(() => { startupWelcome = null; });
   return started;
@@ -435,7 +436,9 @@ export class WallTonesSpeech {
         this.currentElement = audio;
         audio.onended = finish;
         audio.onerror = finish;
-        window.setTimeout(finish, 10000);
+        // Some setup recordings exceed ten seconds. End normally on ended;
+        // this generous watchdog is only for a broken/stalled media request.
+        window.setTimeout(finish, 60000);
         void audio.play().catch(finish);
       } catch {
         finish();
