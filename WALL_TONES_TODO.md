@@ -39,6 +39,8 @@ Personal backlog for what still needs work — not an agent task list. Move item
 22. [ ] In the game menu, make the window draggable by default; remove the top button's drag-mode toggle.
 23. [ ] In setup mode, hide scoring info; show it only while the game loop is active.
 24. [ ] Before play-mode selection in setup mode, show the scanning data and allow a rescan.
+25. [ ] In setup mode, keep the menu panel from hiding behind the selection ray when it points at something in the environment to scan: ray-aware placement, a smart reverse of follow-the-look. Maybe also move the panel a little up, since there will probably not be things on the ceiling to select (tentative).
+26. [ ] Tabletop pads: shrink the panel buttons on the table from 25x25 to 20x20 if four of them cannot fit on one table.
 
 ## In progress
 
