@@ -253,10 +253,12 @@ export class AppModeSystem extends createSystem({}) {
       checked: colorNamesEnabled(),
       onCheckedChange: setColorNames,
     } as never);
-    window.addEventListener('wall-tones-accessibility-change', () => {
+    const syncAccessibility = () => {
       panel.getElementById('hearing-subtitles-checkbox')?.setProperties({ checked: hearingSubtitlesEnabled() } as never);
       panel.getElementById('color-names-checkbox')?.setProperties({ checked: colorNamesEnabled() } as never);
-    });
+    };
+    window.addEventListener('wall-tones-accessibility-change', syncAccessibility);
+    this.cleanupFuncs.push(() => window.removeEventListener('wall-tones-accessibility-change', syncAccessibility));
     syncVoiceLabels();
   }
 
