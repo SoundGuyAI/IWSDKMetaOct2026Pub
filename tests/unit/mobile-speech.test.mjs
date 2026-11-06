@@ -5,7 +5,8 @@ import { readFileSync } from 'node:fs';
 
 // Run the production speech module with a strict, element-scoped Safari media
 // policy. This tests routing/gesture timing, not physical iOS audio output.
-async function loadSpeech({ rejectFirst = false } = {}) {
+async function loadSpeech({ rejectFirst = false, subtitles = false } = {}) {
+  const elements = [];
   const instances = [];
   let gesture = false;
   let decodeCalls = 0;
@@ -28,7 +29,10 @@ async function loadSpeech({ rejectFirst = false } = {}) {
   }
   Object.assign(globalThis, {
     Audio,
-    document: { baseURI: 'https://example.test/pr-preview/pr-22/' },
+    document: { baseURI: 'https://example.test/pr-preview/pr-22/',
+      body: {appendChild: element => elements.push(element)},
+      createElement: () => ({style: {}, setAttribute() {}, remove() { this.removed = true; }}),
+    },
     window: { setTimeout: (fn, ms) => { const t = setTimeout(fn, ms); t.unref(); return t; } },
   });
   Object.defineProperty(globalThis, 'navigator', { value: { userAgent: 'iPhone', maxTouchPoints: 5 }, configurable: true });
@@ -37,12 +41,21 @@ async function loadSpeech({ rejectFirst = false } = {}) {
     primeWallTonesAudioFromGesture: () => { primeCalls++; },
     needsExplicitMobileSoundUnlock: () => true,
   };
+  globalThis.__subtitles = subtitles;
   let source = readFileSync(new URL('../../src/wall-tones/speech.ts', import.meta.url), 'utf8');
   source = source.replace(/^import .* from '.\/audio.js';/m,
     'const {ensureAudioRunning, primeWallTonesAudioFromGesture, needsExplicitMobileSoundUnlock} = globalThis.__audioStub;');
+  // Only non-routing dependencies are replaced. The production mobile element
+  // and gesture/queue/cancellation implementation below remains under test.
+  source = source.replace(/^import .* from '.\/clip-transcripts.js';/m,
+    "const CLIP_TRANSCRIPTS = new Proxy({}, {get: (_target, id) => String(id)});");
+  source = source.replace(/^import .* from '.\/accessibility.js';/m,
+    'const startSpokenCaption = () => 1; const endSpokenCaption = () => {}; const hearingSubtitlesEnabled = () => globalThis.__subtitles;');
+  source = source.replace(/^import .* from '.\/new-best-(male|female).js';/gm, '');
+  source = 'const NEW_BEST_MALE = {}; const NEW_BEST_FEMALE = {};\n' + source;
   const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
   const speech = await import('data:text/javascript;base64,' + Buffer.from(js + '\n//' + Math.random()).toString('base64'));
-  return { speech, instances, gesture(fn) { gesture = true; try { return fn(); } finally { gesture = false; } }, get decodeCalls() { return decodeCalls; }, get primeCalls() { return primeCalls; } };
+  return { speech, instances, elements, gesture(fn) { gesture = true; try { return fn(); } finally { gesture = false; } }, get decodeCalls() { return decodeCalls; }, get primeCalls() { return primeCalls; } };
 }
 
 test('Start plays welcome synchronously in gesture; entry consumes it without duplicate; later clips reuse unlocked element', async () => {
@@ -92,4 +105,15 @@ test('a separate settings welcome preview plays selected voice instead of consum
   assert.match(h.instances[0].played[1], /female\/welcome.mp3$/);
   h.instances[0].end();
   await preview;
+});
+
+// No WallTonesSystem exists here: the first caption must still be readable.
+test('opted-in native welcome renders its own caption before world startup', async () => {
+  const h = await loadSpeech({subtitles: true});
+  await h.gesture(() => h.speech.startMobileWelcomeFromGesture());
+  h.instances[0].onplaying();
+  assert.equal(h.elements[0].textContent, 'welcome');
+  assert.equal(h.elements[0].id, 'wall-tones-startup-subtitle');
+  h.instances[0].end();
+  assert.equal(h.elements[0].removed, true);
 });

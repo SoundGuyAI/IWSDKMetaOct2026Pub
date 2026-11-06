@@ -1,3 +1,7 @@
+import { CLIP_TRANSCRIPTS } from './clip-transcripts.js';
+import { startSpokenCaption, endSpokenCaption, hearingSubtitlesEnabled } from './accessibility.js';
+import { NEW_BEST_MALE } from './new-best-male.js';
+import { NEW_BEST_FEMALE } from './new-best-female.js';
 /**
  * Prerecorded voice lines for Wall Tones (English).
  *
@@ -15,6 +19,9 @@ export type WallTonesClipId =
   | 'howToPlay'
   | 'pointAndPress'
   | 'howToPlayRest'
+  | 'newBest1'
+  | 'newBest2'
+  | 'newBest3'
   | 'cheer1'
   | 'cheer2'
   | 'cheer3'
@@ -63,6 +70,9 @@ export const WALL_TONES_CLIP_FILES: Record<WallTonesClipId, string> = {
   howToPlay: 'how-to-play.mp3',
   pointAndPress: 'point-and-press.mp3',
   howToPlayRest: 'how-to-play-rest.mp3',
+  newBest1: 'new-best-1.mp3',
+  newBest2: 'new-best-2.mp3',
+  newBest3: 'new-best-3.mp3',
   cheer1: 'cheer-1.mp3',
   cheer2: 'cheer-2.mp3',
   cheer3: 'cheer-3.mp3',
@@ -170,6 +180,9 @@ export function setVoiceGender(gender: WallTonesVoiceGender): void {
 }
 
 function clipUrl(id: WallTonesClipId): string {
+  if (id === 'newBest1' || id === 'newBest2' || id === 'newBest3') {
+    return (currentGender === 'female' ? NEW_BEST_FEMALE : NEW_BEST_MALE)[id];
+  }
   const file = WALL_TONES_CLIP_FILES[id];
   // document.baseURI keeps the path correct under Vite's relative base ('./'),
   // including GitHub Pages subpaths and the dev tunnel. Each voice gender is a
@@ -197,9 +210,29 @@ export function startMobileWelcomeFromGesture(): Promise<void> {
   audio.src = clipUrl('welcome');
   audio.currentTime = 0;
   // play() itself, not a Promise callback, must run during trusted activation.
+  let caption: number | undefined;
+  let earlyCaption: HTMLDivElement | undefined;
+  audio.onplaying = () => {
+    caption = startSpokenCaption(CLIP_TRANSCRIPTS.welcome);
+    if (hearingSubtitlesEnabled()) {
+      earlyCaption = document.createElement('div');
+      earlyCaption.id = 'wall-tones-startup-subtitle';
+      earlyCaption.setAttribute('aria-live', 'polite');
+      earlyCaption.textContent = CLIP_TRANSCRIPTS.welcome;
+      Object.assign(earlyCaption.style, {
+        position: 'fixed', bottom: '24px', left: '12px', right: '12px',
+        padding: '12px', background: '#081019', color: '#fff', borderRadius: '10px',
+        font: '16px/1.4 sans-serif', textAlign: 'center', zIndex: '100001',
+      });
+      document.body.appendChild(earlyCaption);
+    }
+  };
   const started = audio.play();
   const finished = new Promise<void>((resolve) => {
     const finish = () => {
+      if (caption != null) endSpokenCaption(caption);
+      earlyCaption?.remove();
+      audio.onplaying = null;
       audio.removeEventListener('ended', finish);
       audio.removeEventListener('error', finish);
       resolve();
@@ -378,7 +411,7 @@ export class WallTonesSpeech {
         return; // superseded while resuming the audio context
       }
       if (context != null) {
-        return this.playBuffer(context, buffer);
+        return this.playBuffer(context, buffer, id);
       }
     }
     // Fallback: plain HTMLAudio (e.g. Web Audio blocked before the first gesture).
@@ -388,14 +421,17 @@ export class WallTonesSpeech {
   private playBuffer(
     context: AudioContext,
     buffer: AudioBuffer,
+    id: WallTonesClipId,
   ): Promise<void> {
     return new Promise((resolve) => {
       const source = context.createBufferSource();
       source.buffer = buffer;
       source.connect(context.destination);
       this.currentSource = source;
+      let caption: number | undefined;
       let settled = false;
       const finish = () => {
+        if (caption != null) endSpokenCaption(caption);
         if (settled) {
           return;
         }
@@ -410,6 +446,7 @@ export class WallTonesSpeech {
       window.setTimeout(finish, buffer.duration * 1000 + 800);
       try {
         source.start();
+        caption = startSpokenCaption(CLIP_TRANSCRIPTS[id]);
       } catch {
         finish();
       }
@@ -418,8 +455,10 @@ export class WallTonesSpeech {
 
   private playElement(id: WallTonesClipId): Promise<void> {
     return new Promise((resolve) => {
+      let caption: number | undefined;
       let settled = false;
       const finish = () => {
+        if (caption != null) endSpokenCaption(caption);
         if (settled) {
           return;
         }
@@ -436,9 +475,9 @@ export class WallTonesSpeech {
         this.currentElement = audio;
         audio.onended = finish;
         audio.onerror = finish;
-        // Some setup recordings exceed ten seconds. End normally on ended;
-        // this generous watchdog is only for a broken/stalled media request.
+        // Long setup clips must not be cut by a short media watchdog.
         window.setTimeout(finish, 60000);
+        audio.onplaying = () => { caption = startSpokenCaption(CLIP_TRANSCRIPTS[id]); };
         void audio.play().catch(finish);
       } catch {
         finish();
@@ -447,6 +486,7 @@ export class WallTonesSpeech {
   }
 
   cancel(): void {
+    endSpokenCaption();
     this.generation += 1;
     try {
       this.currentSource?.stop();
@@ -467,3 +507,8 @@ export class WallTonesSpeech {
 export function warmSpeechFromGesture(): void {
   unlockSpeechFromGesture();
 }
+
+export function randomNewBestClip(firstRecord = false): WallTonesClipId {
+  if (firstRecord) return 'newBest1';
+  return (['newBest1', 'newBest2', 'newBest3'] as const)[Math.floor(Math.random() * 3)]!;
+    }

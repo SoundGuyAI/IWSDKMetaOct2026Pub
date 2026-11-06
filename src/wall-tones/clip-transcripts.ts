@@ -1,0 +1,26 @@
+import type { WallTonesClipId } from './speech.js';
+/** Transcribed from the shipped recordings; shared by both host voices. */
+export const CLIP_TRANSCRIPTS: Record<WallTonesClipId, string> = {
+  welcome: 'Hello and welcome to Wall Tones, a musical memory game.',
+  chooseMode: 'Wall Tones can use your real-world environment. Choose a mode to play and set up your play area and buttons.',
+  howToPlay: 'Point and press one of those panels to start. Listen to the pattern and repeat it. The longer a pattern you repeat, the higher your score will be. Good luck.',
+  howToPlayRest: 'Listen to the pattern and repeat it. The longer a pattern you repeat, the higher your score will be. Good luck.',
+  pointAndPress: 'Point and press one of those panels to start.',
+  cheer1: 'Nice job!', cheer2: 'Oh, you got it!', cheer3: 'Nailed it!', cheer4: 'Beautiful!', cheer5: 'Clean!', cheer6: 'Too easy!',
+  milestone5: 'Five in a row!', milestone10: "Ten in a row? Okay, now you're showing off!", milestone15: 'Fifteen? Are you secretly a musician?', milestone20: "Twenty in a row? I'm calling Guinness!",
+  hype1: 'This is getting ridiculous!', hype2: 'Oh, unbelievable!', hype3: "Okay, I officially can't keep up!",
+  newBest1: 'New best streak!', newBest2: 'You beat your best again!', newBest3: 'Another new best!',
+  wrong1: 'Better luck next time!', wrong2: 'So close! Almost had it!', wrong3: 'Ouch!', wrong4: 'Fresh pattern, fresh start!', wrong5: 'The wall wins this round!',
+  lookAround: "I'm looking at your room. Give me a few seconds to find the walls.",
+  roomCapture: "I couldn't see enough surfaces. Open room capture on your headset, then we'll look again.",
+  pickWallSlots: 'I found walls. Cyan shows walls, orange shows other surfaces. Point at a green square and pinch to place each button. Pick four.',
+  pickTableSlots: 'I found table surfaces. Cyan shows flat surfaces, orange shows other items. Point at a green square and pinch to place four buttons. Pick four.',
+  notEnoughWallSpace: "There isn't enough wall space for automatic placement. Point at the green squares on the walls if you see them, or move the outlined buttons with your hand and pinch to place them in the air.",
+  tableFound: 'I found a table. Get ready to play.', padsOnWalls: 'Four buttons on your walls? Get ready to play.',
+  noTable: "Ah, couldn't find a table or room mesh. Tilt your placing hand so the outline snaps flat or upright, then pinch to place. You can also rescan the room from the panel.",
+  chooseAirMenu: 'Air place works for wall or table style. Tilt your hand to snap upright or flat, then pinch four times.',
+  chooseAirOrient: 'Tilt the hand you place with. The outline snaps flat or upright. Pinch to drop each pad. Use rescan room if you want to map your space again.',
+  airPlace1: 'Pad one of four. Tilt your hand, then pinch to place.', airPlace2: 'Pad two of four. Tilt your hand, then pinch to place.', airPlace3: 'Pad three of four. Tilt your hand, then pinch to place.', airPlace4: 'Pad four of four. Tilt your hand, then pinch to place.',
+  airPlaceShort2: 'Pad 2', airPlaceShort3: 'Pad 3 now', airPlaceShort4: 'Aaaaaand... pad 4',
+  soundReady: 'Sound is on. Tap a pad to start.', idleReplay: "Still there? Here's the pattern again. Touch the pads to repeat it.", repeatPattern: "Here's the pattern again.", backToMenu: 'Back to the main menu.', rescanRoom: "Opening room capture. Look around, then we'll scan again.",
+};

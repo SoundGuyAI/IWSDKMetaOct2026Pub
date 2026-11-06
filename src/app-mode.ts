@@ -1,3 +1,4 @@
+import { hearingSubtitlesEnabled, colorNamesEnabled, setHearingSubtitles, setColorNames } from './wall-tones/accessibility.js';
 /**
  * Switches between the main menu and experience modes by toggling authored
  * scene node visibility. Mode selection lives on spatial UIKitML panels.
@@ -236,6 +237,28 @@ export class AppModeSystem extends createSystem({}) {
     panel
       .getElementById('voice-female-button')
       ?.addEventListener('click', () => choose('female'));
+    panel.getElementById('accessibility-button')?.addEventListener('click', () => {
+      setDisplay('settings-dialog', 'none');
+      setDisplay('accessibility-dialog', 'flex');
+    });
+    panel.getElementById('accessibility-back-button')?.addEventListener('click', () => {
+      setDisplay('accessibility-dialog', 'none');
+      setDisplay('settings-dialog', 'flex');
+    });
+    panel.getElementById('hearing-subtitles-checkbox')?.setProperties({
+      checked: hearingSubtitlesEnabled(),
+      onCheckedChange: setHearingSubtitles,
+    } as never);
+    panel.getElementById('color-names-checkbox')?.setProperties({
+      checked: colorNamesEnabled(),
+      onCheckedChange: setColorNames,
+    } as never);
+    const syncAccessibility = () => {
+      panel.getElementById('hearing-subtitles-checkbox')?.setProperties({ checked: hearingSubtitlesEnabled() } as never);
+      panel.getElementById('color-names-checkbox')?.setProperties({ checked: colorNamesEnabled() } as never);
+    };
+    window.addEventListener('wall-tones-accessibility-change', syncAccessibility);
+    this.cleanupFuncs.push(() => window.removeEventListener('wall-tones-accessibility-change', syncAccessibility));
     syncVoiceLabels();
   }
 
@@ -268,10 +291,10 @@ export class AppModeSystem extends createSystem({}) {
 
   private syncDocumentChrome(mode: ExperienceMode): void {
     const titles: Record<ExperienceMode, string> = {
-      menu: 'Wall Tones',
+      menu: 'Wall Tones 2: too fast to wall',
       demo: 'Starter demo',
       meditation: 'Breath & gaze rest',
-      walltones: 'Wall Tones',
+      walltones: 'Wall Tones 2: too fast to wall',
     };
     document.title = titles[mode];
 

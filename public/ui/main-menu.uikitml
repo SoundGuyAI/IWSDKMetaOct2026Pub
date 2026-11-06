@@ -90,8 +90,8 @@
 </style>
 <Panel id="main-menu-root" class="panel-root">
   <div id="main-menu-content" class="panel-content">
-    <div id="main-menu-eyebrow" class="eyebrow">WALL TONES</div>
-    <div id="main-menu-heading" class="heading">Memory pads</div>
+    <div id="main-menu-eyebrow" class="eyebrow">TOO FAST TO WALL</div>
+    <div id="main-menu-heading" class="heading">Wall Tones 2</div>
     <div id="main-menu-body" class="body">Start on desktop, or Enter XR to jump straight into Wall Tones in your room.</div>
   </div>
   <Button id="mode-walltones-button" class="button" style="height: 64px">
@@ -118,9 +118,27 @@
       <ButtonIcon><User></User></ButtonIcon>
       <ButtonLabel id="voice-female-label" class="button-label">Female voice</ButtonLabel>
     </Button>
+    <Button id="accessibility-button" class="button" style="height: 64px">
+      <ButtonLabel class="button-label">Accessibility</ButtonLabel>
+    </Button>
     <Button id="settings-back-button" class="button" style="height: 64px; margin-bottom: 4px">
       <ButtonIcon><ArrowLeft></ArrowLeft></ButtonIcon>
       <ButtonLabel class="button-label">Back</ButtonLabel>
+    </Button>
+  </div>
+  <div id="accessibility-dialog" class="settings-dialog" style="display: none">
+    <div class="eyebrow">SETTINGS</div>
+    <div class="heading">Accessibility</div>
+    <div style="flex-direction: row; gap: 12px; align-items: center; padding: 12px">
+      <Checkbox id="hearing-subtitles-checkbox"></Checkbox>
+      <div class="body">Hearing accessibility: subtitles</div>
+    </div>
+    <div style="flex-direction: row; gap: 12px; align-items: center; padding: 12px">
+      <Checkbox id="color-names-checkbox"></Checkbox>
+      <div class="body">Color blindness: show color names</div>
+    </div>
+    <Button id="accessibility-back-button" class="button" style="height: 64px">
+      <ButtonIcon><ArrowLeft></ArrowLeft></ButtonIcon><ButtonLabel>Back</ButtonLabel>
     </Button>
   </div>
   <Button id="exit-button" class="button" style="display: none; margin-bottom: 28px">
