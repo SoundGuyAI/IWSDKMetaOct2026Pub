@@ -1,3 +1,4 @@
+import { hearingSubtitlesEnabled, colorNamesEnabled, setHearingSubtitles, setColorNames } from './wall-tones/accessibility.js';
 /**
  * Switches between the main menu and experience modes by toggling authored
  * scene node visibility. Mode selection lives on spatial UIKitML panels.
@@ -218,6 +219,26 @@ export class AppModeSystem extends createSystem({}) {
     panel
       .getElementById('voice-female-button')
       ?.addEventListener('click', () => choose('female'));
+    panel.getElementById('accessibility-button')?.addEventListener('click', () => {
+      setDisplay('settings-dialog', 'none');
+      setDisplay('accessibility-dialog', 'flex');
+    });
+    panel.getElementById('accessibility-back-button')?.addEventListener('click', () => {
+      setDisplay('accessibility-dialog', 'none');
+      setDisplay('settings-dialog', 'flex');
+    });
+    panel.getElementById('hearing-subtitles-checkbox')?.setProperties({
+      checked: hearingSubtitlesEnabled(),
+      onCheckedChange: setHearingSubtitles,
+    } as never);
+    panel.getElementById('color-names-checkbox')?.setProperties({
+      checked: colorNamesEnabled(),
+      onCheckedChange: setColorNames,
+    } as never);
+    window.addEventListener('wall-tones-accessibility-change', () => {
+      panel.getElementById('hearing-subtitles-checkbox')?.setProperties({ checked: hearingSubtitlesEnabled() } as never);
+      panel.getElementById('color-names-checkbox')?.setProperties({ checked: colorNamesEnabled() } as never);
+    });
     syncVoiceLabels();
   }
 
