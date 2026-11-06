@@ -13,6 +13,7 @@ import {
   PlaneGeometry,
   ShaderMaterial,
 } from '@iwsdk/core';
+import { PAD_FADE_TAU_S } from './constants.js';
 
 const QUAD_SCALE = 1.22;
 const GLOW_Z = 0.0125;
@@ -98,11 +99,23 @@ export type PadGlow = {
   mesh: Mesh;
   material: ShaderMaterial;
   faceMaterial: MeshBasicMaterial;
+  /** Latest requested face color - the fade target. */
   fallbackColor: Color;
+  /** Color actually shown this frame; eases toward fallbackColor. */
+  currentColor: Color;
   now: number;
+  lastAnimAt: number;
   pressAt: number;
   state: 'idle' | 'hover' | 'pressed';
   hover: number;
+  /** Displayed power this frame; eases toward targetPower. */
+  power: number;
+  targetPower: number;
+  /** Displayed face scale this frame; eases toward the targets. */
+  scaleXY: number;
+  targetScaleXY: number;
+  scaleZ: number;
+  targetScaleZ: number;
 };
 
 /** Hide the flat face and draw one shader quad over it (child, so it scales on blink). */
@@ -164,7 +177,24 @@ export function createPadGlow(
     }
   };
   face.add(mesh);
-  return { mesh, material, faceMaterial, fallbackColor: faceMaterial.color.clone(), now: 0, pressAt: -99, state: 'idle', hover: 0 };
+  return {
+    mesh,
+    material,
+    faceMaterial,
+    fallbackColor: faceMaterial.color.clone(),
+    currentColor: faceMaterial.color.clone(),
+    now: 0,
+    lastAnimAt: 0,
+    pressAt: -99,
+    state: 'idle',
+    hover: 0,
+    power: 1,
+    targetPower: 1,
+    scaleXY: 1,
+    targetScaleXY: 1,
+    scaleZ: 1,
+    targetScaleZ: 1,
+  };
 }
 
 export function syncPadGlow(
@@ -175,9 +205,9 @@ export function syncPadGlow(
   if (padGlow == null) {
     return;
   }
+  // Only the target updates here; animatePadGlow cross-fades uColor toward it.
   padGlow.fallbackColor.copy(faceMaterial.color);
-  (padGlow.material.uniforms.uColor!.value as Color).copy(padGlow.fallbackColor);
-  if (padGlow.material.uniforms.uPower!.value === 0) {
+  if (padGlow.targetPower === 0) {
     faceMaterial.color.copy(padGlow.fallbackColor).multiplyScalar(0.07);
   }
   if (state === 'pressed' && padGlow.state !== 'pressed') {
@@ -191,20 +221,86 @@ export function animatePadGlow(padGlow: PadGlow | undefined, timeS: number): voi
     return;
   }
   padGlow.now = timeS;
-  const target = padGlow.state === 'idle' ? 0 : 1;
-  padGlow.hover += (target - padGlow.hover) * 0.15;
+  // Frame-rate independent easing; dt clamped so a hiccup cannot jump the fade.
+  const dt = Math.min(0.1, Math.max(0, timeS - padGlow.lastAnimAt));
+  padGlow.lastAnimAt = timeS;
+  const fade = dt > 0 ? 1 - Math.exp(-dt / PAD_FADE_TAU_S) : 1;
+  const hoverTarget = padGlow.state === 'idle' ? 0 : 1;
+  padGlow.hover += (hoverTarget - padGlow.hover) * Math.min(1, dt * 9);
+  padGlow.currentColor.lerp(padGlow.fallbackColor, fade);
+  padGlow.power += (padGlow.targetPower - padGlow.power) * fade;
+  padGlow.scaleXY += (padGlow.targetScaleXY - padGlow.scaleXY) * fade;
+  padGlow.scaleZ += (padGlow.targetScaleZ - padGlow.scaleZ) * fade;
   const u = padGlow.material.uniforms;
+  (u.uColor!.value as Color).copy(padGlow.currentColor);
+  u.uPower!.value = padGlow.power;
   u.uTime!.value = timeS;
   u.uHover!.value = padGlow.hover;
   u.uPress!.value = timeS - padGlow.pressAt;
+  // The glow quad is a child of the face, so easing the face scale eases both.
+  const face = padGlow.mesh.parent;
+  if (face != null) {
+    face.scale.set(padGlow.scaleXY, padGlow.scaleXY, padGlow.scaleZ);
+  }
 }
 
 /** Preserve normal materials at full power; visibly darken only inactive pads. */
 export function setPadGlowPower(padGlow: PadGlow | undefined, powered: boolean): void {
   if (padGlow == null) return;
-  padGlow.material.uniforms.uPower!.value = powered ? 1 : 0;
+  // Target only: the shader fades between dark and lit in both directions.
+  padGlow.targetPower = powered ? 1 : 0;
   // The original mesh is shown when shader compilation fails. Keep that path
   // just as dark, and restore from the undimmed color rather than accumulating.
   padGlow.faceMaterial.color.copy(padGlow.fallbackColor)
     .multiplyScalar(powered ? 1 : 0.07);
 }
+
+
+/**
+ * Blink growth (and its release) eases instead of snapping. Falls back to an
+ * instant scale for glow-less pads (placement ghosts are never flashed).
+ */
+export function setPadGlowScale(
+  padGlow: PadGlow | undefined,
+  face: Mesh | undefined,
+  scaleXY: number,
+  scaleZ: number,
+): void {
+  if (face == null) {
+    return;
+  }
+  if (padGlow == null) {
+    face.scale.set(scaleXY, scaleXY, scaleZ);
+    return;
+  }
+  padGlow.targetScaleXY = scaleXY;
+  padGlow.targetScaleZ = scaleZ;
+}
+
+/** Debug-bridge snapshot: how far the fade still is from its targets. */
+export type PadGlowFadeState = {
+  power: number;
+  targetPower: number;
+  scale: number;
+  targetScale: number;
+  colorDistance: number;
+};
+
+export function padGlowFadeState(
+  padGlow: PadGlow | undefined,
+): PadGlowFadeState | null {
+  if (padGlow == null) {
+    return null;
+  }
+  return {
+    power: padGlow.power,
+    targetPower: padGlow.targetPower,
+    scale: padGlow.scaleXY,
+    targetScale: padGlow.targetScaleXY,
+    colorDistance: Math.hypot(
+      padGlow.currentColor.r - padGlow.fallbackColor.r,
+      padGlow.currentColor.g - padGlow.fallbackColor.g,
+      padGlow.currentColor.b - padGlow.fallbackColor.b,
+    ),
+  };
+    }
