@@ -32,6 +32,10 @@
 - [x] Subtitle transcripts grounded in shipped recordings, captions start with playback and clear on completion/cancel.
 - [ ] Test updated preview on phone/Quest before merge.
 
+## Minor polish - November 6
+- [ ] Fade button transitions between lit and dim states in both directions.
+- [ ] Add a skip dialog button.
+
 ## Future ideas - November 6,18:02 (backlog only, not implementation approval)
 - [ ] Add a score that grows exponentially with streak length.
 - [ ] Add a store where players can buy modifiers.
