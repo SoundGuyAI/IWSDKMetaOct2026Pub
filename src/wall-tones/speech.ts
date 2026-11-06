@@ -22,6 +22,9 @@ export type WallTonesClipId =
   | 'newBest1'
   | 'newBest2'
   | 'newBest3'
+  | 'barsFirstEarn'
+  | 'storeWelcome'
+  | 'storeHints'
   | 'cheer1'
   | 'cheer2'
   | 'cheer3'
@@ -83,6 +86,9 @@ export const WALL_TONES_CLIP_FILES: Record<WallTonesClipId, string> = {
   milestone10: 'milestone-10.mp3',
   milestone15: 'milestone-15.mp3',
   milestone20: 'milestone-20.mp3',
+  barsFirstEarn: 'bars-first-earn.mp3',
+  storeWelcome: 'store-welcome.mp3',
+  storeHints: 'store-hints.mp3',
   hype1: 'hype-1.mp3',
   hype2: 'hype-2.mp3',
   hype3: 'hype-3.mp3',
@@ -511,4 +517,4 @@ export function warmSpeechFromGesture(): void {
 export function randomNewBestClip(firstRecord = false): WallTonesClipId {
   if (firstRecord) return 'newBest1';
   return (['newBest1', 'newBest2', 'newBest3'] as const)[Math.floor(Math.random() * 3)]!;
-    }
+}
