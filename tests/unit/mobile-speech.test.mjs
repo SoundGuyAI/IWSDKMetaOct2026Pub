@@ -56,7 +56,7 @@ test('Start plays welcome synchronously in gesture; entry consumes it without du
     return started;
   });
   const voice = new h.speech.WallTonesSpeech();
-  const welcome = voice.speakAsync('welcome');
+  const welcome = voice.speakAsync('welcome', true);
   await Promise.resolve();
   h.instances[0].end();
   await welcome;
@@ -77,4 +77,19 @@ test('rejected Start playback rejects to caller and can be retried with another 
   await h.gesture(() => h.speech.startMobileWelcomeFromGesture());
   assert.equal(h.instances.length, 1);
   assert.equal(h.instances[0].played.length, 1);
+});
+
+
+test('a separate settings welcome preview plays selected voice instead of consuming startup token', async () => {
+  const h = await loadSpeech();
+  await h.gesture(() => h.speech.startMobileWelcomeFromGesture());
+  h.speech.unlockSpeechFromGesture();
+  h.instances[0].end();
+  h.speech.setVoiceGender('female');
+  const preview = new h.speech.WallTonesSpeech().speakAsync('welcome');
+  await Promise.resolve();
+  assert.equal(h.instances[0].played.length, 2);
+  assert.match(h.instances[0].played[1], /female\/welcome.mp3$/);
+  h.instances[0].end();
+  await preview;
 });
