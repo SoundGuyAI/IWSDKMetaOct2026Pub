@@ -607,7 +607,7 @@ export class WallTonesSystem extends createSystem({
         !(needsExplicitMobileSoundUnlock() && !isHtmlAudioPoolUnlocked());
       if (speechWillPlay) {
         this.welcomeSpoken = true;
-        this.speech.speak('welcome');
+        this.speech.speak('welcome', true);
         // Same sentence the how-to-play clip opens with, so say it up front.
         this.speech.speak('pointAndPress');
         this.startPromptSpoken = true;
@@ -2647,4 +2647,4 @@ export class WallTonesSystem extends createSystem({
       window.setTimeout(resolve, seconds * 1000);
     });
   }
-  }
+                                  }
