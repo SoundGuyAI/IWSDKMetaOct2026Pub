@@ -11,6 +11,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Check whether Pages publishing is needed
+    runs-on: ubuntu-latest
+    outputs:
+      publish: ${{ steps.filter.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Inspect the full main-push diff
+        id: filter
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          # Default to publishing for PRs, manual runs, and unavailable history.
+          publish=true
+          if [ "$GITHUB_EVENT_NAME" = 'push' ] && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            git diff --no-renames --name-only -z "$BEFORE" "$GITHUB_SHA" > changed-paths.bin
+            publish=$(python3 -c 'import pathlib; paths=pathlib.Path("changed-paths.bin").read_bytes().split(b"\0"); print(str(any(p and not p.endswith(b".md") for p in paths)).lower())')
+          fi
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          if [ "$publish" = false ]; then
+            echo 'Markdown-only push; skipping Pages build and publish. Validation still runs.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   build-and-typecheck:
     runs-on: ubuntu-latest
     steps:
@@ -45,8 +71,8 @@ jobs:
 
   deploy-pages:
     name: Build and deploy GitHub Pages
-    needs: [build-and-typecheck, e2e-desktop]
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [changes, build-and-typecheck, e2e-desktop]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && needs.changes.outputs.publish == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
