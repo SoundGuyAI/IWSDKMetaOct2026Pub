@@ -1,4 +1,5 @@
 import {
+  ReferenceSpaceType,
   SessionMode,
   World,
   type WorldOptions,
@@ -49,12 +50,26 @@ function buildArWorldOptions(): WorldOptions {
       ...baseXr,
       sessionMode: SessionMode.ImmersiveAR,
       offer: 'none',
+      // Prefer an unbounded tracking space in MR (backlog 20): it declares a
+      // move-freely experience instead of one tied to the guardian's bounded
+      // floor area. Fallback keeps local-floor behavior when unbounded is not
+      // granted, so wall/table placement is unchanged there.
+      referenceSpace: {
+        type: ReferenceSpaceType.Unbounded,
+        fallbackOrder: [
+          ReferenceSpaceType.LocalFloor,
+          ReferenceSpaceType.Local,
+          ReferenceSpaceType.Viewer,
+        ],
+      },
       features: {
         handTracking: true,
         planeDetection: true,
         meshDetection: true,
         anchors: true,
         hitTest: true,
+        // Ask the UA for the unbounded space; granted only where supported.
+        unbounded: true,
       },
     },
     features: {
