@@ -25,7 +25,11 @@ if (needsExplicitMobileSoundUnlock()) {
       // Web Audio work can lose Safari's transient user activation.
       const welcomeStarted = startMobileWelcomeFromGesture();
       unlockSpeechFromGesture();
-      await welcomeStarted;
+      // Narration is optional. A missing/blocked clip must not trap the player
+      // outside the game; the normal Sound on / pad gestures remain available.
+      await welcomeStarted.catch((error) => {
+        console.warn('[wall-tones] welcome playback unavailable', error);
+      });
       await startInitialWorld(container);
       gate.remove();
     } catch (error) {
