@@ -2378,10 +2378,13 @@ export class WallTonesSystem extends createSystem({
     const pad = this.pads[padIndex];
     if (pad != null) {
       flashPad(pad, true);
-      if (this.useDesktopInput()) {
-        playPadToneFromUserAction(padIndex);
-      } else {
-        void playPadTone(padIndex);
+      // A wrong pad gets only the failure buzzer, not its musical pad note.
+      if (padIndex === expected) {
+        if (this.useDesktopInput()) {
+          playPadToneFromUserAction(padIndex);
+        } else {
+          void playPadTone(padIndex);
+        }
       }
       window.setTimeout(() => flashPad(pad, false), 350);
     }
@@ -2432,14 +2435,9 @@ export class WallTonesSystem extends createSystem({
     this.beginRoundWithIntro();
   }
 
-  /**
-   * A failed run earns a success cheer when it made progress (completed at
-   * least one pattern); missing on the first pattern gets a sympathy line.
-   * Confirmed by Oded 2026-11-05: cheers at run end with progress, no voice
-   * after ordinary rounds, milestones every 5.
-   */
+  /** Praise a failed run only if it beat the best from before that run. */
   private runEarnedCheer(): boolean {
-    return this.game.streak > 0;
+    return this.game.runImprovedBest;
   }
 
   private async onWrongInput(): Promise<void> {
