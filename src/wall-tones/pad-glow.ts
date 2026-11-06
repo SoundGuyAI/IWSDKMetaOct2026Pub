@@ -98,6 +98,7 @@ export type PadGlow = {
   mesh: Mesh;
   material: ShaderMaterial;
   faceMaterial: MeshBasicMaterial;
+  fallbackColor: Color;
   now: number;
   pressAt: number;
   state: 'idle' | 'hover' | 'pressed';
@@ -163,7 +164,7 @@ export function createPadGlow(
     }
   };
   face.add(mesh);
-  return { mesh, material, faceMaterial, now: 0, pressAt: -99, state: 'idle', hover: 0 };
+  return { mesh, material, faceMaterial, fallbackColor: faceMaterial.color.clone(), now: 0, pressAt: -99, state: 'idle', hover: 0 };
 }
 
 export function syncPadGlow(
@@ -174,7 +175,11 @@ export function syncPadGlow(
   if (padGlow == null) {
     return;
   }
-  (padGlow.material.uniforms.uColor!.value as Color).copy(faceMaterial.color);
+  padGlow.fallbackColor.copy(faceMaterial.color);
+  (padGlow.material.uniforms.uColor!.value as Color).copy(padGlow.fallbackColor);
+  if (padGlow.material.uniforms.uPower!.value === 0) {
+    faceMaterial.color.copy(padGlow.fallbackColor).multiplyScalar(0.07);
+  }
   if (state === 'pressed' && padGlow.state !== 'pressed') {
     padGlow.pressAt = padGlow.now;
   }
@@ -198,4 +203,8 @@ export function animatePadGlow(padGlow: PadGlow | undefined, timeS: number): voi
 export function setPadGlowPower(padGlow: PadGlow | undefined, powered: boolean): void {
   if (padGlow == null) return;
   padGlow.material.uniforms.uPower!.value = powered ? 1 : 0;
+  // The original mesh is shown when shader compilation fails. Keep that path
+  // just as dark, and restore from the undimmed color rather than accumulating.
+  padGlow.faceMaterial.color.copy(padGlow.fallbackColor)
+    .multiplyScalar(powered ? 1 : 0.07);
 }
