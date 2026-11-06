@@ -1061,7 +1061,13 @@ this.world
 }
 
 /** Skip voice: drop the playing and queued narration lines. */
+/** Bumped when the USER skips narration, so scripted multi-line
+ * announcements stop enqueueing their remaining lines. Internal
+ * speech.cancel() calls (instruction replacement) do not touch this. */
+private narrationInterrupt = 0;
+
 private onSkipVoice(): void {
+this.narrationInterrupt += 1;
 this.speech.cancel();
 }
 
@@ -1964,6 +1970,7 @@ return;
 }
 this.statusText = 'Listen to the intro…';
 this.renderPanel();
+const narrMark = this.narrationInterrupt;
 if (leadInLine != null) {
 await this.speech.speakAsync(leadInLine);
 await this.wait(0.35);
@@ -1976,9 +1983,13 @@ if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
 }
 // Skip the opening "Point and press..." sentence if the welcome already said it.
+// A user skip during the intro also swallows this remaining line, without
+// aborting the round flow that follows.
+if (narrMark === this.narrationInterrupt) {
 await this.speech.speakAsync(
 this.startPromptSpoken ? 'howToPlayRest' : 'howToPlay',
 );
+}
 this.startPromptSpoken = false;
 await this.wait(POST_INTRO_DELAY_S);
 if (!this.experienceActive || this.flowPhase !== 'playing') {
@@ -2488,18 +2499,22 @@ this.renderPanel();
 const streak = this.game.streak;
 const increasedRecord = shouldAnnounceRecord(streak, previousBest, this.firstRun);
 this.playbackQueue = this.playbackQueue.then(async () => {
+const narrMark = this.narrationInterrupt;
+const narrIntact = () =>
+this.experienceActive && this.flowPhase === 'playing' &&
+narrMark === this.narrationInterrupt;
 if (increasedRecord) {
 await this.speech.speakAsync(randomNewBestClip(previousBest === 0));
 if (!this.experienceActive || this.flowPhase !== 'playing') return;
 }
 if (streak > 0 && streak % 5 === 0) {
-await this.speech.speakAsync(milestoneClipFor(streak));
-if (this.experienceActive && this.flowPhase === 'playing') {
+if (narrIntact()) await this.speech.speakAsync(milestoneClipFor(streak));
+if (narrIntact()) {
 await this.speech.speakAsync(randomCheerClip());
 }
 await this.wait(0.35);
 } else {
-if (increasedRecord) await this.speech.speakAsync(randomCheerClip());
+if (increasedRecord && narrIntact()) await this.speech.speakAsync(randomCheerClip());
 await this.wait(BETWEEN_ROUNDS_DELAY_S);
 }
 if (!this.experienceActive || this.flowPhase !== 'playing') {
