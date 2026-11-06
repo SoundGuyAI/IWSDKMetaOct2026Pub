@@ -34,7 +34,6 @@ Personal backlog for what still needs work — not an agent task list. Move item
 
 ### MR and menu polish - November 6
 
-- [ ] 20. In mixed reality, investigate whether the boundary can be ignored.
 - [ ] 21. In MR, show subtitles at the bottom of the view, statically attached to the head, in a readable position.
 - [ ] 22. In the game menu, make the window draggable by default; remove the top button's drag-mode toggle.
 - [ ] 23. In setup mode, hide scoring info; show it only while the game loop is active.
@@ -45,6 +44,8 @@ Personal backlog for what still needs work — not an agent task list. Move item
 ## In progress
 
 ## Done
+
+- [x] 20. In mixed reality, investigate whether the boundary can be ignored. Resolved in PR #28 (merged 2026-11-07): the MR session now requests an unbounded reference space with local-floor fallback; the user verified the boundary no longer appears on his headset.
 
 - [x] Blink uses the cube's own color (saturated, slightly lighter), not white. Checked with before/after frames of all four pad flashes in the desktop build. Not yet checked on a headset.
 - [x] Replace the Wall Tones placeholder panel with mode choice, best streak, and round status. Keep `back-to-menu-button`.
@@ -68,3 +69,4 @@ Personal backlog for what still needs work — not an agent task list. Move item
 - **2026-11-03 (Asia/Jerusalem):** Fixed Quest/browser audio (unlock Web Audio on menu + first pad tap) and flat start (pads were ignored until tap-to-start). Moved/shrank HUD and enlarged pad hit boxes so all four grid pads are reachable.
 - **2026-11-03 (Asia/Jerusalem):** Quieter voice (streak praise every 5 only); stronger pad tones (pointerdown audio priming + HTML WAV fallback).
 - **2026-11-03 (Asia/Jerusalem):** Air placement no longer sticks a solid pad on the face — ghost follows the hand as a hollow outline, stays ≥ ~0.7 m from the eyes, uses smaller sitting pads, and solidifies on pinch.
+
