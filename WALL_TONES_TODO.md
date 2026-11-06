@@ -13,10 +13,6 @@ Personal backlog for what still needs work — not an agent task list. Move item
 - [ ] 7. Wrist band that shows the buttons playing the pattern
 - [ ] 8. Incremental features (park smaller follow-ups here as they come up)
 
-### Minor polish - November 6
-- [ ] 9. Fade button transitions between lit and dim states in both directions.
-- [ ] 10. Add a skip dialog button.
-
 ### Future ideas - November 6,18:02 (backlog only, not implementation approval)
 - [ ] 11. Add a score that grows exponentially with streak length.
    - [ ] 11a. Add player-applied multipliers to the scoring system; mechanics unspecified.
@@ -46,6 +42,9 @@ Personal backlog for what still needs work — not an agent task list. Move item
 - [ ] 30. Research: can the SDK track how much a player moves (fitness-style) in wall or mixed wall+table modes? If not, estimate from the distances between the placed pads. For later score use; no health or calorie claims.
 
 ## In progress
+
+- [ ] 9. Fade button transitions between lit and dim states in both directions.
+- [ ] 10. Add a skip dialog button.
 
 ## Done
 

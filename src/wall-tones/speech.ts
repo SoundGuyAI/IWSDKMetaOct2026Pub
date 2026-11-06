@@ -357,6 +357,18 @@ export class WallTonesSpeech {
   private generation = 0;
   private currentSource: AudioBufferSourceNode | null = null;
   private currentElement: HTMLAudioElement | null = null;
+  /** Settles the active HTMLAudio playback; pause() alone never resolves it. */
+  private activeElementFinish: (() => void) | null = null;
+  /** Lines queued or playing right now; drives the Skip voice button. */
+  private pendingLines = 0;
+  /** One settle hook per counted line; cancel() flushes them so a superseded
+   * line still awaiting decode/playback stops counting immediately instead of
+   * whenever its promise happens to resolve. */
+  private busyRuns = new Set<() => void>();
+  /** One settle hook per in-flight speakAsync run; cancel() resolves them so
+   * playback-queue callbacks awaiting a superseded line resume at once instead
+   * of whenever its decode/fetch happens to complete. */
+  private runSettlers = new Set<() => void>();
 
   /** False while iOS-style speech is still locked, so speak() would be dropped. */
   canSpeakNow(): boolean {
@@ -367,23 +379,46 @@ export class WallTonesSpeech {
     void this.speakAsync(id, startupEntry);
   }
 
+  /** True while any narration line is queued or playing (skip can cancel it). */
+  isBusy(): boolean {
+    return this.pendingLines > 0;
+  }
+
   /** Play a clip and resolve when it finishes, fails, or times out. */
   speakAsync(id: WallTonesClipId, startupEntry = false): Promise<void> {
     if (needsSpeechUnlock() && !speechUnlocked) {
       return Promise.resolve();
     }
+    this.pendingLines += 1;
     const gen = this.generation;
+    const uncount = () => {
+      if (this.busyRuns.delete(uncount)) {
+        this.pendingLines -= 1;
+      }
+    };
+    this.busyRuns.add(uncount);
+    let settleRun!: () => void;
+    const cancelled = new Promise<void>((resolve) => {
+      settleRun = resolve;
+    });
+    this.runSettlers.add(settleRun);
     const run = this.chain.then(() => {
       if (gen !== this.generation) {
         return; // superseded by cancel() while queued
       }
-      return this.playClip(id, gen, startupEntry);
+      // Race the line against cancel(): a superseded line stuck awaiting a
+      // stalled decode/fetch still resolves its run, so callers awaiting
+      // speakAsync (round intro, milestone chains) resume immediately.
+      return Promise.race([this.playClip(id, gen, startupEntry), cancelled]);
     });
     this.chain = run.then(
       () => undefined,
       () => undefined,
     );
-    return run;
+    return run.finally(() => {
+      this.runSettlers.delete(settleRun);
+      uncount();
+    });
   }
 
   private async playClip(id: WallTonesClipId, gen: number, startupEntry: boolean): Promise<void> {
@@ -393,9 +428,19 @@ export class WallTonesSpeech {
         startupWelcome = null;
         this.currentElement = mobileVoice;
         try {
-          await welcome;
+          // Await the gesture-primed welcome, but let cancel() settle it too:
+          // pausing the element never resolves this promise on its own, which
+          // would keep isBusy() (Skip voice) stuck until the clip's watchdog.
+          await new Promise<void>((resolve) => {
+            this.activeElementFinish = resolve;
+            void Promise.resolve(welcome).then(
+              () => resolve(),
+              () => resolve(),
+            );
+          });
         } finally {
           if (gen === this.generation) this.currentElement = null;
+          this.activeElementFinish = null;
         }
         return;
       }
@@ -464,6 +509,7 @@ export class WallTonesSpeech {
         }
         settled = true;
         this.currentElement = null;
+        this.activeElementFinish = null;
         resolve();
       };
       try {
@@ -473,6 +519,7 @@ export class WallTonesSpeech {
         audio.src = clipUrl(id);
         audio.currentTime = 0;
         this.currentElement = audio;
+        this.activeElementFinish = finish;
         audio.onended = finish;
         audio.onerror = finish;
         // Long setup clips must not be cut by a short media watchdog.
@@ -498,6 +545,19 @@ export class WallTonesSpeech {
       this.currentElement.pause();
       this.currentElement = null;
     }
+    // pause() fires neither ended nor error, so the playElement promise would
+    // otherwise wait for its watchdog and keep isBusy() (Skip voice) stuck on.
+    this.activeElementFinish?.();
+    this.activeElementFinish = null;
+    // Superseded lines can still be awaiting decode/fetch; stop counting them
+    // now rather than when their promises happen to settle, and resolve those
+    // runs so anything awaiting speakAsync resumes immediately.
+    for (const uncount of [...this.busyRuns]) {
+      uncount();
+    }
+    for (const settleRun of [...this.runSettlers]) {
+      settleRun();
+    }
     this.chain = Promise.resolve();
   }
 }
@@ -511,4 +571,4 @@ export function warmSpeechFromGesture(): void {
 export function randomNewBestClip(firstRecord = false): WallTonesClipId {
   if (firstRecord) return 'newBest1';
   return (['newBest1', 'newBest2', 'newBest3'] as const)[Math.floor(Math.random() * 3)]!;
-    }
+}

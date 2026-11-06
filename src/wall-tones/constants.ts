@@ -12,6 +12,8 @@ export const NOTE_DURATION_S = 0.55;
 export const NOTE_GAP_S = 0.28;
 /** Extra hold while a pad stays lit during fanfare / pattern playback. */
 export const BLINK_HOLD_S = 0.22;
+/** Pad lit<->dim cross-fade time constant (seconds); ~95% settled in 3 tau. */
+export const PAD_FADE_TAU_S = 0.05;
 /** Inner press slab depth (meters) — short so a poke registers near the face. */
 export const TOUCH_PRESS_DEPTH_M = 0.14;
 /** Outer proximity / hover volume depth (meters). */
@@ -91,8 +93,10 @@ export const PHONE_GRID_VERTICAL_M = -0.42;
  * card stays readable and in front if anything still overlaps.
  */
 export const PHONE_PANEL_FLAT = {
-  position: [0, 1.72, -0.72] as const,
-  scale: 0.18,
+  // Near full screen width on a portrait phone with larger text (user
+  // feedback November 7); raised slightly to keep the pad grid clear below.
+  position: [0, 1.8, -0.72] as const,
+  scale: 0.226,
 } as const;
 export const PAD_GAP_M = 0.25;
 /** Offset from the tracked hand/grip — not from the headset (0.35 at the face was unusable). */

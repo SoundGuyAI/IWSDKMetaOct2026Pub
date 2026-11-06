@@ -20,7 +20,12 @@ import {
   WALL_TONE_PADS,
 } from './constants.js';
 import { WallTonePad } from './wall-tone-pad-component.js';
-import { createPadGlow, syncPadGlow, type PadGlow } from './pad-glow.js';
+import {
+  createPadGlow,
+  setPadGlowScale,
+  syncPadGlow,
+  type PadGlow,
+} from './pad-glow.js';
 
 /**
  * Minimum sRGB distance (0-1 per channel) between a pad's idle and hover
@@ -399,7 +404,7 @@ export function applyPadVisualState(
   const spec = WALL_TONE_PADS[pad.padIndex];
   material.color.setHex(spec?.color ?? 0xffffff);
   if (face != null) {
-    face.scale.set(1, 1, 1);
+    setPadGlowScale(pad.glow, face, 1, 1);
   }
   if (state === 'hover') {
     // Entering the wide proximity box: richer sat, slightly brighter.
@@ -447,11 +452,11 @@ export function flashPad(pad: PadRuntime, active: boolean): void {
     const hsl = { h: 0, s: 0, l: 0 };
     material.color.getHSL(hsl);
     material.color.setHSL(hsl.h, 1, Math.min(0.62, hsl.l + 0.1));
-    face?.scale.set(1.14, 1.14, 1.35);
+    setPadGlowScale(pad.glow, face, 1.14, 1.35);
     syncPadGlow(pad.glow, material, 'pressed');
     return;
   }
-  face?.scale.set(1, 1, 1);
+  setPadGlowScale(pad.glow, face, 1, 1);
   applyPadVisualState(pad, pad.hoverInside ? 'hover' : 'idle');
 }
 
