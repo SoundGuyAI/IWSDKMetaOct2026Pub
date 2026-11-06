@@ -1,5 +1,5 @@
 import { CLIP_TRANSCRIPTS } from './clip-transcripts.js';
-import { startSpokenCaption, endSpokenCaption } from './accessibility.js';
+import { startSpokenCaption, endSpokenCaption, hearingSubtitlesEnabled } from './accessibility.js';
 import { NEW_BEST_MALE } from './new-best-male.js';
 import { NEW_BEST_FEMALE } from './new-best-female.js';
 /**
@@ -211,11 +211,27 @@ export function startMobileWelcomeFromGesture(): Promise<void> {
   audio.currentTime = 0;
   // play() itself, not a Promise callback, must run during trusted activation.
   let caption: number | undefined;
-  audio.onplaying = () => { caption = startSpokenCaption(CLIP_TRANSCRIPTS.welcome); };
+  let earlyCaption: HTMLDivElement | undefined;
+  audio.onplaying = () => {
+    caption = startSpokenCaption(CLIP_TRANSCRIPTS.welcome);
+    if (hearingSubtitlesEnabled()) {
+      earlyCaption = document.createElement('div');
+      earlyCaption.id = 'wall-tones-startup-subtitle';
+      earlyCaption.setAttribute('aria-live', 'polite');
+      earlyCaption.textContent = CLIP_TRANSCRIPTS.welcome;
+      Object.assign(earlyCaption.style, {
+        position: 'fixed', bottom: '24px', left: '12px', right: '12px',
+        padding: '12px', background: '#081019', color: '#fff', borderRadius: '10px',
+        font: '16px/1.4 sans-serif', textAlign: 'center', zIndex: '10000',
+      });
+      document.body.appendChild(earlyCaption);
+    }
+  };
   const started = audio.play();
   const finished = new Promise<void>((resolve) => {
     const finish = () => {
       if (caption != null) endSpokenCaption(caption);
+      earlyCaption?.remove();
       audio.onplaying = null;
       audio.removeEventListener('ended', finish);
       audio.removeEventListener('error', finish);
@@ -495,4 +511,4 @@ export function warmSpeechFromGesture(): void {
 export function randomNewBestClip(firstRecord = false): WallTonesClipId {
   if (firstRecord) return 'newBest1';
   return (['newBest1', 'newBest2', 'newBest3'] as const)[Math.floor(Math.random() * 3)]!;
-  }
+}
