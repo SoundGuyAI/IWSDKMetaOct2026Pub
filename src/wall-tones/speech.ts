@@ -1,3 +1,5 @@
+import { CLIP_TRANSCRIPTS } from './clip-transcripts.js';
+import { startSpokenCaption, endSpokenCaption } from './accessibility.js';
 import { NEW_BEST_MALE } from './new-best-male.js';
 import { NEW_BEST_FEMALE } from './new-best-female.js';
 /**
@@ -335,7 +337,7 @@ export class WallTonesSpeech {
         return; // superseded while resuming the audio context
       }
       if (context != null) {
-        return this.playBuffer(context, buffer);
+        return this.playBuffer(context, buffer, id);
       }
     }
     // Fallback: plain HTMLAudio (e.g. Web Audio blocked before the first gesture).
@@ -345,14 +347,17 @@ export class WallTonesSpeech {
   private playBuffer(
     context: AudioContext,
     buffer: AudioBuffer,
+    id: WallTonesClipId,
   ): Promise<void> {
     return new Promise((resolve) => {
       const source = context.createBufferSource();
       source.buffer = buffer;
       source.connect(context.destination);
       this.currentSource = source;
+      let caption: number | undefined;
       let settled = false;
       const finish = () => {
+        if (caption != null) endSpokenCaption(caption);
         if (settled) {
           return;
         }
@@ -367,6 +372,7 @@ export class WallTonesSpeech {
       window.setTimeout(finish, buffer.duration * 1000 + 800);
       try {
         source.start();
+        caption = startSpokenCaption(CLIP_TRANSCRIPTS[id]);
       } catch {
         finish();
       }
@@ -375,8 +381,10 @@ export class WallTonesSpeech {
 
   private playElement(id: WallTonesClipId): Promise<void> {
     return new Promise((resolve) => {
+      let caption: number | undefined;
       let settled = false;
       const finish = () => {
+        if (caption != null) endSpokenCaption(caption);
         if (settled) {
           return;
         }
@@ -390,6 +398,7 @@ export class WallTonesSpeech {
         audio.onended = finish;
         audio.onerror = finish;
         window.setTimeout(finish, 10000);
+        audio.onplaying = () => { caption = startSpokenCaption(CLIP_TRANSCRIPTS[id]); };
         void audio.play().catch(finish);
       } catch {
         finish();
@@ -398,6 +407,7 @@ export class WallTonesSpeech {
   }
 
   cancel(): void {
+    endSpokenCaption();
     this.generation += 1;
     try {
       this.currentSource?.stop();
