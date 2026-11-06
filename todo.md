@@ -1,5 +1,6 @@
 # Wall Tones 2 - November 6 notes
 
+
 ## Misc PR25 (merge approved November 6, final checks pending)
 - [x] Debug colliders off by default; manual tuning toggle retained.
 - [x] Page title: Wall Tones 2: too fast to wall. Game title: Wall Tones 2.
@@ -15,14 +16,17 @@
 - [ ] Typecheck/build, pointer play, screenshot checks, CI/Codex review, deployed preview and test checklist.
 - [x] User preview/merge approval received November 6 at17:54; final checks still required.
 
+
 ## Approved merges
 - [x] PR21: startup/restart fanfare timing. Merged 10e6419.
 - [x] PR23: short pad-placement prompts and cancellation safety. Merged 235d94e.
 - [x] PR24: failure encouragement / gentle single buzzer. Merged 12723fc.
 - [x] Combined main deployment21/22/23/24 verified live November 6 at17:33.
 
+
 ## Separate PR22 - merged
 - [x] Native Start / persistent mobile voice repair passed actual iPhone test, approved and merged1740739. Production verified November 6 at17:33.
+
 
 ## Follow-up preview revision (November6,16:45)
 - [x] First run record announcements only3/6/9, then every record extension after10; later runs every new-best extension. Random approved lines retained.
@@ -32,9 +36,11 @@
 - [x] Subtitle transcripts grounded in shipped recordings, captions start with playback and clear on completion/cancel.
 - [ ] Test updated preview on phone/Quest before merge.
 
+
 ## Minor polish - November 6
 - [ ] Fade button transitions between lit and dim states in both directions.
 - [ ] Add a skip dialog button.
+
 
 ## Future ideas - November 6,18:02 (backlog only, not implementation approval)
 - [ ] Add a score that grows exponentially with streak length.
@@ -49,3 +55,22 @@
 - [ ] Rickroll fanfare. Open question: how many buttons does it need, and are 6 enough?
 - [ ] Save score, streak and settings locally.
 - [ ] Achievements for streak, score, story and other milestones.
+
+
+
+
+## MR and menu polish - November 6
+
+
+- [ ] In mixed reality, investigate whether the boundary can be ignored.
+- [ ] In MR, show subtitles at the bottom of the view, statically attached to the head, in a readable position.
+- [ ] In the game menu, make the window draggable by default; remove the top button's drag-mode toggle.
+- [ ] In setup mode, hide scoring info; show it only while the game loop is active.
+- [ ] Before play-mode selection in setup mode, show the scanning data and allow a rescan.
+
+
+
+
+
+
+
