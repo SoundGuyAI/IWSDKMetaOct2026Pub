@@ -12,6 +12,8 @@ export const NOTE_DURATION_S = 0.55;
 export const NOTE_GAP_S = 0.28;
 /** Extra hold while a pad stays lit during fanfare / pattern playback. */
 export const BLINK_HOLD_S = 0.22;
+/** Pad lit<->dim cross-fade time constant (seconds); ~95% settled in 3 tau. */
+export const PAD_FADE_TAU_S = 0.05;
 /** Inner press slab depth (meters) — short so a poke registers near the face. */
 export const TOUCH_PRESS_DEPTH_M = 0.14;
 /** Outer proximity / hover volume depth (meters). */
