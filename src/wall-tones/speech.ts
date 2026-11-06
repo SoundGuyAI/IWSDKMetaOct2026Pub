@@ -352,12 +352,18 @@ export class WallTonesSpeech {
     return run;
   }
 
-  private async playClip(id: WallTonesClipId): Promise<void> {
+  private async playClip(id: WallTonesClipId, gen: number): Promise<void> {
     if (needsExplicitMobileSoundUnlock() && mobileVoice != null) {
       if (id === 'welcome' && startupWelcome != null) {
         const welcome = startupWelcome;
         startupWelcome = null;
-        return welcome;
+        this.currentElement = mobileVoice;
+        try {
+          await welcome;
+        } finally {
+          if (gen === this.generation) this.currentElement = null;
+        }
+        return;
       }
       return this.playElement(id);
     }
