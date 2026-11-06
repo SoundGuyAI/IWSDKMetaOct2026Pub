@@ -1,3 +1,5 @@
+import { NEW_BEST_MALE } from './new-best-male.js';
+import { NEW_BEST_FEMALE } from './new-best-female.js';
 /**
  * Prerecorded voice lines for Wall Tones (English).
  *
@@ -176,6 +178,9 @@ export function setVoiceGender(gender: WallTonesVoiceGender): void {
 }
 
 function clipUrl(id: WallTonesClipId): string {
+  if (id === 'newBest1' || id === 'newBest2' || id === 'newBest3') {
+    return (currentGender === 'female' ? NEW_BEST_FEMALE : NEW_BEST_MALE)[id];
+  }
   const file = WALL_TONES_CLIP_FILES[id];
   // document.baseURI keeps the path correct under Vite's relative base ('./'),
   // including GitHub Pages subpaths and the dev tunnel. Each voice gender is a
