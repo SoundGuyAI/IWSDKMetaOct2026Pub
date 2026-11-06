@@ -242,6 +242,14 @@ export function animatePadGlow(padGlow: PadGlow | undefined, timeS: number): voi
   if (face != null) {
     face.scale.set(padGlow.scaleXY, padGlow.scaleXY, padGlow.scaleZ);
   }
+  // The flat-face fallback (visible only when the shader failed to build)
+  // eases through the same values instead of snapping: the color lerps and
+  // the dimming follows eased power. Gated on visibility so the normal path
+  // keeps the face material exactly as the pad state writers left it.
+  if (padGlow.faceMaterial.visible) {
+    padGlow.faceMaterial.color.copy(padGlow.currentColor)
+      .multiplyScalar(0.07 + 0.93 * padGlow.power);
+  }
 }
 
 /** Preserve normal materials at full power; visibly darken only inactive pads. */
@@ -303,4 +311,4 @@ export function padGlowFadeState(
       padGlow.currentColor.b - padGlow.fallbackColor.b,
     ),
   };
-    }
+}
