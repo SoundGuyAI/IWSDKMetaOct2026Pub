@@ -1,6 +1,6 @@
 name: PR preview
 
-# Builds every same-repo pull request and publishes it to
+# Builds same-repo pull requests with non-Markdown changes and publishes them to
 #   https://<owner>.github.io/<repo>/pr-preview/pr-<number>/
 # on the gh-pages branch, next to (never replacing) the production site.
 # The CI deploy job keeps the pr-preview/ folder when it republishes main.
@@ -25,9 +25,39 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Check whether a preview build is needed
+    if: github.event_name == 'workflow_dispatch' || (github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.filter.outputs.build }}
+    steps:
+      - name: Ignore Markdown-only pull requests
+        id: filter
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+        run: |
+          set -euo pipefail
+          # An explicit manual rebuild always remains available.
+          if [ "$GITHUB_EVENT_NAME" = 'workflow_dispatch' ]; then
+            echo 'build=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Read every page, not just the first 100 changed files.
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100" \
+            --jq '.[] | .filename, (.previous_filename // empty)' > changed-files.txt
+          if grep -qvE '\.md$' changed-files.txt; then
+            echo 'build=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'build=false' >> "$GITHUB_OUTPUT"
+            echo 'Markdown-only pull request; skipping preview build and publish.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   deploy-preview:
     name: Build and publish PR preview
-    if: github.event_name == 'workflow_dispatch' || (github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository)
+    needs: changes
+    if: needs.changes.outputs.build == 'true'
     runs-on: ubuntu-latest
     env:
       PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
