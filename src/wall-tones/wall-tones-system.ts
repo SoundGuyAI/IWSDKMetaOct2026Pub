@@ -89,7 +89,7 @@ import {
   solidifyGhostPad,
   type PadRuntime,
 } from './pads.js';
-import { animatePadGlow } from './pad-glow.js';
+import { animatePadGlow, setPadGlowPower } from './pad-glow.js';
 import {
   applyRoomSetupTints,
   clearRoomSetupTints,
@@ -104,6 +104,7 @@ import {
   WallTonesSpeech,
   milestoneClipFor,
   randomCheerClip,
+  randomNewBestClip,
   randomWrongClip,
   resetSpeechUnlock,
   unlockSpeechFromGesture,
@@ -256,8 +257,10 @@ export class WallTonesSystem extends createSystem({
   private pointerAudioBound = false;
   private mobileSoundButton: HTMLButtonElement | null = null;
   private mediaUnlockApplied = false;
-  /** Wireframe hover/press volumes on pads; VR only, on by default for tuning. */
-  private showTouchDebug = true;
+  /** Wireframe hover/press volumes on pads; VR only, off by default; opt in for tuning. */
+  private showTouchDebug = false;
+  private sequenceIconKey = '';
+  private sequenceIconRow: UIKit.Container | null = null;
   /** Setup HUD is world-anchored; look-away past a threshold re-snaps it. */
   private panelWorldAnchored = false;
   private panelSnapActive = false;
@@ -310,7 +313,7 @@ export class WallTonesSystem extends createSystem({
     if (awaitingMode === '1' && getActiveWorldKind() === 'walltones-ar') {
       sessionStorage.removeItem('wall-tones-awaiting-mode');
       this.experienceActive = true;
-      document.title = 'Wall Tones';
+      document.title = 'Wall Tones 2: too fast to wall';
       this.bindPanelIfNeeded();
       this.clearPads();
       this.flatAwaitingStart = false;
@@ -338,7 +341,7 @@ export class WallTonesSystem extends createSystem({
       sessionStorage.removeItem('wall-tones-setup-mode');
       this.setupMode = pendingSetup;
       this.experienceActive = true;
-      document.title = 'Wall Tones';
+      document.title = 'Wall Tones 2: too fast to wall';
       const storedHand = sessionStorage.getItem('wall-tones-dominant-hand');
       if (storedHand === 'left' || storedHand === 'right') {
         this.dominantHand = storedHand;
@@ -365,6 +368,12 @@ export class WallTonesSystem extends createSystem({
     if (this.pads.length > 0) {
       const glowTime = performance.now() / 1000;
       for (const pad of this.pads) {
+        const pressable = this.flowPhase === 'playing' &&
+          (this.flatAwaitingStart || this.game.phase === 'input');
+        // The demonstrated note still lights during playback; all other
+        // disabled pads look switched off until the player's turn.
+        setPadGlowPower(pad.glow, pressable || this.blinkCuePad === pad ||
+          (pad.visualState === 'pressed' && !pad.fingerInside));
         animatePadGlow(pad.glow, glowTime);
       }
     }
@@ -487,7 +496,7 @@ export class WallTonesSystem extends createSystem({
     }
     this.experienceActive = true;
     this.game.resetAllScores();
-    document.title = 'Wall Tones';
+    document.title = 'Wall Tones 2: too fast to wall';
     this.bindPanelIfNeeded();
     this.bindPointerAudioUnlock();
 
@@ -1526,8 +1535,11 @@ export class WallTonesSystem extends createSystem({
     this.setAirOrientUiVisible(true);
     this.setRescanUiVisible(false);
     this.setRepeatUiVisible(false);
-    this.speech.speak(line);
-    this.speech.speak('chooseAirOrient');
+    // Placement is already visible. Skip queued mode/orientation speeches and
+    // give only the existing concise first-pad positioning instruction.
+    this.speech.cancel();
+    // Keep useful failure context when automatic placement could not find space.
+    if (line !== 'chooseAirMenu') this.speech.speak(line);
     this.speech.speak('airPlace1');
     this.statusText =
       this.setupMode === 'air'
@@ -2392,6 +2404,9 @@ export class WallTonesSystem extends createSystem({
       void this.onWrongInput();
       return;
     }
+    // Any instruction still finishing is obsolete once a correct pad is hit.
+    this.speech.cancel();
+    const previousBest = this.game.bestStreak;
     const completed = this.game.onCorrectInput();
     this.renderPanel();
     if (completed) {
@@ -2401,11 +2416,20 @@ export class WallTonesSystem extends createSystem({
       this.statusText = `Nice - streak ${this.game.streak}. Next pattern…`;
       this.renderPanel();
       const streak = this.game.streak;
+      const increasedRecord = streak > previousBest;
       this.playbackQueue = this.playbackQueue.then(async () => {
+        if (increasedRecord) {
+          await this.speech.speakAsync(randomNewBestClip(previousBest === 0));
+          if (!this.experienceActive || this.flowPhase !== 'playing') return;
+        }
         if (streak > 0 && streak % 5 === 0) {
           await this.speech.speakAsync(milestoneClipFor(streak));
+          if (this.experienceActive && this.flowPhase === 'playing') {
+            await this.speech.speakAsync(randomCheerClip());
+          }
           await this.wait(0.35);
         } else {
+          if (increasedRecord) await this.speech.speakAsync(randomCheerClip());
           await this.wait(BETWEEN_ROUNDS_DELAY_S);
         }
         if (!this.experienceActive || this.flowPhase !== 'playing') {
@@ -2421,6 +2445,9 @@ export class WallTonesSystem extends createSystem({
       return;
     }
     this.flatAwaitingStart = false;
+    // A pad press demonstrates progress: stop any welcome / press instruction.
+    this.speech.cancel();
+    this.startPromptSpoken = true;
     primeWallTonesAudioFromGesture();
     // Confirm the tap briefly, then run the spoken intro before the first sequence tone.
     const pad = this.pads[padIndex];
@@ -2626,14 +2653,38 @@ export class WallTonesSystem extends createSystem({
     panel
       .getElementById<UIKit.Text>('wall-tones-best-streak')
       ?.setProperties({ text: String(this.game.bestStreak) });
+    this.renderSequenceIcons(panel);
     panel
       .getElementById<UIKit.Text>('wall-tones-status')
       ?.setProperties({
-        text: this.statusText || 'Ready',
+        text: this.game.phase === 'input' ? 'Your Turn:' : this.statusText || 'Ready',
       });
     panel
       .getElementById<UIKit.Text>('wall-tones-current-streak')
       ?.setProperties({ text: String(this.game.streak) });
+  }
+
+  /** Real colored geometry avoids emoji / font fallback rendering white boxes. */
+  private renderSequenceIcons(panel: UIKitMLAsset): void {
+    const row = panel.getElementById<UIKit.Container>('wall-tones-sequence-icons');
+    if (row == null) return;
+    const visible = this.game.phase === 'input';
+    row.setProperties({ display: visible ? 'flex' : 'none' });
+    const key = this.game.sequence.join(',');
+    if (this.sequenceIconRow === row && this.sequenceIconKey === key) return;
+    for (const child of [...row.children]) {
+      if (child instanceof UIKit.Container) child.dispose();
+      row.remove(child);
+    }
+    this.sequenceIconRow = row;
+    this.sequenceIconKey = key;
+    this.game.sequence.forEach((id) => {
+      row.add(new UIKit.Container({
+        width: 16, height: 16, borderRadius: 2,
+        backgroundColor: WALL_TONE_PADS[id].color,
+        flexShrink: 0,
+      }));
+    });
   }
 
   private wait(seconds: number): Promise<void> {
@@ -2641,4 +2692,4 @@ export class WallTonesSystem extends createSystem({
       window.setTimeout(resolve, seconds * 1000);
     });
   }
-      }
+}
