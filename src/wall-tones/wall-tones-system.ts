@@ -266,6 +266,8 @@ export class WallTonesSystem extends createSystem({
   private firstRun = true;
   private flatCaptionKey = '';
   private sequenceIconKey = '';
+  private accessibilityPanel: UIKitMLAsset | undefined;
+  private accessibilityState: { show: boolean; flat: boolean; active: boolean; caption: string; phase: string; status: string; names: boolean; sequence: number[] } | undefined;
   private sequenceIconRow: UIKit.Container | null = null;
   /** Setup HUD is world-anchored; look-away past a threshold re-snaps it. */
   private panelWorldAnchored = false;
@@ -2684,9 +2686,9 @@ export class WallTonesSystem extends createSystem({
     const row = panel.getElementById<UIKit.Container>('wall-tones-sequence-icons');
     if (row == null) return;
     const visible = this.game.phase === 'input' || this.statusText === 'Listen:';
-    row.setProperties({ display: visible ? 'flex' : 'none' });
-    const key = this.game.sequence.join(',') + ':' + colorNamesEnabled();
+    const key = this.game.sequence.join(',') + ':' + colorNamesEnabled() + ':' + visible;
     if (this.sequenceIconRow === row && this.sequenceIconKey === key) return;
+    row.setProperties({ display: visible ? 'flex' : 'none' });
     for (const child of [...row.children]) {
       if (child instanceof UIKit.Container) child.dispose();
       row.remove(child);
@@ -2711,14 +2713,31 @@ export class WallTonesSystem extends createSystem({
     const flat = this.world.visibilityState.peek() === VisibilityState.NonImmersive;
     const show = enabled && this.experienceActive;
     const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
-    if (panel && this.experienceActive) this.renderSequenceIcons(panel);
-    panel?.getElementById('wall-tones-info-row')?.setProperties({
-      display: show && !flat ? 'flex' : 'none',
-    });
     const caption = currentSpokenCaption();
-    panel?.getElementById<UIKit.Text>('wall-tones-spoken-caption')?.setProperties({
-      display: show && !flat && caption ? 'flex' : 'none', text: caption,
-    });
+    const names = colorNamesEnabled();
+    const previous = this.accessibilityState;
+    let sequenceChanged = !previous || previous.sequence.length !== this.game.sequence.length;
+    if (previous && !sequenceChanged) {
+      for (let i = 0; i < this.game.sequence.length; i++) {
+        if (previous.sequence[i] !== this.game.sequence[i]) { sequenceChanged = true; break; }
+      }
+    }
+    if (this.accessibilityPanel !== panel || !previous ||
+        previous.show !== show || previous.flat !== flat ||
+        previous.active !== this.experienceActive || previous.caption !== caption ||
+        previous.phase !== this.game.phase || previous.status !== this.statusText ||
+        previous.names !== names || sequenceChanged) {
+      this.accessibilityPanel = panel;
+      this.accessibilityState = { show, flat, active: this.experienceActive, caption,
+        phase: this.game.phase, status: this.statusText, names, sequence: [...this.game.sequence] };
+      if (panel && this.experienceActive) this.renderSequenceIcons(panel);
+      panel?.getElementById('wall-tones-info-row')?.setProperties({
+        display: show && !flat ? 'flex' : 'none',
+      });
+      panel?.getElementById<UIKit.Text>('wall-tones-spoken-caption')?.setProperties({
+        display: show && !flat && caption ? 'flex' : 'none', text: caption,
+      });
+    }
     const menuCaption = enabled && flat && !this.experienceActive && Boolean(caption);
     if ((!show && !menuCaption) || !flat) {
       if (this.flatCaptions) this.flatCaptions.style.display = 'none';
@@ -2781,4 +2800,4 @@ export class WallTonesSystem extends createSystem({
       window.setTimeout(resolve, seconds * 1000);
     });
   }
-      }
+        }
