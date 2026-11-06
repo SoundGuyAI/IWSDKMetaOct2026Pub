@@ -19,10 +19,39 @@
         width: 100vw;
         height: 100vh;
       }
+      #audio-start-gate:not([hidden]) {
+        position: fixed;
+        inset: 0;
+        z-index: 100000;
+        display: grid;
+        place-items: center;
+        background: #081019;
+        color: white;
+        font-family: system-ui, sans-serif;
+      }
+      .audio-start-card { text-align: center; }
+      #audio-start-button {
+        min-width: 220px;
+        min-height: 64px;
+        padding: 16px 40px;
+        border: 0;
+        border-radius: 16px;
+        background: #f5d90a;
+        color: #1c1d20;
+        font: 700 24px system-ui, sans-serif;
+        touch-action: manipulation;
+      }
+      #audio-start-button:disabled { opacity: 0.6; }
     </style>
   </head>
   <body>
     <div id="scene-container"></div>
+    <div id="audio-start-gate" hidden>
+      <div class="audio-start-card">
+        <h1>Wall Tones</h1>
+        <button id="audio-start-button" type="button">Start</button>
+      </div>
+    </div>
     <script type="module" src="/src/index.ts"></script>
   </body>
 </html>
