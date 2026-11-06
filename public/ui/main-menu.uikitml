@@ -90,8 +90,8 @@
 </style>
 <Panel id="main-menu-root" class="panel-root">
   <div id="main-menu-content" class="panel-content">
-    <div id="main-menu-eyebrow" class="eyebrow">WALL TONES</div>
-    <div id="main-menu-heading" class="heading">Memory pads</div>
+    <div id="main-menu-eyebrow" class="eyebrow">TOO FAST TO WALL</div>
+    <div id="main-menu-heading" class="heading">Wall Tones 2</div>
     <div id="main-menu-body" class="body">Start on desktop, or Enter XR to jump straight into Wall Tones in your room.</div>
   </div>
   <Button id="mode-walltones-button" class="button" style="height: 64px">
