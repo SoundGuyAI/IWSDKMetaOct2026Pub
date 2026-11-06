@@ -15,6 +15,9 @@ export type WallTonesClipId =
   | 'howToPlay'
   | 'pointAndPress'
   | 'howToPlayRest'
+  | 'newBest1'
+  | 'newBest2'
+  | 'newBest3'
   | 'cheer1'
   | 'cheer2'
   | 'cheer3'
@@ -63,6 +66,9 @@ export const WALL_TONES_CLIP_FILES: Record<WallTonesClipId, string> = {
   howToPlay: 'how-to-play.mp3',
   pointAndPress: 'point-and-press.mp3',
   howToPlayRest: 'how-to-play-rest.mp3',
+  newBest1: 'new-best-1.mp3',
+  newBest2: 'new-best-2.mp3',
+  newBest3: 'new-best-3.mp3',
   cheer1: 'cheer-1.mp3',
   cheer2: 'cheer-2.mp3',
   cheer3: 'cheer-3.mp3',
@@ -406,4 +412,9 @@ export class WallTonesSpeech {
 // utterance; with recorded clips the gesture simply unlocks audio + preload.
 export function warmSpeechFromGesture(): void {
   unlockSpeechFromGesture();
+}
+
+export function randomNewBestClip(firstRecord = false): WallTonesClipId {
+  if (firstRecord) return 'newBest1';
+  return (['newBest1', 'newBest2', 'newBest3'] as const)[Math.floor(Math.random() * 3)]!;
 }
