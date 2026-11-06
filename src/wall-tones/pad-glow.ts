@@ -32,6 +32,7 @@ uniform vec3 uColor;
 uniform float uTime;
 uniform float uPhase;
 uniform float uHover;
+uniform float uPower; // 0 = unpressable / powered off, 1 = normal glass pad
 uniform float uPress;   // seconds since last press, large when none
 const float QS = ${QUAD_SCALE.toFixed(2)};
 const float R = 0.15;
@@ -84,6 +85,11 @@ void main() {
   col += hue * outer * (1.0 + 0.6 * uHover + 1.2 * flash);
 
   float alpha = clamp(inside * 0.82 + rim * 0.9 + outer + runner * 0.6 + ring * 0.5, 0.0, 1.0);
+  // Off pads retain their colored glass silhouette, but emit no rim bloom,
+  // travelling light or press glow. This changes luminance, not saturation.
+  vec3 offColor = hue * (0.045 + 0.035 * vUv.y) * inside;
+  col = mix(offColor, col, uPower);
+  alpha = mix(inside * 0.94, alpha, uPower);
   gl_FragColor = vec4(col / max(alpha, 0.001), alpha);
   #include <colorspace_fragment>
 }`;
@@ -117,6 +123,7 @@ export function createPadGlow(
       uTime: { value: 0 },
       uPhase: { value: padIndex * 0.37 },
       uHover: { value: 0 },
+      uPower: { value: 1 },
       uPress: { value: 99 },
     },
     transparent: true,
@@ -185,4 +192,10 @@ export function animatePadGlow(padGlow: PadGlow | undefined, timeS: number): voi
   u.uTime!.value = timeS;
   u.uHover!.value = padGlow.hover;
   u.uPress!.value = timeS - padGlow.pressAt;
+}
+
+/** Preserve normal materials at full power; visibly darken only inactive pads. */
+export function setPadGlowPower(padGlow: PadGlow | undefined, powered: boolean): void {
+  if (padGlow == null) return;
+  padGlow.material.uniforms.uPower!.value = powered ? 1 : 0;
 }
