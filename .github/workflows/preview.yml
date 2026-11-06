@@ -47,7 +47,8 @@ jobs:
           # Read every page, not just the first 100 changed files.
           gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100" \
             --jq '.[] | .filename, (.previous_filename // empty)' > changed-files.txt
-          if grep -qvE '\.md$' changed-files.txt; then
+          # The PR-files API caps results at 3,000 files; build conservatively at the cap.
+          if [ "$(wc -l < changed-files.txt)" -ge 3000 ] || grep -qvE '\.md$' changed-files.txt; then
             echo 'build=true' >> "$GITHUB_OUTPUT"
           else
             echo 'build=false' >> "$GITHUB_OUTPUT"
