@@ -23,3 +23,11 @@
 
 ## Separate PR22 - not approved to merge
 - [ ] iPhone welcome still silent until pad press on actual device. Focused repair in PR22, physical iPhone re-test required.
+
+## Follow-up preview revision (November6,16:45)
+- [x] First run record announcements only3/6/9, then every record extension after10; later runs every new-best extension. Random approved lines retained.
+- [x] Listen uses the same colored square sequence as Your Turn.
+- [x] Accessibility submenu: Hearing accessibility: subtitles checkbox OFF by default, controls info and spoken captions. Flat captions below pads.
+- [x] Separate opt-in color blindness checkbox adds actual color names beside icons.
+- [x] Subtitle transcripts grounded in shipped recordings, captions start with playback and clear on completion/cancel.
+- [ ] Test updated preview on phone/Quest before merge.
