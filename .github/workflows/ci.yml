@@ -4,6 +4,11 @@ on:
   pull_request:
   push:
     branches: [main]
+    # Markdown-only changes (docs, todo lists, agent notes) skip the pipeline
+    # on main, so editing them never rebuilds/redeploys the GitHub Pages site.
+    # Pull requests are unaffected and still run the full suite.
+    paths-ignore:
+      - '**.md'
   workflow_dispatch:
 
 concurrency:
