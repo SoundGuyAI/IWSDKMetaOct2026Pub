@@ -54,6 +54,28 @@ const skipSpeech = (page: Page): Promise<void> =>
       .__wallTonesDebug.skipSpeech(),
   );
 
+interface DebugSnap {
+  phase: string;
+  sequence: number[];
+  inputStep: number;
+}
+
+const readState = (page: Page): Promise<DebugSnap> =>
+  page.evaluate(() => {
+    const d = (window as unknown as {
+      __wallTonesDebug: {
+        phase: string;
+        sequence: number[];
+        inputStep: number;
+      };
+    }).__wallTonesDebug;
+    return {
+      phase: d.phase,
+      sequence: [...d.sequence],
+      inputStep: d.inputStep,
+    };
+  });
+
 async function bootWallTones(page: Page): Promise<void> {
   await page.addInitScript(() => {
     window.sessionStorage.setItem('iwsdk-experience-mode', 'walltones');
@@ -131,5 +153,78 @@ test.describe('Wall Tones polish: fade + skip voice', () => {
         timeout: 5_000,
       })
       .toBeLessThan(0.05);
+  });
+
+  // Regression for codex finding: a line stuck awaiting a cold-cache clip
+  // decode kept the Skip voice button visible after cancel().
+  test('skip clears busy even while the clip is still decoding', async ({
+    page,
+  }) => {
+    // Stall every clip fetch so the skip lands mid-decode.
+    await page.route('**/audio/speech/**', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 4_000));
+      await route.continue();
+    });
+    await bootWallTones(page);
+    await expect.poll(() => speechBusy(page), { timeout: 60_000 }).toBe(true);
+    await skipSpeech(page);
+    // Busy must drop at once even though the fetch/decode is still stalled.
+    await expect.poll(() => speechBusy(page), { timeout: 1_500 }).toBe(false);
+    // Outlast the delayed fetch: nothing may re-set the busy state.
+    await page.waitForTimeout(5_000);
+    expect(await speechBusy(page)).toBe(false);
+  });
+
+  // Regression for codex finding: skipping a multi-line scripted announcement
+  // (streak-5 milestone) let the callback resume and queue the cheer, so
+  // narration restarted after the skip.
+  test('skip during a milestone swallows the remaining scripted lines', async ({
+    page,
+  }) => {
+    test.slow();
+    const cheerRequests: string[] = [];
+    page.on('request', (request) => {
+      if (
+        request.url().includes('/audio/speech/') &&
+        request.url().includes('/cheer-')
+      ) {
+        cheerRequests.push(request.url());
+      }
+    });
+    await bootWallTones(page);
+    await skipSpeech(page); // entry lines out of the timing picture
+    await submitPad(page, 0); // start tap: flash + first round
+
+    // Play correct rounds until the streak hits 5 (pattern from desktop.spec).
+    for (let round = 0; round < 5; round += 1) {
+      await expect
+        .poll(async () => (await readState(page)).phase, { timeout: 90_000 })
+        .toBe('input');
+      const snap = await readState(page);
+      await submitPad(page, snap.sequence[snap.inputStep]!);
+      if (snap.inputStep + 1 < snap.sequence.length) {
+        round -= 1; // multi-note round: keep stepping through the pattern
+      }
+    }
+
+    // The milestone line starts; skip it mid-announcement.
+    await expect.poll(() => speechBusy(page), { timeout: 60_000 }).toBe(true);
+    const cheersBefore = cheerRequests.length;
+    await skipSpeech(page);
+    await expect.poll(() => speechBusy(page)).toBe(false);
+
+    // Round flow still advances to round 6 (skip must not break the game)...
+    await expect
+      .poll(
+        async () => {
+          const s = await readState(page);
+          return s.phase === 'input' && s.sequence.length === 6;
+        },
+        { timeout: 90_000 },
+      )
+      .toBe(true);
+    // ...but the scripted cheer after the milestone was never fetched/played.
+    expect(cheerRequests.length).toBe(cheersBefore);
+    expect(await speechBusy(page)).toBe(false);
   });
 });
