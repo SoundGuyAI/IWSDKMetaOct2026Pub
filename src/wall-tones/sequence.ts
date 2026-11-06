@@ -11,10 +11,16 @@ export class WallTonesSequence {
   inputStep = 0;
   streak = 0;
   bestStreak = 0;
-  /** Best streak when the current run began; a failed run "increased the streak" when it beat this. */
+  /** Best before this run, since bestStreak updates as soon as a round ends. */
+  private bestStreakBeforeRun = 0;
   phase: GamePhase = 'idle';
 
+  get runImprovedBest(): boolean {
+    return this.streak > this.bestStreakBeforeRun;
+  }
+
   resetRun(): void {
+    this.bestStreakBeforeRun = this.bestStreak;
     this.sequence.length = 0;
     this.inputStep = 0;
     this.streak = 0;
@@ -23,9 +29,11 @@ export class WallTonesSequence {
   resetAllScores(): void {
     this.resetRun();
     this.bestStreak = 0;
+    this.bestStreakBeforeRun = 0;
   }
 
   startNewRun(): void {
+    this.bestStreakBeforeRun = this.bestStreak;
     this.sequence.length = 0;
     this.inputStep = 0;
     this.streak = 0;
@@ -53,9 +61,6 @@ export class WallTonesSequence {
   }
 
   onWrongInput(): void {
-    this.streak = 0;
-    this.inputStep = 0;
-    this.sequence.length = 0;
-    this.appendRandomPad();
+    this.startNewRun();
   }
 }

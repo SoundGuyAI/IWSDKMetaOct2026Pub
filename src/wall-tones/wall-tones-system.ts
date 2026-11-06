@@ -1605,6 +1605,9 @@ export class WallTonesSystem extends createSystem({
     this.applyTouchDebugVisibility();
     this.ghostPad = null;
     this.airPlaceStep += 1;
+    // Every stage advance invalidates stale setup speech, including the final
+    // pad, which must stop its placement prompt before the game intro starts.
+    this.speech.cancel();
     if (this.airPlaceStep >= 4) {
       this.flowPhase = 'playing';
       this.layoutPanelForMrPlay();
@@ -1617,7 +1620,14 @@ export class WallTonesSystem extends createSystem({
       this.renderPanel();
       return;
     }
-    this.speech.speak((`airPlace${this.airPlaceStep + 1}` as WallTonesClipId));
+    // Short prompts for pads 2-4; the full positioning phrase only plays for
+    // pad 1 (airPlace1 at placement start).
+    const shortPrompts = [
+      'airPlaceShort2',
+      'airPlaceShort3',
+      'airPlaceShort4',
+    ] as const;
+    this.speech.speak(shortPrompts[this.airPlaceStep - 1]!);
     this.statusText = `Pinch to place outline ${this.airPlaceStep + 1} of 4.`;
     this.spawnGhostPad();
     this.renderPanel();
@@ -1856,11 +1866,10 @@ export class WallTonesSystem extends createSystem({
       flashPad(pad, true);
       if (this.useDesktopInput()) {
         playPadToneFromUserAction(padIndex);
-        await this.wait(0.55 + BLINK_HOLD_S);
       } else {
         await playPadTone(padIndex);
-        await this.wait(BLINK_HOLD_S);
       }
+      await this.wait(BLINK_HOLD_S);
       flashPad(pad, false);
       this.setBlinkCuePad(null);
     }
@@ -2371,10 +2380,13 @@ export class WallTonesSystem extends createSystem({
     const pad = this.pads[padIndex];
     if (pad != null) {
       flashPad(pad, true);
-      if (this.useDesktopInput()) {
-        playPadToneFromUserAction(padIndex);
-      } else {
-        void playPadTone(padIndex);
+      // A wrong pad gets only the failure buzzer, not its musical pad note.
+      if (padIndex === expected) {
+        if (this.useDesktopInput()) {
+          playPadToneFromUserAction(padIndex);
+        } else {
+          void playPadTone(padIndex);
+        }
       }
       window.setTimeout(() => flashPad(pad, false), 350);
     }
@@ -2429,14 +2441,9 @@ export class WallTonesSystem extends createSystem({
     this.beginRoundWithIntro(leadIn);
   }
 
-  /**
-   * A failed run earns a success cheer when it made progress (completed at
-   * least one pattern); missing on the first pattern gets a sympathy line.
-   * Confirmed by Oded 2026-11-05: cheers at run end with progress, no voice
-   * after ordinary rounds, milestones every 5.
-   */
+  /** Praise a failed run only if it beat the best from before that run. */
   private runEarnedCheer(): boolean {
-    return this.game.streak > 0;
+    return this.game.runImprovedBest;
   }
 
   private async onWrongInput(): Promise<void> {
