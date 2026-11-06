@@ -1,3 +1,4 @@
+import { shouldAnnounceRecord } from '../../src/wall-tones/record-feedback.js';
 import { expect, test } from '@playwright/test';
 import { NEW_BEST_MALE } from '../../src/wall-tones/new-best-male.js';
 import { NEW_BEST_FEMALE } from '../../src/wall-tones/new-best-female.js';
@@ -31,4 +32,10 @@ test('every record extension qualifies, ties and below-record rounds do not', ()
   expect(round()).toBe(false);
   expect(round()).toBe(false);
   expect(round()).toBe(true);
+});
+
+test('first-run record announcements are3,6,9 then11 onward, later runs every record', () => {
+  expect(Array.from({length:12}, (_, i) => i+1).filter(n => shouldAnnounceRecord(n,n-1,true))).toEqual([3,6,9,11,12]);
+  expect(shouldAnnounceRecord(4,3,false)).toBe(true);
+  expect(shouldAnnounceRecord(4,4,false)).toBe(false);
 });
