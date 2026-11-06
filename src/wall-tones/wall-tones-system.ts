@@ -299,6 +299,10 @@ private blinkCueRoot: Object3D | null = null;
 private blinkCueEntity: Entity | null = null;
 /** Panel Skip voice button mirrors speech.isBusy(); polled each frame. */
 private skipVoiceVisible = false;
+/** Flat-mode Skip voice overlay: outside the panel HUD, bottom-right corner
+ * of the screen (user feedback November 7: on phone and desktop the button
+ * should not live inside the menu panel). VR/MR keep the panel button. */
+private flatSkipButton: HTMLButtonElement | null = null;
 private readonly onPointerDownForAudio = (): void => {
 if (needsExplicitMobileSoundUnlock() && !isHtmlAudioPoolUnlocked()) {
 this.applyUserGestureMediaUnlock(false);
@@ -1073,18 +1077,121 @@ this.speech.cancel();
 
 private tickSkipVoiceButton(): void {
 const busy = this.speech.isBusy();
-if (busy === this.skipVoiceVisible) {
-return;
-}
+if (busy !== this.skipVoiceVisible) {
 this.skipVoiceVisible = busy;
 this.syncSkipVoiceButton();
 }
+this.positionFlatSkipButton();
+}
+
+private isFlatView(): boolean {
+return this.world.visibilityState.peek() === VisibilityState.NonImmersive;
+}
 
 private syncSkipVoiceButton(): void {
+const flat = this.isFlatView();
+// VR/MR keep the in-panel button; flat mode gets the screen-corner overlay.
 this.world
 .getSceneObject<UIKitMLAsset>('wall-tones-panel')
 ?.getElementById('skip-voice-button')
-?.setProperties({ display: this.skipVoiceVisible ? 'flex' : 'none' });
+?.setProperties({ display: this.skipVoiceVisible && !flat ? 'flex' : 'none' });
+this.syncFlatSkipButton(flat);
+}
+
+private syncFlatSkipButton(flat: boolean): void {
+if (flat && this.skipVoiceVisible) {
+if (this.flatSkipButton == null) {
+const button = document.createElement('button');
+button.type = 'button';
+button.id = 'wall-tones-skip-voice-flat';
+button.textContent = 'Skip voice';
+Object.assign(button.style, {
+position: 'fixed',
+right: 'max(12px, env(safe-area-inset-right))',
+bottom: 'max(24px, env(safe-area-inset-bottom))',
+zIndex: '100002',
+fontSize: '16px',
+padding: '12px 18px',
+borderRadius: '12px',
+border: 'none',
+background: '#f5d90a',
+color: '#1c1d20',
+fontWeight: '700',
+boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
+cursor: 'pointer',
+});
+button.addEventListener('click', (event) => {
+event.preventDefault();
+this.onSkipVoice();
+});
+document.body.appendChild(button);
+this.flatSkipButton = button;
+}
+this.flatSkipButton.style.display = 'block';
+} else if (this.flatSkipButton != null) {
+this.flatSkipButton.style.display = 'none';
+}
+}
+
+/** Projected screen-space bounds of the pad grid (null when no pads yet). */
+private projectPadScreenBounds():
+| { minX: number; maxX: number; minY: number; maxY: number }
+| null {
+if (this.pads.length === 0 || !this.experienceActive) return null;
+let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+for (const pad of this.pads) {
+for (let sx = -1; sx <= 1; sx += 2) {
+for (let sy = -1; sy <= 1; sy += 2) {
+const v = this.captionProjection.set(
+sx * pad.sizeM / 2, sy * pad.sizeM / 2, 0);
+pad.root.localToWorld(v); v.project(this.world.camera);
+minX = Math.min(minX, (v.x + 1) * window.innerWidth / 2);
+maxX = Math.max(maxX, (v.x + 1) * window.innerWidth / 2);
+minY = Math.min(minY, (1 - v.y) * window.innerHeight / 2);
+maxY = Math.max(maxY, (1 - v.y) * window.innerHeight / 2);
+}
+}
+}
+return { minX, maxX, minY, maxY };
+}
+
+/** Bottom-right corner, but never over a subtitle strip or a pad: narration
+ * and pad input can coexist, so the overlay must not steal pad taps. When
+ * the corner has no room it docks at the right edge above the pad grid. */
+private positionFlatSkipButton(): void {
+const button = this.flatSkipButton;
+if (button == null || button.style.display === 'none') return;
+const w = window.innerWidth;
+const h = window.innerHeight;
+const bw = button.offsetWidth;
+const bh = button.offsetHeight;
+const RIGHT = 12;
+const BASE = 24;
+const M = 10;
+let bottom = BASE;
+const strips = [
+this.flatCaptions,
+typeof document !== 'undefined'
+? document.getElementById('wall-tones-startup-subtitle')
+: null,
+];
+for (const strip of strips) {
+if (strip == null || strip.style.display === 'none') continue;
+const r = strip.getBoundingClientRect();
+if (r.right > w - bw - RIGHT - M && r.bottom > h - bh - BASE - M) {
+bottom = Math.max(bottom, h - r.top + M);
+}
+}
+const pb = this.projectPadScreenBounds();
+if (pb != null) {
+const bx0 = w - RIGHT - bw;
+const by0 = h - bottom - bh;
+const overlapsPads =
+bx0 < pb.maxX + M && w - RIGHT > pb.minX - M &&
+by0 < pb.maxY + M && h - bottom > pb.minY - M;
+if (overlapsPads) bottom = h - pb.minY + M;
+}
+button.style.bottom = `max(${Math.round(bottom)}px, env(safe-area-inset-bottom))`;
 }
 
 private publishDebugBridge(): void {
