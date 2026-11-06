@@ -125,11 +125,33 @@
       <div class="stat-label">Current streak</div>
       <div id="wall-tones-current-streak" class="stat-value">0</div>
     </div>
+    <div class="stat-row">
+      <div style="flex-direction: row; align-items: center; gap: 6px">
+        <img src="/ui/bars-icon.png" style="width: 20px; height: 20px" />
+        <div class="stat-label">Gold Bars</div>
+      </div>
+      <div id="wall-tones-bars" class="stat-value">0</div>
+    </div>
     <div id="wall-tones-info-row" style="flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px">
       <div id="wall-tones-status" class="status">Ready</div>
       <div id="wall-tones-sequence-icons" style="display: none; flex-direction: row; flex-wrap: wrap; gap: 5px; align-items: center; max-width: 280px"></div>
     </div>
     <div id="wall-tones-spoken-caption" class="status" style="display: none"></div>
+    <div id="wall-tones-achievement-toast" class="status" style="display: none"></div>
+    <Button id="store-button" class="button" style="margin-top: 8px">
+      <ButtonIcon><ShoppingBag></ShoppingBag></ButtonIcon>
+      <ButtonLabel id="store-button-label">Store</ButtonLabel>
+    </Button>
+    <div id="store-section" class="setup-row" style="display: none">
+      <div class="stat-label">Your Turn hint</div>
+      <div id="store-hint-status" class="status">No hint owned. The pattern stays hidden during Your Turn.</div>
+      <Button id="buy-hint-button" class="button">
+        <ButtonIcon><Lightbulb></Lightbulb></ButtonIcon>
+        <ButtonLabel id="buy-hint-label">Your Turn hint lv 1 - 10 Bars</ButtonLabel>
+      </Button>
+      <div class="stat-label">Achievements</div>
+      <div id="achievements-list" style="flex-direction: column; gap: 4px"></div>
+    </div>
     <Button id="debug-colliders-button" class="button" style="margin-top: 8px">
       <ButtonIcon><Bug></Bug></ButtonIcon>
       <ButtonLabel id="debug-colliders-label">Debug colliders: OFF</ButtonLabel>
