@@ -93,8 +93,10 @@ export const PHONE_GRID_VERTICAL_M = -0.42;
  * card stays readable and in front if anything still overlaps.
  */
 export const PHONE_PANEL_FLAT = {
-  position: [0, 1.72, -0.72] as const,
-  scale: 0.18,
+  // Near full screen width on a portrait phone with larger text (user
+  // feedback November 7); raised slightly to keep the pad grid clear below.
+  position: [0, 1.8, -0.72] as const,
+  scale: 0.226,
 } as const;
 export const PAD_GAP_M = 0.25;
 /** Offset from the tracked hand/grip — not from the headset (0.35 at the face was unusable). */
