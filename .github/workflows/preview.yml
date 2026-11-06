@@ -4,7 +4,7 @@ name: PR preview
 #   https://<owner>.github.io/<repo>/pr-preview/pr-<number>/
 # on the gh-pages branch, next to (never replacing) the production site.
 # The CI deploy job keeps the pr-preview/ folder when it republishes main.
-# Closing the PR removes its folder. Fork PRs are skipped (no write token).
+# Closing the PR, or changing it back to Markdown-only, removes its folder. Fork PRs are skipped (no write token).
 
 on:
   pull_request:
@@ -115,7 +115,8 @@ jobs:
 
   remove-preview:
     name: Remove PR preview
-    if: github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    needs: changes
+    if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && (github.event.action == 'closed' || needs.changes.outputs.build == 'false')
     runs-on: ubuntu-latest
     env:
       PR_NUMBER: ${{ github.event.pull_request.number }}
