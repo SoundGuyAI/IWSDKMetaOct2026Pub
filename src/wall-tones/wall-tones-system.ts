@@ -1,3 +1,5 @@
+import { shouldAnnounceRecord } from './record-feedback.js';
+import { hearingSubtitlesEnabled, colorNamesEnabled, currentSpokenCaption } from './accessibility.js';
 import {
   ConeGeometry,
   CylinderGeometry,
@@ -259,6 +261,9 @@ export class WallTonesSystem extends createSystem({
   private mediaUnlockApplied = false;
   /** Wireframe hover/press volumes on pads; VR only, off by default; opt in for tuning. */
   private showTouchDebug = false;
+  private flatCaptions: HTMLDivElement | null = null;
+  private firstRun = true;
+  private flatCaptionKey = '';
   private sequenceIconKey = '';
   private sequenceIconRow: UIKit.Container | null = null;
   /** Setup HUD is world-anchored; look-away past a threshold re-snaps it. */
@@ -362,6 +367,7 @@ export class WallTonesSystem extends createSystem({
   }
 
   update(delta: number): void {
+    this.updateAccessibilityCaptions();
     if (!this.experienceActive) {
       return;
     }
@@ -496,6 +502,7 @@ export class WallTonesSystem extends createSystem({
     }
     this.experienceActive = true;
     this.game.resetAllScores();
+    this.firstRun = true;
     document.title = 'Wall Tones 2: too fast to wall';
     this.bindPanelIfNeeded();
     this.bindPointerAudioUnlock();
@@ -1927,7 +1934,7 @@ export class WallTonesSystem extends createSystem({
     this.game.phase = 'playback';
     this.inputNeedsClear = true;
     this.armAllPads();
-    this.statusText = `Listen: ${this.formatSequenceLabel()}`;
+    this.statusText = 'Listen:';
     this.renderPanel();
     for (let index = 0; index < this.game.sequence.length; index += 1) {
       const padId = this.game.sequence[index]!;
@@ -2416,7 +2423,7 @@ export class WallTonesSystem extends createSystem({
       this.statusText = `Nice - streak ${this.game.streak}. Next pattern…`;
       this.renderPanel();
       const streak = this.game.streak;
-      const increasedRecord = streak > previousBest;
+      const increasedRecord = shouldAnnounceRecord(streak, previousBest, this.firstRun);
       this.playbackQueue = this.playbackQueue.then(async () => {
         if (increasedRecord) {
           await this.speech.speakAsync(randomNewBestClip(previousBest === 0));
@@ -2468,6 +2475,7 @@ export class WallTonesSystem extends createSystem({
   }
 
   private async onWrongInput(): Promise<void> {
+    this.firstRun = false;
     this.game.phase = 'resetting';
     this.inputNeedsClear = true;
     const cheer = this.runEarnedCheer();
@@ -2668,9 +2676,9 @@ export class WallTonesSystem extends createSystem({
   private renderSequenceIcons(panel: UIKitMLAsset): void {
     const row = panel.getElementById<UIKit.Container>('wall-tones-sequence-icons');
     if (row == null) return;
-    const visible = this.game.phase === 'input';
+    const visible = this.game.phase === 'input' || this.statusText === 'Listen:';
     row.setProperties({ display: visible ? 'flex' : 'none' });
-    const key = this.game.sequence.join(',');
+    const key = this.game.sequence.join(',') + ':' + colorNamesEnabled();
     if (this.sequenceIconRow === row && this.sequenceIconKey === key) return;
     for (const child of [...row.children]) {
       if (child instanceof UIKit.Container) child.dispose();
@@ -2684,7 +2692,81 @@ export class WallTonesSystem extends createSystem({
         backgroundColor: WALL_TONE_PADS[id].color,
         flexShrink: 0,
       }));
+      if (colorNamesEnabled()) row.add(new UIKit.Text({
+        text: WALL_TONE_PADS[id].name, fontSize: 15, color: 0xffffff,
+      }));
     });
+  }
+
+  /** Flat captions are anchored under the pad grid, never on top of a pad. */
+  private updateAccessibilityCaptions(): void {
+    const enabled = hearingSubtitlesEnabled();
+    const flat = this.world.visibilityState.peek() === VisibilityState.NonImmersive;
+    const show = enabled && this.experienceActive;
+    const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+    if (panel && this.experienceActive) this.renderSequenceIcons(panel);
+    panel?.getElementById('wall-tones-info-row')?.setProperties({
+      display: show && !flat ? 'flex' : 'none',
+    });
+    const caption = currentSpokenCaption();
+    panel?.getElementById<UIKit.Text>('wall-tones-spoken-caption')?.setProperties({
+      display: show && !flat && caption ? 'flex' : 'none', text: caption,
+    });
+    const menuCaption = enabled && flat && !this.experienceActive && Boolean(caption);
+    if ((!show && !menuCaption) || !flat) {
+      if (this.flatCaptions) this.flatCaptions.style.display = 'none';
+      return;
+    }
+    if (!this.flatCaptions) {
+      document.getElementById('wall-tones-flat-subtitles')?.remove();
+      this.flatCaptions = document.createElement('div');
+      this.flatCaptions.id = 'wall-tones-flat-subtitles';
+      this.flatCaptions.setAttribute('aria-live', 'polite');
+      Object.assign(this.flatCaptions.style, {
+        position: 'fixed', zIndex: '30', color: '#fff', background: '#081019e8',
+        padding: '10px 14px', borderRadius: '10px', font: '16px/1.4 sans-serif',
+        textAlign: 'center', pointerEvents: 'none', boxSizing: 'border-box',
+        transform: 'translateX(-50%)',
+      });
+      document.body.appendChild(this.flatCaptions);
+    }
+    this.flatCaptions.style.display = 'block';
+    let minX = Infinity, maxX = -Infinity, bottom = 0;
+    for (const pad of this.pads) {
+      for (const side of [-1, 1]) {
+        const v = new Vector3(side * pad.sizeM / 2, -pad.sizeM / 2, 0);
+        pad.root.localToWorld(v); v.project(this.world.camera);
+        const x = (v.x + 1) * window.innerWidth / 2;
+        minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+        bottom = Math.max(bottom, (1 - v.y) * window.innerHeight / 2);
+      }
+    }
+    const phone = this.isPhoneFlatViewport();
+    if (this.pads.length === 0 || !this.experienceActive) { minX = window.innerWidth * 0.2; maxX = window.innerWidth * 0.8; bottom = window.innerHeight - 160; }
+    const width = phone ? window.innerWidth - 24 : Math.min(window.innerWidth - 24, Math.max(300, maxX - minX));
+    this.flatCaptions.style.fontSize = phone ? '13px' : '16px';
+    this.flatCaptions.style.lineHeight = phone ? '1.25' : '1.4';
+    this.flatCaptions.style.width = `${width}px`;
+    this.flatCaptions.style.left = `${Math.max(width / 2 + 12, Math.min(window.innerWidth - width / 2 - 12, (minX + maxX) / 2))}px`;
+    this.flatCaptions.style.top = `${bottom + 14}px`;
+    const seqVisible = this.experienceActive && (this.game.phase === 'input' || this.statusText === 'Listen:');
+    const info = !this.experienceActive ? '' : this.game.phase === 'input' ? 'Your Turn:' : this.statusText;
+    const key = info + caption + (seqVisible ? this.game.sequence.join(',') : '') + colorNamesEnabled();
+    if (key === this.flatCaptionKey) return;
+    this.flatCaptionKey = key;
+    this.flatCaptions.replaceChildren();
+    const line = document.createElement('div');
+    Object.assign(line.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexWrap: 'wrap' });
+    const label = document.createElement('span'); label.textContent = info; line.append(label);
+    if (seqVisible) for (const id of this.game.sequence) {
+      const square = document.createElement('span');
+      Object.assign(square.style, { width: '16px', height: '16px', borderRadius: '2px', background: `#${WALL_TONE_PADS[id].color.toString(16).padStart(6, '0')}`, display: 'inline-block', flexShrink: '0' });
+      square.setAttribute('aria-label', WALL_TONE_PADS[id].name);
+      line.append(square);
+      if (colorNamesEnabled()) { const word = document.createElement('span'); word.textContent = WALL_TONE_PADS[id].name; line.append(word); }
+    }
+    this.flatCaptions.append(line);
+    if (caption) { const text = document.createElement('div'); text.textContent = caption; text.style.marginTop = '5px'; this.flatCaptions.append(text); }
   }
 
   private wait(seconds: number): Promise<void> {
@@ -2692,4 +2774,4 @@ export class WallTonesSystem extends createSystem({
       window.setTimeout(resolve, seconds * 1000);
     });
   }
-}
+      }
