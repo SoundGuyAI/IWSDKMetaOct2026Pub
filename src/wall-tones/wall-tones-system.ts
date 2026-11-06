@@ -303,6 +303,12 @@ private skipVoiceVisible = false;
  * of the screen (user feedback November 7: on phone and desktop the button
  * should not live inside the menu panel). VR/MR keep the panel button. */
 private flatSkipButton: HTMLButtonElement | null = null;
+/** Last view mode the skip controls were synced for (P2 codex: resync on
+ * view switches, not only on busy toggles). */
+private skipVoiceViewFlat: boolean | null = null;
+/** Scratch pad-bounds + last applied offset (no allocations in update()). */
+private readonly padScreenBoundsScratch = { minX: 0, maxX: 0, minY: 0, maxY: 0 };
+private lastFlatSkipBottom = -1;
 private readonly onPointerDownForAudio = (): void => {
 if (needsExplicitMobileSoundUnlock() && !isHtmlAudioPoolUnlocked()) {
 this.applyUserGestureMediaUnlock(false);
@@ -1077,8 +1083,10 @@ this.speech.cancel();
 
 private tickSkipVoiceButton(): void {
 const busy = this.speech.isBusy();
-if (busy !== this.skipVoiceVisible) {
+const flat = this.isFlatView();
+if (busy !== this.skipVoiceVisible || flat !== this.skipVoiceViewFlat) {
 this.skipVoiceVisible = busy;
+this.skipVoiceViewFlat = flat;
 this.syncSkipVoiceButton();
 }
 this.positionFlatSkipButton();
@@ -1133,26 +1141,26 @@ this.flatSkipButton.style.display = 'none';
 }
 }
 
-/** Projected screen-space bounds of the pad grid (null when no pads yet). */
-private projectPadScreenBounds():
-| { minX: number; maxX: number; minY: number; maxY: number }
-| null {
-if (this.pads.length === 0 || !this.experienceActive) return null;
-let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+/** Projected screen-space bounds of the pad grid, written into the scratch
+ * object (false when no pads yet). No allocations in the per-frame path. */
+private projectPadScreenBounds(): boolean {
+if (this.pads.length === 0 || !this.experienceActive) return false;
+const b = this.padScreenBoundsScratch;
+b.minX = Infinity; b.maxX = -Infinity; b.minY = Infinity; b.maxY = -Infinity;
 for (const pad of this.pads) {
 for (let sx = -1; sx <= 1; sx += 2) {
 for (let sy = -1; sy <= 1; sy += 2) {
 const v = this.captionProjection.set(
 sx * pad.sizeM / 2, sy * pad.sizeM / 2, 0);
 pad.root.localToWorld(v); v.project(this.world.camera);
-minX = Math.min(minX, (v.x + 1) * window.innerWidth / 2);
-maxX = Math.max(maxX, (v.x + 1) * window.innerWidth / 2);
-minY = Math.min(minY, (1 - v.y) * window.innerHeight / 2);
-maxY = Math.max(maxY, (1 - v.y) * window.innerHeight / 2);
+b.minX = Math.min(b.minX, (v.x + 1) * window.innerWidth / 2);
+b.maxX = Math.max(b.maxX, (v.x + 1) * window.innerWidth / 2);
+b.minY = Math.min(b.minY, (1 - v.y) * window.innerHeight / 2);
+b.maxY = Math.max(b.maxY, (1 - v.y) * window.innerHeight / 2);
 }
 }
 }
-return { minX, maxX, minY, maxY };
+return true;
 }
 
 /** Bottom-right corner, but never over a subtitle strip or a pad: narration
@@ -1169,21 +1177,25 @@ const RIGHT = 12;
 const BASE = 24;
 const M = 10;
 let bottom = BASE;
-const strips = [
-this.flatCaptions,
-typeof document !== 'undefined'
+// Two known strips, checked directly: no per-frame array allocation.
+const startupStrip = typeof document !== 'undefined'
 ? document.getElementById('wall-tones-startup-subtitle')
-: null,
-];
-for (const strip of strips) {
-if (strip == null || strip.style.display === 'none') continue;
-const r = strip.getBoundingClientRect();
+: null;
+if (startupStrip != null && startupStrip.style.display !== 'none') {
+const r = startupStrip.getBoundingClientRect();
 if (r.right > w - bw - RIGHT - M && r.bottom > h - bh - BASE - M) {
 bottom = Math.max(bottom, h - r.top + M);
 }
 }
-const pb = this.projectPadScreenBounds();
-if (pb != null) {
+const captions = this.flatCaptions;
+if (captions != null && captions.style.display !== 'none') {
+const r = captions.getBoundingClientRect();
+if (r.right > w - bw - RIGHT - M && r.bottom > h - bh - BASE - M) {
+bottom = Math.max(bottom, h - r.top + M);
+}
+}
+if (this.projectPadScreenBounds()) {
+const pb = this.padScreenBoundsScratch;
 const bx0 = w - RIGHT - bw;
 const by0 = h - bottom - bh;
 const overlapsPads =
@@ -1191,7 +1203,11 @@ bx0 < pb.maxX + M && w - RIGHT > pb.minX - M &&
 by0 < pb.maxY + M && h - bottom > pb.minY - M;
 if (overlapsPads) bottom = h - pb.minY + M;
 }
-button.style.bottom = `max(${Math.round(bottom)}px, env(safe-area-inset-bottom))`;
+const rounded = Math.round(bottom);
+if (rounded !== this.lastFlatSkipBottom) {
+this.lastFlatSkipBottom = rounded;
+button.style.bottom = `max(${rounded}px, env(safe-area-inset-bottom))`;
+}
 }
 
 private publishDebugBridge(): void {
