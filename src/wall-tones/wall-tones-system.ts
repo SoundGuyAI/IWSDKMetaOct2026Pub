@@ -3094,9 +3094,10 @@ panel
 ?.setProperties({ display: this.storeOpen ? 'flex' : 'none' });
 const nextCost = this.economy.hintCost(level + 1);
 const buyLabel = `Your Turn hint lv ${level + 1} - ${nextCost} Bars`;
+const affordable = this.economy.getBars() >= nextCost;
 panel
 .getElementById<UIKit.Text>('buy-hint-label')
-?.setProperties({ text: buyLabel });
+?.setProperties({ text: buyLabel, color: affordable ? 0x1c1d20 : 0xd43a3a });
 panel
 .getElementById<UIKit.Text>('store-hint-status')
 ?.setProperties({
@@ -3133,7 +3134,7 @@ const row = new UIKit.Container({
 flexDirection: 'row',
 alignItems: 'center',
 gap: 8,
-opacity: unlocked ? 1 : 0.45,
+opacity: unlocked ? 1 : 0.75,
 });
 row.add(new UIKit.Image({
 src: achievementIconSrc(def.id),
@@ -3142,7 +3143,7 @@ height: 28,
 }));
 row.add(new UIKit.Text({
 fontSize: 13,
-color: unlocked ? 0xf5d90a : 0x8a8f98,
+color: unlocked ? 0xf5d90a : 0xb8bec8,
 text: `${def.label} - ${def.description}`,
 }));
 list.add(row);
@@ -3285,6 +3286,22 @@ this.speech.speak('storeHints');
 this.renderPanel();
 }
 
+/** Deny animation for an unaffordable store purchase: quick horizontal shake of the popup card. */
+private shakeTimers: number[] = [];
+private shakeStorePopup(): void {
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+const card = panel?.getElementById<UIKit.Container>('store-popup');
+if (card == null) return;
+for (const t of this.shakeTimers) window.clearTimeout(t);
+this.shakeTimers = [];
+const offsets = [0, -8, 8, -6, 6, -3, 3, 0];
+offsets.forEach((x, i) => {
+this.shakeTimers.push(window.setTimeout(() => {
+card.setProperties({ transformTranslateX: x });
+}, i * 40));
+});
+}
+
 private onBuyHint(): void {
 const before = this.economy.getBars();
 if (!this.economy.buyNextHintLevel()) {
@@ -3294,6 +3311,8 @@ panel
 ?.setProperties({
 text: 'Not enough Bars yet. Complete more patterns!',
 });
+void playErrorTone();
+this.shakeStorePopup();
 return;
 }
 this.showAchievementToasts();
