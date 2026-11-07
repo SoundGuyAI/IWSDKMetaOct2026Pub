@@ -204,25 +204,13 @@ export class AppModeSystem extends createSystem({}) {
     this.setMode('walltones');
   }
 
-  /**
-   * Enter XR boots the AR Wall Tones world first (while still flat), then
-   * launches one XR session — so later mode picks never tear XR down.
-   * Dynamic import avoids a circular dependency with world-host.
-   */
+  /** Enter XR prepares an MR menu; Start remains a separate choice. */
   private enterXrIntoWallTones(): void {
-    primeWallTonesAudioFromGesture();
-    unlockSpeechFromGesture();
-    persistMode('walltones');
-    sessionStorage.setItem('wall-tones-awaiting-mode', '1');
-    void import('./wall-tones/world-host.js').then((host) => {
-      if (host.getActiveWorldKind() === 'hub-vr') {
-        void host.switchToWallTonesArWorld();
-        return;
-      }
-      this.setMode('walltones');
-      if (this.world.xrEnabled) {
-        this.world.launchXR();
-      }
+    void import('./wall-tones/world-host.js').then(async (host) => {
+      await host.switchToWallTonesArWorld('menu');
+    }).catch((error) => {
+      console.error('[wall-tones] XR preparation failed', error);
+      // No game state was selected. Keep the menu available for another try.
     });
   }
 
