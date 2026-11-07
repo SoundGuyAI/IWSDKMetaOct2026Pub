@@ -98,6 +98,75 @@
     height: 44px;
   }
 
+  .round-card {
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 10px;
+    border-radius: 12px;
+    background-color: #fdf3c8;
+  }
+
+  .round-card:dark {
+    background-color: #3a2f00;
+  }
+
+  .round-card-title {
+    color: #6b5a00;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+  }
+
+  .round-card-title:dark {
+    color: #f5d90a;
+  }
+
+  .round-card-total {
+    color: #6b5a00;
+    font-size: 30px;
+    font-weight: 700;
+    line-height: 34px;
+  }
+
+  .round-card-total:dark {
+    color: #f5d90a;
+  }
+
+  .round-card-breakdown {
+    color: #3a3b40;
+    font-size: 13px;
+    line-height: 18px;
+  }
+
+  .round-card-breakdown:dark {
+    color: #e8e2c0;
+  }
+
+  .popup-overlay {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex-grow: 1;
+    padding: 24px;
+  }
+
+  .popup-card {
+    flex-direction: column;
+    gap: 10px;
+    padding: 20px;
+    border-radius: 14px;
+    background-color: #f4f2ec;
+    border-width: 2px;
+    border-color: #d8d4c8;
+    width: 340px;
+  }
+
+  .popup-card:dark {
+    background-color: #24262b;
+    border-color: #4a4d55;
+  }
+
   .drag-handle-label {
     font-size: 15px;
     font-weight: 700;
@@ -111,6 +180,7 @@
       <ButtonLabel id="panel-drag-label" class="drag-handle-label">Drag to move panel</ButtonLabel>
     </Button>
   </div>
+  <div id="menu-view" style="flex-direction: column">
   <div id="panel-content" class="content">
     <div class="eyebrow">MIXED REALITY</div>
     <div class="heading">Wall Tones 2</div>
@@ -118,12 +188,13 @@
       Flat play: watch the sequence, then click each pad once. Wrong pad resets this run; best streak stays.
     </div>
     <div class="stat-row">
-      <div class="stat-label">Best streak</div>
-      <div id="wall-tones-best-streak" class="stat-value">0</div>
-    </div>
-    <div class="stat-row">
-      <div class="stat-label">Current streak</div>
-      <div id="wall-tones-current-streak" class="stat-value">0</div>
+      <div class="stat-label">Streak</div>
+      <div style="flex-direction: row; align-items: center; gap: 5px">
+        <div class="stat-label">current</div>
+        <div id="wall-tones-current-streak" class="stat-value">0</div>
+        <div class="stat-label">best</div>
+        <div id="wall-tones-best-streak" class="stat-value">0</div>
+      </div>
     </div>
     <div class="stat-row">
       <div style="flex-direction: row; align-items: center; gap: 6px">
@@ -132,25 +203,26 @@
       </div>
       <div id="wall-tones-bars" class="stat-value">0</div>
     </div>
+    <div id="wall-tones-round-card" class="round-card" style="display: none">
+      <div id="wall-tones-round-card-title" class="round-card-title">This round</div>
+      <div id="wall-tones-round-card-total" class="round-card-total">+0</div>
+      <div id="wall-tones-round-card-breakdown" class="round-card-breakdown"></div>
+    </div>
     <div id="wall-tones-info-row" style="flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px">
       <div id="wall-tones-status" class="status">Ready</div>
       <div id="wall-tones-sequence-icons" style="display: none; flex-direction: row; flex-wrap: wrap; gap: 5px; align-items: center; max-width: 280px"></div>
     </div>
     <div id="wall-tones-spoken-caption" class="status" style="display: none"></div>
     <div id="wall-tones-achievement-toast" class="status" style="display: none"></div>
-    <Button id="store-button" class="button" style="margin-top: 8px">
-      <ButtonIcon><ShoppingBag></ShoppingBag></ButtonIcon>
-      <ButtonLabel id="store-button-label">Store</ButtonLabel>
-    </Button>
-    <div id="store-section" class="setup-row" style="display: none">
-      <div class="stat-label">Your Turn hint</div>
-      <div id="store-hint-status" class="status">No hint owned. The pattern stays hidden during Your Turn.</div>
-      <Button id="buy-hint-button" class="button">
-        <ButtonIcon><Lightbulb></Lightbulb></ButtonIcon>
-        <ButtonLabel id="buy-hint-label">Your Turn hint lv 1 - 10 Bars</ButtonLabel>
+    <div style="flex-direction: row; gap: 8px; margin-top: 8px">
+      <Button id="store-button" class="button" style="flex-grow: 1">
+        <ButtonIcon><ShoppingBag></ShoppingBag></ButtonIcon>
+        <ButtonLabel id="store-button-label">Store</ButtonLabel>
       </Button>
-      <div class="stat-label">Achievements</div>
-      <div id="achievements-list" style="flex-direction: column; gap: 4px"></div>
+      <Button id="achievements-button" class="button" style="flex-grow: 1">
+        <ButtonIcon><Trophy></Trophy></ButtonIcon>
+        <ButtonLabel>Achievements</ButtonLabel>
+      </Button>
     </div>
     <Button id="debug-colliders-button" class="button" style="margin-top: 8px">
       <ButtonIcon><Bug></Bug></ButtonIcon>
@@ -203,4 +275,30 @@
     <ButtonIcon><ArrowLeft></ArrowLeft></ButtonIcon>
     <ButtonLabel>Back to main menu</ButtonLabel>
   </Button>
+  </div>
+  <div id="store-popup" class="popup-overlay" style="display: none">
+    <div class="popup-card">
+      <div class="heading" style="font-size: 22px">Store</div>
+      <div class="stat-label">Your Turn hint</div>
+      <div id="store-hint-status" class="status">No hint owned. The pattern stays hidden during Your Turn.</div>
+      <Button id="buy-hint-button" class="button">
+        <ButtonIcon><Lightbulb></Lightbulb></ButtonIcon>
+        <ButtonLabel id="buy-hint-label">Your Turn hint lv 1 - 10 Bars</ButtonLabel>
+      </Button>
+      <Button id="store-close-button" class="button" style="margin-top: 6px">
+        <ButtonIcon><X></X></ButtonIcon>
+        <ButtonLabel>Close</ButtonLabel>
+      </Button>
+    </div>
+  </div>
+  <div id="achievements-popup" class="popup-overlay" style="display: none">
+    <div class="popup-card">
+      <div class="heading" style="font-size: 22px">Achievements</div>
+      <div id="achievements-screen-list" style="flex-direction: column; gap: 8px"></div>
+      <Button id="achievements-close-button" class="button" style="margin-top: 6px">
+        <ButtonIcon><X></X></ButtonIcon>
+        <ButtonLabel>Close</ButtonLabel>
+      </Button>
+    </div>
+  </div>
 </Panel>
