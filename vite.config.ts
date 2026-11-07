@@ -5,8 +5,35 @@
  * THIRD_PARTY_NOTICES file in the root directory of this source tree.
  */
 
+import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+
 import { iwsdkDev } from '@iwsdk/vite-plugin-dev';
 import { defineConfig } from 'vite';
+
+const { version: appVersion } = JSON.parse(
+  readFileSync(new URL('./package.json', import.meta.url), 'utf8'),
+) as { version: string };
+
+/**
+ * Build identity shown in Settings so a tester can confirm which build is on
+ * the headset. PR previews check out the merge ref, so prefer the PR head SHA
+ * (GITHUB_HEAD_SHA) over the merge SHA (GITHUB_SHA); local builds fall back to
+ * git, then 'dev'.
+ */
+const commitHash =
+  (process.env.GITHUB_HEAD_SHA || process.env.GITHUB_SHA || '').slice(0, 7) ||
+  (() => {
+    try {
+      return execSync('git rev-parse --short=7 HEAD', {
+        stdio: ['ignore', 'pipe', 'ignore'],
+      })
+        .toString()
+        .trim();
+    } catch {
+      return 'dev';
+    }
+  })();
 
 /**
  * When the app is opened through a public tunnel (*.trycloudflare.com), Vite's
@@ -25,6 +52,10 @@ const disableHmr = process.env.IWSDK_DISABLE_HMR === '1';
 
 export default defineConfig({
   plugins: [iwsdkDev()],
+  define: {
+    __WALL_TONES_VERSION__: JSON.stringify(appVersion),
+    __WALL_TONES_COMMIT__: JSON.stringify(commitHash),
+  },
   server: {
     host: '0.0.0.0',
     port: 8081,
