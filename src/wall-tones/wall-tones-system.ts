@@ -305,6 +305,8 @@ private flatLayoutValues: number[] = [];
 private flatLayoutCursor = 0;
 private flatLayoutDirty = true;
 private sequenceIconKey = '';
+/** Squares revealed so far during Listen playback (appear one per note). */
+private playbackShownCount = 0;
 private sequenceIconPendingPanel: UIKitMLAsset | null = null;
 private sequenceIconUpdateQueued = false;
 private readonly sequenceCueSquares: UIKit.Container[] = [];
@@ -315,7 +317,7 @@ const panel = this.sequenceIconPendingPanel;
 if (panel) this.reconcileSequenceIcons(panel);
 };
 private accessibilityPanel: UIKitMLAsset | undefined;
-private accessibilityState: { show: boolean; flat: boolean; active: boolean; caption: string; phase: string; status: string; names: boolean; sequence: number[]; reveal: number } | undefined;
+private accessibilityState: { show: boolean; flat: boolean; active: boolean; caption: string; phase: string; status: string; names: boolean; sequence: number[]; reveal: number; shown: number } | undefined;
 private sequenceIconRow: UIKit.Container | null = null;
 /** Setup HUD is world-anchored; look-away past a threshold re-snaps it. */
 private panelWorldAnchored = false;
@@ -2320,6 +2322,8 @@ this.game.phase = 'playback';
 this.inputNeedsClear = true;
 this.armAllPads();
 this.statusText = 'Listen:';
+// User ask (Nov 7): Listen squares appear one by one as each note plays.
+this.playbackShownCount = 0;
 this.renderPanel();
 for (let index = 0; index < this.game.sequence.length; index += 1) {
 const padId = this.game.sequence[index]!;
@@ -2327,6 +2331,8 @@ const pad = this.pads[padId];
 if (pad != null) {
 this.setBlinkCuePad(pad);
 flashPad(pad, true);
+this.playbackShownCount = index + 1;
+this.renderPanel();
 await playPadTone(padId);
 await this.wait(NOTE_GAP_S + BLINK_HOLD_S + 0.2);
 flashPad(pad, false);
@@ -3443,7 +3449,7 @@ const visible = listening || (this.game.phase === 'input' && reveal > 0);
 const names = colorNamesEnabled();
 // yourTurn must key the cache: after Listen of a longer-than-owned pattern the
 // row stays visible while the beyond-hint boxes must hide on the phase flip.
-const key = this.game.sequence.join(',') + ':' + names + ':' + visible + ':' + reveal + ':' + (yourTurn ? '1' : '0');
+const key = this.game.sequence.join(',') + ':' + names + ':' + visible + ':' + reveal + ':' + (yourTurn ? '1' : '0') + ':' + (listening ? this.playbackShownCount : -1);
 if (this.sequenceIconRow === row && this.sequenceIconKey === key) return;
 if (this.sequenceIconRow !== row) {
 this.sequenceCueSquares.length = 0;
@@ -3467,17 +3473,18 @@ let unknownShown = 0;
 for (let i = 0; i < this.sequenceCueSquares.length; i++) {
 const id = this.game.sequence[i];
 const beyondHint = yourTurn && i >= reveal;
+const notYetPlayed = listening && i >= this.playbackShownCount;
 // User ask (Nov 7): when the pattern runs past the owned hint prefix,
 // mark the hidden tail with up to 5 grey "?" squares instead of nothing.
 const unknown = beyondHint && id != null && unknownShown < 5;
-if (visible && id != null && !beyondHint) shown += 1;
+if (visible && id != null && !beyondHint && !notYetPlayed) shown += 1;
 if (visible && unknown) unknownShown += 1;
 this.sequenceCueSquares[i]!.setProperties({
-display: id == null || (beyondHint && !unknown) ? 'none' : 'flex',
+display: id == null || (beyondHint && !unknown) || notYetPlayed ? 'none' : 'flex',
 backgroundColor: id == null ? 0 : unknown ? 0x8a8f98 : WALL_TONE_PADS[id].color,
 });
 this.sequenceCueNames[i]!.setProperties({
-display: id != null && ((names && !beyondHint) || unknown) ? 'flex' : 'none',
+display: id != null && !notYetPlayed && ((names && !beyondHint) || unknown) ? 'flex' : 'none',
 text: id == null ? '' : unknown ? '?' : WALL_TONE_PADS[id].name,
 });
 }
@@ -3532,12 +3539,13 @@ const accessibilityChanged = this.accessibilityPanel !== panel || !previous ||
 previous.show !== show || previous.flat !== flat ||
 previous.active !== this.experienceActive || previous.caption !== caption ||
 previous.phase !== this.game.phase || previous.status !== this.statusText ||
-previous.names !== names || previous.reveal !== this.economy.getHintRevealCount() || sequenceChanged;
+previous.names !== names || previous.reveal !== this.economy.getHintRevealCount() ||
+previous.shown !== this.playbackShownCount || sequenceChanged;
 if (accessibilityChanged) {
 this.accessibilityPanel = panel;
 this.accessibilityState = { show, flat, active: this.experienceActive, caption,
 phase: this.game.phase, status: this.statusText, names, sequence: [...this.game.sequence],
-reveal: this.economy.getHintRevealCount() };
+reveal: this.economy.getHintRevealCount(), shown: this.playbackShownCount };
 if (panel && this.experienceActive) this.renderSequenceIcons(panel);
 // Bug fix (user report): the info row holds the Your Turn hint boxes; it
 // used to be hidden unless subtitles were on AND the session was immersive,
@@ -3613,6 +3621,7 @@ const line = document.createElement('div');
 Object.assign(line.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexWrap: 'wrap' });
 const label = document.createElement('span'); label.textContent = info; line.append(label);
 if (seqVisible) for (let i = 0; i < this.game.sequence.length; i++) {
+if (captionListening && i >= this.playbackShownCount) break;
 const unknown = captionYourTurn && i >= captionReveal;
 if (unknown && i - captionReveal >= 5) break; // cap the grey "?" tail at 5
 const id = this.game.sequence[i]!;
