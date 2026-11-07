@@ -3132,12 +3132,7 @@ this.renderSequenceIcons(panel);
 panel
 .getElementById<UIKit.Text>('wall-tones-status')
 ?.setProperties({
-text:
-this.game.phase === 'input'
-? this.economy.getHintRevealCount() > 0
-? 'Hint:'
-: 'Your Turn:'
-: this.statusText || 'Ready',
+text: this.game.phase === 'input' ? 'Hint:' : this.statusText || 'Ready',
 });
 panel
 .getElementById<UIKit.Text>('wall-tones-current-streak')
@@ -3605,9 +3600,7 @@ const seqVisible = this.experienceActive &&
 const info = !this.experienceActive
 ? ''
 : this.game.phase === 'input'
-? captionReveal > 0
 ? 'Hint:'
-: 'Your Turn:'
 : this.statusText;
 if (!accessibilityChanged && this.flatCaptions.childElementCount > 0) return;
 this.flatCaptions.replaceChildren();
