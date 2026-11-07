@@ -160,6 +160,7 @@ presses: number;
 storeOpen: boolean;
 sequenceRowVisible: boolean;
 sequenceBoxesShown: number;
+sequenceUnknownShown: number;
 roundCardText: string;
 roundCardVisibleText: string | null;
 barFloatsActive: boolean;
@@ -1364,6 +1365,9 @@ return system.lastSequenceRowVisible;
 },
 get sequenceBoxesShown() {
 return system.lastSequenceBoxesShown;
+},
+get sequenceUnknownShown() {
+return system.lastSequenceUnknownShown;
 },
 get roundCardText() {
 return system.lastRoundCardText;
@@ -2845,10 +2849,11 @@ window.setTimeout(() => {
 if (this.experienceActive) this.spawnBarFloat(padIndex, bonus);
 }, 500);
 }
-// Round summary line: total Bars earned on this pattern. One compact
-// always-present line (user ask); updates at round end, resets to +0 on
-// the next round. The pads/completion/bonus breakdown stays in the debug
-// bridge string for tests.
+// Round summary line: total Bars earned on this pattern, with the bonus
+// part (completion + record bonus) appended inline when present. One
+// compact always-present line (user ask); updates at round end, resets to
+// +0 on the next round. The full pads/completion/bonus breakdown stays in
+// the debug bridge string for tests.
 this.showRoundBarsCard(
 this.roundBarsEarned,
 this.roundCompletionEarned,
@@ -3127,7 +3132,12 @@ this.renderSequenceIcons(panel);
 panel
 .getElementById<UIKit.Text>('wall-tones-status')
 ?.setProperties({
-text: this.game.phase === 'input' ? 'Your Turn:' : this.statusText || 'Ready',
+text:
+this.game.phase === 'input'
+? this.economy.getHintRevealCount() > 0
+? 'Hint:'
+: 'Your Turn:'
+: this.statusText || 'Ready',
 });
 panel
 .getElementById<UIKit.Text>('wall-tones-current-streak')
@@ -3183,6 +3193,7 @@ this.reconcileAchievements(panel);
 /** Last values pushed to the pattern row, exposed for e2e assertions. */
 private lastSequenceRowVisible = false;
 private lastSequenceBoxesShown = 0;
+private lastSequenceUnknownShown = 0;
 /** Last text shown on the round-results card ('' while hidden). */
 public lastRoundCardText = '';
 /** Last display state pushed to the info row (status + hint boxes). */
@@ -3312,9 +3323,11 @@ bonus: number,
 if (total <= 0) return;
 const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
 if (panel == null) return;
+// User ask (Nov 7): show the bonus part inline - one compact line.
+const extra = completion + bonus;
 panel
 .getElementById<UIKit.Text>('wall-tones-round-card-total')
-?.setProperties({ text: `+${total}` });
+?.setProperties({ text: extra > 0 ? `+${total} (+${extra} bonus)` : `+${total}` });
 const pads = total - completion - bonus;
 const parts = [`Pads +${pads}`];
 if (completion > 0) parts.push(`Completion +${completion}`);
@@ -3450,20 +3463,26 @@ row.add(square); row.add(name);
 }
 }
 let shown = 0;
+let unknownShown = 0;
 for (let i = 0; i < this.sequenceCueSquares.length; i++) {
 const id = this.game.sequence[i];
 const beyondHint = yourTurn && i >= reveal;
+// User ask (Nov 7): when the pattern runs past the owned hint prefix,
+// mark the hidden tail with up to 5 grey "?" squares instead of nothing.
+const unknown = beyondHint && id != null && unknownShown < 5;
 if (visible && id != null && !beyondHint) shown += 1;
+if (visible && unknown) unknownShown += 1;
 this.sequenceCueSquares[i]!.setProperties({
-display: id == null || beyondHint ? 'none' : 'flex',
-backgroundColor: id == null ? 0 : WALL_TONE_PADS[id].color,
+display: id == null || (beyondHint && !unknown) ? 'none' : 'flex',
+backgroundColor: id == null ? 0 : unknown ? 0x8a8f98 : WALL_TONE_PADS[id].color,
 });
 this.sequenceCueNames[i]!.setProperties({
-display: id != null && names && !beyondHint ? 'flex' : 'none',
-text: id == null ? '' : WALL_TONE_PADS[id].name,
+display: id != null && ((names && !beyondHint) || unknown) ? 'flex' : 'none',
+text: id == null ? '' : unknown ? '?' : WALL_TONE_PADS[id].name,
 });
 }
 this.lastSequenceBoxesShown = shown;
+this.lastSequenceUnknownShown = unknownShown;
 }
 
 private trackFlatLayout(value: number): void {
@@ -3583,20 +3602,34 @@ const captionReveal = this.economy.getHintRevealCount();
 const captionYourTurn = this.game.phase === 'input' && !captionListening;
 const seqVisible = this.experienceActive &&
 (captionListening || (this.game.phase === 'input' && captionReveal > 0));
-const info = !this.experienceActive ? '' : this.game.phase === 'input' ? 'Your Turn:' : this.statusText;
+const info = !this.experienceActive
+? ''
+: this.game.phase === 'input'
+? captionReveal > 0
+? 'Hint:'
+: 'Your Turn:'
+: this.statusText;
 if (!accessibilityChanged && this.flatCaptions.childElementCount > 0) return;
 this.flatCaptions.replaceChildren();
 const line = document.createElement('div');
 Object.assign(line.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexWrap: 'wrap' });
 const label = document.createElement('span'); label.textContent = info; line.append(label);
 if (seqVisible) for (let i = 0; i < this.game.sequence.length; i++) {
-if (captionYourTurn && i >= captionReveal) break;
+const unknown = captionYourTurn && i >= captionReveal;
+if (unknown && i - captionReveal >= 5) break; // cap the grey "?" tail at 5
 const id = this.game.sequence[i]!;
 const square = document.createElement('span');
-Object.assign(square.style, { width: '16px', height: '16px', borderRadius: '2px', background: `#${WALL_TONE_PADS[id].color.toString(16).padStart(6, '0')}`, display: 'inline-block', flexShrink: '0' });
+Object.assign(square.style, { width: '16px', height: '16px', borderRadius: '2px', background: unknown ? '#8a8f98' : `#${WALL_TONE_PADS[id].color.toString(16).padStart(6, '0')}`, display: 'inline-block', flexShrink: '0' });
+if (unknown) {
+square.textContent = '?';
+square.setAttribute('data-unknown', '1');
+square.setAttribute('aria-label', 'Unknown note');
+Object.assign(square.style, { color: '#fff', fontSize: '11px', lineHeight: '16px', textAlign: 'center' });
+} else {
 square.setAttribute('aria-label', WALL_TONE_PADS[id].name);
+}
 line.append(square);
-if (colorNamesEnabled()) { const word = document.createElement('span'); word.textContent = WALL_TONE_PADS[id].name; line.append(word); }
+if (!unknown && colorNamesEnabled()) { const word = document.createElement('span'); word.textContent = WALL_TONE_PADS[id].name; line.append(word); }
 }
 this.flatCaptions.append(line);
 if (caption) { const text = document.createElement('div'); text.textContent = caption; text.style.marginTop = '5px'; this.flatCaptions.append(text); }
