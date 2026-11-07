@@ -21,6 +21,9 @@
       }
       #audio-start-gate:not([hidden]) { display: block; margin-top: 18px; }
       .audio-start-card { text-align: center; }
+      #wt-loading.wt-awaiting-sound .wt-loading-card > :not(#audio-start-gate) { display: none; }
+      #wt-loading.wt-awaiting-sound .audio-start-card p { display: none; }
+      #wt-loading.wt-awaiting-sound #audio-start-gate { margin: 0; }
       #audio-start-button {
         min-width: 220px;
         min-height: 64px;
@@ -234,7 +237,9 @@
             stage('gesture', 'Scene, menu and fonts ready. Tap Start to enable sound.');
             // Waiting for a person is not a network stall.
             clearTimeout(timer);
-          clearTimeout(reassuranceTimer);
+            clearTimeout(reassuranceTimer);
+            clearInterval(funTimer);
+            overlay.classList.add('wt-awaiting-sound');
           },
           fail: function (error) {
             showProblem('Startup failed at ' + labels[current] + ': ' + errorText(error), true);
