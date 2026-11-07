@@ -22,7 +22,7 @@
       #audio-start-gate:not([hidden]) {
         position: fixed;
         inset: 0;
-        z-index: 100000;
+        z-index: 100003;
         display: grid;
         place-items: center;
         background: #081019;
@@ -53,7 +53,15 @@
         font-family: system-ui, sans-serif;
         transition: opacity 0.3s ease;
       }
-      .wt-loading-card { text-align: center; }
+      .wt-loading-card { text-align: center; width: min(480px, calc(100vw - 40px)); padding: 20px; }
+      #wt-loading-stages { text-align: left; margin: 18px auto; padding: 0; list-style: none; font-size: 14px; line-height: 1.7; color: #aab3bd; }
+      #wt-loading-stages li[data-state="done"] { color: #9ce5b1; }
+      #wt-loading-stages li[data-state="active"] { color: #f5d90a; }
+      #wt-loading-detail { font-size: 13px; overflow-wrap: anywhere; color: #c2cbd5; }
+      #wt-loading-fun { min-height: 24px; color: #f5d90a; font-size: 14px; }
+      #wt-loading-error { margin-top: 16px; }
+      .audio-start-card { padding: 24px; max-width: 360px; }
+      .audio-start-card p { color: #c2cbd5; line-height: 1.5; }
       .wt-loading-card h1 { font-size: 28px; margin: 0 0 18px; }
       #wt-loading-spin {
         width: 36px;
@@ -88,9 +96,19 @@
       <div class="wt-loading-card">
         <h1>Wall Tones 2</h1>
         <div id="wt-loading-spin" aria-hidden="true"></div>
-        <p id="wt-loading-msg">Loading...</p>
+        <p id="wt-loading-msg" role="status">Loading game code...</p>
+        <ul id="wt-loading-stages" aria-label="Startup checkpoints">
+          <li data-step="code">Waiting: Game code</li>
+          <li data-step="gesture">Waiting: Sound-start choice</li>
+          <li data-step="world">Waiting: Scene and renderer</li>
+          <li data-step="menu">Waiting: Menu controls</li>
+          <li data-step="fonts">Waiting: Menu fonts</li>
+          <li data-step="render">Waiting: First readable frame</li>
+        </ul>
+        <p id="wt-loading-detail">Waiting for the game module to run.</p>
+        <p id="wt-loading-fun" aria-hidden="true">Combabulating...</p>
         <div id="wt-loading-error" hidden>
-          <p>Could not finish loading. Check your connection and try again.</p>
+          <p id="wt-loading-reason" role="alert"></p>
           <button id="wt-retry" type="button">Retry</button>
         </div>
       </div>
@@ -100,48 +118,91 @@
         var overlay = document.getElementById('wt-loading');
         var spin = document.getElementById('wt-loading-spin');
         var msg = document.getElementById('wt-loading-msg');
+        var detail = document.getElementById('wt-loading-detail');
         var errBox = document.getElementById('wt-loading-error');
+        var reason = document.getElementById('wt-loading-reason');
+        var rows = Array.from(document.querySelectorAll('[data-step]'));
+        var labels = rows.map(function (row) { return row.textContent.replace('Waiting: ', ''); });
+        var current = -1;
         var done = false;
-        function fail() {
-          if (done) return;
-          done = true;
-          clearTimeout(timer);
-          spin.style.display = 'none';
-          msg.style.display = 'none';
-          errBox.hidden = false;
+        var timer;
+        var funLines = ['Combabulating...', 'Forging shaders...', 'Reticulating tone splines...', 'Polishing imaginary knobs...', 'Aligning sonic flux capacitors...'];
+        var funIndex = 0;
+        var funTimer = setInterval(function () {
+          funIndex = (funIndex + 1) % funLines.length;
+          document.getElementById('wt-loading-fun').textContent = funLines[funIndex];
+        }, 2800);
+        function errorText(value) {
+          return String(value && value.message || value || 'Unknown error').slice(0, 240);
         }
-        var timer = setTimeout(fail, 30000);
-        // The app calls this once its menu is interactive.
+        function showProblem(text, fatal) {
+          if (done) return;
+          clearTimeout(timer);
+          reason.textContent = text;
+          errBox.hidden = false;
+          if (fatal) {
+            spin.style.display = 'none';
+            clearInterval(funTimer);
+          }
+        }
+        function armTimer() {
+          clearTimeout(timer);
+          timer = setTimeout(function () {
+            // A stall is not proof of failure. Keep listening for progress so
+            // late fonts / a slow scene can still recover without a reload.
+            showProblem('Still waiting for ' + labels[current] + '. Loading is taking longer than usual. You can keep waiting or retry.', false);
+          }, 45000);
+        }
+        function stage(key, text) {
+          if (done) return;
+          var next = rows.findIndex(function (row) { return row.dataset.step === key; });
+          if (next < current || next < 0) return;
+          current = next;
+          rows.forEach(function (row, i) {
+            var state = i < current ? 'done' : i === current ? 'active' : 'waiting';
+            row.dataset.state = state;
+            row.textContent = (state === 'done' ? 'Loaded: ' : state === 'active' ? 'Loading: ' : 'Waiting: ') + labels[i];
+          });
+          msg.textContent = 'Startup checkpoint ' + (current + 1) + ' of ' + rows.length + ': ' + labels[current];
+          detail.textContent = text;
+          errBox.hidden = true;
+          spin.style.display = '';
+          armTimer();
+        }
+        window.__wtLoading = {
+          stage: stage,
+          waitForGesture: function () {
+            stage('gesture', 'Tap Start to enable sound and begin scene loading.');
+            // Waiting for a person is not a network stall.
+            clearTimeout(timer);
+          },
+          fail: function (error) {
+            showProblem('Startup failed at ' + labels[current] + ': ' + errorText(error), true);
+          }
+        };
+        stage('code', 'Waiting for the game module to run.');
         window.__wtAppReady = function () {
           if (done) return;
           done = true;
           clearTimeout(timer);
+          clearInterval(funTimer);
           overlay.style.opacity = '0';
-          setTimeout(function () {
-            overlay.remove();
-          }, 350);
+          setTimeout(function () { overlay.remove(); }, 350);
         };
-        // A failed module/script fetch (e.g. a stale tab after a new deploy)
-        // surfaces as a resource error on a SCRIPT element.
-        window.addEventListener(
-          'error',
-          function (event) {
-            if (!done && event.target && event.target.tagName === 'SCRIPT') {
-              fail();
-            }
-          },
-          true,
-        );
-        document
-          .getElementById('wt-retry')
-          .addEventListener('click', function () {
-            location.reload();
-          });
+        window.addEventListener('error', function (event) {
+          if (!done && event.target && event.target.tagName === 'SCRIPT') {
+            var url = event.target.src;
+            var file = url ? url.split('/').pop().split('?')[0] : 'game script';
+            window.__wtLoading.fail('Could not download ' + file + '. Check your connection and retry.');
+          }
+        }, true);
+        document.getElementById('wt-retry').addEventListener('click', function () { location.reload(); });
       })();
     </script>
     <div id="audio-start-gate" hidden>
       <div class="audio-start-card">
-        <h1>Wall Tones</h1>
+        <h1>Wall Tones 2</h1>
+        <p>Game code loaded. Tap Start to enable sound and load your scene.</p>
         <button id="audio-start-button" type="button">Start</button>
       </div>
     </div>
