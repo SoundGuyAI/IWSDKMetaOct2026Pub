@@ -1,5 +1,5 @@
 import { CLIP_TRANSCRIPTS } from './clip-transcripts.js';
-import { startSpokenCaption, endSpokenCaption, hearingSubtitlesEnabled } from './accessibility.js';
+import { startSpokenCaption, endSpokenCaption, hearingSubtitlesEnabled, voicesOffEnabled } from './accessibility.js';
 import { NEW_BEST_MALE } from './new-best-male.js';
 import { NEW_BEST_FEMALE } from './new-best-female.js';
 /**
@@ -392,6 +392,9 @@ export class WallTonesSpeech {
 
   /** Play a clip and resolve when it finishes, fails, or times out. */
   speakAsync(id: WallTonesClipId, startupEntry = false): Promise<void> {
+    if (voicesOffEnabled()) {
+      return Promise.resolve();
+    }
     if (needsSpeechUnlock() && !speechUnlocked) {
       return Promise.resolve();
     }
