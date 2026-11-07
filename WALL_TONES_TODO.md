@@ -32,7 +32,14 @@ Personal backlog for what still needs work — not an agent task list. Move item
 - [ ] 24. Before play-mode selection in setup mode, show the scanning data and allow a rescan.
 - [ ] 25. In setup mode, keep the menu panel from hiding behind the selection ray when it points at something in the environment to scan: ray-aware placement, a smart reverse of follow-the-look. Maybe also move the panel a little up, since there will probably not be things on the ceiling to select (tentative).
 - [ ] 26. Tabletop pads: shrink the panel buttons on the table from 25x25 to 20x20 if four of them cannot fit on one table.
-
+- [ ] 27. Add another play mode that combines both walls and tables.
+- [ ] 28. When selecting the 4 pad spots in wall or table setup mode, also allow walking up and touching the surface with the hand - the same two-collider mechanism as the pad buttons: highlight when the hand gets close, select when touching it. Ray/pinch selection stays available.
+- [ ] 29. MR achievement for playing standing at walls, or on a mixed wall+table layout.
+- [ ] 30. Research: can the SDK track how much a player moves (fitness-style) in wall or mixed wall+table modes? If not, estimate from the distances between the placed pads. For later score use; no health or calorie claims.
+- [ ] 31. Store item: unlock another voice tied to story mode.
+- [ ] 32. Special colored pads: the two new pads would have special effects - one could give double score when pressed (tentative example); the other pad's effect still to be decided.
+- [ ] 33. Research: modifiers in incremental/clicker games; and whether a game has transformed Simon-style sequence-memory mechanics the way Balatro transformed poker.
+- [ ] 34. Consider making the repo private again and moving preview/production hosting to a Cloudflare Worker - only if the Devpost competition rules allow it (verify rules first).
 ## In progress
 
 - [ ] 9. Fade button transitions between lit and dim states in both directions.
