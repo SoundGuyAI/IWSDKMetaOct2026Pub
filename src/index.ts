@@ -19,6 +19,12 @@ const startup = window as unknown as {
   __wtBeforeReady?: () => void;
   __wtFinishLoading?: () => void;
 };
+// Build identity for testers; the Settings menu shows the same string.
+(window as unknown as { __wallTonesBuildInfo?: unknown }).__wallTonesBuildInfo = {
+  version: __WALL_TONES_VERSION__,
+  commit: __WALL_TONES_COMMIT__,
+};
+
 const loading = startup.__wtLoading;
 const container = document.getElementById('scene-container') as HTMLDivElement;
 const gate = document.getElementById('audio-start-gate') as HTMLDivElement;
