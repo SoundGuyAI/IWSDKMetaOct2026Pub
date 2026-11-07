@@ -724,6 +724,7 @@ this.statusText = 'Tap any pad to start (sound on)';
 this.setSetupUiVisible(false);
 this.setAirOrientUiVisible(false);
 this.setFlatHintVisible(true);
+this.setPanelHeaderVisible(true);
 this.setPanelDragBarVisible(false);
 this.hideStudioBackdrop();
 this.layoutPanelForFlatPlay();
@@ -1143,6 +1144,16 @@ private setFlatHintVisible(visible: boolean): void {
 this.world
 .getSceneObject<UIKitMLAsset>('wall-tones-panel')
 ?.getElementById('flat-play-hint')
+?.setProperties({ display: visible ? 'flex' : 'none' });
+}
+
+/** Phone flat play hides the eyebrow/title/hint header once a run starts so
+ * the taller economy panel (stats + round card) stays inside the portrait
+ * viewport; the header returns at the pre-start prompt. */
+private setPanelHeaderVisible(visible: boolean): void {
+this.world
+.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('wall-tones-panel-header')
 ?.setProperties({ display: visible ? 'flex' : 'none' });
 }
 
@@ -2860,6 +2871,7 @@ if (!this.flatAwaitingStart || !this.experienceActive) {
 return;
 }
 this.flatAwaitingStart = false;
+this.setPanelHeaderVisible(!this.isPhoneFlatViewport());
 // A pad press demonstrates progress: stop any welcome / press instruction.
 this.speech.cancel();
 this.startPromptSpoken = true;
