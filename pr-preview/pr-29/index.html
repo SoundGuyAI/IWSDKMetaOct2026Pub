@@ -124,6 +124,7 @@
         var current = -1;
         var done = false;
         var timer;
+        var reassuranceTimer;
         var funLines = [
           "Combabulating...",
           "Forging shaders...",
@@ -192,6 +193,7 @@
         function showProblem(text, fatal) {
           if (done) return;
           clearTimeout(timer);
+          clearTimeout(reassuranceTimer);
           reason.textContent = text;
           errBox.hidden = false;
           if (fatal) {
@@ -201,11 +203,15 @@
         }
         function armTimer() {
           clearTimeout(timer);
+          clearTimeout(reassuranceTimer);
+          reassuranceTimer = setTimeout(function () {
+            msg.textContent = 'Still loading ' + labels[current] + '...';
+          }, 22500);
           timer = setTimeout(function () {
-            // A stall is not proof of failure. Keep listening for progress so
-            // late fonts / a slow scene can still recover without a reload.
-            showProblem('Still waiting for ' + labels[current] + '. Loading is taking longer than usual. You can keep waiting or retry.', false);
-          }, 45000);
+            // A slow checkpoint is not a failure. Keep listening for progress
+            // so late fonts / a slow scene can recover without a reload.
+            showProblem('Still taking time to load ' + labels[current] + '. You can keep waiting or retry.', false);
+          }, 90000);
         }
         function stage(key, text) {
           if (done) return;
@@ -229,6 +235,7 @@
             stage('gesture', 'Scene, menu and fonts ready. Tap Start to enable sound.');
             // Waiting for a person is not a network stall.
             clearTimeout(timer);
+          clearTimeout(reassuranceTimer);
           },
           fail: function (error) {
             showProblem('Startup failed at ' + labels[current] + ': ' + errorText(error), true);
@@ -239,6 +246,7 @@
           if (done) return;
           done = true;
           clearTimeout(timer);
+          clearTimeout(reassuranceTimer);
           clearInterval(funTimer);
           overlay.style.opacity = '0';
           setTimeout(function () { overlay.remove(); }, 350);
