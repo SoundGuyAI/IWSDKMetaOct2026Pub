@@ -2735,6 +2735,10 @@ const expected = this.game.sequence[this.game.inputStep];
 if (expected == null) {
 return;
 }
+// Lifetime pad-press counter (achievements): every eligible gameplay press
+// counts, correct or wrong. Host playback, menu and setup input never get
+// past the phase gate above (user-settled: presses "in the game").
+this.economy.countGameplayPress(this.game.streak);
 const pad = this.pads[padIndex];
 if (pad != null) {
 flashPad(pad, true);
