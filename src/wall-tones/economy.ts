@@ -13,6 +13,7 @@ const FIRST_FLAGS_KEY = 'wall-tones-first-flags';
 const BEST_STREAK_KEY = 'wall-tones-best-streak';
 const PURCHASES_KEY = 'wall-tones-purchases';
 const PRESSES_KEY = 'wall-tones-presses';
+const TOP_SECRET_KEY = 'wall-tones-top-secret';
 
 // Tunable store prices. The user's examples are 10/15/22 Bars for the first
 // three levels; each further level keeps growing at about 1.3x ("each next 5
@@ -21,6 +22,10 @@ export const HINT_BASE_COSTS: readonly number[] = [10, 15, 22];
 export const HINT_COST_GROWTH = 1.3;
 /** Your Turn hint reveals this many pattern boxes per owned level. */
 export const HINT_BOXES_PER_LEVEL = 5;
+
+/** One-time Top Secret store item price (user-settled Nov 7): grants the
+ * hidden Secret Revealed achievement and nothing else. */
+export const TOP_SECRET_COST = 1000;
 
 /** Bars per correct pad press (provisional value, user to calibrate). */
 export const PRESS_BARS = 1;
@@ -42,8 +47,8 @@ export interface AchievementDef {
 /** Achievement categories with levels (user redesign): one row per category
  * in the popup; the level counts thresholds reached from lifetime counters.
  * Store/presses levels are provisional, user to calibrate. The secret
- * category stays hidden until its condition is defined (backlog 13, user-TBD)
- * - nothing unlocks it yet. */
+ * category is the Top Secret store purchase (user-settled Nov 7, backlog 13);
+ * the popup masks its label as ??? until unlocked. */
 export interface AchievementCategory {
   id: string;
   label: string;
@@ -59,7 +64,7 @@ export const ACHIEVEMENT_CATEGORIES: readonly AchievementCategory[] = [
   { id: 'score', label: 'Total Score', description: 'Lifetime score: one point per Bar earned.', levels: [5, 10, 25, 50, 100, 250] },
   { id: 'store', label: 'Store', description: 'Store purchases (provisional levels).', levels: [1, 3, 5, 10, 25] },
   { id: 'presses', label: 'Pad presses', description: 'Pad presses in the game, lifetime (provisional levels).', levels: [50, 100, 250, 500, 1000] },
-  { id: 'secret', label: '???', description: 'A secret. It stays secret.', levels: [1], hidden: true },
+  { id: 'secret', label: 'Secret Revealed', description: 'A secret. It stays secret.', levels: [1], hidden: true },
 ];
 
 function readNumber(key: string): number {
@@ -112,6 +117,7 @@ FIRST_FLAGS_KEY,
 BEST_STREAK_KEY,
 PURCHASES_KEY,
 PRESSES_KEY,
+TOP_SECRET_KEY,
 ]) {
 try { globalThis.localStorage?.removeItem(key); } catch { /* private mode */ }
 }
@@ -125,6 +131,7 @@ export class WallTonesEconomy {
   private firstFlags = new Set(readStringArray(FIRST_FLAGS_KEY));
   private purchases = readNumber(PURCHASES_KEY);
   private presses = readNumber(PRESSES_KEY);
+  private topSecretOwned = readNumber(TOP_SECRET_KEY) === 1;
   /** Latest unlocks since the last drain, for a visual panel toast. */
   private pendingToasts: AchievementDef[] = [];
 
@@ -148,6 +155,11 @@ export class WallTonesEconomy {
   /** Lifetime correct pad presses (Pad presses achievements category). */
   getPresses(): number {
     return this.presses;
+  }
+
+  /** Whether the one-time Top Secret item was bought. */
+  ownsTopSecret(): boolean {
+    return this.topSecretOwned;
   }
 
   /** Popup progress for one category: current value, level, next threshold. */
@@ -240,7 +252,8 @@ export class WallTonesEconomy {
       case 'presses':
         return this.presses;
       default:
-        return 0; // secret: condition still user-TBD (backlog 13)
+        // secret: the Top Secret purchase (user-settled Nov 7, backlog 13).
+        return this.topSecretOwned ? 1 : 0;
     }
   }
 
@@ -267,6 +280,21 @@ export class WallTonesEconomy {
     writeNumber(HINT_LEVEL_KEY, this.hintLevel);
     this.purchases += 1;
     writeNumber(PURCHASES_KEY, this.purchases);
+    this.checkAchievements(0);
+    return true;
+  }
+
+  /** Buy the one-time Top Secret item (user-settled Nov 7): 1000 Bars,
+   * grants the hidden Secret Revealed achievement, no other reward. */
+  buyTopSecret(): boolean {
+    if (this.topSecretOwned || this.bars < TOP_SECRET_COST) return false;
+    this.bars -= TOP_SECRET_COST;
+    this.topSecretOwned = true;
+    writeNumber(BARS_KEY, this.bars);
+    writeNumber(TOP_SECRET_KEY, 1);
+    this.purchases += 1;
+    writeNumber(PURCHASES_KEY, this.purchases);
+    this.unlock('secret-1', 'Secret Revealed', 'A secret. It stays secret.');
     this.checkAchievements(0);
     return true;
   }
