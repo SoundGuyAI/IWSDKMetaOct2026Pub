@@ -2977,12 +2977,20 @@ this.renderEconomy(panel);
 /** Store, Bars balance and achievements on the panel (backlog 12/12a/19).
  * Reconciled on a change key: tickScan calls renderPanel every frame, so the
  * labels must not rebuild while nothing economy-related changed (codex P2). */
-private economyRenderKey = '';
+// Primitive fields compared directly: building a key string would allocate on
+// every XR scan frame (codex P2 on AGENTS.md L222).
+private economyRenderBars = -1;
+private economyRenderLevel = -1;
+private economyRenderStoreOpen = false;
 private renderEconomy(panel: UIKitMLAsset): void {
+const bars = this.economy.getBars();
 const level = this.economy.getHintLevel();
-const key = this.economy.getBars() + ':' + level + ':' + (this.storeOpen ? '1' : '0');
-if (key === this.economyRenderKey) return;
-this.economyRenderKey = key;
+const open = this.storeOpen;
+if (bars === this.economyRenderBars && level === this.economyRenderLevel &&
+open === this.economyRenderStoreOpen) return;
+this.economyRenderBars = bars;
+this.economyRenderLevel = level;
+this.economyRenderStoreOpen = open;
 panel
 .getElementById<UIKit.Text>('wall-tones-bars')
 ?.setProperties({ text: String(this.economy.getBars()) });
