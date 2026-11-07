@@ -2954,6 +2954,9 @@ const cheer = this.runEarnedCheer();
 await playErrorTone();
 this.statusText = 'Try again';
 this.renderPanel();
+// Codex P2: a wrong press can cross a Pad presses threshold; announce the
+// unlock on this path too, not only on the reward path.
+this.showAchievementToasts();
 this.playbackQueue = this.playbackQueue.then(async () => {
 await this.speech.speakAsync(
 cheer ? randomCheerClip() : randomWrongClip(),
@@ -3159,15 +3162,21 @@ this.renderEconomy(panel);
 private economyRenderBars = -1;
 private economyRenderLevel = -1;
 private economyRenderStoreOpen = false;
+private economyRenderPresses = -1;
 private renderEconomy(panel: UIKitMLAsset): void {
 const bars = this.economy.getBars();
 const level = this.economy.getHintLevel();
 const open = this.storeOpen;
+// Codex P2: include the lifetime press counter so a wrong-input press that
+// crosses a Pad presses threshold still refreshes an open achievements
+// popup (bars, hint level and store state are unchanged on that path).
+const presses = this.economy.getPresses();
 if (bars === this.economyRenderBars && level === this.economyRenderLevel &&
-open === this.economyRenderStoreOpen) return;
+open === this.economyRenderStoreOpen && presses === this.economyRenderPresses) return;
 this.economyRenderBars = bars;
 this.economyRenderLevel = level;
 this.economyRenderStoreOpen = open;
+this.economyRenderPresses = presses;
 panel
 .getElementById<UIKit.Text>('wall-tones-bars')
 ?.setProperties({ text: String(this.economy.getBars()) });
