@@ -141,7 +141,7 @@
       <Checkbox id="voices-off-checkbox"></Checkbox>
       <div class="body">Voices off: mute all narration</div>
     </div>
-    <div class="body" style="padding-left: 12px; padding-right: 12px">Debug reset clears Bars, total score, streaks, achievements, purchased hint levels and first-time flags. Settings and accessibility stay.</div>
+    <div class="body" style="padding-left: 12px; padding-right: 12px">Debug reset clears Bars, total score, streaks, achievements, purchased hint levels, purchase and press counters, and first-time flags. Settings and accessibility stay.</div>
     <Button id="reset-stats-button" class="button" style="height: 64px">
       <ButtonIcon><Trash2></Trash2></ButtonIcon>
       <ButtonLabel id="reset-stats-label" class="button-label">Reset my stats (debug)</ButtonLabel>
