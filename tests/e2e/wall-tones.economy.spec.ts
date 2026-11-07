@@ -23,6 +23,9 @@ interface DebugSnap {
   sequenceRowVisible: boolean;
   sequenceBoxesShown: number;
   flatAwaitingStart: boolean;
+  roundCardText: string;
+  barFloatsActive: boolean;
+  infoRowVisible: boolean;
 }
 
 const readState = (page: Page): Promise<DebugSnap> =>
@@ -44,6 +47,9 @@ const readState = (page: Page): Promise<DebugSnap> =>
       sequenceRowVisible: d.sequenceRowVisible,
       sequenceBoxesShown: d.sequenceBoxesShown,
       flatAwaitingStart: d.flatAwaitingStart,
+      roundCardText: d.roundCardText,
+      barFloatsActive: d.barFloatsActive,
+      infoRowVisible: d.infoRowVisible,
     };
   });
 
@@ -135,7 +141,13 @@ test.describe('Wall Tones economy: Bars, store, hints, achievements', () => {
     await submitPad(page, 0); // start tap
     await playToStreak(page, 1);
 
-    await expect.poll(async () => (await readState(page)).bars).toBe(1);
+    // Per-press +1, completion extra +1 (band rate at streak 1) and the
+    // new-record bonus +1 (rate 1 x record streak 1).
+    await expect.poll(async () => (await readState(page)).bars).toBe(3);
+    // The round-results card shows the round total with the breakdown.
+    expect((await readState(page)).roundCardText).toBe(
+      '+3 (Pads +1 - Completion +1 - Record bonus +1)',
+    );
     let snap = await readState(page);
     expect(snap.bestStreak).toBe(1);
     expect(snap.unlockedAchievements).toContain('first-pattern');
@@ -152,14 +164,17 @@ test.describe('Wall Tones economy: Bars, store, hints, achievements', () => {
     // Reload WITHOUT clearing storage: balance and best streak survive.
     await bootWallTones(page, false);
     snap = await readState(page);
-    expect(snap.bars).toBe(1);
+    expect(snap.bars).toBe(3);
     expect(snap.bestStreak).toBe(1);
+    expect(snap.roundCardText).toBe('');
 
     // A later completion does not replay the first-Bars line.
     speechRequests.length = 0;
     await submitPad(page, 0);
     await playToStreak(page, 1);
-    await expect.poll(async () => (await readState(page)).bars).toBe(2);
+    // No new record this time: per-press +1 and completion +1 land.
+    await expect.poll(async () => (await readState(page)).bars).toBe(5);
+    expect((await readState(page)).roundCardText).toBe('+2 (Pads +1 - Completion +1)');
     await page.waitForTimeout(3_000); // let the speech chain finish
     expect(
       speechRequests.filter((u) => u.includes('bars-first-earn.mp3')).length,
@@ -221,14 +236,16 @@ test.describe('Wall Tones economy: Bars, store, hints, achievements', () => {
     await submitPad(page, 0);
 
     // Play to a 6-note round: the row shows exactly the 5 hinted boxes.
+    // Subtitles are OFF in this boot (no flag set): the info row must still
+    // render - it used to be hidden unless subtitles were on (user report).
     await playToStreak(page, 5);
     await expect
       .poll(async () => {
         const snap2 = await readState(page);
         if (snap2.phase !== 'input' || snap2.sequence.length < 6) return 'waiting';
-        return `${snap2.sequenceRowVisible}:${snap2.sequenceBoxesShown}`;
+        return `${snap2.sequenceRowVisible}:${snap2.sequenceBoxesShown}:${snap2.infoRowVisible}`;
       }, { timeout: 90_000 })
-      .toBe('true:5');
+      .toBe('true:5:true');
   });
 
   test('hint gating covers the subtitle strip and survives the Listen to Your Turn flip', async ({
@@ -323,8 +340,11 @@ test.describe('Wall Tones economy: Bars, store, hints, achievements', () => {
     await submitPad(page, 0);
     await playToStreak(page, 5);
     const snap = await readState(page);
-    expect(snap.bars).toBe(5);
-    expect(snap.barsTotal).toBe(5);
+    // Per-press earnings 1+2+3+4+5 = 15, completion extra 1 per round = 5,
+    // plus a record bonus every round (1x1 + 1x2 + 1x3 + 1x4 + 1x5 = 15):
+    // 35 total.
+    expect(snap.bars).toBe(35);
+    expect(snap.barsTotal).toBe(35);
     expect(snap.unlockedAchievements).toContain('streak-5');
   });
 });
