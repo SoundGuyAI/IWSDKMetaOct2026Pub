@@ -210,6 +210,8 @@ export function prepareMobileWelcome(): void {
 
 /** Must be invoked directly in the native Start click, before any await. */
 export function startMobileWelcomeFromGesture(): Promise<void> {
+  // This direct trusted-tap path bypasses speakAsync, so honor its mute gate.
+  if (voicesOffEnabled()) return Promise.resolve();
   prepareMobileWelcome();
   if (mobileVoice == null) return Promise.resolve();
   const audio = mobileVoice;
