@@ -11,6 +11,8 @@ const HINT_LEVEL_KEY = 'wall-tones-hint-level';
 const ACHIEVEMENTS_KEY = 'wall-tones-achievements';
 const FIRST_FLAGS_KEY = 'wall-tones-first-flags';
 const BEST_STREAK_KEY = 'wall-tones-best-streak';
+const PURCHASES_KEY = 'wall-tones-purchases';
+const PRESSES_KEY = 'wall-tones-presses';
 
 // Tunable store prices. The user's examples are 10/15/22 Bars for the first
 // three levels; each further level keeps growing at about 1.3x ("each next 5
@@ -37,15 +39,27 @@ export interface AchievementDef {
   description: string;
 }
 
-export const ACHIEVEMENTS: readonly AchievementDef[] = [
-  { id: 'first-pattern', label: 'First pattern', description: 'Complete your first pattern.' },
-  { id: 'streak-5', label: 'Warming up', description: 'Reach a streak of 5.' },
-  { id: 'streak-10', label: 'On a roll', description: 'Reach a streak of 10.' },
-  { id: 'streak-15', label: 'Wall whisperer', description: 'Reach a streak of 15.' },
-  { id: 'streak-20', label: 'Unwallable', description: 'Reach a streak of 20.' },
-  { id: 'bars-25', label: 'Pocket change', description: 'Earn 25 gold Bars in total.' },
-  { id: 'bars-100', label: 'Bar tycoon', description: 'Earn 100 gold Bars in total.' },
-  { id: 'first-purchase', label: 'First splurge', description: 'Buy your first store item.' },
+/** Achievement categories with levels (user redesign): one row per category
+ * in the popup; the level counts thresholds reached from lifetime counters.
+ * Store/presses levels are provisional, user to calibrate. The secret
+ * category stays hidden until its condition is defined (backlog 13, user-TBD)
+ * - nothing unlocks it yet. */
+export interface AchievementCategory {
+  id: string;
+  label: string;
+  description: string;
+  /** Ascending thresholds; level = how many are reached. */
+  levels: readonly number[];
+  hidden?: boolean;
+}
+
+export const ACHIEVEMENT_CATEGORIES: readonly AchievementCategory[] = [
+  { id: 'streak', label: 'Streak', description: 'Best pattern streak.', levels: [5, 10, 15, 20, 25] },
+  { id: 'bars', label: 'Bars', description: 'Lifetime gold Bars earned.', levels: [5, 10, 25, 50, 100] },
+  { id: 'score', label: 'Total Score', description: 'Lifetime score: one point per Bar earned.', levels: [5, 10, 25, 50, 100, 250] },
+  { id: 'store', label: 'Store', description: 'Store purchases (provisional levels).', levels: [1, 3, 5, 10, 25] },
+  { id: 'presses', label: 'Pad presses', description: 'Correct pad presses, lifetime (provisional levels).', levels: [50, 100, 250, 500, 1000] },
+  { id: 'secret', label: '???', description: 'A secret. It stays secret.', levels: [1], hidden: true },
 ];
 
 function readNumber(key: string): number {
@@ -96,6 +110,8 @@ HINT_LEVEL_KEY,
 ACHIEVEMENTS_KEY,
 FIRST_FLAGS_KEY,
 BEST_STREAK_KEY,
+PURCHASES_KEY,
+PRESSES_KEY,
 ]) {
 try { globalThis.localStorage?.removeItem(key); } catch { /* private mode */ }
 }
@@ -107,6 +123,8 @@ export class WallTonesEconomy {
   private hintLevel = readNumber(HINT_LEVEL_KEY);
   private unlocked = new Set(readStringArray(ACHIEVEMENTS_KEY));
   private firstFlags = new Set(readStringArray(FIRST_FLAGS_KEY));
+  private purchases = readNumber(PURCHASES_KEY);
+  private presses = readNumber(PRESSES_KEY);
   /** Latest unlocks since the last drain, for a visual panel toast. */
   private pendingToasts: AchievementDef[] = [];
 
@@ -120,6 +138,35 @@ export class WallTonesEconomy {
 
   getHintLevel(): number {
     return this.hintLevel;
+  }
+
+  /** Lifetime store purchases (Store achievements category). */
+  getPurchases(): number {
+    return this.purchases;
+  }
+
+  /** Lifetime correct pad presses (Pad presses achievements category). */
+  getPresses(): number {
+    return this.presses;
+  }
+
+  /** Popup progress for one category: current value, level, next threshold. */
+  getCategoryProgress(
+    id: string,
+    liveStreak = 0,
+  ): { value: number; level: number; next: number | null } {
+    const cat = ACHIEVEMENT_CATEGORIES.find((c) => c.id === id);
+    if (cat == null) return { value: 0, level: 0, next: null };
+    const value = this.categoryValue(cat, liveStreak);
+    let level = 0;
+    for (const threshold of cat.levels) {
+      if (value >= threshold) level += 1;
+    }
+    return {
+      value,
+      level,
+      next: level < cat.levels.length ? cat.levels[level]! : null,
+    };
   }
 
   /** Pattern boxes revealed during Your Turn at the owned hint level. */
@@ -140,6 +187,8 @@ export class WallTonesEconomy {
   /** Award Bars for one correct pad press (user-settled: every press is a
    * reward; PRESS_BARS is a provisional value to calibrate). */
   awardForPress(streak: number): number {
+    this.presses += 1;
+    writeNumber(PRESSES_KEY, this.presses);
     return this.award(PRESS_BARS, streak);
   }
 
@@ -153,7 +202,6 @@ export class WallTonesEconomy {
     streak: number,
     recordBeaten: boolean,
   ): { completion: number; bonus: number } {
-    if (streak >= 1) this.unlock('first-pattern');
     const completion = this.award(barsForStreak(streak), streak);
     const bonus = recordBeaten
       ? this.award(barsForStreak(streak) * streak, streak)
@@ -167,13 +215,39 @@ export class WallTonesEconomy {
     this.barsTotal += amount;
     writeNumber(BARS_KEY, this.bars);
     writeNumber(BARS_TOTAL_KEY, this.barsTotal);
-    if (streak >= 5) this.unlock('streak-5');
-    if (streak >= 10) this.unlock('streak-10');
-    if (streak >= 15) this.unlock('streak-15');
-    if (streak >= 20) this.unlock('streak-20');
-    if (this.barsTotal >= 25) this.unlock('bars-25');
-    if (this.barsTotal >= 100) this.unlock('bars-100');
+    this.checkAchievements(streak);
     return amount;
+  }
+
+  private categoryValue(cat: AchievementCategory, liveStreak: number): number {
+    switch (cat.id) {
+      case 'streak':
+        // Live streak covers a record in flight, before saveBestStreak lands.
+        return Math.max(liveStreak, this.getBestStreak());
+      case 'bars':
+      case 'score':
+        // User-settled: Total Score == lifetime Bars earned, never decreases.
+        return this.barsTotal;
+      case 'store':
+        return this.purchases;
+      case 'presses':
+        return this.presses;
+      default:
+        return 0; // secret: condition still user-TBD (backlog 13)
+    }
+  }
+
+  /** Unlock every category threshold the counters now pass; toasts queue. */
+  private checkAchievements(liveStreak: number): void {
+    for (const cat of ACHIEVEMENT_CATEGORIES) {
+      if (cat.hidden) continue;
+      const value = this.categoryValue(cat, liveStreak);
+      for (const threshold of cat.levels) {
+        if (value >= threshold) {
+          this.unlock(`${cat.id}-${threshold}`, `${cat.label} ${threshold}`, cat.description);
+        }
+      }
+    }
   }
 
   /** Buy the next hint level. Returns true when the purchase landed. */
@@ -184,7 +258,9 @@ export class WallTonesEconomy {
     this.hintLevel += 1;
     writeNumber(BARS_KEY, this.bars);
     writeNumber(HINT_LEVEL_KEY, this.hintLevel);
-    this.unlock('first-purchase');
+    this.purchases += 1;
+    writeNumber(PURCHASES_KEY, this.purchases);
+    this.checkAchievements(0);
     return true;
   }
 
@@ -197,13 +273,11 @@ export class WallTonesEconomy {
     return this.unlocked.size;
   }
 
-  private unlock(id: string): void {
+  private unlock(id: string, label: string, description: string): void {
     if (this.unlocked.has(id)) return;
-    const def = ACHIEVEMENTS.find((a) => a.id === id);
-    if (def == null) return;
     this.unlocked.add(id);
     writeStringArray(ACHIEVEMENTS_KEY, [...this.unlocked]);
-    this.pendingToasts.push(def);
+    this.pendingToasts.push({ id, label, description });
   }
 
   /** Achievement unlocks not yet shown; clears the queue. */
