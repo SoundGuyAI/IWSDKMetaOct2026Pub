@@ -5,6 +5,7 @@ import {
   type WorldOptions,
 } from '@iwsdk/core';
 import projectOptions from 'virtual:iwsdk-project';
+import { showXrEntryGate } from './xr-entry.js';
 import { AppModeSystem, type ExperienceMode } from '../app-mode.js';
 import { GuidedSensingSystem } from '../guided-sensing.js';
 import { PanelSystem } from '../panel.js';
@@ -34,6 +35,8 @@ function registerHubSystems(world: World): void {
 }
 
 function registerArSystems(world: World): void {
+  world.registerSystem(AppModeSystem);
+  world.registerSystem(PanelSystem);
   world.registerSystem(WallTonesSystem);
 }
 
@@ -124,15 +127,20 @@ export async function bootHubWorld(container: HTMLElement): Promise<World> {
  * Tear down the hub and boot the AR/passthrough Wall Tones world, then enter XR once.
  * Call this while still NonImmersive (e.g. from Enter XR) so mode select never mid-session destroys XR.
  */
-export async function switchToWallTonesArWorld(): Promise<World> {
+export async function switchToWallTonesArWorld(entry: 'menu' | 'setup' = 'setup'): Promise<World> {
   const run = switchChain.then(async () => {
     if (sceneContainer == null) {
       throw new Error('Scene container is not initialized');
     }
     if (activeKind === 'walltones-ar' && activeWorld != null) {
+      showXrEntryGate(activeWorld);
       return activeWorld;
     }
-    sessionStorage.setItem(MODE_STORAGE_KEY, 'walltones');
+    sessionStorage.setItem(MODE_STORAGE_KEY, entry === 'menu' ? 'menu' : 'walltones');
+    if (entry === 'menu') {
+      sessionStorage.removeItem('wall-tones-awaiting-mode');
+      sessionStorage.removeItem('wall-tones-setup-mode');
+    }
     await destroyActiveWorld();
     // Kind must be walltones-ar before registerSystem so WallTonesSystem.init /
     // bindPanelIfNeeded see the AR world (not a stale hub-vr kind).
@@ -140,7 +148,7 @@ export async function switchToWallTonesArWorld(): Promise<World> {
     const world = await World.create(sceneContainer, buildArWorldOptions());
     registerArSystems(world);
     activeWorld = world;
-    world.launchXR();
+    showXrEntryGate(world);
     return world;
   });
   switchChain = run.then(
@@ -186,4 +194,4 @@ export function startInitialWorld(container: HTMLElement): Promise<World> {
   }
   bootPromise = bootHubWorld(container);
   return bootPromise;
-}
+  }
