@@ -72,7 +72,8 @@ Future ideas and polish lists moved to [WALL_TONES_TODO.md](WALL_TONES_TODO.md) 
 
 
 ## CI e2e sharding PR - in progress November 8
-- [x] e2e-desktop split across 3 parallel Playwright shards (full suite still runs on PRs; serial per shard because gameplay timing/audio are per-page global).
+- [x] e2e-desktop split across 3 parallel runners (full suite still runs on PRs; serial per runner because gameplay timing/audio are per-page global). First --shard split measured 11.5/3.5/3.8 min on run 42421269922 (file-granularity imbalance), so shards are now explicit file groups by measured duration: economy alone, desktop+pointer, the lighter rest.
+- [x] e2e-coverage job fails CI if a tests/e2e spec is not assigned to a shard.
 - [x] changes job computes gameplay: Markdown/wrangler.jsonc-only changes skip e2e; build and typecheck always run.
 - [x] deploy-pages tolerates a skipped e2e job and still requires it when it runs.
 - [ ] CI green with 3 shards on this PR, Codex review, user merge go-ahead.
