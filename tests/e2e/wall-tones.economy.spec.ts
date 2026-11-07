@@ -19,6 +19,7 @@ interface DebugSnap {
   hintLevel: number;
   hintRevealCount: number;
   unlockedAchievements: string[];
+  presses: number;
   storeOpen: boolean;
   sequenceRowVisible: boolean;
   sequenceBoxesShown: number;
@@ -43,6 +44,7 @@ const readState = (page: Page): Promise<DebugSnap> =>
       hintLevel: d.hintLevel,
       hintRevealCount: d.hintRevealCount,
       unlockedAchievements: [...d.unlockedAchievements],
+      presses: d.presses,
       storeOpen: d.storeOpen,
       sequenceRowVisible: d.sequenceRowVisible,
       sequenceBoxesShown: d.sequenceBoxesShown,
@@ -150,7 +152,8 @@ test.describe('Wall Tones economy: Bars, store, hints, achievements', () => {
     );
     let snap = await readState(page);
     expect(snap.bestStreak).toBe(1);
-    expect(snap.unlockedAchievements).toContain('first-pattern');
+    // Categories: the first pattern's single press counts toward Pad presses.
+    expect(snap.presses).toBe(1);
     // The line sits behind the between-rounds delay in the speech chain.
     // Each line fires up to two requests (decode fetch + HTMLAudio fallback).
     await expect
@@ -210,7 +213,7 @@ test.describe('Wall Tones economy: Bars, store, hints, achievements', () => {
     expect(snap.hintLevel).toBe(1);
     expect(snap.bars).toBe(40);
     expect(snap.hintRevealCount).toBe(5);
-    expect(snap.unlockedAchievements).toContain('first-purchase');
+    expect(snap.unlockedAchievements).toContain('store-1');
 
     // First store visit speaks welcome + hints tour (each line fires up to
     // two requests: decode fetch + HTMLAudio fallback).
@@ -346,5 +349,8 @@ test.describe('Wall Tones economy: Bars, store, hints, achievements', () => {
     expect(snap.bars).toBe(35);
     expect(snap.barsTotal).toBe(35);
     expect(snap.unlockedAchievements).toContain('streak-5');
+    // Bars and Total Score categories both read lifetime Bars earned.
+    expect(snap.unlockedAchievements).toContain('bars-25');
+    expect(snap.unlockedAchievements).toContain('score-25');
   });
 });
