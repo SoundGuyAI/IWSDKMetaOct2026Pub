@@ -120,7 +120,7 @@ unlockSpeechFromGesture,
 type WallTonesClipId,
 } from './speech.js';
 import {
-  ACHIEVEMENTS,
+  ACHIEVEMENT_CATEGORIES,
   WallTonesEconomy,
 } from './economy.js';
 import {
@@ -155,6 +155,8 @@ barsTotal: number;
 hintLevel: number;
 hintRevealCount: number;
 unlockedAchievements: string[];
+purchases: number;
+presses: number;
 storeOpen: boolean;
 sequenceRowVisible: boolean;
 sequenceBoxesShown: number;
@@ -1330,7 +1332,17 @@ get hintRevealCount() {
 return system.economy.getHintRevealCount();
 },
 get unlockedAchievements() {
-return ACHIEVEMENTS.filter((a) => system.economy.isUnlocked(a.id)).map((a) => a.id);
+return ACHIEVEMENT_CATEGORIES.flatMap((c) =>
+c.levels
+.filter((t) => system.economy.isUnlocked(`${c.id}-${t}`))
+.map((t) => `${c.id}-${t}`),
+);
+},
+get purchases() {
+return system.economy.getPurchases();
+},
+get presses() {
+return system.economy.getPresses();
 },
 get storeOpen() {
 return system.storeOpen;
@@ -3133,36 +3145,59 @@ private lastSequenceBoxesShown = 0;
 public lastRoundCardText = '';
 /** Last display state pushed to the info row (status + hint boxes). */
 public lastInfoRowVisible = false;
-/** Unlocks only grow, so the count is a complete change key (codex P2: no per-frame key allocation). */
-private achievementListCount = -1;
+/** Change keys for the achievements list; counters move progress text even
+ * between unlocks, so the key spans every displayed value (no allocation). */
+private achievementKeyCount = -1;
+private achievementKeyBarsTotal = -1;
+private achievementKeyBestStreak = -1;
+private achievementKeyPurchases = -1;
+private achievementKeyPresses = -1;
 /** Bars icon src resolved against the app base once (codex P3: nested previews). */
 private barsIconSrcFixed = false;
 private reconcileAchievements(panel: UIKitMLAsset): void {
 const list = panel.getElementById<UIKit.Container>('achievements-screen-list');
 if (list == null) return;
-const count = this.economy.getUnlockedCount();
-if (count === this.achievementListCount) return;
-this.achievementListCount = count;
+const eco = this.economy;
+if (
+eco.getUnlockedCount() === this.achievementKeyCount &&
+eco.getBarsTotal() === this.achievementKeyBarsTotal &&
+eco.getBestStreak() === this.achievementKeyBestStreak &&
+eco.getPurchases() === this.achievementKeyPurchases &&
+eco.getPresses() === this.achievementKeyPresses
+) {
+return;
+}
+this.achievementKeyCount = eco.getUnlockedCount();
+this.achievementKeyBarsTotal = eco.getBarsTotal();
+this.achievementKeyBestStreak = eco.getBestStreak();
+this.achievementKeyPurchases = eco.getPurchases();
+this.achievementKeyPresses = eco.getPresses();
 while (list.children.length > 0) {
 list.remove(list.children[0]!);
 }
-for (const def of ACHIEVEMENTS) {
-const unlocked = this.economy.isUnlocked(def.id);
+for (const cat of ACHIEVEMENT_CATEGORIES) {
+const { value, level, next } = eco.getCategoryProgress(cat.id, this.game.streak);
+const locked = level === 0;
+const secret = cat.hidden === true && locked;
+const text = secret
+? '??? - ???'
+: `${cat.label} - level ${level}/${cat.levels.length}` +
+(next == null ? ' - MAX' : ` - next at ${next} (have ${value})`);
 const row = new UIKit.Container({
 flexDirection: 'row',
 alignItems: 'center',
 gap: 8,
-opacity: unlocked ? 1 : 0.75,
+opacity: locked ? 0.75 : 1,
 });
 row.add(new UIKit.Image({
-src: achievementIconSrc(def.id),
+src: achievementIconSrc(cat.id),
 width: 28,
 height: 28,
 }));
 row.add(new UIKit.Text({
 fontSize: 13,
-color: unlocked ? 0xf5d90a : 0xb8bec8,
-text: `${def.label} - ${def.description}`,
+color: locked ? 0xb8bec8 : 0xf5d90a,
+text,
 }));
 list.add(row);
 }
