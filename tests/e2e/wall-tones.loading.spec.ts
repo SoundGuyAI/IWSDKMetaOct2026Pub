@@ -6,7 +6,7 @@ import { expect, test } from '@playwright/test';
  * panel and the screen is black; it lifts only when the app signals the menu
  * is interactive (buttons wired AND menu text able to render - the Inter MSDF
  * font chunk can land seconds after init). A failed script fetch is distinct
- * from a 45s inactivity warning, which can still recover when loading resumes.
+ * from a 90s inactivity warning, which can still recover when loading resumes.
  */
 
 test('the splash lifts once the menu is usable, and Start Wall Tones enters the game', async ({
@@ -110,8 +110,13 @@ test('a stalled font reports the real waiting checkpoint and can recover after t
   await page.clock.install();
   // Reset this checkpoint's stall timer under the test clock.
   await page.evaluate(() => (window as any).__wtLoading.stage('fonts', 'Menu text fonts ready: still waiting for the font response.'));
-  await page.clock.fastForward(45001);
-  await expect(page.locator('#wt-loading-reason')).toContainText('Still waiting for Menu fonts');
+  await page.clock.fastForward(22501);
+  await expect(page.locator('#wt-loading-msg')).toContainText('Still loading Menu fonts');
+  await expect(page.locator('#wt-loading-error')).toBeHidden();
+  await page.clock.fastForward(40000);
+  await expect(page.locator('#wt-loading-error')).toBeHidden();
+  await page.clock.fastForward(27500);
+  await expect(page.locator('#wt-loading-reason')).toContainText('Still taking time to load Menu fonts');
   await expect(page.locator('[data-step="code"]')).toContainText('Loaded: Game code');
   await expect(page.locator('[data-step="fonts"]')).toContainText('Loading: Menu fonts');
   await page.clock.resume();
