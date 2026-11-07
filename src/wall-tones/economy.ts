@@ -20,8 +20,12 @@ export const HINT_COST_GROWTH = 1.3;
 /** Your Turn hint reveals this many pattern boxes per owned level. */
 export const HINT_BOXES_PER_LEVEL = 5;
 
+/** Bars per correct pad press (provisional value, user to calibrate). */
+export const PRESS_BARS = 1;
+
 /** Bars awarded for completing a pattern at a given streak: 1 for streaks
- * 1-5, 2 for 6-10, 4 for 11-15, doubling every five. */
+ * 1-5, 2 for 6-10, 4 for 11-15, doubling every five. Also the rate base of
+ * the new-record bonus (rate x streak). */
 export function barsForStreak(streak: number): number {
   if (streak < 1) return 0;
   return 2 ** Math.floor((streak - 1) / 5);
@@ -117,15 +121,36 @@ export class WallTonesEconomy {
     return cost;
   }
 
-  /** Award Bars for a completed pattern; returns the amount awarded. */
-  awardForStreak(streak: number): number {
-    const amount = barsForStreak(streak);
+  /** Award Bars for one correct pad press (user-settled: every press is a
+   * reward; PRESS_BARS is a provisional value to calibrate). */
+  awardForPress(streak: number): number {
+    return this.award(PRESS_BARS, streak);
+  }
+
+  /** Pattern end. Always pays the completion extra (band rate, user-settled
+   * additive on top of per-press earnings) and counts the first-pattern
+   * achievement; when the completed pattern set a new best streak, also
+   * pays the record bonus of rate x streak (exponential: 5 -> +5,
+   * 10 -> +20, 15 -> +60, 20 -> +160). Returns both parts for the round
+   * summary breakdown. */
+  completePattern(
+    streak: number,
+    recordBeaten: boolean,
+  ): { completion: number; bonus: number } {
+    if (streak >= 1) this.unlock('first-pattern');
+    const completion = this.award(barsForStreak(streak), streak);
+    const bonus = recordBeaten
+      ? this.award(barsForStreak(streak) * streak, streak)
+      : 0;
+    return { completion, bonus };
+  }
+
+  private award(amount: number, streak: number): number {
     if (amount <= 0) return 0;
     this.bars += amount;
     this.barsTotal += amount;
     writeNumber(BARS_KEY, this.bars);
     writeNumber(BARS_TOTAL_KEY, this.barsTotal);
-    if (streak >= 1) this.unlock('first-pattern');
     if (streak >= 5) this.unlock('streak-5');
     if (streak >= 10) this.unlock('streak-10');
     if (streak >= 15) this.unlock('streak-15');
