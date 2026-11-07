@@ -19,16 +19,7 @@
         width: 100vw;
         height: 100vh;
       }
-      #audio-start-gate:not([hidden]) {
-        position: fixed;
-        inset: 0;
-        z-index: 100003;
-        display: grid;
-        place-items: center;
-        background: #081019;
-        color: white;
-        font-family: system-ui, sans-serif;
-      }
+      #audio-start-gate:not([hidden]) { display: block; margin-top: 18px; }
       .audio-start-card { text-align: center; }
       #audio-start-button {
         min-width: 220px;
@@ -89,7 +80,7 @@
         touch-action: manipulation;
       }
     </style>
-    <script type="module" crossorigin src="./assets/index-Bl23AEt0.js"></script>
+    <script type="module" crossorigin src="./assets/index-BAFygWJx.js"></script>
   </head>
   <body>
     <div id="scene-container"></div>
@@ -100,14 +91,20 @@
         <p id="wt-loading-msg" role="status">Loading game code...</p>
         <ul id="wt-loading-stages" aria-label="Startup checkpoints">
           <li data-step="code">Waiting: Game code</li>
-          <li data-step="gesture">Waiting: Sound-start choice</li>
           <li data-step="world">Waiting: Scene and renderer</li>
           <li data-step="menu">Waiting: Menu controls</li>
           <li data-step="fonts">Waiting: Menu fonts</li>
           <li data-step="render">Waiting: First readable frame</li>
+          <li data-step="gesture">Waiting: Start sound</li>
         </ul>
         <p id="wt-loading-detail">Waiting for the game module to run.</p>
         <p id="wt-loading-fun" aria-hidden="true">Combabulating...</p>
+    <div id="audio-start-gate" hidden>
+      <div class="audio-start-card">
+        <p>Scene and fonts ready. Tap Start to enable sound.</p>
+        <button id="audio-start-button" type="button">Start</button>
+      </div>
+    </div>
         <div id="wt-loading-error" hidden>
           <p id="wt-loading-reason" role="alert"></p>
           <button id="wt-retry" type="button">Retry</button>
@@ -229,7 +226,7 @@
         window.__wtLoading = {
           stage: stage,
           waitForGesture: function () {
-            stage('gesture', 'Tap Start to enable sound and begin scene loading.');
+            stage('gesture', 'Scene, menu and fonts ready. Tap Start to enable sound.');
             // Waiting for a person is not a network stall.
             clearTimeout(timer);
           },
@@ -238,13 +235,22 @@
           }
         };
         stage('code', 'Waiting for the game module to run.');
-        window.__wtAppReady = function () {
+        window.__wtFinishLoading = function () {
           if (done) return;
           done = true;
           clearTimeout(timer);
           clearInterval(funTimer);
           overlay.style.opacity = '0';
           setTimeout(function () { overlay.remove(); }, 350);
+        };
+        window.__wtAppReady = function () {
+          if (done) return;
+          if (window.__wtBeforeReady) {
+            window.__wtBeforeReady();
+            return;
+          }
+          stage('gesture', 'Scene and fonts ready. No extra sound-start tap needed on this device.');
+          window.__wtFinishLoading();
         };
         window.addEventListener('error', function (event) {
           if (!done && event.target && event.target.tagName === 'SCRIPT') {
@@ -256,12 +262,5 @@
         document.getElementById('wt-retry').addEventListener('click', function () { location.reload(); });
       })();
     </script>
-    <div id="audio-start-gate" hidden>
-      <div class="audio-start-card">
-        <h1>Wall Tones 2</h1>
-        <p>Game code loaded. Tap Start to enable sound and load your scene.</p>
-        <button id="audio-start-button" type="button">Start</button>
-      </div>
-    </div>
   </body>
 </html>
