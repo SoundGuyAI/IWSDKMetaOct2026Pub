@@ -54,3 +54,9 @@
 ## Moved to WALL_TONES_TODO.md
 
 Future ideas and polish lists moved to [WALL_TONES_TODO.md](WALL_TONES_TODO.md) on November 6.
+
+
+## Settings build identity PR (requested November 7 ~21:04) - in progress
+- [x] Settings menu shows package version and short commit hash, injected at build time (PR head SHA on previews via GITHUB_HEAD_SHA, GITHUB_SHA on main, git rev-parse locally, 'dev' fallback).
+- [x] Same identity exposed as window.__wallTonesBuildInfo for test reports.
+- [ ] CI, deployed preview pixel check, merge per user's conditional approval ("if that PR works we can just merge"; Codex unavailable, skipped per user November 7).

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { shouldAnnounceRecord } from '../../src/wall-tones/record-feedback.js';
 import { expect, test } from '@playwright/test';
 import { NEW_BEST_MALE } from '../../src/wall-tones/new-best-male.js';
@@ -38,4 +40,31 @@ test('first-run record announcements are3,6,9 then11 onward, later runs every re
   expect(Array.from({length:12}, (_, i) => i+1).filter(n => shouldAnnounceRecord(n,n-1,true))).toEqual([3,6,9,11,12]);
   expect(shouldAnnounceRecord(4,3,false)).toBe(true);
   expect(shouldAnnounceRecord(4,4,false)).toBe(false);
+});
+
+test('settings menu markup carries the build version line wired in app-mode', () => {
+  const menu = readFileSync(new URL('../../public/ui/main-menu.uikitml', import.meta.url), 'utf8');
+  const appMode = readFileSync(new URL('../../src/app-mode.ts', import.meta.url), 'utf8');
+  const buildInfo = readFileSync(new URL('../../src/build-info.ts', import.meta.url), 'utf8');
+  expect(menu).toContain('id="settings-version"');
+  expect(appMode).toContain('settings-version');
+  expect(appMode).toContain('WALL_TONES_BUILD_LABEL');
+  // Guarded so unit-style Node imports without Vite defines cannot crash.
+  expect(buildInfo).toContain("typeof __WALL_TONES_VERSION__");
+  expect(buildInfo).toContain("typeof __WALL_TONES_COMMIT__");
+});
+
+test('build identity is exposed and matches the shipped package version', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForSelector('canvas', { timeout: 60_000 });
+  const info = await page.evaluate(
+    () =>
+      (window as unknown as { __wallTonesBuildInfo?: { version: string; commit: string } })
+        .__wallTonesBuildInfo,
+  );
+  const pkg = JSON.parse(
+    readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
+  ) as { version: string };
+  expect(info?.version).toBe(pkg.version);
+  expect(info?.commit).toMatch(/^([0-9a-f]{7}|dev)$/);
 });

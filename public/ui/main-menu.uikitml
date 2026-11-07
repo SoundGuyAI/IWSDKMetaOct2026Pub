@@ -81,6 +81,17 @@
     padding: 24px;
   }
 
+  .version-label {
+    color: #6a6c72;
+    font-size: 14px;
+    line-height: 18px;
+    margin-bottom: 4px;
+  }
+
+  .version-label:dark {
+    color: #9a9ea6;
+  }
+
   .xr-button-label {
     font-size: 30px;
     font-weight: 700;
@@ -121,6 +132,7 @@
     <Button id="accessibility-button" class="button" style="height: 64px">
       <ButtonLabel class="button-label">Accessibility</ButtonLabel>
     </Button>
+    <div id="settings-version" class="version-label">Version unknown</div>
     <Button id="settings-back-button" class="button" style="height: 64px; margin-bottom: 4px">
       <ButtonIcon><ArrowLeft></ArrowLeft></ButtonIcon>
       <ButtonLabel class="button-label">Back</ButtonLabel>
