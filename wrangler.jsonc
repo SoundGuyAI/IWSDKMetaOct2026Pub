@@ -9,13 +9,15 @@
  * Cloudflare "Set up your application" screen for this repo:
  *   Build command:   npm run build
  *   Deploy command:  npx wrangler deploy
- *   Preview command: npx wrangler preview  (alias of `wrangler dev`)
+ *   Preview command: npx wrangler preview  (branch previews; requires the
+ *                    empty `previews` block below on wrangler >= 4.x)
  * Project name below must match the screen's Project name.
  */
 {
   "name": "iwsdkmetaoct2026pub",
-  "compatibility_date": "2026-11-08",
+  "compatibility_date": "2026-11-07",
   "assets": {
     "directory": "./dist"
-  }
+  },
+  "previews": {}
 }
