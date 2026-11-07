@@ -296,7 +296,7 @@ const panel = this.sequenceIconPendingPanel;
 if (panel) this.reconcileSequenceIcons(panel);
 };
 private accessibilityPanel: UIKitMLAsset | undefined;
-private accessibilityState: { show: boolean; flat: boolean; active: boolean; caption: string; phase: string; status: string; names: boolean; sequence: number[] } | undefined;
+private accessibilityState: { show: boolean; flat: boolean; active: boolean; caption: string; phase: string; status: string; names: boolean; sequence: number[]; reveal: number } | undefined;
 private sequenceIconRow: UIKit.Container | null = null;
 /** Setup HUD is world-anchored; look-away past a threshold re-snaps it. */
 private panelWorldAnchored = false;
@@ -2751,6 +2751,12 @@ const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
 if (panel == null) {
 return;
 }
+if (!this.barsIconSrcFixed) {
+this.barsIconSrcFixed = true;
+panel
+.getElementById<UIKit.Image>('bars-icon-img')
+?.setProperties({ src: `${import.meta.env.BASE_URL}ui/bars-icon.png` });
+}
 panel
 .getElementById<UIKit.Text>('wall-tones-best-streak')
 ?.setProperties({ text: String(this.game.bestStreak) });
@@ -2796,13 +2802,16 @@ this.reconcileAchievements(panel);
 /** Last values pushed to the pattern row, exposed for e2e assertions. */
 private lastSequenceRowVisible = false;
 private lastSequenceBoxesShown = 0;
-private achievementListKey = '';
+/** Unlocks only grow, so the count is a complete change key (codex P2: no per-frame key allocation). */
+private achievementListCount = -1;
+/** Bars icon src resolved against the app base once (codex P3: nested previews). */
+private barsIconSrcFixed = false;
 private reconcileAchievements(panel: UIKitMLAsset): void {
 const list = panel.getElementById<UIKit.Container>('achievements-list');
 if (list == null) return;
-const key = ACHIEVEMENTS.map((a) => (this.economy.isUnlocked(a.id) ? '1' : '0')).join('');
-if (key === this.achievementListKey) return;
-this.achievementListKey = key;
+const count = this.economy.getUnlockedCount();
+if (count === this.achievementListCount) return;
+this.achievementListCount = count;
 while (list.children.length > 0) {
 list.remove(list.children[0]!);
 }
@@ -2892,7 +2901,9 @@ const reveal = this.economy.getHintRevealCount();
 const yourTurn = this.game.phase === 'input' && !listening;
 const visible = listening || (this.game.phase === 'input' && reveal > 0);
 const names = colorNamesEnabled();
-const key = this.game.sequence.join(',') + ':' + names + ':' + visible + ':' + reveal;
+// yourTurn must key the cache: after Listen of a longer-than-owned pattern the
+// row stays visible while the beyond-hint boxes must hide on the phase flip.
+const key = this.game.sequence.join(',') + ':' + names + ':' + visible + ':' + reveal + ':' + (yourTurn ? '1' : '0');
 if (this.sequenceIconRow === row && this.sequenceIconKey === key) return;
 if (this.sequenceIconRow !== row) {
 this.sequenceCueSquares.length = 0;
@@ -2975,11 +2986,12 @@ const accessibilityChanged = this.accessibilityPanel !== panel || !previous ||
 previous.show !== show || previous.flat !== flat ||
 previous.active !== this.experienceActive || previous.caption !== caption ||
 previous.phase !== this.game.phase || previous.status !== this.statusText ||
-previous.names !== names || sequenceChanged;
+previous.names !== names || previous.reveal !== this.economy.getHintRevealCount() || sequenceChanged;
 if (accessibilityChanged) {
 this.accessibilityPanel = panel;
 this.accessibilityState = { show, flat, active: this.experienceActive, caption,
-phase: this.game.phase, status: this.statusText, names, sequence: [...this.game.sequence] };
+phase: this.game.phase, status: this.statusText, names, sequence: [...this.game.sequence],
+reveal: this.economy.getHintRevealCount() };
 if (panel && this.experienceActive) this.renderSequenceIcons(panel);
 panel?.getElementById('wall-tones-info-row')?.setProperties({
 display: show && !flat ? 'flex' : 'none',
@@ -3029,14 +3041,22 @@ this.flatCaptions.style.width = `${width}px`;
 this.flatCaptions.style.left = `${Math.max(width / 2 + 12, Math.min(window.innerWidth - width / 2 - 12, (minX + maxX) / 2))}px`;
 this.flatCaptions.style.top = `${bottom + 14}px`;
 }
-const seqVisible = this.experienceActive && (this.game.phase === 'input' || this.statusText === 'Listen:');
+// Backlog 12a applies here too (codex P2): during Your Turn the subtitle
+// sequence only reveals the owned hint prefix; no hint, no sequence.
+const captionListening = this.statusText === 'Listen:';
+const captionReveal = this.economy.getHintRevealCount();
+const captionYourTurn = this.game.phase === 'input' && !captionListening;
+const seqVisible = this.experienceActive &&
+(captionListening || (this.game.phase === 'input' && captionReveal > 0));
 const info = !this.experienceActive ? '' : this.game.phase === 'input' ? 'Your Turn:' : this.statusText;
 if (!accessibilityChanged && this.flatCaptions.childElementCount > 0) return;
 this.flatCaptions.replaceChildren();
 const line = document.createElement('div');
 Object.assign(line.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexWrap: 'wrap' });
 const label = document.createElement('span'); label.textContent = info; line.append(label);
-if (seqVisible) for (const id of this.game.sequence) {
+if (seqVisible) for (let i = 0; i < this.game.sequence.length; i++) {
+if (captionYourTurn && i >= captionReveal) break;
+const id = this.game.sequence[i]!;
 const square = document.createElement('span');
 Object.assign(square.style, { width: '16px', height: '16px', borderRadius: '2px', background: `#${WALL_TONE_PADS[id].color.toString(16).padStart(6, '0')}`, display: 'inline-block', flexShrink: '0' });
 square.setAttribute('aria-label', WALL_TONE_PADS[id].name);
