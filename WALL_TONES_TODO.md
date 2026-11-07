@@ -40,6 +40,9 @@ Personal backlog for what still needs work — not an agent task list. Move item
 - [ ] 28. When selecting the 4 pad spots in wall or table setup mode, also allow walking up and touching the surface with the hand - the same two-collider mechanism as the pad buttons: highlight when the hand gets close, select when touching it. Ray/pinch selection stays available.
 - [ ] 29. MR achievement for playing standing at walls, or on a mixed wall+table layout.
 - [ ] 30. Research: can the SDK track how much a player moves (fitness-style) in wall or mixed wall+table modes? If not, estimate from the distances between the placed pads. For later score use; no health or calorie claims.
+- [ ] 31. Store item: unlock another voice tied to story mode.
+- [ ] 32. Special colored pads: the two new pads would have special effects - one could give double score when pressed (tentative example); the other pad's effect still to be decided.
+- [ ] 33. Research: modifiers in incremental/clicker games; and whether a game has transformed Simon-style sequence-memory mechanics the way Balatro transformed poker.
 
 ## In progress
 
@@ -72,5 +75,4 @@ Personal backlog for what still needs work — not an agent task list. Move item
 - **2026-11-03 (Asia/Jerusalem):** Fixed Quest/browser audio (unlock Web Audio on menu + first pad tap) and flat start (pads were ignored until tap-to-start). Moved/shrank HUD and enlarged pad hit boxes so all four grid pads are reachable.
 - **2026-11-03 (Asia/Jerusalem):** Quieter voice (streak praise every 5 only); stronger pad tones (pointerdown audio priming + HTML WAV fallback).
 - **2026-11-03 (Asia/Jerusalem):** Air placement no longer sticks a solid pad on the face — ghost follows the hand as a hollow outline, stays ≥ ~0.7 m from the eyes, uses smaller sitting pads, and solidifies on pinch.
-
 
