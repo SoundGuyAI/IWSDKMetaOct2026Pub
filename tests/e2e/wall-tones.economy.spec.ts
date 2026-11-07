@@ -231,6 +231,59 @@ test.describe('Wall Tones economy: Bars, store, hints, achievements', () => {
       .toBe('true:5');
   });
 
+  test('hint gating covers the subtitle strip and survives the Listen to Your Turn flip', async ({
+    page,
+  }) => {
+    test.slow();
+    const speechRequests: string[] = [];
+    await abortSpeech(page, speechRequests);
+    await bootWallTones(page, true);
+    await page.evaluate(() => {
+      localStorage.setItem('wall-tones-hearing-subtitles', 'true');
+      localStorage.setItem('wall-tones-color-names', 'true');
+    });
+    const squares = page.locator(
+      '#wall-tones-flat-subtitles span[style*="width: 16px"]',
+    );
+    await submitPad(page, 0);
+    await expect
+      .poll(async () => (await readState(page)).phase, { timeout: 90_000 })
+      .toBe('input');
+
+    // No hint owned: subtitles show the label but leak no sequence squares.
+    await expect(page.locator('#wall-tones-flat-subtitles')).toContainText(
+      'Your Turn:',
+    );
+    await expect(squares).toHaveCount(0);
+
+    // Own a level-1 hint, then reach a 6-note round.
+    await grantBars(page, 50);
+    await dbg(page, 'toggleStore');
+    await dbg(page, 'buyHint');
+    await playToStreak(page, 5);
+    await expect
+      .poll(
+        async () => {
+          const snap = await readState(page);
+          return snap.phase === 'input' && snap.sequence.length >= 6
+            ? 'ready'
+            : 'waiting';
+        },
+        { timeout: 90_000 },
+      )
+      .toBe('ready');
+
+    // The Listen render showed every box; entering Your Turn must hide the
+    // tail beyond the owned prefix (codex: cache key needs the turn state).
+    await expect
+      .poll(async () => (await readState(page)).sequenceBoxesShown, {
+        timeout: 60_000,
+      })
+      .toBe(5);
+    // The subtitle strip applies the same reveal predicate (codex finding).
+    await expect(squares).toHaveCount(5);
+  });
+
   test('buying beyond the balance fails and prices keep rising past level 3', async ({
     page,
   }) => {
