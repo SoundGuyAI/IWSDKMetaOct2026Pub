@@ -17,6 +17,13 @@
   "resources": {},
   "nodes": [
     {
+      "id": "main-menu-panel",
+      "name": "Main Menu Panel",
+      "content": { "type": "asset", "asset": "main-menu-panel" },
+      "transform": { "position": [0, 1.78, -2.75], "scale": 0.34 },
+      "components": { "RayInteractable": {} }
+    },
+    {
       "id": "wall-tones-panel",
       "name": "Wall Tones Panel",
       "content": {

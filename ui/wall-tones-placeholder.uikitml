@@ -2,12 +2,13 @@
   .panel-root {
     flex-direction: column;
     width: 420px;
+    min-height: 462px;
   }
 
   .content {
     flex-direction: column;
-    gap: 10px;
-    padding: 24px;
+    gap: 8px;
+    padding: 16px;
   }
 
   .eyebrow {
@@ -98,6 +99,30 @@
     height: 44px;
   }
 
+  .popup-overlay {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex-grow: 1;
+    padding: 24px;
+  }
+
+  .popup-card {
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px;
+    border-radius: 14px;
+    background-color: #f4f2ec;
+    border-width: 2px;
+    border-color: #d8d4c8;
+    width: 340px;
+  }
+
+  .popup-card:dark {
+    background-color: #24262b;
+    border-color: #4a4d55;
+  }
+
   .drag-handle-label {
     font-size: 15px;
     font-weight: 700;
@@ -111,26 +136,55 @@
       <ButtonLabel id="panel-drag-label" class="drag-handle-label">Drag to move panel</ButtonLabel>
     </Button>
   </div>
+  <div id="menu-view" style="flex-direction: column">
   <div id="panel-content" class="content">
-    <div class="eyebrow">MIXED REALITY</div>
+    <div id="wall-tones-panel-header" style="flex-direction: column; gap: 10px">
     <div class="heading">Wall Tones 2</div>
-    <div id="flat-play-hint" class="body" style="display: none">
-      Flat play: watch the sequence, then click each pad once. Wrong pad resets this run; best streak stays.
+    <div id="flat-play-hint" class="body">
+      Watch the sequence, then press each pad once. Wrong pad resets this run; best streak stays.
+    </div>
     </div>
     <div class="stat-row">
-      <div class="stat-label">Best streak</div>
-      <div id="wall-tones-best-streak" class="stat-value">0</div>
+      <div class="stat-label">Streak</div>
+      <div style="flex-direction: row; align-items: center; gap: 5px">
+        <div class="stat-label">current</div>
+        <div id="wall-tones-current-streak" class="stat-value">0</div>
+        <div class="stat-label">best</div>
+        <div id="wall-tones-best-streak" class="stat-value">0</div>
+      </div>
     </div>
     <div class="stat-row">
-      <div class="stat-label">Current streak</div>
-      <div id="wall-tones-current-streak" class="stat-value">0</div>
+      <div style="flex-direction: row; align-items: center; gap: 6px">
+        <img id="bars-icon-img" src="ui/bars-icon.png" style="width: 20px; height: 20px" />
+        <div class="stat-label">Gold Bars</div>
+        <div id="wall-tones-bars" class="stat-value">0</div>
+      </div>
+      <div style="flex-direction: row; align-items: center; gap: 6px">
+        <div class="stat-label">Total Score</div>
+        <div id="wall-tones-total-score" class="stat-value">0</div>
+      </div>
+    </div>
+    <div id="wall-tones-round-card" class="stat-row">
+      <div class="stat-label">This round</div>
+      <div id="wall-tones-round-card-total" class="stat-value">+0</div>
     </div>
     <div id="wall-tones-info-row" style="flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px">
       <div id="wall-tones-status" class="status">Ready</div>
       <div id="wall-tones-sequence-icons" style="display: none; flex-direction: row; flex-wrap: wrap; gap: 5px; align-items: center; max-width: 280px"></div>
     </div>
     <div id="wall-tones-spoken-caption" class="status" style="display: none"></div>
-    <Button id="debug-colliders-button" class="button" style="margin-top: 8px">
+    <div id="wall-tones-achievement-toast" class="status" style="display: none">Achievement unlocked</div>
+    <div style="flex-direction: row; gap: 8px">
+      <Button id="store-button" class="button" style="flex-grow: 1">
+        <ButtonIcon><ShoppingBag></ShoppingBag></ButtonIcon>
+        <ButtonLabel id="store-button-label">Store</ButtonLabel>
+      </Button>
+      <Button id="achievements-button" class="button" style="flex-grow: 1">
+        <ButtonIcon><Trophy></Trophy></ButtonIcon>
+        <ButtonLabel>Achievements</ButtonLabel>
+      </Button>
+    </div>
+    <Button id="debug-colliders-button" class="button">
       <ButtonIcon><Bug></Bug></ButtonIcon>
       <ButtonLabel id="debug-colliders-label">Debug colliders: OFF</ButtonLabel>
     </Button>
@@ -181,4 +235,36 @@
     <ButtonIcon><ArrowLeft></ArrowLeft></ButtonIcon>
     <ButtonLabel>Back to main menu</ButtonLabel>
   </Button>
+  </div>
+  <div id="store-popup" class="popup-overlay" style="display: none">
+    <div class="popup-card">
+      <div class="heading" style="font-size: 22px">Store</div>
+      <div class="stat-label">Your Turn hint</div>
+      <div id="store-hint-status" class="status">No hint owned. The pattern stays hidden during Your Turn.</div>
+      <Button id="buy-hint-button" class="button">
+        <ButtonIcon><Lightbulb></Lightbulb></ButtonIcon>
+        <ButtonLabel id="buy-hint-label">Your Turn hint lv 1 - 10 Bars</ButtonLabel>
+      </Button>
+      <div class="stat-label">Top Secret</div>
+      <div id="store-secret-status" class="status">A secret. It stays secret.</div>
+      <Button id="buy-secret-button" class="button">
+        <ButtonIcon><Sparkles></Sparkles></ButtonIcon>
+        <ButtonLabel id="buy-secret-label">Top Secret - 1000 Bars</ButtonLabel>
+      </Button>
+      <Button id="store-close-button" class="button" style="margin-top: 6px">
+        <ButtonIcon><X></X></ButtonIcon>
+        <ButtonLabel>Close</ButtonLabel>
+      </Button>
+    </div>
+  </div>
+  <div id="achievements-popup" class="popup-overlay" style="display: none">
+    <div class="popup-card">
+      <div class="heading" style="font-size: 22px">Achievements</div>
+      <div id="achievements-screen-list" style="flex-direction: column; gap: 8px"></div>
+      <Button id="achievements-close-button" class="button" style="margin-top: 6px">
+        <ButtonIcon><X></X></ButtonIcon>
+        <ButtonLabel>Close</ButtonLabel>
+      </Button>
+    </div>
+  </div>
 </Panel>
