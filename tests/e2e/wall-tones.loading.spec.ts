@@ -84,6 +84,8 @@ test('mobile sound-start gate is reachable above the splash and does not time ou
   const start = page.locator('#audio-start-button');
   await expect(start).toBeVisible();
   await expect(page.locator('#wt-loading-detail')).toContainText('Tap Start');
+  await expect(page.locator('[data-step="fonts"]')).toContainText('Loaded: Menu fonts');
+  await expect(page.locator('[data-step="render"]')).toContainText('Loaded: First readable frame');
   const reachable = await start.evaluate(el => {
     const box = el.getBoundingClientRect();
     return document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2) === el;
@@ -115,4 +117,25 @@ test('a stalled font reports the real waiting checkpoint and can recover after t
   await page.clock.resume();
   release();
   await page.locator('#wt-loading').waitFor({ state: 'detached', timeout: 30000 });
+});
+
+
+test('mobile sound Start stays hidden until fonts finish loading', async ({ browser }) => {
+  const context = await browser.newContext({
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1',
+    viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, ignoreHTTPSErrors: true,
+  });
+  const page = await context.newPage();
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  await page.route('**/assets/inter-*.js', async route => { await gate; await route.continue(); });
+  await page.goto('https://localhost:4173/');
+  await expect(page.locator('#wt-loading-detail')).toContainText('Menu text fonts ready:');
+  await expect(page.locator('#audio-start-button')).toBeHidden();
+  release();
+  await expect(page.locator('#audio-start-button')).toBeVisible();
+  await expect(page.locator('[data-step="fonts"]')).toContainText('Loaded: Menu fonts');
+  await page.locator('#audio-start-button').tap();
+  await page.locator('#wt-loading').waitFor({ state: 'detached', timeout: 30000 });
+  await context.close();
 });
