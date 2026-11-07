@@ -390,6 +390,10 @@ const awaitingMode = sessionStorage.getItem('wall-tones-awaiting-mode');
 if (awaitingMode === '1' && getActiveWorldKind() === 'walltones-ar') {
 sessionStorage.removeItem('wall-tones-awaiting-mode');
 this.experienceActive = true;
+this.game.resetAllScores();
+// Backlog 18: restore the saved best streak on the AR boot path too,
+// or stored records re-grant the record bonus on every XR visit.
+this.game.bestStreak = this.economy.getBestStreak();
 document.title = 'Wall Tones 2: too fast to wall';
 this.bindPanelIfNeeded();
 this.clearPads();
@@ -418,6 +422,9 @@ pendingSetup === 'air'
 sessionStorage.removeItem('wall-tones-setup-mode');
 this.setupMode = pendingSetup;
 this.experienceActive = true;
+this.game.resetAllScores();
+// Backlog 18: same best-streak restore for the pending-setup boot path.
+this.game.bestStreak = this.economy.getBestStreak();
 document.title = 'Wall Tones 2: too fast to wall';
 const storedHand = sessionStorage.getItem('wall-tones-dominant-hand');
 if (storedHand === 'left' || storedHand === 'right') {
