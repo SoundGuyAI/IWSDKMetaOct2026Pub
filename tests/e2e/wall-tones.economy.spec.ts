@@ -21,6 +21,7 @@ interface DebugSnap {
   unlockedAchievements: string[];
   presses: number;
   storeOpen: boolean;
+  ownsTopSecret: boolean;
   sequenceRowVisible: boolean;
   sequenceBoxesShown: number;
   sequenceUnknownShown: number;
@@ -48,6 +49,7 @@ const readState = (page: Page): Promise<DebugSnap> =>
       unlockedAchievements: [...d.unlockedAchievements],
       presses: d.presses,
       storeOpen: d.storeOpen,
+      ownsTopSecret: d.ownsTopSecret,
       sequenceRowVisible: d.sequenceRowVisible,
       sequenceBoxesShown: d.sequenceBoxesShown,
       sequenceUnknownShown: d.sequenceUnknownShown,
@@ -236,6 +238,47 @@ test.describe('Wall Tones economy: Bars, store, hints, achievements', () => {
       speechRequests.filter((u) => u.includes('store-hints.mp3')).length,
     ).toBeGreaterThan(0);
 
+  });
+
+  test('the Top Secret purchase grants the hidden Secret Revealed achievement exactly once', async ({
+    page,
+  }) => {
+    test.slow();
+    const speechRequests: string[] = [];
+    await abortSpeech(page, speechRequests);
+    await bootWallTones(page, true);
+
+    // Refusal path: 999 Bars is not enough - no charge, no unlock.
+    await grantBars(page, 999);
+    await dbg(page, 'toggleStore');
+    expect((await readState(page)).storeOpen).toBe(true);
+    await dbg(page, 'buyTopSecret');
+    let snap = await readState(page);
+    expect(snap.bars).toBe(999);
+    expect(snap.ownsTopSecret).toBe(false);
+    expect(snap.unlockedAchievements).not.toContain('secret-1');
+
+    // 1000 Bars: the purchase lands, the hidden achievement unlocks.
+    await grantBars(page, 1);
+    await dbg(page, 'buyTopSecret');
+    snap = await readState(page);
+    expect(snap.bars).toBe(0);
+    expect(snap.ownsTopSecret).toBe(true);
+    expect(snap.unlockedAchievements).toContain('secret-1');
+
+    // One-time item: a second buy attempt charges nothing more.
+    await grantBars(page, 1500);
+    await dbg(page, 'buyTopSecret');
+    snap = await readState(page);
+    expect(snap.bars).toBe(1500);
+    expect(snap.ownsTopSecret).toBe(true);
+
+    // Ownership and the unlock persist across a reload.
+    await bootWallTones(page, false);
+    snap = await readState(page);
+    expect(snap.ownsTopSecret).toBe(true);
+    expect(snap.unlockedAchievements).toContain('secret-1');
+    expect(snap.bars).toBe(1500);
   });
 
   test('a level-1 hint reveals exactly 5 boxes of a 6-note pattern', async ({
