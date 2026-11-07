@@ -20,6 +20,8 @@ Live build (GitHub Pages): https://soundguyai.github.io/IWSDKMetaOct2026Pub/
 
 Planning notes live in `WALL_TONES_PLAN.md` and `WALL_TONES_TODO.md`.
 
+Wall Tones is proprietary software of Corbomite Ltd - see `NOTICE` for terms and `THIRD_PARTY_NOTICES` for third-party licenses.
+
 ## Project layout
 
 - `src/wall-tones/` - game logic, pads, audio, speech and room placement.
