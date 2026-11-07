@@ -13,6 +13,13 @@ export function setHearingSubtitles(value: boolean): void {
   try { localStorage.setItem(SUBTITLES_KEY, String(value)); } catch { /* session may be private */ }
   window.dispatchEvent(new Event('wall-tones-accessibility-change'));
 }
+const VOICES_OFF_KEY = 'wall-tones-voices-off';
+export function voicesOffEnabled(): boolean { return read(VOICES_OFF_KEY); }
+export function setVoicesOff(value: boolean): void {
+  sessionValues.set(VOICES_OFF_KEY, value);
+  try { localStorage.setItem(VOICES_OFF_KEY, String(value)); } catch { /* session may be private */ }
+  window.dispatchEvent(new Event('wall-tones-accessibility-change'));
+}
 export function setColorNames(value: boolean): void {
   sessionValues.set(COLOR_NAMES_KEY, value);
   try { localStorage.setItem(COLOR_NAMES_KEY, String(value)); } catch { /* session may be private */ }
