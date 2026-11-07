@@ -24,7 +24,7 @@ test('subtitles are off by default, enabled phone info sits below pads with colo
   await expect(page.locator('#wall-tones-flat-subtitles')).toBeVisible();
   await page.evaluate(() => (window as any).__wallTonesDebug.submitPad(0));
   await page.waitForFunction(() => (window as any).__wallTonesDebug.phase === 'input', undefined, { timeout: 90000 });
-  await expect(page.locator('#wall-tones-flat-subtitles')).toContainText('Your Turn:');
+  await expect(page.locator('#wall-tones-flat-subtitles')).toContainText('Hint:');
   await expect(page.locator('#wall-tones-flat-subtitles')).toContainText(/green|red|blue|yellow/);
   const box = await page.locator('#wall-tones-flat-subtitles').boundingBox();
   expect(box!.y).toBeGreaterThan(720); expect(box!.y + box!.height).toBeLessThan(844);

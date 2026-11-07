@@ -15,6 +15,9 @@ on:
       pr_number:
         description: Pull request number to (re)build the preview for
         required: true
+      checkout_ref:
+        description: Optional ref to build instead of refs/pull/N/merge (stale merge-ref recovery)
+        required: false
 
 permissions:
   contents: write
@@ -76,7 +79,7 @@ jobs:
           fi
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/pull/{0}/merge', inputs.pr_number) || '' }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && (inputs.checkout_ref || format('refs/pull/{0}/merge', inputs.pr_number)) || '' }}
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc

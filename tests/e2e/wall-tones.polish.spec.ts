@@ -172,11 +172,13 @@ test.describe('Wall Tones polish: fade + skip voice', () => {
 
     // The start tap flashes pad 0 for ~280 ms. Sample the whole window from
     // inside the page so slow headless frames cannot slip past the fade.
-    await submitPad(page, 0);
     const samples: (PadFadeState | null)[] = await page.evaluate(async () => {
       const d = (window as unknown as {
-        __wallTonesDebug: { padFade(i: number): PadFadeState | null };
+        __wallTonesDebug: { padFade(i: number): PadFadeState | null; submitPad(i: number): void };
       }).__wallTonesDebug;
+      // Start and observe in one browser task. A separate host round trip can
+      // arrive after the entire fade-in on a busy CI renderer.
+      d.submitPad(0);
       const out: (PadFadeState | null)[] = [];
       const t0 = performance.now();
       while (performance.now() - t0 < 900) {

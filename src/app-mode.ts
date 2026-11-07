@@ -1,4 +1,4 @@
-import { hearingSubtitlesEnabled, colorNamesEnabled, setHearingSubtitles, setColorNames } from './wall-tones/accessibility.js';
+import { hearingSubtitlesEnabled, colorNamesEnabled, setHearingSubtitles, setColorNames, voicesOffEnabled, setVoicesOff } from './wall-tones/accessibility.js';
 /**
  * Switches between the main menu and experience modes by toggling authored
  * scene node visibility. Mode selection lives on spatial UIKitML panels.
@@ -11,6 +11,7 @@ import {
   VisibilityState,
 } from '@iwsdk/core';
 import { primeWallTonesAudioFromGesture } from './wall-tones/audio.js';
+import { resetWallTonesStats } from './wall-tones/economy.js';
 import {
   WallTonesSpeech,
   getVoiceGender,
@@ -77,11 +78,79 @@ export class AppModeSystem extends createSystem({}) {
         window.removeEventListener(type, unlockMenuAudio, true),
       );
     }
-    this.bindMainMenu();
+    this.loadingStage('menu', 'Scene and renderer loaded. Wiring the menu controls.');
+    const menuPanel = this.bindMainMenu();
     this.bindWallTonesPlaceholder();
     this.bindDemoNav();
     this.bindWelcomeBack();
     this.applyMode(this.mode, false);
+    // Static splash in index.html stays up until the menu is usable: buttons
+    // are wired (above) AND the menu text can actually render. Panel text
+    // waits on the Inter MSDF font chunk, which can arrive seconds after
+    // init on slow connections - lifting earlier shows an icon-only menu.
+    // If the font never loads, the splash's own timeout shows a retry state.
+    this.liftSplashWhenMenuTextLoads(menuPanel);
+  }
+
+  private loadingStage(key: string, detail: string): void {
+    (window as unknown as { __wtLoading?: { stage: (key: string, detail: string) => void } }).__wtLoading?.stage(key, detail);
+  }
+
+  private liftSplashWhenMenuTextLoads(panel: UIKitMLAsset | null): void {
+    const lift = () => {
+      (
+        window as unknown as { __wtAppReady?: () => void }
+      ).__wtAppReady?.();
+    };
+    if (panel == null) {
+      (window as unknown as { __wtLoading?: { fail: (error: unknown) => void } }).__wtLoading?.fail('Main menu panel is missing.');
+      return;
+    }
+    // Every text element on the menu panel exposes a fontSignal that resolves
+    // once its MSDF font data has loaded. Wait for all of them, then give the
+    // renderer a frame so glyphs are on screen before the splash fades.
+    const texts: Array<{ fontSignal: { value: unknown } }> = [];
+    panel.traverse((object) => {
+      const candidate = object as unknown as {
+        fontSignal?: { value: unknown };
+      };
+      if (candidate.fontSignal != null) {
+        texts.push(candidate as { fontSignal: { value: unknown } });
+      }
+    });
+    // Subscribe after counting, and defer completion out of subscribe's
+    // immediate callback. This also avoids a synchronous unsubscribe TDZ.
+    const pending = texts.filter((text) => text.fontSignal.value == null);
+    let remaining = pending.length;
+    const update = () => this.loadingStage('fonts',
+      'Menu controls wired. Menu text fonts ready: ' + (texts.length - remaining) + '/' + texts.length + '.');
+    const renderThenLift = () => {
+      this.loadingStage('render', 'Menu fonts loaded. Waiting for the first readable frame.');
+      requestAnimationFrame(() => requestAnimationFrame(lift));
+    };
+    update();
+    if (remaining === 0) {
+      renderThenLift();
+      return;
+    }
+    for (const text of pending) {
+      const fontSignal = text.fontSignal as {
+        value: unknown;
+        subscribe: (fn: () => void) => () => void;
+      };
+      let resolved = false;
+      const unsubscribe = fontSignal.subscribe(() => {
+        if (fontSignal.value == null || resolved) return;
+        resolved = true;
+        queueMicrotask(() => {
+          unsubscribe();
+          remaining -= 1;
+          update();
+          if (remaining === 0) renderThenLift();
+        });
+      });
+      this.cleanupFuncs.push(unsubscribe);
+    }
   }
 
   private setMode(mode: ExperienceMode): void {
@@ -135,32 +204,20 @@ export class AppModeSystem extends createSystem({}) {
     this.setMode('walltones');
   }
 
-  /**
-   * Enter XR boots the AR Wall Tones world first (while still flat), then
-   * launches one XR session — so later mode picks never tear XR down.
-   * Dynamic import avoids a circular dependency with world-host.
-   */
+  /** Enter XR prepares an MR menu; Start remains a separate choice. */
   private enterXrIntoWallTones(): void {
-    primeWallTonesAudioFromGesture();
-    unlockSpeechFromGesture();
-    persistMode('walltones');
-    sessionStorage.setItem('wall-tones-awaiting-mode', '1');
-    void import('./wall-tones/world-host.js').then((host) => {
-      if (host.getActiveWorldKind() === 'hub-vr') {
-        void host.switchToWallTonesArWorld();
-        return;
-      }
-      this.setMode('walltones');
-      if (this.world.xrEnabled) {
-        this.world.launchXR();
-      }
+    void import('./wall-tones/world-host.js').then(async (host) => {
+      await host.switchToWallTonesArWorld('menu');
+    }).catch((error) => {
+      console.error('[wall-tones] XR preparation failed', error);
+      // No game state was selected. Keep the menu available for another try.
     });
   }
 
-  private bindMainMenu(): void {
+  private bindMainMenu(): UIKitMLAsset | null {
     const panel = this.world.getSceneObject<UIKitMLAsset>('main-menu-panel');
     if (panel == null) {
-      return;
+      return null;
     }
     const wallTonesButton = panel.getElementById('mode-walltones-button');
     const xrButton = panel.getElementById('xr-button');
@@ -173,6 +230,7 @@ export class AppModeSystem extends createSystem({}) {
     if (xrButton != null) {
       xrButton.name = 'Btn_EnterXrWallTones';
     }
+    return panel;
   }
 
   /**
@@ -253,9 +311,33 @@ export class AppModeSystem extends createSystem({}) {
       checked: colorNamesEnabled(),
       onCheckedChange: setColorNames,
     } as never);
+    panel.getElementById('voices-off-checkbox')?.setProperties({
+      checked: voicesOffEnabled(),
+      onCheckedChange: setVoicesOff,
+    } as never);
+    // Debug stat reset: two-step confirm, clears progression stats only.
+    let resetArmed = false;
+    let resetDisarm: number | undefined;
+    panel.getElementById('reset-stats-button')?.addEventListener('click', () => {
+      const label = panel.getElementById('reset-stats-label');
+      if (!resetArmed) {
+        resetArmed = true;
+        label?.setProperties({ text: 'Tap again to confirm reset' } as never);
+        resetDisarm = window.setTimeout(() => {
+          resetArmed = false;
+          label?.setProperties({ text: 'Reset my stats (debug)' } as never);
+        }, 4000);
+        return;
+      }
+      window.clearTimeout(resetDisarm);
+      resetWallTonesStats();
+      window.location.reload();
+    });
     const syncAccessibility = () => {
+      if (voicesOffEnabled()) this.voicePreview.cancel();
       panel.getElementById('hearing-subtitles-checkbox')?.setProperties({ checked: hearingSubtitlesEnabled() } as never);
       panel.getElementById('color-names-checkbox')?.setProperties({ checked: colorNamesEnabled() } as never);
+      panel.getElementById('voices-off-checkbox')?.setProperties({ checked: voicesOffEnabled() } as never);
     };
     window.addEventListener('wall-tones-accessibility-change', syncAccessibility);
     this.cleanupFuncs.push(() => window.removeEventListener('wall-tones-accessibility-change', syncAccessibility));
