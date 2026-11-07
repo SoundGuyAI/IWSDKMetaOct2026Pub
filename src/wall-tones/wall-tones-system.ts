@@ -1,7 +1,7 @@
 import { shouldAnnounceRecord } from './record-feedback.js';
 import { BarFloatPool } from './bar-floats.js';
 import { achievementIconSrc } from './achievement-icons.js';
-import { hearingSubtitlesEnabled, colorNamesEnabled, currentSpokenCaption } from './accessibility.js';
+import { hearingSubtitlesEnabled, colorNamesEnabled, currentSpokenCaption, voicesOffEnabled } from './accessibility.js';
 import {
 ConeGeometry,
 CylinderGeometry,
@@ -361,6 +361,13 @@ void this.leaveWallTonesMode();
 }
 };
 window.addEventListener('experience-mode-changed', onModeChange);
+// Voices-off toggle silences active and queued narration immediately.
+const onAccessibilityChange = () => {
+if (voicesOffEnabled()) {
+this.speech.cancel();
+}
+};
+window.addEventListener('wall-tones-accessibility-change', onAccessibilityChange);
 this.wasNonImmersive =
 this.world.visibilityState.peek() === VisibilityState.NonImmersive;
 this.cleanupFuncs.push(
@@ -371,6 +378,7 @@ this.onVisibilityForFlatPlay(state);
 this.publishDebugBridge();
 this.cleanupFuncs.push(() => {
 window.removeEventListener('experience-mode-changed', onModeChange);
+window.removeEventListener('wall-tones-accessibility-change', onAccessibilityChange);
 delete window.__wallTonesDebug;
 void this.leaveWallTonesMode();
 });
