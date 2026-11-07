@@ -23,6 +23,7 @@ interface DebugSnap {
   storeOpen: boolean;
   sequenceRowVisible: boolean;
   sequenceBoxesShown: number;
+  sequenceUnknownShown: number;
   flatAwaitingStart: boolean;
   roundCardText: string;
   roundCardVisibleText: string | null;
@@ -49,6 +50,7 @@ const readState = (page: Page): Promise<DebugSnap> =>
       storeOpen: d.storeOpen,
       sequenceRowVisible: d.sequenceRowVisible,
       sequenceBoxesShown: d.sequenceBoxesShown,
+      sequenceUnknownShown: d.sequenceUnknownShown,
       flatAwaitingStart: d.flatAwaitingStart,
       roundCardText: d.roundCardText,
       roundCardVisibleText: d.roundCardVisibleText,
@@ -156,7 +158,7 @@ test.describe('Wall Tones economy: Bars, store, hints, achievements', () => {
     // read back the text actually set on the rendered element.
     await expect
       .poll(async () => (await readState(page)).roundCardVisibleText)
-      .toBe('+3');
+      .toBe('+3 (+2 bonus)');
     let snap = await readState(page);
     expect(snap.bestStreak).toBe(1);
     // Categories: the first pattern's single press counts toward Pad presses.
@@ -187,7 +189,7 @@ test.describe('Wall Tones economy: Bars, store, hints, achievements', () => {
     // No new record this time: per-press +1 and completion +1 land.
     await expect.poll(async () => (await readState(page)).bars).toBe(5);
     expect((await readState(page)).roundCardText).toBe('+2 (Pads +1 - Completion +1)');
-    expect((await readState(page)).roundCardVisibleText).toBe('+2');
+    expect((await readState(page)).roundCardVisibleText).toBe('+2 (+1 bonus)');
     await page.waitForTimeout(3_000); // let the speech chain finish
     expect(
       speechRequests.filter((u) => u.includes('bars-first-earn.mp3')).length,
@@ -256,9 +258,10 @@ test.describe('Wall Tones economy: Bars, store, hints, achievements', () => {
       .poll(async () => {
         const snap2 = await readState(page);
         if (snap2.phase !== 'input' || snap2.sequence.length < 6) return 'waiting';
-        return `${snap2.sequenceRowVisible}:${snap2.sequenceBoxesShown}:${snap2.infoRowVisible}`;
+        return `${snap2.sequenceRowVisible}:${snap2.sequenceBoxesShown}:${snap2.sequenceUnknownShown}:${snap2.infoRowVisible}`;
       }, { timeout: 90_000 })
-      .toBe('true:5:true');
+      // 5 owned boxes + 1 grey "?" marker for the unrevealed tail (user ask).
+      .toBe('true:5:1:true');
   });
 
   test('hint gating covers the subtitle strip and survives the Listen to Your Turn flip', async ({
@@ -310,8 +313,12 @@ test.describe('Wall Tones economy: Bars, store, hints, achievements', () => {
         timeout: 60_000,
       })
       .toBe(5);
-    // The subtitle strip applies the same reveal predicate (codex finding).
-    await expect(squares).toHaveCount(5);
+    // The subtitle strip applies the same reveal predicate (codex finding),
+    // plus one grey "?" square for the unrevealed sixth note (user ask).
+    await expect(squares).toHaveCount(6);
+    await expect(
+      page.locator('#wall-tones-flat-subtitles span[data-unknown]'),
+    ).toHaveCount(1);
   });
 
   test('buying beyond the balance fails and prices keep rising past level 3', async ({
