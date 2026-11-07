@@ -108,8 +108,8 @@
   </Button>
   <div id="settings-dialog" class="settings-dialog" style="display: none">
     <div id="settings-eyebrow" class="eyebrow">SETTINGS</div>
-    <div id="settings-heading" class="heading">Voice</div>
-    <div id="settings-body" class="body">Pick the host voice. A preview plays right away.</div>
+    <div id="settings-heading" class="heading">Voice &amp; Accessibility</div>
+    <div id="settings-body" class="body">Pick the host voice (a preview plays right away), or open accessibility options.</div>
     <Button id="voice-male-button" class="button" style="height: 64px">
       <ButtonIcon><User></User></ButtonIcon>
       <ButtonLabel id="voice-male-label" class="button-label">Male voice</ButtonLabel>
@@ -137,6 +137,15 @@
       <Checkbox id="color-names-checkbox"></Checkbox>
       <div class="body">Color blindness: show color names</div>
     </div>
+    <div style="flex-direction: row; gap: 12px; align-items: center; padding: 12px">
+      <Checkbox id="voices-off-checkbox"></Checkbox>
+      <div class="body">Voices off: mute all narration</div>
+    </div>
+    <div class="body" style="padding-left: 12px; padding-right: 12px">Debug reset clears bars, total score, streaks, achievements, hints and first-time flags. Settings stay.</div>
+    <Button id="reset-stats-button" class="button" style="height: 64px">
+      <ButtonIcon><Trash2></Trash2></ButtonIcon>
+      <ButtonLabel id="reset-stats-label" class="button-label">Reset my stats (debug)</ButtonLabel>
+    </Button>
     <Button id="accessibility-back-button" class="button" style="height: 64px">
       <ButtonIcon><ArrowLeft></ArrowLeft></ButtonIcon><ButtonLabel>Back</ButtonLabel>
     </Button>
