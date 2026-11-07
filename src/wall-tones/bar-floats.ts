@@ -29,6 +29,9 @@ const SPRITE_H_M = 0.08;
 class FloatSlot {
   active = false;
   elapsed = 0;
+  /** Label-width factor captured at spawn; update() must not re-derive it
+   * from the sprite scale, which travel scaling already shrank. */
+  widthScale = 1;
   readonly from = new Vector3();
   readonly to = new Vector3();
   readonly material = new SpriteMaterial({
@@ -81,6 +84,7 @@ export class BarFloatPool {
     slot.material.opacity = 1;
     slot.material.needsUpdate = true;
     const widthScale = 1 + Math.max(0, label.length - 2) * 0.18;
+    slot.widthScale = widthScale;
     slot.sprite.scale.set(SPRITE_W_M * widthScale, SPRITE_H_M, 1);
     slot.sprite.position.copy(from);
     slot.sprite.visible = true;
@@ -123,8 +127,7 @@ export class BarFloatPool {
         slot.sprite.visible = true;
         slot.sprite.position.copy(w);
         const scale = 1 - 0.4 * eased;
-        const widthScale = slot.sprite.scale.x / SPRITE_W_M || 1;
-        slot.sprite.scale.set(SPRITE_W_M * widthScale, SPRITE_H_M, 1)
+        slot.sprite.scale.set(SPRITE_W_M * slot.widthScale, SPRITE_H_M, 1)
           .multiplyScalar(scale);
         slot.material.opacity = fade;
       }
