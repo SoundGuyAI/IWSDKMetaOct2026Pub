@@ -127,7 +127,7 @@
     </div>
     <div class="stat-row">
       <div style="flex-direction: row; align-items: center; gap: 6px">
-        <img src="/ui/bars-icon.png" style="width: 20px; height: 20px" />
+        <img id="bars-icon-img" src="ui/bars-icon.png" style="width: 20px; height: 20px" />
         <div class="stat-label">Gold Bars</div>
       </div>
       <div id="wall-tones-bars" class="stat-value">0</div>
