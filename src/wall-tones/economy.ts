@@ -151,6 +151,11 @@ export class WallTonesEconomy {
     return this.unlocked.has(id);
   }
 
+  /** Total unlocked achievements; a complete change key since unlocks only grow. */
+  getUnlockedCount(): number {
+    return this.unlocked.size;
+  }
+
   private unlock(id: string): void {
     if (this.unlocked.has(id)) return;
     const def = ACHIEVEMENTS.find((a) => a.id === id);
