@@ -13,6 +13,14 @@ Personal backlog for what still needs work — not an agent task list. Move item
 - [ ] 7. Wrist band that shows the buttons playing the pattern
 - [ ] 8. Incremental features (park smaller follow-ups here as they come up)
 
+### Store and pattern-row ideas - November 7 (backlog only, not implementation approval)
+   - [ ] 35. Store modifier: speed up the part of the pattern already revealed by hints.
+   - [ ] 36. Store item: index indicator showing where the player clicked in the pattern.
+   - [ ] 37. Consider reworking the Listen line: reveal one note at a time instead of showing the whole pattern; also offer this as a store modifier purchasable before hints.
+   - [ ] 38. Achievement screen rework: compact icon grid with a level number per achievement; unachieved entries greyed out; an explanation tooltip per achievement - tap pop-up on phone, gaze or ray in VR.
+   - [ ] 39. Progressive achievements: do not cap levels at the current 5; keep leveling open-ended (threshold growth formula still to be decided with the user).
+   - [ ] 40. NEXT PR after PR29 lands, BEFORE other queued PRs (user sequencing, Nov 7): add the credit line "made by Oded Sharon" directly under the Settings button in the main menu; and add a repo note that the game was made by him and that anyone who wants to do anything with it must ask his permission and give attribution. License type unresolved - research current license/ownership options when that work begins; he reviews the exact notice wording before it is committed.
+
 ### Future ideas - November 6,18:02 (backlog only, not implementation approval)
    - [ ] 11a. Add player-applied multipliers to the scoring system; mechanics unspecified.
    - [ ] 12b. Auto-presser modifier.
