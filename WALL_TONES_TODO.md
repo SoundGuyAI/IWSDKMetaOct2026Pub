@@ -13,11 +13,16 @@ Personal backlog for what still needs work — not an agent task list. Move item
 - [ ] 7. Wrist band that shows the buttons playing the pattern
 - [ ] 8. Incremental features (park smaller follow-ups here as they come up)
 
+### Store and pattern-row ideas - November 7 (backlog only, not implementation approval)
+   - [ ] 35. Store modifier: speed up the part of the pattern already revealed by hints.
+   - [ ] 36. Store item: index indicator showing where the player clicked in the pattern.
+   - [ ] 37. Consider reworking the Listen line: reveal one note at a time instead of showing the whole pattern; also offer this as a store modifier purchasable before hints.
+   - [ ] 38. Achievement screen rework: compact icon grid with a level number per achievement; unachieved entries greyed out; an explanation tooltip per achievement - tap pop-up on phone, gaze or ray in VR.
+   - [ ] 39. Progressive achievements: do not cap levels at the current 5; keep leveling open-ended (threshold growth formula still to be decided with the user).
+   - [ ] 40. NEXT PR after PR29 lands, BEFORE other queued PRs (user sequencing, Nov 7): add the credit line "made by Oded Sharon" directly under the Settings button in the main menu; and add a repo note that the game was made by him and that anyone who wants to do anything with it must ask his permission and give attribution. License type unresolved - research current license/ownership options when that work begins; he reviews the exact notice wording before it is committed.
+
 ### Future ideas - November 6,18:02 (backlog only, not implementation approval)
-- [ ] 11. Add a score that grows exponentially with streak length.
    - [ ] 11a. Add player-applied multipliers to the scoring system; mechanics unspecified.
-- [ ] 12. Add a store where players can buy modifiers.
-   - [ ] 12a. Your Turn hint modifier: each level gives 5 boxes of hints; buy upgrades for longer hints.
    - [ ] 12b. Auto-presser modifier.
    - [ ] 12c. Two more colored pads. In VR, the player would need to add them.
 - [ ] 13. Secret unlock: brainstorm what it should be.
@@ -25,11 +30,10 @@ Personal backlog for what still needs work — not an agent task list. Move item
 - [ ] 15. New trailer hinting that this is an ARG game.
 - [ ] 16. Something flies out of the walls in MR after certain scores; in flat mode it flies into the screen, with a button to look at it. Details to brainstorm.
 - [ ] 17. Rickroll fanfare. Open question: how many buttons does it need, and are 6 enough?
-- [ ] 18. Save score, streak and settings locally.
-- [ ] 19. Achievements for streak, score, story and other milestones.
 
 ### MR and menu polish - November 6
 
+- [ ] 20. In mixed reality, investigate whether the boundary can be ignored.
 - [ ] 21. In MR, show subtitles at the bottom of the view, statically attached to the head, in a readable position.
 - [ ] 22. In the game menu, make the window draggable by default; remove the top button's drag-mode toggle.
 - [ ] 23. In setup mode, hide scoring info; show it only while the game loop is active.
@@ -44,15 +48,17 @@ Personal backlog for what still needs work — not an agent task list. Move item
 - [ ] 32. Special colored pads: the two new pads would have special effects - one could give double score when pressed (tentative example); the other pad's effect still to be decided.
 - [ ] 33. Research: modifiers in incremental/clicker games; and whether a game has transformed Simon-style sequence-memory mechanics the way Balatro transformed poker.
 - [ ] 34. Consider making the repo private again and moving preview/production hosting to a Cloudflare Worker - only if the Devpost competition rules allow it (verify rules first).
-
 ## In progress
 
 - [ ] 9. Fade button transitions between lit and dim states in both directions.
 - [ ] 10. Add a skip dialog button.
+- [~] 11. Score that grows exponentially with streak length (economy PR; PENDING the user's score-interpretation answer - Bars and streak persist meanwhile, no score display yet).
+- [~] 12. Store where players buy modifiers (economy PR: gold Bars, hint store).
+   - [~] 12a. Your Turn hint modifier: each level gives 5 boxes of hints; buy upgrades for longer hints (economy PR: 10/15/22 Bars then ~1.3x growth, open-ended, tunable; persistent unlocks; Your Turn row hidden without a hint, per user November 7).
+- [~] 18. Save score, streak and settings locally (economy PR: best streak, Bars, hints, achievements, first-time flags persist; score persists once 11 lands).
+- [~] 19. Achievements for streak, score, story and other milestones (economy PR: streak/Bar/store achievements, visual-only; score achievements once 11 lands).
 
 ## Done
-
-- [x] 20. In mixed reality, investigate whether the boundary can be ignored. Resolved in PR #28 (merged 2026-11-07): the MR session now requests an unbounded reference space with local-floor fallback; the user verified the boundary no longer appears on his headset.
 
 - [x] Blink uses the cube's own color (saturated, slightly lighter), not white. Checked with before/after frames of all four pad flashes in the desktop build. Not yet checked on a headset.
 - [x] Replace the Wall Tones placeholder panel with mode choice, best streak, and round status. Keep `back-to-menu-button`.

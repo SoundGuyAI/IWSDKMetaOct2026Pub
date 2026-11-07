@@ -1,5 +1,7 @@
 import { shouldAnnounceRecord } from './record-feedback.js';
-import { hearingSubtitlesEnabled, colorNamesEnabled, currentSpokenCaption } from './accessibility.js';
+import { BarFloatPool } from './bar-floats.js';
+import { achievementIconSrc } from './achievement-icons.js';
+import { hearingSubtitlesEnabled, colorNamesEnabled, currentSpokenCaption, voicesOffEnabled } from './accessibility.js';
 import {
 ConeGeometry,
 CylinderGeometry,
@@ -118,6 +120,10 @@ unlockSpeechFromGesture,
 type WallTonesClipId,
 } from './speech.js';
 import {
+  ACHIEVEMENT_CATEGORIES,
+  WallTonesEconomy,
+} from './economy.js';
+import {
 getActiveWorldKind,
 switchBackToHubMenu,
 switchToWallTonesArWorld,
@@ -144,6 +150,26 @@ sequence: readonly number[];
 inputStep: number;
 streak: number;
 bestStreak: number;
+bars: number;
+barsTotal: number;
+hintLevel: number;
+hintRevealCount: number;
+unlockedAchievements: string[];
+purchases: number;
+presses: number;
+storeOpen: boolean;
+sequenceRowVisible: boolean;
+sequenceBoxesShown: number;
+sequenceUnknownShown: number;
+roundCardText: string;
+roundCardVisibleText: string | null;
+barFloatsActive: boolean;
+infoRowVisible: boolean;
+toggleStore: () => void;
+toggleAchievements: () => void;
+buyHint: () => void;
+/** Test-only wallet funding for e2e. */
+grantBars: (amount: number) => void;
 flatAwaitingStart: boolean;
 slotCandidateCount: number;
 selectedSlotCount: number;
@@ -198,6 +224,9 @@ this.speech.speak('chooseMode');
 }
 
 private readonly game = new WallTonesSequence();
+private readonly economy = new WallTonesEconomy();
+private storeOpen = false;
+private achievementsOpen = false;
 private readonly viewer = new Vector3();
 private readonly captionProjection = new Vector3();
 private readonly cameraForward = new Vector3();
@@ -286,7 +315,7 @@ const panel = this.sequenceIconPendingPanel;
 if (panel) this.reconcileSequenceIcons(panel);
 };
 private accessibilityPanel: UIKitMLAsset | undefined;
-private accessibilityState: { show: boolean; flat: boolean; active: boolean; caption: string; phase: string; status: string; names: boolean; sequence: number[] } | undefined;
+private accessibilityState: { show: boolean; flat: boolean; active: boolean; caption: string; phase: string; status: string; names: boolean; sequence: number[]; reveal: number } | undefined;
 private sequenceIconRow: UIKit.Container | null = null;
 /** Setup HUD is world-anchored; look-away past a threshold re-snaps it. */
 private panelWorldAnchored = false;
@@ -336,6 +365,13 @@ void this.leaveWallTonesMode();
 }
 };
 window.addEventListener('experience-mode-changed', onModeChange);
+// Voices-off toggle silences active and queued narration immediately.
+const onAccessibilityChange = () => {
+if (voicesOffEnabled()) {
+this.speech.cancel();
+}
+};
+window.addEventListener('wall-tones-accessibility-change', onAccessibilityChange);
 this.wasNonImmersive =
 this.world.visibilityState.peek() === VisibilityState.NonImmersive;
 this.cleanupFuncs.push(
@@ -346,6 +382,7 @@ this.onVisibilityForFlatPlay(state);
 this.publishDebugBridge();
 this.cleanupFuncs.push(() => {
 window.removeEventListener('experience-mode-changed', onModeChange);
+window.removeEventListener('wall-tones-accessibility-change', onAccessibilityChange);
 delete window.__wallTonesDebug;
 void this.leaveWallTonesMode();
 });
@@ -357,6 +394,10 @@ const awaitingMode = sessionStorage.getItem('wall-tones-awaiting-mode');
 if (awaitingMode === '1' && getActiveWorldKind() === 'walltones-ar') {
 sessionStorage.removeItem('wall-tones-awaiting-mode');
 this.experienceActive = true;
+this.game.resetAllScores();
+// Backlog 18: restore the saved best streak on the AR boot path too,
+// or stored records re-grant the record bonus on every XR visit.
+this.game.bestStreak = this.economy.getBestStreak();
 document.title = 'Wall Tones 2: too fast to wall';
 this.bindPanelIfNeeded();
 this.clearPads();
@@ -385,6 +426,9 @@ pendingSetup === 'air'
 sessionStorage.removeItem('wall-tones-setup-mode');
 this.setupMode = pendingSetup;
 this.experienceActive = true;
+this.game.resetAllScores();
+// Backlog 18: same best-streak restore for the pending-setup boot path.
+this.game.bestStreak = this.economy.getBestStreak();
 document.title = 'Wall Tones 2: too fast to wall';
 const storedHand = sessionStorage.getItem('wall-tones-dominant-hand');
 if (storedHand === 'left' || storedHand === 'right') {
@@ -411,6 +455,7 @@ if (!this.experienceActive) {
 return;
 }
 this.tickSkipVoiceButton();
+this.barFloats.update(delta, this.world.camera, this.isFlatView());
 if (this.pads.length > 0) {
 const glowTime = performance.now() / 1000;
 for (const pad of this.pads) {
@@ -519,6 +564,22 @@ panel
 .getElementById('debug-colliders-button')
 ?.addEventListener('click', () => this.toggleTouchDebug());
 panel
+.getElementById('store-button')
+?.addEventListener('click', () => this.onToggleStore());
+panel
+.getElementById('achievements-button')
+?.addEventListener('click', () => this.setAchievementsOpen(true));
+panel
+.getElementById('store-close-button')
+?.addEventListener('click', () => this.onToggleStore());
+panel
+.getElementById('achievements-close-button')
+?.addEventListener('click', () => this.setAchievementsOpen(false));
+
+panel
+.getElementById('buy-hint-button')
+?.addEventListener('click', () => this.onBuyHint());
+panel
 .getElementById('panel-drag-handle')
 ?.addEventListener('click', () => this.togglePanelDragArm());
 panel
@@ -546,6 +607,8 @@ return;
 }
 this.experienceActive = true;
 this.game.resetAllScores();
+// Backlog 18: the best streak survives reloads and re-entries.
+this.game.bestStreak = this.economy.getBestStreak();
 this.firstRun = true;
 document.title = 'Wall Tones 2: too fast to wall';
 this.bindPanelIfNeeded();
@@ -594,6 +657,16 @@ return;
 }
 this.experienceActive = false;
 this.flowPhase = 'inactive';
+this.barFloats.clear();
+this.achievementsOpen = false;
+this.storeOpen = false;
+this.syncMenuPopupVisibility();
+this.roundBarsEarned = 0;
+this.roundBonusEarned = 0;
+this.roundCompletionEarned = 0;
+this.recordBeatenThisAttempt = false;
+this.barsFirstEarnedPending = false;
+this.hideRoundBarsCard();
 this.flatAwaitingStart = false;
 this.inputNeedsClear = false;
 this.mediaUnlockApplied = false;
@@ -653,6 +726,7 @@ this.statusText = 'Tap any pad to start (sound on)';
 this.setSetupUiVisible(false);
 this.setAirOrientUiVisible(false);
 this.setFlatHintVisible(true);
+this.setPanelHeaderVisible(true);
 this.setPanelDragBarVisible(false);
 this.hideStudioBackdrop();
 this.layoutPanelForFlatPlay();
@@ -1075,6 +1149,16 @@ this.world
 ?.setProperties({ display: visible ? 'flex' : 'none' });
 }
 
+/** Phone flat play hides the eyebrow/title/hint header once a run starts so
+ * the taller economy panel (stats + round card) stays inside the portrait
+ * viewport; the header returns at the pre-start prompt. */
+private setPanelHeaderVisible(visible: boolean): void {
+this.world
+.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('wall-tones-panel-header')
+?.setProperties({ display: visible ? 'flex' : 'none' });
+}
+
 /** Skip voice: drop the playing and queued narration lines. */
 /** Bumped when the USER skips narration, so scripted multi-line
  * announcements stop enqueueing their remaining lines. Internal
@@ -1247,6 +1331,88 @@ return system.game.streak;
 },
 get bestStreak() {
 return system.game.bestStreak;
+},
+get bars() {
+return system.economy.getBars();
+},
+get barsTotal() {
+return system.economy.getBarsTotal();
+},
+get hintLevel() {
+return system.economy.getHintLevel();
+},
+get hintRevealCount() {
+return system.economy.getHintRevealCount();
+},
+get unlockedAchievements() {
+return ACHIEVEMENT_CATEGORIES.flatMap((c) =>
+c.levels
+.filter((t) => system.economy.isUnlocked(`${c.id}-${t}`))
+.map((t) => `${c.id}-${t}`),
+);
+},
+get purchases() {
+return system.economy.getPurchases();
+},
+get presses() {
+return system.economy.getPresses();
+},
+get storeOpen() {
+return system.storeOpen;
+},
+get sequenceRowVisible() {
+return system.lastSequenceRowVisible;
+},
+get sequenceBoxesShown() {
+return system.lastSequenceBoxesShown;
+},
+get sequenceUnknownShown() {
+return system.lastSequenceUnknownShown;
+},
+get roundCardText() {
+return system.lastRoundCardText;
+},
+// Live read-back of the text actually set on the rendered panel element
+// (catches the uikitml empty-div compile trap, where setProperties no-ops).
+get roundCardVisibleText() {
+const el = system.world
+.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('wall-tones-round-card-total');
+// The rendered Text child reads parentContainer.properties.value.text,
+// falling back to the uikitml initial literal ('+0') when never set.
+const own = (
+el as { properties?: { value?: { text?: unknown } } } | null | undefined
+)?.properties?.value?.text;
+if (typeof own === 'string') return own;
+// Never explicitly set: the rendered string is the Text child's computed
+// fallback (the uikitml initial literal).
+const children =
+(el as { children?: { properties?: { value?: { text?: unknown } } }[] } | null)
+  ?.children ?? [];
+for (const child of children) {
+const t = child?.properties?.value?.text;
+if (typeof t === 'string') return t;
+}
+return null;
+},
+get infoRowVisible() {
+return system.lastInfoRowVisible;
+},
+get barFloatsActive() {
+return system.barFloats.isActive();
+},
+toggleStore: () => {
+system.onToggleStore();
+},
+toggleAchievements: () => {
+system.setAchievementsOpen(!system.achievementsOpen);
+},
+buyHint: () => {
+system.onBuyHint();
+},
+// Test-only: fund the wallet without grinding rounds.
+grantBars: (amount: number) => {
+system.debugGrantBars(amount);
 },
 get flatAwaitingStart() {
 return system.flatAwaitingStart;
@@ -2608,6 +2774,10 @@ const expected = this.game.sequence[this.game.inputStep];
 if (expected == null) {
 return;
 }
+// Lifetime pad-press counter (achievements): every eligible gameplay press
+// counts, correct or wrong. Host playback, menu and setup input never get
+// past the phase gate above (user-settled: presses "in the game").
+this.economy.countGameplayPress(this.game.streak);
 const pad = this.pads[padIndex];
 if (pad != null) {
 flashPad(pad, true);
@@ -2629,6 +2799,22 @@ return;
 this.speech.cancel();
 const previousBest = this.game.bestStreak;
 const completed = this.game.onCorrectInput();
+if (this.game.bestStreak > previousBest) {
+this.economy.saveBestStreak(this.game.bestStreak);
+this.recordBeatenThisAttempt = true;
+}
+// Every correct press pays the current band rate (user-settled economy):
+// 1 Bar at streaks 1-5, 2 at 6-10, 4 at 11-15, doubling every five. The
+// amount floats from the pad to the Bars icon.
+this.hideRoundBarsCard();
+const pressAward = this.economy.awardForPress(this.game.streak);
+this.roundBarsEarned += pressAward;
+if (pressAward > 0) {
+this.spawnBarFloat(padIndex, pressAward);
+if (this.economy.takeFirstTime('bars-earned')) {
+this.barsFirstEarnedPending = true;
+}
+}
 this.renderPanel();
 if (completed) {
 // Lock input immediately so a held finger/click cannot eat the next round.
@@ -2638,6 +2824,49 @@ this.statusText = `Nice - streak ${this.game.streak}. Next pattern…`;
 this.renderPanel();
 const streak = this.game.streak;
 const increasedRecord = shouldAnnounceRecord(streak, previousBest, this.firstRun);
+// Pattern completion pays its own extra on top of the presses
+// (user-settled: "each pattern completion is also another reward extra",
+// band rate 1/2/4 as the provisional calibration); a completed pattern
+// that beat the best streak adds the record bonus of rate x streak
+// (exponential: 5 -> +5, 10 -> +20, 15 -> +60, 20 -> +160).
+const { completion, bonus } = this.economy.completePattern(
+streak,
+this.recordBeatenThisAttempt,
+);
+this.recordBeatenThisAttempt = false;
+if (completion > 0) {
+this.roundBarsEarned += completion;
+this.roundCompletionEarned += completion;
+// Stagger so the completion float does not overlap the press float.
+window.setTimeout(() => {
+if (this.experienceActive) this.spawnBarFloat(padIndex, completion);
+}, 250);
+}
+if (bonus > 0) {
+this.roundBarsEarned += bonus;
+this.roundBonusEarned += bonus;
+window.setTimeout(() => {
+if (this.experienceActive) this.spawnBarFloat(padIndex, bonus);
+}, 500);
+}
+// Round summary line: total Bars earned on this pattern, with the bonus
+// part (completion + record bonus) appended inline when present. One
+// compact always-present line (user ask); updates at round end, resets to
+// +0 on the next round. The full pads/completion/bonus breakdown stays in
+// the debug bridge string for tests.
+this.showRoundBarsCard(
+this.roundBarsEarned,
+this.roundCompletionEarned,
+this.roundBonusEarned,
+);
+this.roundBarsEarned = 0;
+this.roundCompletionEarned = 0;
+this.roundBonusEarned = 0;
+// Backlog 12a voice: explain the first Bars ever earned, once per install.
+const explainBars = this.barsFirstEarnedPending;
+this.barsFirstEarnedPending = false;
+this.showAchievementToasts();
+this.renderPanel();
 this.playbackQueue = this.playbackQueue.then(async () => {
 const narrMark = this.narrationInterrupt;
 const narrIntact = () =>
@@ -2657,6 +2886,9 @@ await this.wait(0.35);
 if (increasedRecord && narrIntact()) await this.speech.speakAsync(randomCheerClip());
 await this.wait(BETWEEN_ROUNDS_DELAY_S);
 }
+if (explainBars && this.experienceActive && this.flowPhase === 'playing') {
+await this.speech.speakAsync('barsFirstEarn');
+}
 if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
 }
@@ -2670,6 +2902,7 @@ if (!this.flatAwaitingStart || !this.experienceActive) {
 return;
 }
 this.flatAwaitingStart = false;
+this.setPanelHeaderVisible(!this.isPhoneFlatViewport());
 // A pad press demonstrates progress: stop any welcome / press instruction.
 this.speech.cancel();
 this.startPromptSpoken = true;
@@ -2698,6 +2931,12 @@ return this.game.runImprovedBest;
 
 private async onWrongInput(): Promise<void> {
 this.firstRun = false;
+this.roundBarsEarned = 0;
+this.roundBonusEarned = 0;
+this.roundCompletionEarned = 0;
+this.recordBeatenThisAttempt = false;
+this.barsFirstEarnedPending = false;
+this.hideRoundBarsCard();
 this.game.phase = 'resetting';
 this.inputNeedsClear = true;
 const cheer = this.runEarnedCheer();
@@ -2880,6 +3119,12 @@ const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
 if (panel == null) {
 return;
 }
+if (!this.barsIconSrcFixed) {
+this.barsIconSrcFixed = true;
+panel
+.getElementById<UIKit.Image>('bars-icon-img')
+?.setProperties({ src: `${import.meta.env.BASE_URL}ui/bars-icon.png` });
+}
 panel
 .getElementById<UIKit.Text>('wall-tones-best-streak')
 ?.setProperties({ text: String(this.game.bestStreak) });
@@ -2887,11 +3132,288 @@ this.renderSequenceIcons(panel);
 panel
 .getElementById<UIKit.Text>('wall-tones-status')
 ?.setProperties({
-text: this.game.phase === 'input' ? 'Your Turn:' : this.statusText || 'Ready',
+text: this.game.phase === 'input' ? 'Hint:' : this.statusText || 'Ready',
 });
 panel
 .getElementById<UIKit.Text>('wall-tones-current-streak')
 ?.setProperties({ text: String(this.game.streak) });
+this.renderEconomy(panel);
+}
+
+/** Store, Bars balance and achievements on the panel (backlog 12/12a/19).
+ * Reconciled on a change key: tickScan calls renderPanel every frame, so the
+ * labels must not rebuild while nothing economy-related changed (codex P2). */
+// Primitive fields compared directly: building a key string would allocate on
+// every XR scan frame (codex P2 on AGENTS.md L222).
+private economyRenderBars = -1;
+private economyRenderLevel = -1;
+private economyRenderStoreOpen = false;
+private renderEconomy(panel: UIKitMLAsset): void {
+const bars = this.economy.getBars();
+const level = this.economy.getHintLevel();
+const open = this.storeOpen;
+if (bars === this.economyRenderBars && level === this.economyRenderLevel &&
+open === this.economyRenderStoreOpen) return;
+this.economyRenderBars = bars;
+this.economyRenderLevel = level;
+this.economyRenderStoreOpen = open;
+panel
+.getElementById<UIKit.Text>('wall-tones-bars')
+?.setProperties({ text: String(this.economy.getBars()) });
+panel
+.getElementById<UIKit.Text>('wall-tones-total-score')
+?.setProperties({ text: String(this.economy.getBarsTotal()) });
+panel
+.getElementById<UIKit.Text>('store-button-label')
+?.setProperties({ text: this.storeOpen ? 'Close store' : 'Store' });
+panel
+.getElementById<UIKit.Container>('store-popup')
+?.setProperties({ display: this.storeOpen ? 'flex' : 'none' });
+const nextCost = this.economy.hintCost(level + 1);
+const buyLabel = `Your Turn hint lv ${level + 1} - ${nextCost} Bars`;
+const affordable = this.economy.getBars() >= nextCost;
+panel
+.getElementById<UIKit.Text>('buy-hint-label')
+?.setProperties({ text: buyLabel, color: affordable ? 0x1c1d20 : 0xd43a3a });
+panel
+.getElementById<UIKit.Text>('store-hint-status')
+?.setProperties({
+text: level === 0
+? 'No hint owned. The pattern stays hidden during Your Turn.'
+: `Hint level ${level}: first ${this.economy.getHintRevealCount()} colors shown during Your Turn.`,
+});
+this.reconcileAchievements(panel);
+}
+
+/** Last values pushed to the pattern row, exposed for e2e assertions. */
+private lastSequenceRowVisible = false;
+private lastSequenceBoxesShown = 0;
+private lastSequenceUnknownShown = 0;
+/** Last text shown on the round-results card ('' while hidden). */
+public lastRoundCardText = '';
+/** Last display state pushed to the info row (status + hint boxes). */
+public lastInfoRowVisible = false;
+/** Change keys for the achievements list; counters move progress text even
+ * between unlocks, so the key spans every displayed value (no allocation). */
+private achievementKeyCount = -1;
+private achievementKeyBarsTotal = -1;
+private achievementKeyBestStreak = -1;
+private achievementKeyPurchases = -1;
+private achievementKeyPresses = -1;
+/** Bars icon src resolved against the app base once (codex P3: nested previews). */
+private barsIconSrcFixed = false;
+private reconcileAchievements(panel: UIKitMLAsset): void {
+const list = panel.getElementById<UIKit.Container>('achievements-screen-list');
+if (list == null) return;
+const eco = this.economy;
+if (
+eco.getUnlockedCount() === this.achievementKeyCount &&
+eco.getBarsTotal() === this.achievementKeyBarsTotal &&
+eco.getBestStreak() === this.achievementKeyBestStreak &&
+eco.getPurchases() === this.achievementKeyPurchases &&
+eco.getPresses() === this.achievementKeyPresses
+) {
+return;
+}
+this.achievementKeyCount = eco.getUnlockedCount();
+this.achievementKeyBarsTotal = eco.getBarsTotal();
+this.achievementKeyBestStreak = eco.getBestStreak();
+this.achievementKeyPurchases = eco.getPurchases();
+this.achievementKeyPresses = eco.getPresses();
+while (list.children.length > 0) {
+list.remove(list.children[0]!);
+}
+for (const cat of ACHIEVEMENT_CATEGORIES) {
+const { value, level, next } = eco.getCategoryProgress(cat.id, this.game.streak);
+const locked = level === 0;
+const secret = cat.hidden === true && locked;
+const text = secret
+? '??? - ???'
+: `${cat.label} - level ${level}/${cat.levels.length}` +
+(next == null ? ' - MAX' : ` - next at ${next} (have ${value})`);
+const row = new UIKit.Container({
+flexDirection: 'row',
+alignItems: 'center',
+gap: 8,
+opacity: locked ? 0.75 : 1,
+});
+row.add(new UIKit.Image({
+src: achievementIconSrc(cat.id),
+width: 28,
+height: 28,
+}));
+row.add(new UIKit.Text({
+fontSize: 13,
+color: locked ? 0xb8bec8 : 0xf5d90a,
+text,
+}));
+list.add(row);
+}
+}
+
+/** Visual-only achievement toast; voice stays milestone-only (user rule). */
+private achievementToastUntil = 0;
+/** Bars float animation pool + scratch (no per-frame allocations). */
+public readonly barFloats = new BarFloatPool();
+private readonly barFloatFrom = new Vector3();
+private readonly barFloatTo = new Vector3();
+/** Bars earned on the current pattern attempt, shown as the round summary. */
+private roundBarsEarned = 0;
+/** Record-bonus part of roundBarsEarned (round-card breakdown line). */
+private roundBonusEarned = 0;
+/** Pattern-completion part of roundBarsEarned (round-card breakdown). */
+private roundCompletionEarned = 0;
+/** Set when any press this attempt pushed past the previous best streak. */
+private recordBeatenThisAttempt = false;
+/** First-ever Bars landed on a press; the voice line waits for pattern end. */
+private barsFirstEarnedPending = false;
+private showAchievementToasts(): void {
+const toasts = this.economy.drainToasts();
+if (toasts.length === 0) return;
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+const text = toasts.length === 1
+? `Achievement unlocked: ${toasts[0]!.label}`
+: `Achievements unlocked: ${toasts.map((t) => t.label).join(', ')}`;
+panel
+?.getElementById<UIKit.Text>('wall-tones-achievement-toast')
+?.setProperties({ display: 'flex', text });
+this.achievementToastUntil = performance.now() + 5000;
+window.setTimeout(() => {
+if (performance.now() >= this.achievementToastUntil) {
+this.world
+.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById<UIKit.Text>('wall-tones-achievement-toast')
+?.setProperties({ display: 'none' });
+}
+}, 5100);
+}
+
+/** +N Bars earned at a pad: float the amount from the pad to the panel's
+ * Bars icon (HTML overlay in flat mode, billboarded 3D sprite in MR). */
+private spawnBarFloat(padIndex: number, amount: number): void {
+if (amount <= 0) return;
+const pad = this.pads.find((p) => p.padIndex === padIndex);
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+const icon = panel?.getElementById('bars-icon-img');
+if (pad == null || panel == null || icon == null) return;
+pad.root.getWorldPosition(this.barFloatFrom);
+icon.getWorldPosition(this.barFloatTo);
+this.barFloats.spawn(
+this.barFloatFrom,
+this.barFloatTo,
+amount,
+this.world.scene,
+);
+}
+
+/** Round-end results card in the panel: big total earned this round with a
+ * smaller pads / record-bonus breakdown (user-settled UI: a card in the
+ * existing menu, not a modal; same panel in MR and flat; nonblocking).
+ * Persists until the next round's first press or a wrong input. */
+private showRoundBarsCard(
+total: number,
+completion: number,
+bonus: number,
+): void {
+if (total <= 0) return;
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+if (panel == null) return;
+// User ask (Nov 7): show the bonus part inline - one compact line.
+const extra = completion + bonus;
+panel
+.getElementById<UIKit.Text>('wall-tones-round-card-total')
+?.setProperties({ text: extra > 0 ? `+${total} (+${extra} bonus)` : `+${total}` });
+const pads = total - completion - bonus;
+const parts = [`Pads +${pads}`];
+if (completion > 0) parts.push(`Completion +${completion}`);
+if (bonus > 0) parts.push(`Record bonus +${bonus}`);
+const breakdown = parts.join(' - ');
+this.lastRoundCardText = `+${total} (${breakdown})`;
+}
+
+private hideRoundBarsCard(): void {
+this.lastRoundCardText = '';
+this.world
+.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById<UIKit.Text>('wall-tones-round-card-total')
+?.setProperties({ text: '+0' });
+}
+
+/** Test-only wallet funding for the e2e debug bridge. */
+private debugGrantBars(amount: number): void {
+if (amount > 0) {
+this.economy.debugGrant(amount);
+this.renderPanel();
+}
+}
+
+private setAchievementsOpen(open: boolean): void {
+if (this.achievementsOpen === open) return;
+this.achievementsOpen = open;
+if (open) this.storeOpen = false;
+this.syncMenuPopupVisibility();
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+if (open && panel != null) this.reconcileAchievements(panel);
+this.renderPanel();
+}
+
+private syncMenuPopupVisibility(): void {
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+const popupOpen = this.storeOpen || this.achievementsOpen;
+panel
+?.getElementById<UIKit.Container>('menu-view')
+?.setProperties({ display: popupOpen ? 'none' : 'flex' });
+panel
+?.getElementById<UIKit.Container>('store-popup')
+?.setProperties({ display: this.storeOpen ? 'flex' : 'none' });
+panel
+?.getElementById<UIKit.Container>('achievements-popup')
+?.setProperties({ display: this.achievementsOpen ? 'flex' : 'none' });
+}
+
+private onToggleStore(): void {
+this.storeOpen = !this.storeOpen;
+if (this.storeOpen) this.achievementsOpen = false;
+this.syncMenuPopupVisibility();
+if (this.storeOpen && this.economy.takeFirstTime('store-open')) {
+// Approved onboarding pair: welcome, then how hints work (once ever).
+this.speech.speak('storeWelcome');
+this.speech.speak('storeHints');
+}
+this.renderPanel();
+}
+
+/** Deny animation for an unaffordable store purchase: quick horizontal shake of the popup card. */
+private shakeTimers: number[] = [];
+private shakeStorePopup(): void {
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+const card = panel?.getElementById<UIKit.Container>('store-popup');
+if (card == null) return;
+for (const t of this.shakeTimers) window.clearTimeout(t);
+this.shakeTimers = [];
+const offsets = [0, -8, 8, -6, 6, -3, 3, 0];
+offsets.forEach((x, i) => {
+this.shakeTimers.push(window.setTimeout(() => {
+card.setProperties({ transformTranslateX: x });
+}, i * 40));
+});
+}
+
+private onBuyHint(): void {
+const before = this.economy.getBars();
+if (!this.economy.buyNextHintLevel()) {
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+panel
+?.getElementById<UIKit.Text>('store-hint-status')
+?.setProperties({
+text: 'Not enough Bars yet. Complete more patterns!',
+});
+void playErrorTone();
+this.shakeStorePopup();
+return;
+}
+this.showAchievementToasts();
+this.renderPanel();
 }
 
 /** Real colored geometry avoids emoji / font fallback rendering white boxes. */
@@ -2906,9 +3428,17 @@ queueMicrotask(this.flushSequenceIcons);
 private reconcileSequenceIcons(panel: UIKitMLAsset): void {
 const row = panel.getElementById<UIKit.Container>('wall-tones-sequence-icons');
 if (row == null) return;
-const visible = this.game.phase === 'input' || this.statusText === 'Listen:';
+// Backlog 12a: during Your Turn the pattern row only appears when a hint
+// level is owned, revealing the first 5 boxes per level; subtitles alone no
+// longer show it. Listen playback keeps the full row.
+const listening = this.statusText === 'Listen:';
+const reveal = this.economy.getHintRevealCount();
+const yourTurn = this.game.phase === 'input' && !listening;
+const visible = listening || (this.game.phase === 'input' && reveal > 0);
 const names = colorNamesEnabled();
-const key = this.game.sequence.join(',') + ':' + names + ':' + visible;
+// yourTurn must key the cache: after Listen of a longer-than-owned pattern the
+// row stays visible while the beyond-hint boxes must hide on the phase flip.
+const key = this.game.sequence.join(',') + ':' + names + ':' + visible + ':' + reveal + ':' + (yourTurn ? '1' : '0');
 if (this.sequenceIconRow === row && this.sequenceIconKey === key) return;
 if (this.sequenceIconRow !== row) {
 this.sequenceCueSquares.length = 0;
@@ -2917,6 +3447,7 @@ this.sequenceIconRow = row;
 }
 this.sequenceIconKey = key;
 row.setProperties({ display: visible ? 'flex' : 'none' });
+this.lastSequenceRowVisible = visible;
 for (let i = 0; i < this.game.sequence.length; i++) {
 if (!this.sequenceCueSquares[i]) {
 const square = new UIKit.Container({width: 16, height: 16, borderRadius: 2, flexShrink: 0});
@@ -2926,17 +3457,27 @@ this.sequenceCueNames.push(name);
 row.add(square); row.add(name);
 }
 }
+let shown = 0;
+let unknownShown = 0;
 for (let i = 0; i < this.sequenceCueSquares.length; i++) {
 const id = this.game.sequence[i];
+const beyondHint = yourTurn && i >= reveal;
+// User ask (Nov 7): when the pattern runs past the owned hint prefix,
+// mark the hidden tail with up to 5 grey "?" squares instead of nothing.
+const unknown = beyondHint && id != null && unknownShown < 5;
+if (visible && id != null && !beyondHint) shown += 1;
+if (visible && unknown) unknownShown += 1;
 this.sequenceCueSquares[i]!.setProperties({
-display: id == null ? 'none' : 'flex',
-backgroundColor: id == null ? 0 : WALL_TONE_PADS[id].color,
+display: id == null || (beyondHint && !unknown) ? 'none' : 'flex',
+backgroundColor: id == null ? 0 : unknown ? 0x8a8f98 : WALL_TONE_PADS[id].color,
 });
 this.sequenceCueNames[i]!.setProperties({
-display: id != null && names ? 'flex' : 'none',
-text: id == null ? '' : WALL_TONE_PADS[id].name,
+display: id != null && ((names && !beyondHint) || unknown) ? 'flex' : 'none',
+text: id == null ? '' : unknown ? '?' : WALL_TONE_PADS[id].name,
 });
 }
+this.lastSequenceBoxesShown = shown;
+this.lastSequenceUnknownShown = unknownShown;
 }
 
 private trackFlatLayout(value: number): void {
@@ -2986,15 +3527,22 @@ const accessibilityChanged = this.accessibilityPanel !== panel || !previous ||
 previous.show !== show || previous.flat !== flat ||
 previous.active !== this.experienceActive || previous.caption !== caption ||
 previous.phase !== this.game.phase || previous.status !== this.statusText ||
-previous.names !== names || sequenceChanged;
+previous.names !== names || previous.reveal !== this.economy.getHintRevealCount() || sequenceChanged;
 if (accessibilityChanged) {
 this.accessibilityPanel = panel;
 this.accessibilityState = { show, flat, active: this.experienceActive, caption,
-phase: this.game.phase, status: this.statusText, names, sequence: [...this.game.sequence] };
+phase: this.game.phase, status: this.statusText, names, sequence: [...this.game.sequence],
+reveal: this.economy.getHintRevealCount() };
 if (panel && this.experienceActive) this.renderSequenceIcons(panel);
+// Bug fix (user report): the info row holds the Your Turn hint boxes; it
+// used to be hidden unless subtitles were on AND the session was immersive,
+// so a purchased hint was invisible in flat play and with subtitles off.
+// The row now shows whenever the experience is active; only the
+// spoken-caption line below stays subtitle-gated.
 panel?.getElementById('wall-tones-info-row')?.setProperties({
-display: show && !flat ? 'flex' : 'none',
+display: this.experienceActive ? 'flex' : 'none',
 });
+this.lastInfoRowVisible = this.experienceActive;
 panel?.getElementById<UIKit.Text>('wall-tones-spoken-caption')?.setProperties({
 display: show && !flat && caption ? 'flex' : 'none', text: caption,
 });
@@ -3042,19 +3590,39 @@ this.flatCaptions.style.left = `${Math.max(width / 2 + 12, Math.min(window.inner
 this.flatCaptions.style.top = `${bottom + 14}px`;
 this.flatCaptionsRectDirty = true;
 }
-const seqVisible = this.experienceActive && (this.game.phase === 'input' || this.statusText === 'Listen:');
-const info = !this.experienceActive ? '' : this.game.phase === 'input' ? 'Your Turn:' : this.statusText;
+// Backlog 12a applies here too (codex P2): during Your Turn the subtitle
+// sequence only reveals the owned hint prefix; no hint, no sequence.
+const captionListening = this.statusText === 'Listen:';
+const captionReveal = this.economy.getHintRevealCount();
+const captionYourTurn = this.game.phase === 'input' && !captionListening;
+const seqVisible = this.experienceActive &&
+(captionListening || (this.game.phase === 'input' && captionReveal > 0));
+const info = !this.experienceActive
+? ''
+: this.game.phase === 'input'
+? 'Hint:'
+: this.statusText;
 if (!accessibilityChanged && this.flatCaptions.childElementCount > 0) return;
 this.flatCaptions.replaceChildren();
 const line = document.createElement('div');
 Object.assign(line.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexWrap: 'wrap' });
 const label = document.createElement('span'); label.textContent = info; line.append(label);
-if (seqVisible) for (const id of this.game.sequence) {
+if (seqVisible) for (let i = 0; i < this.game.sequence.length; i++) {
+const unknown = captionYourTurn && i >= captionReveal;
+if (unknown && i - captionReveal >= 5) break; // cap the grey "?" tail at 5
+const id = this.game.sequence[i]!;
 const square = document.createElement('span');
-Object.assign(square.style, { width: '16px', height: '16px', borderRadius: '2px', background: `#${WALL_TONE_PADS[id].color.toString(16).padStart(6, '0')}`, display: 'inline-block', flexShrink: '0' });
+Object.assign(square.style, { width: '16px', height: '16px', borderRadius: '2px', background: unknown ? '#8a8f98' : `#${WALL_TONE_PADS[id].color.toString(16).padStart(6, '0')}`, display: 'inline-block', flexShrink: '0' });
+if (unknown) {
+square.textContent = '?';
+square.setAttribute('data-unknown', '1');
+square.setAttribute('aria-label', 'Unknown note');
+Object.assign(square.style, { color: '#fff', fontSize: '11px', lineHeight: '16px', textAlign: 'center' });
+} else {
 square.setAttribute('aria-label', WALL_TONE_PADS[id].name);
+}
 line.append(square);
-if (colorNamesEnabled()) { const word = document.createElement('span'); word.textContent = WALL_TONE_PADS[id].name; line.append(word); }
+if (!unknown && colorNamesEnabled()) { const word = document.createElement('span'); word.textContent = WALL_TONE_PADS[id].name; line.append(word); }
 }
 this.flatCaptions.append(line);
 if (caption) { const text = document.createElement('div'); text.textContent = caption; text.style.marginTop = '5px'; this.flatCaptions.append(text); }

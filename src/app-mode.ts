@@ -1,4 +1,4 @@
-import { hearingSubtitlesEnabled, colorNamesEnabled, setHearingSubtitles, setColorNames } from './wall-tones/accessibility.js';
+import { hearingSubtitlesEnabled, colorNamesEnabled, setHearingSubtitles, setColorNames, voicesOffEnabled, setVoicesOff } from './wall-tones/accessibility.js';
 /**
  * Switches between the main menu and experience modes by toggling authored
  * scene node visibility. Mode selection lives on spatial UIKitML panels.
@@ -11,6 +11,7 @@ import {
   VisibilityState,
 } from '@iwsdk/core';
 import { primeWallTonesAudioFromGesture } from './wall-tones/audio.js';
+import { resetWallTonesStats } from './wall-tones/economy.js';
 import {
   WallTonesSpeech,
   getVoiceGender,
@@ -253,9 +254,32 @@ export class AppModeSystem extends createSystem({}) {
       checked: colorNamesEnabled(),
       onCheckedChange: setColorNames,
     } as never);
+    panel.getElementById('voices-off-checkbox')?.setProperties({
+      checked: voicesOffEnabled(),
+      onCheckedChange: setVoicesOff,
+    } as never);
+    // Debug stat reset: two-step confirm, clears progression stats only.
+    let resetArmed = false;
+    let resetDisarm: number | undefined;
+    panel.getElementById('reset-stats-button')?.addEventListener('click', () => {
+      const label = panel.getElementById('reset-stats-label');
+      if (!resetArmed) {
+        resetArmed = true;
+        label?.setProperties({ text: 'Tap again to confirm reset' } as never);
+        resetDisarm = window.setTimeout(() => {
+          resetArmed = false;
+          label?.setProperties({ text: 'Reset my stats (debug)' } as never);
+        }, 4000);
+        return;
+      }
+      window.clearTimeout(resetDisarm);
+      resetWallTonesStats();
+      window.location.reload();
+    });
     const syncAccessibility = () => {
       panel.getElementById('hearing-subtitles-checkbox')?.setProperties({ checked: hearingSubtitlesEnabled() } as never);
       panel.getElementById('color-names-checkbox')?.setProperties({ checked: colorNamesEnabled() } as never);
+      panel.getElementById('voices-off-checkbox')?.setProperties({ checked: voicesOffEnabled() } as never);
     };
     window.addEventListener('wall-tones-accessibility-change', syncAccessibility);
     this.cleanupFuncs.push(() => window.removeEventListener('wall-tones-accessibility-change', syncAccessibility));
