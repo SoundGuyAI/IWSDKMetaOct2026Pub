@@ -52,9 +52,16 @@ function number(ctx: CanvasRenderingContext2D, text: string, y: number): void {
   ctx.fillText(text, SIZE / 2, y);
 }
 
+import { ACHIEVEMENT_ICON_PNG } from './achievement-icon-art.js';
+
 export function achievementIconSrc(id: string): string {
   const hit = cache.get(id);
   if (hit !== undefined) return hit;
+  const art = ACHIEVEMENT_ICON_PNG[id];
+  if (art !== undefined) {
+    cache.set(id, art);
+    return art;
+  }
   const canvas = document.createElement('canvas');
   canvas.width = SIZE;
   canvas.height = SIZE;
