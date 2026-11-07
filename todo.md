@@ -68,3 +68,11 @@ Future ideas and polish lists moved to [WALL_TONES_TODO.md](WALL_TONES_TODO.md) 
 - [x] npm script deploy:cloudflare wrapping npx wrangler deploy.
 - [x] CLOUDFLARE.md: Workers screen values, Node version note, no-secrets note.
 - [ ] CI/Codex review, PR preview build; user runs Deploy from his own Cloudflare account and tests; merge only on his explicit go-ahead.
+
+
+
+## CI e2e sharding PR - in progress November 8
+- [x] e2e-desktop split across 3 parallel Playwright shards (full suite still runs on PRs; serial per shard because gameplay timing/audio are per-page global).
+- [x] changes job computes gameplay: Markdown/wrangler.jsonc-only changes skip e2e; build and typecheck always run.
+- [x] deploy-pages tolerates a skipped e2e job and still requires it when it runs.
+- [ ] CI green with 3 shards on this PR, Codex review, user merge go-ahead.
