@@ -3095,6 +3095,9 @@ panel
 .getElementById<UIKit.Text>('wall-tones-bars')
 ?.setProperties({ text: String(this.economy.getBars()) });
 panel
+.getElementById<UIKit.Text>('wall-tones-total-score')
+?.setProperties({ text: String(this.economy.getBarsTotal()) });
+panel
 .getElementById<UIKit.Text>('store-button-label')
 ?.setProperties({ text: this.storeOpen ? 'Close store' : 'Store' });
 panel
