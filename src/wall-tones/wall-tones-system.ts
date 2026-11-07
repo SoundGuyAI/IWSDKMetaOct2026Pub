@@ -1,5 +1,6 @@
 import { shouldAnnounceRecord } from './record-feedback.js';
 import { BarFloatPool } from './bar-floats.js';
+import { achievementIconSrc } from './achievement-icons.js';
 import { hearingSubtitlesEnabled, colorNamesEnabled, currentSpokenCaption } from './accessibility.js';
 import {
 ConeGeometry,
@@ -161,6 +162,7 @@ roundCardText: string;
 barFloatsActive: boolean;
 infoRowVisible: boolean;
 toggleStore: () => void;
+toggleAchievements: () => void;
 buyHint: () => void;
 /** Test-only wallet funding for e2e. */
 grantBars: (amount: number) => void;
@@ -1335,6 +1337,9 @@ return system.barFloats.isActive();
 },
 toggleStore: () => {
 system.onToggleStore();
+},
+toggleAchievements: () => {
+system.setAchievementsOpen(!system.achievementsOpen);
 },
 buyHint: () => {
 system.onBuyHint();
@@ -3122,7 +3127,6 @@ this.achievementListCount = count;
 while (list.children.length > 0) {
 list.remove(list.children[0]!);
 }
-const base = import.meta.env.BASE_URL;
 for (const def of ACHIEVEMENTS) {
 const unlocked = this.economy.isUnlocked(def.id);
 const row = new UIKit.Container({
@@ -3132,7 +3136,7 @@ gap: 8,
 opacity: unlocked ? 1 : 0.45,
 });
 row.add(new UIKit.Image({
-src: `${base}ui/achievements/${def.id}.png`,
+src: achievementIconSrc(def.id),
 width: 28,
 height: 28,
 }));
