@@ -235,4 +235,4 @@ export class WallTonesEconomy {
     writeStringArray(FIRST_FLAGS_KEY, [...this.firstFlags]);
     return true;
   }
-    }
+}
