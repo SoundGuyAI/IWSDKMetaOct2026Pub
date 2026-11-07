@@ -12,29 +12,47 @@ concurrency:
 
 jobs:
   changes:
-    name: Check whether Pages publishing is needed
+    name: Check which validations are needed
     runs-on: ubuntu-latest
     outputs:
       publish: ${{ steps.filter.outputs.publish }}
+      gameplay: ${{ steps.filter.outputs.gameplay }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Inspect the full main-push diff
+      - name: Inspect the changed paths
         id: filter
         env:
           BEFORE: ${{ github.event.before }}
+          BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
-          # Default to publishing for PRs, manual runs, and unavailable history.
+          # Default to publishing and full testing for manual runs and
+          # unavailable history.
           publish=true
-          if [ "$GITHUB_EVENT_NAME" = 'push' ] && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
-            git diff --no-renames --name-only -z "$BEFORE" "$GITHUB_SHA" > changed-paths.bin
+          gameplay=true
+          range=''
+          if [ "$GITHUB_EVENT_NAME" = 'pull_request' ] && [ -n "$BASE" ]; then
+            range="$BASE..$GITHUB_SHA"
+          elif [ "$GITHUB_EVENT_NAME" = 'push' ] && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            range="$BEFORE..$GITHUB_SHA"
+          fi
+          if [ -n "$range" ]; then
+            git diff --no-renames --name-only -z "$range" > changed-paths.bin
+            # Pages deploy is only worth running when a non-Markdown file changed.
             publish=$(python3 -c 'import pathlib; paths=pathlib.Path("changed-paths.bin").read_bytes().split(b"\0"); print(str(any(p and not p.endswith(b".md") for p in paths)).lower())')
+            # Gameplay e2e only matters when a file that can affect gameplay
+            # changed. Docs and the Wrangler deploy config cannot.
+            gameplay=$(python3 -c 'import pathlib; paths=pathlib.Path("changed-paths.bin").read_bytes().split(b"\0"); print(str(any(p and not (p.endswith(b".md") or p == b"wrangler.jsonc") for p in paths)).lower())')
           fi
           echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          echo "gameplay=$gameplay" >> "$GITHUB_OUTPUT"
           if [ "$publish" = false ]; then
-            echo 'Markdown-only push; skipping Pages build and publish. Validation still runs.' >> "$GITHUB_STEP_SUMMARY"
+            echo 'Markdown-only change; skipping Pages build and publish. Validation still runs.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ "$gameplay" = false ]; then
+            echo 'Docs/Wrangler-config-only change; skipping gameplay e2e. Build and typecheck still run.' >> "$GITHUB_STEP_SUMMARY"
           fi
 
   build-and-typecheck:
@@ -51,7 +69,19 @@ jobs:
 
   e2e-desktop:
     runs-on: ubuntu-latest
-    needs: build-and-typecheck
+    needs: [changes, build-and-typecheck]
+    if: needs.changes.outputs.gameplay == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: 1
+            files: tests/e2e/wall-tones.economy.spec.ts
+          - shard: 2
+            files: tests/e2e/wall-tones.desktop.spec.ts tests/e2e/wall-tones.desktop.pointer.spec.ts
+          - shard: 3
+            files: tests/e2e/wall-tones.accessibility.spec.ts tests/e2e/wall-tones.feedback.spec.ts tests/e2e/wall-tones.loading.spec.ts tests/e2e/wall-tones.misc.spec.ts tests/e2e/wall-tones.mute.spec.ts tests/e2e/wall-tones.polish.spec.ts tests/e2e/wall-tones.xr-entry.spec.ts
+    name: e2e-desktop (shard ${{ matrix.shard }})
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -61,18 +91,53 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run build
-      - run: npm run test:e2e:ci
+      # Serial per runner (workers: 1) because gameplay timing and audio are
+      # global to a page. Groups are split by measured CI duration (run
+      # 42421269922): economy and the desktop journeys dominate, so the heavy
+      # files each get a runner and the lighter files share the third. Keep
+      # the file lists here and in the coverage check below in sync.
+      - run: npm run test:e2e:ci -- ${{ matrix.files }}
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: playwright-report
+          name: playwright-report-shard-${{ matrix.shard }}
           path: playwright-report/
           retention-days: 7
 
+  e2e-coverage:
+    name: Check every e2e spec is assigned to a shard
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.gameplay == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -euo pipefail
+          ls tests/e2e/*.spec.ts | sort > actual.txt
+          printf '%s\n' \
+            tests/e2e/wall-tones.accessibility.spec.ts \
+            tests/e2e/wall-tones.desktop.pointer.spec.ts \
+            tests/e2e/wall-tones.desktop.spec.ts \
+            tests/e2e/wall-tones.economy.spec.ts \
+            tests/e2e/wall-tones.feedback.spec.ts \
+            tests/e2e/wall-tones.loading.spec.ts \
+            tests/e2e/wall-tones.misc.spec.ts \
+            tests/e2e/wall-tones.mute.spec.ts \
+            tests/e2e/wall-tones.polish.spec.ts \
+            tests/e2e/wall-tones.xr-entry.spec.ts \
+            | sort > assigned.txt
+          diff actual.txt assigned.txt || {
+            echo '::error::Every tests/e2e/*.spec.ts file must be listed in the e2e-desktop matrix (and here).'
+            exit 1
+          }
+
   deploy-pages:
     name: Build and deploy GitHub Pages
-    needs: [changes, build-and-typecheck, e2e-desktop]
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && needs.changes.outputs.publish == 'true'
+    needs: [changes, build-and-typecheck, e2e-desktop, e2e-coverage]
+    if: >-
+      github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+      && needs.changes.outputs.publish == 'true'
+      && (needs.e2e-desktop.result == 'success' || needs.e2e-desktop.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write
