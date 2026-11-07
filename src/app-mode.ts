@@ -346,6 +346,7 @@ export class AppModeSystem extends createSystem({}) {
       window.location.reload();
     });
     const syncAccessibility = () => {
+      if (voicesOffEnabled()) this.voicePreview.cancel();
       panel.getElementById('hearing-subtitles-checkbox')?.setProperties({ checked: hearingSubtitlesEnabled() } as never);
       panel.getElementById('color-names-checkbox')?.setProperties({ checked: colorNamesEnabled() } as never);
       panel.getElementById('voices-off-checkbox')?.setProperties({ checked: voicesOffEnabled() } as never);
