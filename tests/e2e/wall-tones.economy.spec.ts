@@ -285,7 +285,7 @@ test.describe('Wall Tones economy: Bars, store, hints, achievements', () => {
 
     // No hint owned: subtitles show the label but leak no sequence squares.
     await expect(page.locator('#wall-tones-flat-subtitles')).toContainText(
-      'Your Turn:',
+      'Hint:',
     );
     await expect(squares).toHaveCount(0);
 
