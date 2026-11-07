@@ -83,7 +83,12 @@ test('mobile sound-start gate is reachable above the splash and does not time ou
   await page.goto('https://localhost:4173/');
   const start = page.locator('#audio-start-button');
   await expect(start).toBeVisible();
-  await expect(page.locator('#wt-loading-detail')).toContainText('Tap Start');
+  await expect(page.locator('#wt-loading-detail')).toBeHidden();
+  await expect(page.locator('#wt-loading-stages')).toBeHidden();
+  await expect(page.locator('#wt-loading-spin')).toBeHidden();
+  await expect(page.locator('#wt-loading-fun')).toBeHidden();
+  await expect(page.locator('.wt-loading-card h1')).toBeHidden();
+  await expect(page.locator('.audio-start-card p')).toBeHidden();
   await expect(page.locator('[data-step="fonts"]')).toContainText('Loaded: Menu fonts');
   await expect(page.locator('[data-step="render"]')).toContainText('Loaded: First readable frame');
   const reachable = await start.evaluate(el => {
