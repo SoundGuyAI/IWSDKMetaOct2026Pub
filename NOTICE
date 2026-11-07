@@ -1,0 +1,9 @@
+Wall Tones - Copyright (c) 2026 Corbomite Ltd. All rights reserved.
+
+The original Wall Tones game code and design (the "Original Work") is proprietary to Corbomite Ltd. You may view and fork this repository as permitted by GitHub's Terms of Service. Otherwise, you may not copy, modify, redistribute, publish, or use the Original Work, privately or commercially, without Corbomite Ltd's prior written permission. Any permitted use must credit "Oded Sharon".
+
+Corbomite Ltd considers Wall Tones the first MR Simon game and the first roguelike/deckbuilder Simon mashup.
+
+This notice applies only to the Original Work. It does not apply to third-party components, which remain under their own licenses (see THIRD_PARTY_NOTICES), including code from Meta's Immersive Web SDK (MIT License, Copyright (c) Meta Platforms, Inc. and affiliates), three.js (MIT License, Copyright (c) three.js authors), and the @pmndrs/uikit packages (MIT License, Copyright (c) Bela Bohlender).
+
+Nothing in this notice limits rights granted to Meta under the Meta Start Developer Competition Official Rules, rights granted by GitHub's Terms of Service, or uses that applicable law permits regardless of this notice.
