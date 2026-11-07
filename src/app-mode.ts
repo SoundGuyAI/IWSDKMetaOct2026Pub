@@ -78,11 +78,67 @@ export class AppModeSystem extends createSystem({}) {
         window.removeEventListener(type, unlockMenuAudio, true),
       );
     }
-    this.bindMainMenu();
+    const menuPanel = this.bindMainMenu();
     this.bindWallTonesPlaceholder();
     this.bindDemoNav();
     this.bindWelcomeBack();
     this.applyMode(this.mode, false);
+    // Static splash in index.html stays up until the menu is usable: buttons
+    // are wired (above) AND the menu text can actually render. Panel text
+    // waits on the Inter MSDF font chunk, which can arrive seconds after
+    // init on slow connections - lifting earlier shows an icon-only menu.
+    // If the font never loads, the splash's own timeout shows a retry state.
+    this.liftSplashWhenMenuTextLoads(menuPanel);
+  }
+
+  private liftSplashWhenMenuTextLoads(panel: UIKitMLAsset | null): void {
+    const lift = () => {
+      (
+        window as unknown as { __wtAppReady?: () => void }
+      ).__wtAppReady?.();
+    };
+    if (panel == null) {
+      lift();
+      return;
+    }
+    // Every text element on the menu panel exposes a fontSignal that resolves
+    // once its MSDF font data has loaded. Wait for all of them, then give the
+    // renderer a frame so glyphs are on screen before the splash fades.
+    const texts: Array<{ fontSignal: { value: unknown } }> = [];
+    panel.traverse((object) => {
+      const candidate = object as unknown as {
+        fontSignal?: { value: unknown };
+      };
+      if (candidate.fontSignal != null) {
+        texts.push(candidate as { fontSignal: { value: unknown } });
+      }
+    });
+    let remaining = 0;
+    const onFont = () => {
+      remaining -= 1;
+      if (remaining === 0) {
+        requestAnimationFrame(() => requestAnimationFrame(lift));
+      }
+    };
+    for (const text of texts) {
+      if (text.fontSignal.value != null) {
+        continue;
+      }
+      remaining += 1;
+      const signal = text.fontSignal as {
+        value: unknown;
+        subscribe: (fn: () => void) => () => void;
+      };
+      const unsubscribe = signal.subscribe(() => {
+        if (signal.value != null) {
+          unsubscribe();
+          onFont();
+        }
+      });
+    }
+    if (remaining === 0) {
+      requestAnimationFrame(() => requestAnimationFrame(lift));
+    }
   }
 
   private setMode(mode: ExperienceMode): void {
@@ -158,10 +214,10 @@ export class AppModeSystem extends createSystem({}) {
     });
   }
 
-  private bindMainMenu(): void {
+  private bindMainMenu(): UIKitMLAsset | null {
     const panel = this.world.getSceneObject<UIKitMLAsset>('main-menu-panel');
     if (panel == null) {
-      return;
+      return null;
     }
     const wallTonesButton = panel.getElementById('mode-walltones-button');
     const xrButton = panel.getElementById('xr-button');
@@ -174,6 +230,7 @@ export class AppModeSystem extends createSystem({}) {
     if (xrButton != null) {
       xrButton.name = 'Btn_EnterXrWallTones';
     }
+    return panel;
   }
 
   /**
