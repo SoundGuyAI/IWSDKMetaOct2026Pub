@@ -58,7 +58,7 @@ export const ACHIEVEMENT_CATEGORIES: readonly AchievementCategory[] = [
   { id: 'bars', label: 'Bars', description: 'Lifetime gold Bars earned.', levels: [5, 10, 25, 50, 100] },
   { id: 'score', label: 'Total Score', description: 'Lifetime score: one point per Bar earned.', levels: [5, 10, 25, 50, 100, 250] },
   { id: 'store', label: 'Store', description: 'Store purchases (provisional levels).', levels: [1, 3, 5, 10, 25] },
-  { id: 'presses', label: 'Pad presses', description: 'Correct pad presses, lifetime (provisional levels).', levels: [50, 100, 250, 500, 1000] },
+  { id: 'presses', label: 'Pad presses', description: 'Pad presses in the game, lifetime (provisional levels).', levels: [50, 100, 250, 500, 1000] },
   { id: 'secret', label: '???', description: 'A secret. It stays secret.', levels: [1], hidden: true },
 ];
 
@@ -187,9 +187,16 @@ export class WallTonesEconomy {
   /** Award Bars for one correct pad press (user-settled: every press is a
    * reward; PRESS_BARS is a provisional value to calibrate). */
   awardForPress(streak: number): number {
+    return this.award(PRESS_BARS, streak);
+  }
+
+  /** Count one eligible gameplay pad press (Pad presses category). Correct
+   * and wrong presses both count; playback, menu and setup input never
+   * reaches the caller (user-settled: presses "in the game"). */
+  countGameplayPress(liveStreak: number): void {
     this.presses += 1;
     writeNumber(PRESSES_KEY, this.presses);
-    return this.award(PRESS_BARS, streak);
+    this.checkAchievements(liveStreak);
   }
 
   /** Pattern end. Always pays the completion extra (band rate, user-settled
