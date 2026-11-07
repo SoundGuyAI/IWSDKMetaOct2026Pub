@@ -12,6 +12,7 @@ import {
 } from '@iwsdk/core';
 import { primeWallTonesAudioFromGesture } from './wall-tones/audio.js';
 import { resetWallTonesStats } from './wall-tones/economy.js';
+import { WALL_TONES_BUILD_LABEL } from './build-info.js';
 import {
   WallTonesSpeech,
   getVoiceGender,
@@ -243,9 +244,7 @@ export class AppModeSystem extends createSystem({}) {
     // Build identity from vite.config.ts define; read-only, for test reports.
     panel
       .getElementById<UIKit.Text>('settings-version')
-      ?.setProperties({
-        text: `v${__WALL_TONES_VERSION__} - ${__WALL_TONES_COMMIT__}`,
-      });
+      ?.setProperties({ text: WALL_TONES_BUILD_LABEL });
     const syncVoiceLabels = () => {
       const gender = getVoiceGender();
       panel
