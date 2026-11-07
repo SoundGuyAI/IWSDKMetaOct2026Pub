@@ -1142,6 +1142,8 @@ entity.setValue(Visibility, 'isVisible', true);
 this.flatBackdropHidden = false;
 }
 
+/* The panel canvas font covers ASCII only: U+2026, curly quotes and em-dashes
+ * render as tofu squares on the panel. Keep every panel-bound string ASCII. */
 private setFlatHintVisible(visible: boolean): void {
 // User decision 2026-11-07: the title block and instructions stay visible
 // permanently so the panel size no longer changes between phases.
