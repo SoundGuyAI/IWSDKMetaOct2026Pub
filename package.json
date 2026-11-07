@@ -14,7 +14,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test:e2e": "playwright test",
-    "test:e2e:ci": "playwright test --grep-invert @slow"
+    "test:e2e:ci": "playwright test --grep-invert @slow",
+    "deploy:cloudflare": "npx wrangler deploy"
   },
   "dependencies": {
     "@iwsdk/core": "1.1.0-rc.2",
