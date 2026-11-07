@@ -240,6 +240,12 @@ export class AppModeSystem extends createSystem({}) {
   private bindSettingsMenu(panel: UIKitMLAsset): void {
     const setDisplay = (id: string, display: 'flex' | 'none') =>
       panel.getElementById(id)?.setProperties({ display });
+    // Build identity from vite.config.ts define; read-only, for test reports.
+    panel
+      .getElementById<UIKit.Text>('settings-version')
+      ?.setProperties({
+        text: `v${__WALL_TONES_VERSION__} - ${__WALL_TONES_COMMIT__}`,
+      });
     const syncVoiceLabels = () => {
       const gender = getVoiceGender();
       panel
