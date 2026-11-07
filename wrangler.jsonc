@@ -15,7 +15,7 @@
  */
 {
   "name": "iwsdkmetaoct2026pub",
-  "compatibility_date": "2026-11-08",
+  "compatibility_date": "2026-11-07",
   "assets": {
     "directory": "./dist"
   },
