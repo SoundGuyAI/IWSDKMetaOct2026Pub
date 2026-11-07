@@ -60,3 +60,11 @@ Future ideas and polish lists moved to [WALL_TONES_TODO.md](WALL_TONES_TODO.md) 
 - [x] Settings menu shows package version and short commit hash, injected at build time (PR head SHA on previews via GITHUB_HEAD_SHA, GITHUB_SHA on main, git rev-parse locally, 'dev' fallback).
 - [x] Same identity exposed as window.__wallTonesBuildInfo for test reports.
 - [ ] CI, deployed preview pixel check, merge per user's conditional approval ("if that PR works we can just merge"; Codex unavailable, skipped per user November 7).
+
+
+
+## Cloudflare Wrangler setup PR - in progress November 8
+- [x] wrangler.jsonc: static-assets-only Worker named iwsdkmetaoct2026pub serving dist/ (Vite base './' already works at the workers.dev root).
+- [x] npm script deploy:cloudflare wrapping npx wrangler deploy.
+- [x] CLOUDFLARE.md: Workers screen values, Node version note, no-secrets note.
+- [ ] CI/Codex review, PR preview build; user runs Deploy from his own Cloudflare account and tests; merge only on his explicit go-ahead.
