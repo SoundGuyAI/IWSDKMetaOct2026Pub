@@ -85,6 +85,22 @@ function writeStringArray(key: string, value: string[]): void {
   }
 }
 
+/** Debug stat reset (Settings > Accessibility): clears every persisted stat
+ * the economy and progression own. Settings/accessibility prefs survive.
+ * Callers reload the page afterwards so in-memory state re-reads cleanly. */
+export function resetWallTonesStats(): void {
+for (const key of [
+BARS_KEY,
+BARS_TOTAL_KEY,
+HINT_LEVEL_KEY,
+ACHIEVEMENTS_KEY,
+FIRST_FLAGS_KEY,
+BEST_STREAK_KEY,
+]) {
+try { globalThis.localStorage?.removeItem(key); } catch { /* private mode */ }
+}
+}
+
 export class WallTonesEconomy {
   private bars = readNumber(BARS_KEY);
   private barsTotal = readNumber(BARS_TOTAL_KEY);
@@ -219,4 +235,4 @@ export class WallTonesEconomy {
     writeStringArray(FIRST_FLAGS_KEY, [...this.firstFlags]);
     return true;
   }
-}
+    }
