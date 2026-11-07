@@ -48,6 +48,8 @@ Personal backlog for what still needs work — not an agent task list. Move item
 - [ ] 32. Special colored pads: the two new pads would have special effects - one could give double score when pressed (tentative example); the other pad's effect still to be decided.
 - [ ] 33. Research: modifiers in incremental/clicker games; and whether a game has transformed Simon-style sequence-memory mechanics the way Balatro transformed poker.
 - [ ] 34. Consider making the repo private again and moving preview/production hosting to a Cloudflare Worker - only if the Devpost competition rules allow it (verify rules first).
+- [ ] 41. Achievement VO narration when the achievements panel is opened (requested 2026-11-07): new recorded voice lines in both voices, first-time/once-ever gating; design together with the achievement grid rework (item 38).
+
 ## In progress
 
 - [ ] 9. Fade button transitions between lit and dim states in both directions.
