@@ -68,7 +68,49 @@ export function achievementIconSrc(id: string): string {
   const ctx = canvas.getContext('2d');
   if (ctx == null) return '';
   badge(ctx);
-  if (id.startsWith('streak-')) {
+  // Category icons (one per category, not per threshold).
+  if (id === 'streak') {
+    flame(ctx, SIZE / 2, SIZE / 2, 20);
+  } else if (id === 'bars') {
+    bar(ctx, SIZE / 2, 24, 34, 13);
+    bar(ctx, SIZE / 2, 40, 26, 11);
+  } else if (id === 'score') {
+    ctx.fillStyle = '#f5d90a';
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const r = i % 2 === 0 ? 22 : 9;
+      const a = -Math.PI / 2 + (i * Math.PI) / 5;
+      const x = SIZE / 2 + Math.cos(a) * r;
+      const y = SIZE / 2 + Math.sin(a) * r;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fill();
+  } else if (id === 'store') {
+    ctx.fillStyle = '#f5d90a';
+    ctx.beginPath();
+    ctx.roundRect(14, 24, 36, 26, 6);
+    ctx.fill();
+    ctx.strokeStyle = '#f5d90a';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(SIZE / 2, 24, 9, Math.PI, 0);
+    ctx.stroke();
+  } else if (id === 'presses') {
+    const colors = ['#3ddc84', '#ff5a5a', '#4aa8ff', '#f5d90a'];
+    colors.forEach((color, i) => {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.roundRect(10 + (i % 2) * 24, 10 + Math.floor(i / 2) * 24, 20, 20, 5);
+      ctx.fill();
+    });
+  } else if (id === 'secret') {
+    ctx.fillStyle = '#8a8f99';
+    ctx.font = 'bold 34px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('?', SIZE / 2, SIZE / 2 + 2);
+  } else if (id.startsWith('streak-')) {
     flame(ctx, SIZE / 2, 26, 16);
     number(ctx, id.slice('streak-'.length), 50);
   } else if (id.startsWith('bars-')) {
