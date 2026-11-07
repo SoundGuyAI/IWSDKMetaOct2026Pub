@@ -25,6 +25,7 @@ interface DebugSnap {
   sequenceBoxesShown: number;
   flatAwaitingStart: boolean;
   roundCardText: string;
+  roundCardVisibleText: string | null;
   barFloatsActive: boolean;
   infoRowVisible: boolean;
 }
@@ -50,6 +51,7 @@ const readState = (page: Page): Promise<DebugSnap> =>
       sequenceBoxesShown: d.sequenceBoxesShown,
       flatAwaitingStart: d.flatAwaitingStart,
       roundCardText: d.roundCardText,
+      roundCardVisibleText: d.roundCardVisibleText,
       barFloatsActive: d.barFloatsActive,
       infoRowVisible: d.infoRowVisible,
     };
@@ -146,10 +148,15 @@ test.describe('Wall Tones economy: Bars, store, hints, achievements', () => {
     // Per-press +1, completion extra +1 (band rate at streak 1) and the
     // new-record bonus +1 (rate 1 x record streak 1).
     await expect.poll(async () => (await readState(page)).bars).toBe(3);
-    // The round-results card shows the round total with the breakdown.
+    // The debug bridge keeps the full breakdown string.
     expect((await readState(page)).roundCardText).toBe(
       '+3 (Pads +1 - Completion +1 - Record bonus +1)',
     );
+    // The visible panel line is one compact, always-present row (user ask):
+    // read back the text actually set on the rendered element.
+    await expect
+      .poll(async () => (await readState(page)).roundCardVisibleText)
+      .toBe('+3');
     let snap = await readState(page);
     expect(snap.bestStreak).toBe(1);
     // Categories: the first pattern's single press counts toward Pad presses.
@@ -170,6 +177,8 @@ test.describe('Wall Tones economy: Bars, store, hints, achievements', () => {
     expect(snap.bars).toBe(3);
     expect(snap.bestStreak).toBe(1);
     expect(snap.roundCardText).toBe('');
+    // Still rendered after the reset, showing +0 - no appearing/disappearing.
+    expect((await readState(page)).roundCardVisibleText).toBe('+0');
 
     // A later completion does not replay the first-Bars line.
     speechRequests.length = 0;
@@ -178,6 +187,7 @@ test.describe('Wall Tones economy: Bars, store, hints, achievements', () => {
     // No new record this time: per-press +1 and completion +1 land.
     await expect.poll(async () => (await readState(page)).bars).toBe(5);
     expect((await readState(page)).roundCardText).toBe('+2 (Pads +1 - Completion +1)');
+    expect((await readState(page)).roundCardVisibleText).toBe('+2');
     await page.waitForTimeout(3_000); // let the speech chain finish
     expect(
       speechRequests.filter((u) => u.includes('bars-first-earn.mp3')).length,
