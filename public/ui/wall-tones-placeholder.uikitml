@@ -245,6 +245,12 @@
         <ButtonIcon><Lightbulb></Lightbulb></ButtonIcon>
         <ButtonLabel id="buy-hint-label">Your Turn hint lv 1 - 10 Bars</ButtonLabel>
       </Button>
+      <div class="stat-label">Top Secret</div>
+      <div id="store-secret-status" class="status">A secret. It stays secret.</div>
+      <Button id="buy-secret-button" class="button">
+        <ButtonIcon><Sparkles></Sparkles></ButtonIcon>
+        <ButtonLabel id="buy-secret-label">Top Secret - 1000 Bars</ButtonLabel>
+      </Button>
       <Button id="store-close-button" class="button" style="margin-top: 6px">
         <ButtonIcon><X></X></ButtonIcon>
         <ButtonLabel>Close</ButtonLabel>
