@@ -2,6 +2,7 @@
   .panel-root {
     flex-direction: column;
     width: 420px;
+    min-height: 462px;
   }
 
   .content {
@@ -138,10 +139,9 @@
   <div id="menu-view" style="flex-direction: column">
   <div id="panel-content" class="content">
     <div id="wall-tones-panel-header" style="flex-direction: column; gap: 10px">
-    <div class="eyebrow">MIXED REALITY</div>
     <div class="heading">Wall Tones 2</div>
-    <div id="flat-play-hint" class="body" style="display: none">
-      Flat play: watch the sequence, then click each pad once. Wrong pad resets this run; best streak stays.
+    <div id="flat-play-hint" class="body">
+      Watch the sequence, then press each pad once. Wrong pad resets this run; best streak stays.
     </div>
     </div>
     <div class="stat-row">
