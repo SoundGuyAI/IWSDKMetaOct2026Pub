@@ -626,7 +626,7 @@ this.setRepeatUiVisible(false);
 this.setRescanUiVisible(false);
 this.syncDebugCollidersButton();
 this.applyTouchDebugVisibility();
-this.statusText = 'Opening passthrough…';
+this.statusText = 'Opening passthrough...';
 this.renderPanel();
 return;
 }
@@ -752,7 +752,7 @@ this.startPromptSpoken = true;
 this.spawnDesktopPads();
 this.setRepeatUiVisible(false);
 if (needsExplicitMobileSoundUnlock() && !isHtmlAudioPoolUnlocked()) {
-this.statusText = 'Tap “Sound on” below, then any pad';
+this.statusText = 'Tap "Sound on" below, then any pad';
 this.showMobileSoundOverlay();
 } else {
 this.statusText = 'Tap any pad to start (sound on)';
@@ -1077,7 +1077,7 @@ this.panelRayRemoved = false;
 private formatSequenceLabel(): string {
 return this.game.sequence
 .map((padId) => WALL_TONE_PADS[padId]?.name ?? '?')
-.join(' → ');
+.join(' -> ');
 }
 
 private onVisibilityForFlatPlay(state: VisibilityState): void {
@@ -1143,20 +1143,23 @@ this.flatBackdropHidden = false;
 }
 
 private setFlatHintVisible(visible: boolean): void {
+// User decision 2026-11-07: the title block and instructions stay visible
+// permanently so the panel size no longer changes between phases.
+void visible;
 this.world
 .getSceneObject<UIKitMLAsset>('wall-tones-panel')
 ?.getElementById('flat-play-hint')
-?.setProperties({ display: visible ? 'flex' : 'none' });
+?.setProperties({ display: 'flex' });
 }
 
-/** Phone flat play hides the eyebrow/title/hint header once a run starts so
- * the taller economy panel (stats + round card) stays inside the portrait
- * viewport; the header returns at the pre-start prompt. */
 private setPanelHeaderVisible(visible: boolean): void {
+// User decision 2026-11-07: keep the heading always visible (eyebrow removed
+// per the same feedback); the panel keeps a constant minimum size.
+void visible;
 this.world
 .getSceneObject<UIKitMLAsset>('wall-tones-panel')
 ?.getElementById('wall-tones-panel-header')
-?.setProperties({ display: visible ? 'flex' : 'none' });
+?.setProperties({ display: 'flex' });
 }
 
 /** Skip voice: drop the playing and queued narration lines. */
@@ -1530,7 +1533,7 @@ sessionStorage.setItem('wall-tones-setup-mode', mode);
 // Never destroy an active XR session to swap worlds — that looked like leaving MR.
 // Enter XR boots the AR world up front; this path only swaps while still flat.
 if (getActiveWorldKind() === 'hub-vr' && this.useDesktopPath()) {
-this.statusText = 'Opening passthrough…';
+this.statusText = 'Opening passthrough...';
 this.renderPanel();
 await switchToWallTonesArWorld();
 return;
@@ -1546,7 +1549,7 @@ this.scanStartedAt = performance.now() / 1000;
 this.roomCaptureInFlight = false;
 this.roomCaptureAttempted = false;
 this.speech.speak('lookAround');
-this.statusText = 'Scanning the room…';
+this.statusText = 'Scanning the room...';
 this.renderPanel();
 }
 
@@ -1555,7 +1558,7 @@ const elapsed = performance.now() / 1000 - this.scanStartedAt;
 if (elapsed < SCAN_WAIT_S) {
 const planeCount = this.queries.planes.entities.size;
 const meshCount = this.queries.meshes.entities.size;
-this.statusText = `Scanning… ${Math.ceil(SCAN_WAIT_S - elapsed)}s (${planeCount} planes, ${meshCount} meshes)`;
+this.statusText = `Scanning... ${Math.ceil(SCAN_WAIT_S - elapsed)}s (${planeCount} planes, ${meshCount} meshes)`;
 this.renderPanel();
 return;
 }
@@ -1608,7 +1611,7 @@ typeof session?.initiateRoomCapture === 'function' &&
 ) {
 this.roomCaptureInFlight = true;
 this.roomCaptureAttempted = true;
-this.statusText = 'Opening room capture…';
+this.statusText = 'Opening room capture...';
 this.renderPanel();
 this.speech.speak('roomCapture');
 try {
@@ -1706,7 +1709,7 @@ return;
 }
 
 this.speech.speak(options.speech);
-this.statusText = `Pick pad 1 of 4 — ${this.slotCandidates.length} ${options.statusLabel}`;
+this.statusText = `Pick pad 1 of 4 - ${this.slotCandidates.length} ${options.statusLabel}`;
 this.renderPanel();
 }
 
@@ -1717,7 +1720,7 @@ rayHovered != null &&
 !rayHovered.selected &&
 !this.statusText.startsWith(`Hover slot ${rayHovered.candidateIndex}`)
 ) {
-this.statusText = `Hover slot ${rayHovered.candidateIndex} — pinch to pick (${this.selectedSlotTransforms.length}/4)`;
+this.statusText = `Hover slot ${rayHovered.candidateIndex} - pinch to pick (${this.selectedSlotTransforms.length}/4)`;
 this.renderPanel();
 }
 for (const slot of this.slotCandidates) {
@@ -2007,7 +2010,7 @@ this.setAirOrientUiVisible(false);
 this.setRescanUiVisible(false);
 this.setRepeatUiVisible(true);
 this.setSpatialMeshesVisible(false);
-this.statusText = 'Get ready…';
+this.statusText = 'Get ready...';
 this.beginRoundWithIntro();
 this.renderPanel();
 return;
@@ -2185,7 +2188,7 @@ this.layoutPanelForMrPlay();
 this.setRescanUiVisible(false);
 this.setRepeatUiVisible(true);
 this.syncDebugCollidersButton();
-this.statusText = 'Get ready…';
+this.statusText = 'Get ready...';
 this.beginRoundWithIntro(line);
 this.renderPanel();
 }
@@ -2232,7 +2235,7 @@ this.ghostPad = null;
 * then a short pause before voice / the real pattern.
 */
 private async playSimonStartupFanfare(): Promise<void> {
-this.statusText = 'Watch the pads…';
+this.statusText = 'Watch the pads...';
 this.renderPanel();
 // Fanfare order is green, red, yellow, blue (pad ids 0, 1, 3, 2).
 for (const padIndex of SIMON_FANFARE_PAD_ORDER) {
@@ -2274,7 +2277,7 @@ this.playbackQueue = this.playbackQueue.then(async () => {
 if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
 }
-this.statusText = 'Listen to the intro…';
+this.statusText = 'Listen to the intro...';
 this.renderPanel();
 const narrMark = this.narrationInterrupt;
 if (leadInLine != null) {
@@ -2602,7 +2605,7 @@ this.world
 ?.getElementById<UIKit.Text>('panel-drag-label')
 ?.setProperties({
 text: this.panelDragArmed
-? 'Pinch and point to place…'
+? 'Pinch and point to place...'
 : 'Drag to move panel',
 });
 }
@@ -2820,7 +2823,7 @@ if (completed) {
 // Lock input immediately so a held finger/click cannot eat the next round.
 this.game.phase = 'playback';
 this.inputNeedsClear = true;
-this.statusText = `Nice - streak ${this.game.streak}. Next pattern…`;
+this.statusText = `Nice - streak ${this.game.streak}. Next pattern...`;
 this.renderPanel();
 const streak = this.game.streak;
 const increasedRecord = shouldAnnounceRecord(streak, previousBest, this.firstRun);
@@ -2915,7 +2918,7 @@ playPadToneFromUserAction(padIndex);
 window.setTimeout(() => flashPad(pad, false), 280);
 }
 this.setRepeatUiVisible(true);
-this.statusText = 'Get ready…';
+this.statusText = 'Get ready...';
 this.renderPanel();
 // If the welcome was still speech-locked at entry (mobile before the
 // "Sound on" tap), lead with it now that this tap unlocked audio.
@@ -3017,7 +3020,7 @@ this.flowPhase !== 'wall-picking'
 return;
 }
 this.speech.speak('rescanRoom');
-this.statusText = 'Rescanning room…';
+this.statusText = 'Rescanning room...';
 this.renderPanel();
 this.clearRoomSetupVisuals();
 this.clearPads();
@@ -3069,7 +3072,7 @@ this.speech.speak('repeatPattern');
 this.game.inputStep = 0;
 this.game.phase = 'playback';
 this.inputNeedsClear = true;
-this.statusText = 'Repeating pattern…';
+this.statusText = 'Repeating pattern...';
 this.renderPanel();
 this.playbackQueue = this.playbackQueue.then(async () => {
 if (!this.experienceActive || this.flowPhase !== 'playing') {
@@ -3102,7 +3105,7 @@ this.lastInputAt = now;
 this.game.inputStep = 0;
 this.game.phase = 'playback';
 this.inputNeedsClear = true;
-this.statusText = 'Still there? Replaying…';
+this.statusText = 'Still there? Replaying...';
 this.renderPanel();
 this.playbackQueue = this.playbackQueue.then(async () => {
 await this.speech.speakAsync('idleReplay');
