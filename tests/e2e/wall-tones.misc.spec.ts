@@ -45,10 +45,13 @@ test('first-run record announcements are3,6,9 then11 onward, later runs every re
 test('settings menu markup carries the build version line wired in app-mode', () => {
   const menu = readFileSync(new URL('../../public/ui/main-menu.uikitml', import.meta.url), 'utf8');
   const appMode = readFileSync(new URL('../../src/app-mode.ts', import.meta.url), 'utf8');
+  const buildInfo = readFileSync(new URL('../../src/build-info.ts', import.meta.url), 'utf8');
   expect(menu).toContain('id="settings-version"');
   expect(appMode).toContain('settings-version');
-  expect(appMode).toContain('__WALL_TONES_VERSION__');
-  expect(appMode).toContain('__WALL_TONES_COMMIT__');
+  expect(appMode).toContain('WALL_TONES_BUILD_LABEL');
+  // Guarded so unit-style Node imports without Vite defines cannot crash.
+  expect(buildInfo).toContain("typeof __WALL_TONES_VERSION__");
+  expect(buildInfo).toContain("typeof __WALL_TONES_COMMIT__");
 });
 
 test('build identity is exposed and matches the shipped package version', async ({ page }) => {
