@@ -1,0 +1,21 @@
+/**
+ * Cloudflare Workers config for Wall Tones 2.
+ *
+ * Static-assets-only Worker: `npm run build` emits dist/ (Vite base is './',
+ * so the same bundle works at the workers.dev root and under the GitHub
+ * Pages project path). There is no Worker script; requests are served from
+ * the bundled assets and unknown paths 404, same as GitHub Pages.
+ *
+ * Cloudflare "Set up your application" screen for this repo:
+ *   Build command:   npm run build
+ *   Deploy command:  npx wrangler deploy
+ *   Preview command: npx wrangler preview  (alias of `wrangler dev`)
+ * Project name below must match the screen's Project name.
+ */
+{
+  "name": "iwsdkmetaoct2026pub",
+  "compatibility_date": "2026-11-08",
+  "assets": {
+    "directory": "./dist"
+  }
+}
