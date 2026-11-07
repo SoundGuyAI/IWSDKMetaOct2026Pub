@@ -335,6 +335,28 @@ test.describe('Wall Tones economy: Bars, store, hints, achievements', () => {
     expect(snap.hintRevealCount).toBe(20);
   });
 
+  test('wrong pad presses count toward lifetime presses but pay no Bars', async ({
+    page,
+  }) => {
+    test.slow();
+    const speechRequests: string[] = [];
+    await abortSpeech(page, speechRequests);
+    await bootWallTones(page, true);
+    await submitPad(page, 0); // start tap: menu input, NOT a gameplay press
+    await expect
+      .poll(async () => (await readState(page)).phase, { timeout: 90_000 })
+      .toBe('input');
+    expect((await readState(page)).presses).toBe(0);
+    const snap = await readState(page);
+    const wrongPad = (snap.sequence[0]! + 1) % 4;
+    await submitPad(page, wrongPad);
+    // The wrong press counts toward the lifetime total but awards no Bars.
+    await expect.poll(async () => (await readState(page)).presses).toBe(1);
+    const after = await readState(page);
+    expect(after.bars).toBe(0);
+    expect(after.barsTotal).toBe(0);
+  });
+
   test('streak milestones unlock achievements', async ({ page }) => {
     test.slow();
     const speechRequests: string[] = [];
