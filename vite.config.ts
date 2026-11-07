@@ -17,12 +17,29 @@ const { version: appVersion } = JSON.parse(
 
 /**
  * Build identity shown in Settings so a tester can confirm which build is on
- * the headset. PR previews check out the merge ref, so prefer the PR head SHA
- * (GITHUB_HEAD_SHA) over the merge SHA (GITHUB_SHA); local builds fall back to
- * git, then 'dev'.
+ * the headset. PR builds check out the merge ref, and GITHUB_HEAD_SHA is not
+ * reliably present in the runner env, so read the PR head SHA from the event
+ * payload (GITHUB_EVENT_PATH) before the merge SHA (GITHUB_SHA); local builds
+ * fall back to git, then 'dev'. WALL_TONES_BUILD_SHA overrides everything.
  */
+const eventHeadSha = (() => {
+  try {
+    const event = JSON.parse(
+      readFileSync(process.env.GITHUB_EVENT_PATH as string, 'utf8'),
+    ) as { pull_request?: { head?: { sha?: string } } };
+    return event.pull_request?.head?.sha ?? '';
+  } catch {
+    return '';
+  }
+})();
 const commitHash =
-  (process.env.GITHUB_HEAD_SHA || process.env.GITHUB_SHA || '').slice(0, 7) ||
+  (
+    process.env.WALL_TONES_BUILD_SHA ||
+    eventHeadSha ||
+    process.env.GITHUB_HEAD_SHA ||
+    process.env.GITHUB_SHA ||
+    ''
+  ).slice(0, 7) ||
   (() => {
     try {
       return execSync('git rev-parse --short=7 HEAD', {
