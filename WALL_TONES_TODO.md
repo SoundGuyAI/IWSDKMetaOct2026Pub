@@ -13,10 +13,6 @@ Personal backlog for what still needs work — not an agent task list. Move item
 - [ ] 7. Wrist band that shows the buttons playing the pattern
 - [ ] 8. Incremental features (park smaller follow-ups here as they come up)
 
-### Minor polish - November 6
-- [ ] 9. Fade button transitions between lit and dim states in both directions.
-- [ ] 10. Add a skip dialog button.
-
 ### Future ideas - November 6,18:02 (backlog only, not implementation approval)
    - [ ] 11a. Add player-applied multipliers to the scoring system; mechanics unspecified.
    - [ ] 12b. Auto-presser modifier.
@@ -39,6 +35,8 @@ Personal backlog for what still needs work — not an agent task list. Move item
 
 ## In progress
 
+- [ ] 9. Fade button transitions between lit and dim states in both directions.
+- [ ] 10. Add a skip dialog button.
 - [~] 11. Score that grows exponentially with streak length (economy PR; PENDING the user's score-interpretation answer - Bars and streak persist meanwhile, no score display yet).
 - [~] 12. Store where players buy modifiers (economy PR: gold Bars, hint store).
    - [~] 12a. Your Turn hint modifier: each level gives 5 boxes of hints; buy upgrades for longer hints (economy PR: 10/15/22 Bars then ~1.3x growth, open-ended, tunable; persistent unlocks; Your Turn row hidden without a hint, per user November 7).

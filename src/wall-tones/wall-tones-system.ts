@@ -91,7 +91,12 @@ setPadDebugCollidersVisible,
 solidifyGhostPad,
 type PadRuntime,
 } from './pads.js';
-import { animatePadGlow, setPadGlowPower } from './pad-glow.js';
+import {
+animatePadGlow,
+padGlowFadeState,
+setPadGlowPower,
+type PadGlowFadeState,
+} from './pad-glow.js';
 import {
 applyRoomSetupTints,
 clearRoomSetupTints,
@@ -158,10 +163,13 @@ grantBars: (amount: number) => void;
 flatAwaitingStart: boolean;
 slotCandidateCount: number;
 selectedSlotCount: number;
+speechBusy: boolean;
 submitPad: (padIndex: number) => void;
 /** Emulator helper: spawn 4 ray-pickable wall slots in front of the player. */
 startFakeWallPick: () => void;
 selectSlot: (candidateIndex: number) => void;
+skipSpeech: () => void;
+padFade: (padIndex: number) => PadGlowFadeState | null;
 };
 
 declare global {
@@ -307,6 +315,23 @@ private panelDragging = false;
 private blinkCuePad: PadRuntime | null = null;
 private blinkCueRoot: Object3D | null = null;
 private blinkCueEntity: Entity | null = null;
+/** Panel Skip voice button mirrors speech.isBusy(); polled each frame. */
+private skipVoiceVisible = false;
+/** Flat-mode Skip voice overlay: outside the panel HUD, bottom-right corner
+ * of the screen (user feedback November 7: on phone and desktop the button
+ * should not live inside the menu panel). VR/MR keep the panel button. */
+private flatSkipButton: HTMLButtonElement | null = null;
+/** Last view mode the skip controls were synced for (P2 codex: resync on
+ * view switches, not only on busy toggles). */
+private skipVoiceViewFlat: boolean | null = null;
+/** Scratch pad-bounds + last applied offset (no allocations in update()). */
+private readonly padScreenBoundsScratch = { minX: 0, maxX: 0, minY: 0, maxY: 0 };
+private lastFlatSkipBottom = -1;
+/** Cached subtitle rects (codex P2: no per-frame getBoundingClientRect).
+ * Recomputed only when caption layout/content marks them dirty. */
+private flatCaptionsRect: DOMRect | null = null;
+private flatCaptionsRectDirty = true;
+private startupStripRect: DOMRect | null = null;
 private readonly onPointerDownForAudio = (): void => {
 if (needsExplicitMobileSoundUnlock() && !isHtmlAudioPoolUnlocked()) {
 this.applyUserGestureMediaUnlock(false);
@@ -403,6 +428,7 @@ this.updateAccessibilityCaptions();
 if (!this.experienceActive) {
 return;
 }
+this.tickSkipVoiceButton();
 if (this.pads.length > 0) {
 const glowTime = performance.now() / 1000;
 for (const pad of this.pads) {
@@ -519,6 +545,10 @@ panel
 panel
 .getElementById('panel-drag-handle')
 ?.addEventListener('click', () => this.togglePanelDragArm());
+panel
+.getElementById('skip-voice-button')
+?.addEventListener('click', () => this.onSkipVoice());
+this.syncSkipVoiceButton();
 this.syncDebugCollidersButton();
 this.applyTouchDebugVisibility();
 this.setPanelDragBarVisible(
@@ -627,6 +657,8 @@ this.panelDragArmed = false;
 this.panelDragging = false;
 this.setBlinkCuePad(null);
 this.disposeBlinkCueArrow();
+this.skipVoiceVisible = false;
+this.syncSkipVoiceButton();
 this.resetSetupPanelAnchor();
 this.restorePanelLayout();
 this.restorePanelPointerCapture();
@@ -1069,6 +1101,158 @@ this.world
 ?.setProperties({ display: visible ? 'flex' : 'none' });
 }
 
+/** Skip voice: drop the playing and queued narration lines. */
+/** Bumped when the USER skips narration, so scripted multi-line
+ * announcements stop enqueueing their remaining lines. Internal
+ * speech.cancel() calls (instruction replacement) do not touch this. */
+private narrationInterrupt = 0;
+
+private onSkipVoice(): void {
+this.narrationInterrupt += 1;
+this.speech.cancel();
+}
+
+private tickSkipVoiceButton(): void {
+const busy = this.speech.isBusy();
+const flat = this.isFlatView();
+if (busy !== this.skipVoiceVisible || flat !== this.skipVoiceViewFlat) {
+this.skipVoiceVisible = busy;
+this.skipVoiceViewFlat = flat;
+this.syncSkipVoiceButton();
+}
+this.positionFlatSkipButton();
+}
+
+private isFlatView(): boolean {
+return this.world.visibilityState.peek() === VisibilityState.NonImmersive;
+}
+
+private syncSkipVoiceButton(): void {
+const flat = this.isFlatView();
+// VR/MR keep the in-panel button; flat mode gets the screen-corner overlay.
+this.world
+.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('skip-voice-button')
+?.setProperties({ display: this.skipVoiceVisible && !flat ? 'flex' : 'none' });
+this.syncFlatSkipButton(flat);
+}
+
+private syncFlatSkipButton(flat: boolean): void {
+if (flat && this.skipVoiceVisible) {
+if (this.flatSkipButton == null) {
+const button = document.createElement('button');
+button.type = 'button';
+button.id = 'wall-tones-skip-voice-flat';
+button.textContent = 'Skip voice';
+Object.assign(button.style, {
+position: 'fixed',
+right: 'max(12px, env(safe-area-inset-right))',
+bottom: 'max(24px, env(safe-area-inset-bottom))',
+zIndex: '100002',
+fontSize: '16px',
+padding: '12px 18px',
+borderRadius: '12px',
+border: 'none',
+background: '#f5d90a',
+color: '#1c1d20',
+fontWeight: '700',
+boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
+cursor: 'pointer',
+});
+button.addEventListener('click', (event) => {
+event.preventDefault();
+this.onSkipVoice();
+});
+document.body.appendChild(button);
+this.flatSkipButton = button;
+}
+this.flatSkipButton.style.display = 'block';
+} else if (this.flatSkipButton != null) {
+this.flatSkipButton.style.display = 'none';
+}
+}
+
+/** Projected screen-space bounds of the pad grid, written into the scratch
+ * object (false when no pads yet). No allocations in the per-frame path. */
+private projectPadScreenBounds(): boolean {
+if (this.pads.length === 0 || !this.experienceActive) return false;
+const b = this.padScreenBoundsScratch;
+b.minX = Infinity; b.maxX = -Infinity; b.minY = Infinity; b.maxY = -Infinity;
+for (const pad of this.pads) {
+for (let sx = -1; sx <= 1; sx += 2) {
+for (let sy = -1; sy <= 1; sy += 2) {
+const v = this.captionProjection.set(
+sx * pad.sizeM / 2, sy * pad.sizeM / 2, 0);
+pad.root.localToWorld(v); v.project(this.world.camera);
+b.minX = Math.min(b.minX, (v.x + 1) * window.innerWidth / 2);
+b.maxX = Math.max(b.maxX, (v.x + 1) * window.innerWidth / 2);
+b.minY = Math.min(b.minY, (1 - v.y) * window.innerHeight / 2);
+b.maxY = Math.max(b.maxY, (1 - v.y) * window.innerHeight / 2);
+}
+}
+}
+return true;
+}
+
+/** Bottom-right corner, but never over a subtitle strip or a pad: narration
+ * and pad input can coexist, so the overlay must not steal pad taps. When
+ * the corner has no room it docks at the right edge above the pad grid. */
+private positionFlatSkipButton(): void {
+const button = this.flatSkipButton;
+if (button == null || button.style.display === 'none') return;
+const w = window.innerWidth;
+const h = window.innerHeight;
+const bw = button.offsetWidth;
+const bh = button.offsetHeight;
+const RIGHT = 12;
+const BASE = 24;
+const M = 10;
+let bottom = BASE;
+// Two known strips via cached rects: no per-frame layout reads.
+// The startup strip is CSS-static; read it once while it lives.
+if (this.startupStripRect == null && typeof document !== 'undefined') {
+const startupStrip = document.getElementById('wall-tones-startup-subtitle');
+if (startupStrip != null && startupStrip.style.display !== 'none') {
+this.startupStripRect = startupStrip.getBoundingClientRect();
+}
+}
+const startupRect = this.startupStripRect;
+if (startupRect != null) {
+if (typeof document !== 'undefined' &&
+document.getElementById('wall-tones-startup-subtitle') == null) {
+this.startupStripRect = null;
+} else if (startupRect.right > w - bw - RIGHT - M &&
+startupRect.bottom > h - bh - BASE - M) {
+bottom = Math.max(bottom, h - startupRect.top + M);
+}
+}
+const captions = this.flatCaptions;
+if (captions != null && captions.style.display !== 'none') {
+if (this.flatCaptionsRectDirty || this.flatCaptionsRect == null) {
+this.flatCaptionsRect = captions.getBoundingClientRect();
+this.flatCaptionsRectDirty = false;
+}
+const r = this.flatCaptionsRect;
+if (r.right > w - bw - RIGHT - M && r.bottom > h - bh - BASE - M) {
+bottom = Math.max(bottom, h - r.top + M);
+}
+}
+if (this.projectPadScreenBounds()) {
+const pb = this.padScreenBoundsScratch;
+const bx0 = w - RIGHT - bw;
+const by0 = h - bottom - bh;
+const overlapsPads =
+bx0 < pb.maxX + M && w - RIGHT > pb.minX - M &&
+by0 < pb.maxY + M && h - bottom > pb.minY - M;
+if (overlapsPads) bottom = h - pb.minY + M;
+}
+const rounded = Math.round(bottom);
+if (rounded !== this.lastFlatSkipBottom) {
+this.lastFlatSkipBottom = rounded;
+button.style.bottom = `max(${rounded}px, env(safe-area-inset-bottom))`;
+}
+}
+
 private publishDebugBridge(): void {
 const system = this;
 window.__wallTonesDebug = {
@@ -1133,8 +1317,17 @@ return system.slotCandidates.length;
 get selectedSlotCount() {
 return system.selectedSlotTransforms.length;
 },
+get speechBusy() {
+return system.speech.isBusy();
+},
 submitPad: (padIndex: number) => {
 system.handlePadInput(padIndex);
+},
+skipSpeech: () => {
+system.onSkipVoice();
+},
+padFade: (padIndex: number) => {
+return padGlowFadeState(system.pads[padIndex]?.glow);
 },
 startFakeWallPick: () => {
 system.debugStartFakeWallPick();
@@ -1977,6 +2170,7 @@ return;
 }
 this.statusText = 'Listen to the intro…';
 this.renderPanel();
+const narrMark = this.narrationInterrupt;
 if (leadInLine != null) {
 await this.speech.speakAsync(leadInLine);
 await this.wait(0.35);
@@ -1989,9 +2183,13 @@ if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
 }
 // Skip the opening "Point and press..." sentence if the welcome already said it.
+// A user skip during the intro also swallows this remaining line, without
+// aborting the round flow that follows.
+if (narrMark === this.narrationInterrupt) {
 await this.speech.speakAsync(
 this.startPromptSpoken ? 'howToPlayRest' : 'howToPlay',
 );
+}
 this.startPromptSpoken = false;
 await this.wait(POST_INTRO_DELAY_S);
 if (!this.experienceActive || this.flowPhase !== 'playing') {
@@ -2511,18 +2709,22 @@ const explainBars = barsAwarded > 0 && this.economy.takeFirstTime('bars-earned')
 this.showAchievementToasts();
 this.renderPanel();
 this.playbackQueue = this.playbackQueue.then(async () => {
+const narrMark = this.narrationInterrupt;
+const narrIntact = () =>
+this.experienceActive && this.flowPhase === 'playing' &&
+narrMark === this.narrationInterrupt;
 if (increasedRecord) {
 await this.speech.speakAsync(randomNewBestClip(previousBest === 0));
 if (!this.experienceActive || this.flowPhase !== 'playing') return;
 }
 if (streak > 0 && streak % 5 === 0) {
-await this.speech.speakAsync(milestoneClipFor(streak));
-if (this.experienceActive && this.flowPhase === 'playing') {
+if (narrIntact()) await this.speech.speakAsync(milestoneClipFor(streak));
+if (narrIntact()) {
 await this.speech.speakAsync(randomCheerClip());
 }
 await this.wait(0.35);
 } else {
-if (increasedRecord) await this.speech.speakAsync(randomCheerClip());
+if (increasedRecord && narrIntact()) await this.speech.speakAsync(randomCheerClip());
 await this.wait(BETWEEN_ROUNDS_DELAY_S);
 }
 if (explainBars && this.experienceActive && this.flowPhase === 'playing') {
@@ -3003,6 +3205,7 @@ display: show && !flat && caption ? 'flex' : 'none', text: caption,
 const menuCaption = enabled && flat && !this.experienceActive && Boolean(caption);
 if ((!show && !menuCaption) || !flat) {
 if (this.flatCaptions && this.flatCaptions.style.display !== 'none') this.flatCaptions.style.display = 'none';
+this.flatCaptionsRect = null;
 return;
 }
 if (!this.flatCaptions) {
@@ -3040,6 +3243,7 @@ this.flatCaptions.style.lineHeight = phone ? '1.25' : '1.4';
 this.flatCaptions.style.width = `${width}px`;
 this.flatCaptions.style.left = `${Math.max(width / 2 + 12, Math.min(window.innerWidth - width / 2 - 12, (minX + maxX) / 2))}px`;
 this.flatCaptions.style.top = `${bottom + 14}px`;
+this.flatCaptionsRectDirty = true;
 }
 // Backlog 12a applies here too (codex P2): during Your Turn the subtitle
 // sequence only reveals the owned hint prefix; no hint, no sequence.
@@ -3065,6 +3269,7 @@ if (colorNamesEnabled()) { const word = document.createElement('span'); word.tex
 }
 this.flatCaptions.append(line);
 if (caption) { const text = document.createElement('div'); text.textContent = caption; text.style.marginTop = '5px'; this.flatCaptions.append(text); }
+this.flatCaptionsRectDirty = true;
 }
 
 private wait(seconds: number): Promise<void> {
