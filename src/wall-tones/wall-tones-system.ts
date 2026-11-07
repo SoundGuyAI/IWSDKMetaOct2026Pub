@@ -2974,8 +2974,15 @@ panel
 this.renderEconomy(panel);
 }
 
-/** Store, Bars balance and achievements on the panel (backlog 12/12a/19). */
+/** Store, Bars balance and achievements on the panel (backlog 12/12a/19).
+ * Reconciled on a change key: tickScan calls renderPanel every frame, so the
+ * labels must not rebuild while nothing economy-related changed (codex P2). */
+private economyRenderKey = '';
 private renderEconomy(panel: UIKitMLAsset): void {
+const level = this.economy.getHintLevel();
+const key = this.economy.getBars() + ':' + level + ':' + (this.storeOpen ? '1' : '0');
+if (key === this.economyRenderKey) return;
+this.economyRenderKey = key;
 panel
 .getElementById<UIKit.Text>('wall-tones-bars')
 ?.setProperties({ text: String(this.economy.getBars()) });
@@ -2985,7 +2992,6 @@ panel
 panel
 .getElementById<UIKit.Container>('store-section')
 ?.setProperties({ display: this.storeOpen ? 'flex' : 'none' });
-const level = this.economy.getHintLevel();
 const nextCost = this.economy.hintCost(level + 1);
 const buyLabel = `Your Turn hint lv ${level + 1} - ${nextCost} Bars`;
 panel
