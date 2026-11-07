@@ -6,6 +6,7 @@
  */
 
 import { startInitialWorld } from './wall-tones/world-host.js';
+import { WALL_TONES_BUILD_INFO } from './build-info.js';
 import { needsExplicitMobileSoundUnlock } from './wall-tones/audio.js';
 import { unlockSpeechFromGesture, prepareMobileWelcome, startMobileWelcomeFromGesture } from './wall-tones/speech.js';
 
@@ -20,10 +21,8 @@ const startup = window as unknown as {
   __wtFinishLoading?: () => void;
 };
 // Build identity for testers; the Settings menu shows the same string.
-(window as unknown as { __wallTonesBuildInfo?: unknown }).__wallTonesBuildInfo = {
-  version: __WALL_TONES_VERSION__,
-  commit: __WALL_TONES_COMMIT__,
-};
+(window as unknown as { __wallTonesBuildInfo?: unknown }).__wallTonesBuildInfo =
+  WALL_TONES_BUILD_INFO;
 
 const loading = startup.__wtLoading;
 const container = document.getElementById('scene-container') as HTMLDivElement;
