@@ -161,6 +161,7 @@ storeOpen: boolean;
 sequenceRowVisible: boolean;
 sequenceBoxesShown: number;
 roundCardText: string;
+roundCardVisibleText: string | null;
 barFloatsActive: boolean;
 infoRowVisible: boolean;
 toggleStore: () => void;
@@ -1366,6 +1367,29 @@ return system.lastSequenceBoxesShown;
 },
 get roundCardText() {
 return system.lastRoundCardText;
+},
+// Live read-back of the text actually set on the rendered panel element
+// (catches the uikitml empty-div compile trap, where setProperties no-ops).
+get roundCardVisibleText() {
+const el = system.world
+.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('wall-tones-round-card-total');
+// The rendered Text child reads parentContainer.properties.value.text,
+// falling back to the uikitml initial literal ('+0') when never set.
+const own = (
+el as { properties?: { value?: { text?: unknown } } } | null | undefined
+)?.properties?.value?.text;
+if (typeof own === 'string') return own;
+// Never explicitly set: the rendered string is the Text child's computed
+// fallback (the uikitml initial literal).
+const children =
+(el as { children?: { properties?: { value?: { text?: unknown } } }[] } | null)
+  ?.children ?? [];
+for (const child of children) {
+const t = child?.properties?.value?.text;
+if (typeof t === 'string') return t;
+}
+return null;
 },
 get infoRowVisible() {
 return system.lastInfoRowVisible;
@@ -2821,8 +2845,10 @@ window.setTimeout(() => {
 if (this.experienceActive) this.spawnBarFloat(padIndex, bonus);
 }, 500);
 }
-// Round summary card: total Bars earned on this pattern with a
-// pads/record-bonus breakdown (user ask). Persists until the next round.
+// Round summary line: total Bars earned on this pattern. One compact
+// always-present line (user ask); updates at round end, resets to +0 on
+// the next round. The pads/completion/bonus breakdown stays in the debug
+// bridge string for tests.
 this.showRoundBarsCard(
 this.roundBarsEarned,
 this.roundCompletionEarned,
@@ -3287,9 +3313,6 @@ if (total <= 0) return;
 const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
 if (panel == null) return;
 panel
-.getElementById('wall-tones-round-card')
-?.setProperties({ display: 'flex' });
-panel
 .getElementById<UIKit.Text>('wall-tones-round-card-total')
 ?.setProperties({ text: `+${total}` });
 const pads = total - completion - bonus;
@@ -3297,9 +3320,6 @@ const parts = [`Pads +${pads}`];
 if (completion > 0) parts.push(`Completion +${completion}`);
 if (bonus > 0) parts.push(`Record bonus +${bonus}`);
 const breakdown = parts.join(' - ');
-panel
-.getElementById<UIKit.Text>('wall-tones-round-card-breakdown')
-?.setProperties({ text: breakdown });
 this.lastRoundCardText = `+${total} (${breakdown})`;
 }
 
@@ -3307,8 +3327,8 @@ private hideRoundBarsCard(): void {
 this.lastRoundCardText = '';
 this.world
 .getSceneObject<UIKitMLAsset>('wall-tones-panel')
-?.getElementById('wall-tones-round-card')
-?.setProperties({ display: 'none' });
+?.getElementById<UIKit.Text>('wall-tones-round-card-total')
+?.setProperties({ text: '+0' });
 }
 
 /** Test-only wallet funding for the e2e debug bridge. */
