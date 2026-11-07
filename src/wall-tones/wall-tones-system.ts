@@ -121,6 +121,7 @@ type WallTonesClipId,
 } from './speech.js';
 import {
   ACHIEVEMENT_CATEGORIES,
+  TOP_SECRET_COST,
   WallTonesEconomy,
 } from './economy.js';
 import {
@@ -168,6 +169,9 @@ infoRowVisible: boolean;
 toggleStore: () => void;
 toggleAchievements: () => void;
 buyHint: () => void;
+buyTopSecret: () => void;
+/** Whether the one-time Top Secret item is owned (test-only). */
+ownsTopSecret: boolean;
 /** Test-only wallet funding for e2e. */
 grantBars: (amount: number) => void;
 flatAwaitingStart: boolean;
@@ -581,6 +585,9 @@ panel
 panel
 .getElementById('buy-hint-button')
 ?.addEventListener('click', () => this.onBuyHint());
+panel
+.getElementById('buy-secret-button')
+?.addEventListener('click', () => this.onBuySecret());
 panel
 .getElementById('panel-drag-handle')
 ?.addEventListener('click', () => this.togglePanelDragArm());
@@ -1416,6 +1423,12 @@ system.setAchievementsOpen(!system.achievementsOpen);
 },
 buyHint: () => {
 system.onBuyHint();
+},
+buyTopSecret: () => {
+system.onBuySecret();
+},
+get ownsTopSecret() {
+return system.economy.ownsTopSecret();
 },
 // Test-only: fund the wallet without grinding rounds.
 grantBars: (amount: number) => {
@@ -3163,6 +3176,7 @@ private economyRenderBars = -1;
 private economyRenderLevel = -1;
 private economyRenderStoreOpen = false;
 private economyRenderPresses = -1;
+private economyRenderSecretOwned = false;
 private renderEconomy(panel: UIKitMLAsset): void {
 const bars = this.economy.getBars();
 const level = this.economy.getHintLevel();
@@ -3171,12 +3185,15 @@ const open = this.storeOpen;
 // crosses a Pad presses threshold still refreshes an open achievements
 // popup (bars, hint level and store state are unchanged on that path).
 const presses = this.economy.getPresses();
+const secretOwned = this.economy.ownsTopSecret();
 if (bars === this.economyRenderBars && level === this.economyRenderLevel &&
-open === this.economyRenderStoreOpen && presses === this.economyRenderPresses) return;
+open === this.economyRenderStoreOpen && presses === this.economyRenderPresses &&
+secretOwned === this.economyRenderSecretOwned) return;
 this.economyRenderBars = bars;
 this.economyRenderLevel = level;
 this.economyRenderStoreOpen = open;
 this.economyRenderPresses = presses;
+this.economyRenderSecretOwned = secretOwned;
 panel
 .getElementById<UIKit.Text>('wall-tones-bars')
 ?.setProperties({ text: String(this.economy.getBars()) });
@@ -3201,6 +3218,22 @@ panel
 text: level === 0
 ? 'No hint owned. The pattern stays hidden during Your Turn.'
 : `Hint level ${level}: first ${this.economy.getHintRevealCount()} colors shown during Your Turn.`,
+});
+panel
+.getElementById<UIKit.Text>('buy-secret-label')
+?.setProperties({
+text: secretOwned
+? 'Top Secret - owned'
+: `Top Secret - ${TOP_SECRET_COST} Bars`,
+color:
+!secretOwned && this.economy.getBars() >= TOP_SECRET_COST
+? 0x1c1d20
+: 0x8a8f98,
+});
+panel
+.getElementById<UIKit.Text>('store-secret-status')
+?.setProperties({
+text: secretOwned ? 'Secret Revealed.' : 'A secret. It stays secret.',
 });
 this.reconcileAchievements(panel);
 }
@@ -3417,6 +3450,23 @@ this.shakeTimers.push(window.setTimeout(() => {
 card.setProperties({ transformTranslateX: x });
 }, i * 40));
 });
+}
+
+private onBuySecret(): void {
+if (this.economy.ownsTopSecret()) return;
+if (!this.economy.buyTopSecret()) {
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+panel
+?.getElementById<UIKit.Text>('store-secret-status')
+?.setProperties({
+text: 'Not enough Bars yet. Complete more patterns!',
+});
+void playErrorTone();
+this.shakeStorePopup();
+return;
+}
+this.showAchievementToasts();
+this.renderPanel();
 }
 
 private onBuyHint(): void {
