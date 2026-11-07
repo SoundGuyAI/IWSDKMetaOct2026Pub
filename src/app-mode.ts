@@ -78,6 +78,7 @@ export class AppModeSystem extends createSystem({}) {
         window.removeEventListener(type, unlockMenuAudio, true),
       );
     }
+    this.loadingStage('menu', 'Scene and renderer loaded. Wiring the menu controls.');
     const menuPanel = this.bindMainMenu();
     this.bindWallTonesPlaceholder();
     this.bindDemoNav();
@@ -91,6 +92,10 @@ export class AppModeSystem extends createSystem({}) {
     this.liftSplashWhenMenuTextLoads(menuPanel);
   }
 
+  private loadingStage(key: string, detail: string): void {
+    (window as unknown as { __wtLoading?: { stage: (key: string, detail: string) => void } }).__wtLoading?.stage(key, detail);
+  }
+
   private liftSplashWhenMenuTextLoads(panel: UIKitMLAsset | null): void {
     const lift = () => {
       (
@@ -98,7 +103,7 @@ export class AppModeSystem extends createSystem({}) {
       ).__wtAppReady?.();
     };
     if (panel == null) {
-      lift();
+      (window as unknown as { __wtLoading?: { fail: (error: unknown) => void } }).__wtLoading?.fail('Main menu panel is missing.');
       return;
     }
     // Every text element on the menu panel exposes a fontSignal that resolves
@@ -113,31 +118,38 @@ export class AppModeSystem extends createSystem({}) {
         texts.push(candidate as { fontSignal: { value: unknown } });
       }
     });
-    let remaining = 0;
-    const onFont = () => {
-      remaining -= 1;
-      if (remaining === 0) {
-        requestAnimationFrame(() => requestAnimationFrame(lift));
-      }
+    // Subscribe after counting, and defer completion out of subscribe's
+    // immediate callback. This also avoids a synchronous unsubscribe TDZ.
+    const pending = texts.filter((text) => text.fontSignal.value == null);
+    let remaining = pending.length;
+    const update = () => this.loadingStage('fonts',
+      'Menu controls wired. Menu text fonts ready: ' + (texts.length - remaining) + '/' + texts.length + '.');
+    const renderThenLift = () => {
+      this.loadingStage('render', 'Menu fonts loaded. Waiting for the first readable frame.');
+      requestAnimationFrame(() => requestAnimationFrame(lift));
     };
-    for (const text of texts) {
-      if (text.fontSignal.value != null) {
-        continue;
-      }
-      remaining += 1;
-      const signal = text.fontSignal as {
+    update();
+    if (remaining === 0) {
+      renderThenLift();
+      return;
+    }
+    for (const text of pending) {
+      const fontSignal = text.fontSignal as {
         value: unknown;
         subscribe: (fn: () => void) => () => void;
       };
-      const unsubscribe = signal.subscribe(() => {
-        if (signal.value != null) {
+      let resolved = false;
+      const unsubscribe = fontSignal.subscribe(() => {
+        if (fontSignal.value == null || resolved) return;
+        resolved = true;
+        queueMicrotask(() => {
           unsubscribe();
-          onFont();
-        }
+          remaining -= 1;
+          update();
+          if (remaining === 0) renderThenLift();
+        });
       });
-    }
-    if (remaining === 0) {
-      requestAnimationFrame(() => requestAnimationFrame(lift));
+      this.cleanupFuncs.push(unsubscribe);
     }
   }
 
