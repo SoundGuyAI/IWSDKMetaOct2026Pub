@@ -74,7 +74,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        include:
+          - shard: 1
+            files: tests/e2e/wall-tones.economy.spec.ts
+          - shard: 2
+            files: tests/e2e/wall-tones.desktop.spec.ts tests/e2e/wall-tones.desktop.pointer.spec.ts
+          - shard: 3
+            files: tests/e2e/wall-tones.accessibility.spec.ts tests/e2e/wall-tones.feedback.spec.ts tests/e2e/wall-tones.loading.spec.ts tests/e2e/wall-tones.misc.spec.ts tests/e2e/wall-tones.mute.spec.ts tests/e2e/wall-tones.polish.spec.ts tests/e2e/wall-tones.xr-entry.spec.ts
+    name: e2e-desktop (shard ${{ matrix.shard }})
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -84,9 +91,12 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run build
-      # Serial per shard (workers: 1) because gameplay timing and audio are
-      # global to a page; sharding splits the suite across three runners.
-      - run: npm run test:e2e:ci -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+      # Serial per runner (workers: 1) because gameplay timing and audio are
+      # global to a page. Groups are split by measured CI duration (run
+      # 42421269922): economy and the desktop journeys dominate, so the heavy
+      # files each get a runner and the lighter files share the third. Keep
+      # the file lists here and in the coverage check below in sync.
+      - run: npm run test:e2e:ci -- ${{ matrix.files }}
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -94,9 +104,36 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
+  e2e-coverage:
+    name: Check every e2e spec is assigned to a shard
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.gameplay == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set -euo pipefail
+          ls tests/e2e/*.spec.ts | sort > actual.txt
+          printf '%s\n' \
+            tests/e2e/wall-tones.accessibility.spec.ts \
+            tests/e2e/wall-tones.desktop.pointer.spec.ts \
+            tests/e2e/wall-tones.desktop.spec.ts \
+            tests/e2e/wall-tones.economy.spec.ts \
+            tests/e2e/wall-tones.feedback.spec.ts \
+            tests/e2e/wall-tones.loading.spec.ts \
+            tests/e2e/wall-tones.misc.spec.ts \
+            tests/e2e/wall-tones.mute.spec.ts \
+            tests/e2e/wall-tones.polish.spec.ts \
+            tests/e2e/wall-tones.xr-entry.spec.ts \
+            | sort > assigned.txt
+          diff actual.txt assigned.txt || {
+            echo '::error::Every tests/e2e/*.spec.ts file must be listed in the e2e-desktop matrix (and here).'
+            exit 1
+          }
+
   deploy-pages:
     name: Build and deploy GitHub Pages
-    needs: [changes, build-and-typecheck, e2e-desktop]
+    needs: [changes, build-and-typecheck, e2e-desktop, e2e-coverage]
     if: >-
       github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
       && needs.changes.outputs.publish == 'true'
