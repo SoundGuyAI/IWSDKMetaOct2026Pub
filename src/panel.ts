@@ -11,6 +11,7 @@ import {
   UIKitMLAsset,
   VisibilityState,
 } from '@iwsdk/core';
+import { enterXrButtonVisible } from './enter-xr-visibility.js';
 
 /** Main-menu Enter XR is owned by AppModeSystem (starts Wall Tones + launchXR). */
 const XR_EXIT_PANEL_NODE_IDS = ['main-menu-panel', 'welcome-panel'] as const;
@@ -129,32 +130,27 @@ export class PanelSystem extends createSystem({}) {
   }
 
   /**
-   * Flat chrome only. Desktop keeps the established large Enter XR; phones use
-   * a shorter button so the stack fits. Immersive restores Exit / hides Enter XR.
-   * When XR is unavailable (`world.xrEnabled` false), Enter XR stays hidden.
+   * Flat chrome only. Desktop keeps the established large Enter XR; phones
+   * (compact flat viewports) hide Enter XR entirely - the owner requested a flat-only mobile menu. Immersive restores Exit / hides Enter XR. When XR is
+   * unavailable (`world.xrEnabled` false), Enter XR stays hidden.
    */
   private syncMainMenuChrome(is2D: boolean): void {
-    const mobile = is2D && isCompactFlatViewport();
-    const showEnterXr = is2D && this.world.xrEnabled;
+    const showEnterXr = enterXrButtonVisible(
+      is2D,
+      this.world.xrEnabled,
+      is2D && isCompactFlatViewport(),
+      typeof navigator === 'undefined' ? '' : navigator.userAgent,
+    );
     for (const nodeId of XR_EXIT_PANEL_NODE_IDS) {
       const panel = this.world.getSceneObject<UIKitMLAsset>(nodeId);
       const xrButton = panel?.getElementById('xr-button');
       if (nodeId === 'main-menu-panel' && showEnterXr) {
-        xrButton?.setProperties(
-          mobile
-            ? {
-                display: 'flex',
-                height: 64,
-                paddingTop: 14,
-                paddingBottom: 14,
-              }
-            : {
-                display: 'flex',
-                height: 96,
-                paddingTop: 22,
-                paddingBottom: 22,
-              },
-        );
+        xrButton?.setProperties({
+          display: 'flex',
+          height: 96,
+          paddingTop: 22,
+          paddingBottom: 22,
+        });
       } else {
         xrButton?.setProperties({
           display: showEnterXr ? 'flex' : 'none',
