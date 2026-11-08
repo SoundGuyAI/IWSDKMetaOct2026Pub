@@ -42,6 +42,20 @@ test('first-run record announcements are3,6,9 then11 onward, later runs every re
   expect(shouldAnnounceRecord(4,4,false)).toBe(false);
 });
 
+test('MR head-locked subtitles asset, registration, scenes, and tick are wired (backlog 21)', () => {
+  const caption = readFileSync(new URL('../../public/ui/wall-tones-head-caption.uikitml', import.meta.url), 'utf8');
+  const assets = readFileSync(new URL('../../src/assets.ts', import.meta.url), 'utf8');
+  const mainScene = readFileSync(new URL('../../public/scenes/main.iwsdk.scene.json', import.meta.url), 'utf8');
+  const arScene = readFileSync(new URL('../../public/scenes/wall-tones-ar.iwsdk.scene.json', import.meta.url), 'utf8');
+  const system = readFileSync(new URL('../../src/wall-tones/wall-tones-system.ts', import.meta.url), 'utf8');
+  expect(caption).toContain('id="wall-tones-head-caption-text"');
+  expect(assets).toContain("'wall-tones-head-caption'");
+  expect(mainScene).toContain('"id": "wall-tones-head-caption"');
+  expect(arScene).toContain('"id": "wall-tones-head-caption"');
+  expect(system).toContain('tickHeadCaption');
+  expect(system).toContain('HEAD_CAPTION_DISTANCE_M');
+});
+
 test('settings menu markup carries the build version line wired in app-mode', () => {
   const menu = readFileSync(new URL('../../public/ui/main-menu.uikitml', import.meta.url), 'utf8');
   const appMode = readFileSync(new URL('../../src/app-mode.ts', import.meta.url), 'utf8');
