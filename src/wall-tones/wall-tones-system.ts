@@ -3601,10 +3601,10 @@ return;
 const immersive = this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
 const caption = currentSpokenCaption();
 const show = immersive && hearingSubtitlesEnabled() && caption.length > 0;
-if (show !== this.headCaptionVisible && entity.object3D != null) {
+if (entity.object3D != null && entity.object3D.visible !== show) {
 entity.object3D.visible = show;
-this.headCaptionVisible = show;
 }
+this.headCaptionVisible = show;
 if (!show) {
 this.headCaptionText = '';
 return;
