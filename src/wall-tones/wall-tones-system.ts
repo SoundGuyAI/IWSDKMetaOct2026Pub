@@ -36,6 +36,7 @@ AIR_ORIENT_SNAP_FLAT,
 AIR_ORIENT_SNAP_UPRIGHT,
 AIR_PLACE_ROOM_PAD_SIZE_M,
 AIR_PLACE_SITTING_PAD_SIZE_M,
+TABLE_PAD_FALLBACK_SIZE_M,
 HEADSET_PAD_SIZE_M,
 PHONE_PAD_SIZE_M,
 PHONE_PANEL_FLAT,
@@ -76,6 +77,7 @@ import {
 collectTablePlanes,
 collectVerticalWalls,
 generateTablePadCandidates,
+maxCandidatesOnOneSurface,
 generateWallPadCandidates,
 PHONE_FLAT_GRID,
 planDesktopGridFromCamera,
@@ -275,6 +277,8 @@ private roomCaptureAttempted = false;
 private readonly planeEntityScratch: Entity[] = [];
 private airPlaceStep = 0;
 private airPadSizeM = AIR_PLACE_ROOM_PAD_SIZE_M;
+/** Sitting pads shrink to the fallback size when four cannot fit on one table. */
+private tablePadSizeM = AIR_PLACE_SITTING_PAD_SIZE_M;
 private ghostPad: PadRuntime | null = null;
 private statusText = '';
 private panelBound = false;
@@ -1666,16 +1670,26 @@ statusLabel: 'wall slots',
 private startTablePicking(
 tables: ReturnType<typeof collectTablePlanes>,
 ): void {
+this.tablePadSizeM = AIR_PLACE_SITTING_PAD_SIZE_M;
+let candidates = generateTablePadCandidates(tables, this.tablePadSizeM);
+// Four default pads may not fit on one small table; retry with smaller pads.
+if (maxCandidatesOnOneSurface(candidates) < 4) {
+const small = generateTablePadCandidates(tables, TABLE_PAD_FALLBACK_SIZE_M);
+if (maxCandidatesOnOneSurface(small) >= 4) {
+this.tablePadSizeM = TABLE_PAD_FALLBACK_SIZE_M;
+candidates = small;
+}
+}
 this.beginSurfacePicking({
 surfaces: tables,
-padSizeM: AIR_PLACE_SITTING_PAD_SIZE_M,
-candidates: generateTablePadCandidates(
-tables,
-AIR_PLACE_SITTING_PAD_SIZE_M,
-),
+padSizeM: this.tablePadSizeM,
+candidates,
 speech: 'pickTableSlots',
 emptyFallback: () => this.startAirPlacement('noTable'),
-statusLabel: 'table slots',
+statusLabel:
+this.tablePadSizeM === TABLE_PAD_FALLBACK_SIZE_M
+? 'smaller table slots'
+: 'table slots',
 });
 }
 
@@ -1914,7 +1928,7 @@ entity.object3D.visible = visible;
 
 private placementPadSizeM(): number {
 return this.setupMode === 'sitting'
-? AIR_PLACE_SITTING_PAD_SIZE_M
+? this.tablePadSizeM
 : defaultHeadsetPadSize();
 }
 
