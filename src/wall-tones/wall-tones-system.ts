@@ -52,6 +52,8 @@ PANEL_FOLLOW_Y_OFFSET_M,
 PANEL_LOOK_AWAY_DEG,
 PANEL_RAY_BLOCK_DEG,
 PANEL_RAY_DODGE_HOLD_MS,
+PANEL_RAY_DODGE_UP_M,
+PANEL_DRAG_DODGE_COOLDOWN_MS,
 PANEL_RAY_DODGE_MIN_DEG,
 PANEL_PLAY_DISTANCE_M,
 PANEL_PLAY_SCALE,
@@ -218,6 +220,10 @@ slotPressed: { required: [WallSlotCandidate, Pressed] },
 private readonly speech = new WallTonesSpeech();
 /** Welcome clip plays once per Wall Tones visit, before the mode picker line. */
 private welcomeSpoken = false;
+/** Mode-picker line plays once per Wall Tones visit (item 42: both the enter
+ * path and the XR visibility handler open the setup window - guard the
+ * duplicate so the line never plays twice). */
+private chooseModeSpoken = false;
 /** True once the flat-entry welcome already said "Point and press one of those panels to start". */
 private startPromptSpoken = false;
 
@@ -227,7 +233,10 @@ if (!this.welcomeSpoken) {
 this.welcomeSpoken = true;
 this.speech.speak('welcome');
 }
+if (!this.chooseModeSpoken) {
+this.chooseModeSpoken = true;
 this.speech.speak('chooseMode');
+}
 }
 
 private readonly game = new WallTonesSequence();
@@ -333,9 +342,16 @@ private sequenceIconRow: UIKit.Container | null = null;
 /** Setup HUD is world-anchored; look-away past a threshold re-snaps it. */
 private panelWorldAnchored = false;
 private panelSnapActive = false;
-/** Click drag handle, then hold select to reposition the in-game HUD. */
-private panelDragArmed = false;
+/** Item 22: panel dragging is always on; a per-pinch latch decides whether a
+ * pinch drags the panel or keeps its normal role (button / placement). */
 private panelDragging = false;
+/** Hands whose current pinch must NOT drag (started on the panel during play
+ * = button press; started off the panel during setup = placement pinch). */
+private readonly panelDragSkipHands = new Set<string>();
+/** Hands whose current pinch IS dragging the panel. */
+private readonly panelDragActiveHands = new Set<string>();
+/** Last time a drag ended; briefly suppresses the ray dodge at the drop point. */
+private panelDragDoneAt = 0;
 private blinkCuePad: PadRuntime | null = null;
 private blinkCueRoot: Object3D | null = null;
 private blinkCueEntity: Entity | null = null;
@@ -596,17 +612,11 @@ panel
 .getElementById('buy-secret-button')
 ?.addEventListener('click', () => this.onBuySecret());
 panel
-.getElementById('panel-drag-handle')
-?.addEventListener('click', () => this.togglePanelDragArm());
-panel
 .getElementById('skip-voice-button')
 ?.addEventListener('click', () => this.onSkipVoice());
 this.syncSkipVoiceButton();
 this.syncDebugCollidersButton();
 this.applyTouchDebugVisibility();
-this.setPanelDragBarVisible(
-this.flowPhase === 'playing' && !this.useDesktopPath(),
-);
 if (this.experienceActive && this.useDesktopPath()) {
 this.setSetupUiVisible(false);
 }
@@ -701,6 +711,7 @@ this.game.phase = 'idle';
 this.game.resetAllScores();
 this.speech.cancel();
 this.welcomeSpoken = false;
+this.chooseModeSpoken = false;
 this.startPromptSpoken = false;
 suspendAudioContext();
 resetSpeechUnlock();
@@ -715,9 +726,9 @@ this.setWallPickHintVisible(false);
 this.setAirOrientUiVisible(false);
 this.setRescanUiVisible(false);
 this.setRepeatUiVisible(false);
-this.setPanelDragBarVisible(false);
-this.panelDragArmed = false;
 this.panelDragging = false;
+this.panelDragSkipHands.clear();
+this.panelDragActiveHands.clear();
 this.setBlinkCuePad(null);
 this.disposeBlinkCueArrow();
 this.skipVoiceVisible = false;
@@ -743,7 +754,6 @@ this.setSetupUiVisible(false);
 this.setAirOrientUiVisible(false);
 this.setFlatHintVisible(true);
 this.setPanelHeaderVisible(true);
-this.setPanelDragBarVisible(false);
 this.hideStudioBackdrop();
 this.layoutPanelForFlatPlay();
 // Keep RayInteractable so Back stays clickable; panel sits beside the pads.
@@ -880,15 +890,15 @@ this.applyPanelLayout(1.95, 1.48, -1.55, 0.26);
 
 private layoutPanelForMrPlay(): void {
 // Park the HUD in front of the player when play starts (not a stale side offset).
-this.panelDragArmed = false;
 this.panelDragging = false;
+this.panelDragSkipHands.clear();
+this.panelDragActiveHands.clear();
 this.player.head.getWorldPosition(this.viewer);
 this.player.head.getWorldQuaternion(this.headQuat);
 this.ghostForward.set(0, 0, -1).applyQuaternion(this.headQuat).normalize();
 this.panelFollowTargetPos
 .copy(this.viewer)
 .addScaledVector(this.ghostForward, PANEL_PLAY_DISTANCE_M);
-this.panelFollowTargetPos.y += PANEL_FOLLOW_Y_OFFSET_M;
 this.applyPanelLayout(
 this.panelFollowTargetPos.x,
 this.panelFollowTargetPos.y,
@@ -896,8 +906,6 @@ this.panelFollowTargetPos.z,
 PANEL_PLAY_SCALE,
 this.headQuat,
 );
-this.setPanelDragBarVisible(true);
-this.syncPanelDragLabel();
 }
 
 private isSetupPanelFollowActive(): boolean {
@@ -936,10 +944,17 @@ this.panelPositionSaved = true;
 this.player.head.getWorldPosition(this.viewer);
 this.player.head.getWorldQuaternion(this.headQuat);
 this.ghostForward.set(0, 0, -1).applyQuaternion(this.headQuat).normalize();
+// Eye-level menu: ignore gaze pitch so the panel height stays at eye level
+// even when the player looks down at the pads while setup starts.
+this.ghostForward.y = 0;
+if (this.ghostForward.lengthSq() < 1e-6) {
+this.ghostForward.set(0, 0, -1);
+}
+this.ghostForward.normalize();
 this.panelFollowTargetPos
 .copy(this.viewer)
 .addScaledVector(this.ghostForward, PANEL_FOLLOW_DISTANCE_M);
-this.panelFollowTargetPos.y += PANEL_FOLLOW_Y_OFFSET_M;
+this.panelFollowTargetPos.y = this.viewer.y + PANEL_FOLLOW_Y_OFFSET_M;
 this.panelFollowTargetQuat.copy(this.headQuat);
 
 this.panelFollowPos.set(position[0]!, position[1]!, position[2]!);
@@ -1020,6 +1035,11 @@ this.restorePanelPointerCapture();
 */
 private tickPanelRayDodge(): boolean {
 const now = performance.now();
+// Right after a manual drag the ray still points at the drop point; give the
+// hand a moment to move on before the dodge can swing the panel away again.
+if (now - this.panelDragDoneAt < PANEL_DRAG_DODGE_COOLDOWN_MS) {
+return false;
+}
 let conflict = false;
 for (const hand of XR_HANDS) {
 const adapter = this.input.xr.visualAdapters[hand].peek();
@@ -1055,6 +1075,14 @@ if (angleDeg >= PANEL_RAY_BLOCK_DEG) {
 continue;
 }
 conflict = true;
+// Upward-only dodge while the ray is on a selectable placeholder: lift the
+// panel straight up out of the way instead of swinging it sideways, so the
+// slot being aimed at stays visually stable.
+if (this.queries.slotHovered.entities.size > 0) {
+this.panelDodgeTargetPos.copy(this.panelFollowPos);
+this.panelDodgeTargetPos.y = this.viewer.y + PANEL_RAY_DODGE_UP_M;
+break;
+}
 // Rotate the panel direction away from the ray, on whichever side
 // separates them further; keep the usual distance and height.
 const neededRad = ((PANEL_RAY_DODGE_MIN_DEG - angleDeg) * Math.PI) / 180;
@@ -2032,6 +2060,9 @@ this.setRepeatUiVisible(false);
 this.speech.cancel();
 // Keep useful failure context when automatic placement could not find space.
 if (line !== 'chooseAirMenu') this.speech.speak(line);
+// Item 43: explain the two placement orientations (upright / flat) before the
+// pad-one instruction, like the earlier flow did.
+this.speech.speak('chooseAirOrient');
 this.speech.speak('airPlace1');
 this.statusText =
 this.setupMode === 'air'
@@ -2449,7 +2480,6 @@ this.inputNeedsClear = true;
 this.lastInputAt = performance.now() / 1000;
 this.idleReplayQueued = false;
 this.setRepeatUiVisible(true);
-this.setPanelDragBarVisible(!this.useDesktopPath());
 this.statusText = `Your turn: ${this.formatSequenceLabel()}`;
 this.renderPanel();
 }
@@ -2703,49 +2733,48 @@ text: this.showTouchDebug ? 'Debug colliders: ON' : 'Debug colliders: OFF',
 });
 }
 
-private setPanelDragBarVisible(visible: boolean): void {
-this.world
-.getSceneObject<UIKitMLAsset>('wall-tones-panel')
-?.getElementById('panel-drag-bar')
-?.setProperties({ display: visible ? 'flex' : 'none' });
-}
-
-private syncPanelDragLabel(): void {
-this.world
-.getSceneObject<UIKitMLAsset>('wall-tones-panel')
-?.getElementById<UIKit.Text>('panel-drag-label')
-?.setProperties({
-text: this.panelDragArmed
-? 'Pinch and point to place...'
-: 'Drag to move panel',
-});
-}
-
-private togglePanelDragArm(): void {
-if (this.useDesktopPath() || this.flowPhase !== 'playing') {
-return;
-}
-this.panelDragArmed = !this.panelDragArmed;
-this.panelDragging = false;
-this.syncPanelDragLabel();
-this.statusText = this.panelDragArmed
-? 'Point at a spot and pinch to move the panel'
-: 'Panel move cancelled';
-this.renderPanel();
-}
-
 private tickPanelDrag(): void {
-if (
-!this.panelDragArmed ||
-this.flowPhase !== 'playing' ||
-this.useDesktopPath()
-) {
+if (this.useDesktopPath()) {
 return;
 }
+// Item 22: the panel is draggable by default - no arming toggle. During play
+// every pinch drags unless it started on the panel (a button press); during
+// wall/table placement the pinch that grabs the panel drags it and every
+// other pinch keeps its placement role.
+const playingDrag = this.flowPhase === 'playing';
+const setupDrag =
+this.flowPhase === 'wall-picking' || this.flowPhase === 'air-placement';
+if (!playingDrag && !setupDrag) {
+this.panelDragSkipHands.clear();
+this.panelDragActiveHands.clear();
+return;
+}
+const panelHovered =
+this.world.getSceneEntity('wall-tones-panel')?.hasComponent(Hovered) ===
+true;
+const distance = playingDrag ? PANEL_PLAY_DISTANCE_M : PANEL_FOLLOW_DISTANCE_M;
+const scaleValue = playingDrag ? PANEL_PLAY_SCALE : PANEL_FOLLOW_SCALE;
 let selectHeld = false;
 for (const hand of XR_HANDS) {
 const select = this.input.xr.getSelectState(hand);
 if (!select.active && !select.start) {
+this.panelDragSkipHands.delete(hand);
+this.panelDragActiveHands.delete(hand);
+continue;
+}
+if (select.start) {
+if (playingDrag === panelHovered) {
+this.panelDragSkipHands.add(hand);
+this.panelDragActiveHands.delete(hand);
+} else {
+this.panelDragActiveHands.add(hand);
+this.panelDragSkipHands.delete(hand);
+}
+}
+if (
+this.panelDragSkipHands.has(hand) ||
+!this.panelDragActiveHands.has(hand)
+) {
 continue;
 }
 selectHeld = true;
@@ -2755,23 +2784,28 @@ raySpace.getWorldQuaternion(this.gripQuat);
 this.rayDir.set(0, 0, -1).applyQuaternion(this.gripQuat).normalize();
 this.panelFollowTargetPos
 .copy(this.rayOrigin)
-.addScaledVector(this.rayDir, PANEL_PLAY_DISTANCE_M);
+.addScaledVector(this.rayDir, distance);
+if (setupDrag) {
+// Keep the follow anchor at the drop point so the panel stays put.
+this.panelFollowPos.copy(this.panelFollowTargetPos);
+this.panelWorldAnchored = true;
+}
 this.player.head.getWorldPosition(this.viewer);
 this.player.head.getWorldQuaternion(this.headQuat);
 this.applyPanelLayout(
 this.panelFollowTargetPos.x,
 this.panelFollowTargetPos.y,
 this.panelFollowTargetPos.z,
-PANEL_PLAY_SCALE,
+scaleValue,
 this.headQuat,
 );
 this.panelDragging = true;
 break;
 }
 if (this.panelDragging && !selectHeld) {
-this.panelDragArmed = false;
 this.panelDragging = false;
-this.syncPanelDragLabel();
+this.panelDragActiveHands.clear();
+this.panelDragDoneAt = performance.now();
 this.statusText = 'Panel placed';
 this.renderPanel();
 }
