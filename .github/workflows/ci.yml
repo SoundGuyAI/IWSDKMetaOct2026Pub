@@ -5,6 +5,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: 'Merge-ready check: the PR head SHA this run must test (copy it from the PR page). The run fails fast if the branch has moved.'
+        required: true
+        type: string
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -18,6 +23,21 @@ jobs:
       publish: ${{ steps.filter.outputs.publish }}
       gameplay: ${{ steps.filter.outputs.gameplay }}
     steps:
+      # On workflow_dispatch github.sha is the branch head itself (unlike
+      # pull_request, where it is a merge-preview commit), so this compares the
+      # exact commit the requester saw on the PR page against what will be
+      # tested. This guards the dispatch moment only: a push landing AFTER a
+      # green run does not invalidate it, so merging also requires comparing
+      # the current PR head against the tested SHA at merge time (see todo.md).
+      - name: A merge-ready dispatch must test the exact head it was asked for
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          set -euo pipefail
+          if [ "${{ github.sha }}" != "${{ inputs.expected_sha }}" ]; then
+            echo "::error::Branch moved since this run was requested: expected ${{ inputs.expected_sha }} but the branch head is ${{ github.sha }}. Re-run Actions > CI > Run workflow with the current PR head SHA."
+            exit 1
+          fi
+          echo "Dispatch head matches requested SHA ${{ github.sha }}."
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -69,15 +89,16 @@ jobs:
 
   e2e-desktop:
     # Test-frequency policy (user, November 8): gameplay e2e runs on the FIRST
-    # push of a PR (opened), on every main push, and on demand via
-    # Actions > CI > Run workflow - run it on the PR branch for the final head
-    # before merging. Intermediate PR pushes (synchronize) skip it and rely on
-    # local runs (`npm run test:e2e`), keeping runner-minutes proportional to
-    # review rounds instead of push count.
+    # push of a PR (opened) and as a merge-ready run via Actions > CI >
+    # Run workflow on the PR branch (expected_sha guards the exact head).
+    # Intermediate PR pushes (synchronize) and main pushes skip it and rely on
+    # the final-head dispatch plus local runs (`npm run test:e2e`), keeping
+    # runner-minutes proportional to review rounds instead of push count.
     runs-on: ubuntu-latest
     needs: [changes, build-and-typecheck]
     if: >-
       needs.changes.outputs.gameplay == 'true'
+      && github.event_name != 'push'
       && (github.event_name != 'pull_request' || github.event.action == 'opened')
     strategy:
       fail-fast: false
