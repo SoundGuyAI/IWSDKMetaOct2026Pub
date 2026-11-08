@@ -27,6 +27,7 @@ export type SlotCandidateRuntime = {
   candidateIndex: number;
   wallIndex: number;
   transform: WallPadCandidate;
+  sizeM: number;
   selected: boolean;
 };
 
@@ -96,7 +97,7 @@ export function clearRoomSetupTints(): void {
 export function createSlotCandidateRuntime(
   world: World,
   candidate: WallPadCandidate,
-  sizeM = HEADSET_PAD_SIZE_M,
+  sizeM = candidate.sizeM ?? HEADSET_PAD_SIZE_M,
 ): SlotCandidateRuntime {
   const root = new Object3D();
   root.name = `wall-slot-candidate-${candidate.candidateIndex}`;
@@ -129,6 +130,7 @@ export function createSlotCandidateRuntime(
     candidateIndex: candidate.candidateIndex,
     wallIndex: candidate.wallIndex,
     transform: candidate,
+    sizeM,
     selected: false,
   };
 }
