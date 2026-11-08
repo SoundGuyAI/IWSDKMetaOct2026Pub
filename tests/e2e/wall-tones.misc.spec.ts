@@ -58,7 +58,7 @@ test('main menu carries the author credit line wired in app-mode', () => {
   const menu = readFileSync(new URL('../../public/ui/main-menu.uikitml', import.meta.url), 'utf8');
   const appMode = readFileSync(new URL('../../src/app-mode.ts', import.meta.url), 'utf8');
   expect(menu).toContain('id="main-menu-credit"');
-  expect(menu).toContain('made by Oded Sharon');
+  expect(menu).toContain('A game by Oded Sharon,  Corbomite Games.');
   // The credit hides while the Settings dialog is open and returns on Back.
   expect(appMode).toContain('main-menu-credit');
 });
