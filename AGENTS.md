@@ -20,6 +20,9 @@ applicable IWSDK guide or concept page.
 and polish notes. `todo.md` is the working list for you and other agents: active
 work, approvals, and verification state. Record the owner's ideas in
 `WALL_TONES_TODO.md`; track agent work in `todo.md`.
+After each Wall Tones PR merges or its review state changes, update
+`WALL_TONES_TODO.md` the same day: move finished items to Done and mark active
+ones in progress (owner rule, 2026-11-08).
 
 ## What is not standard Vite
 
