@@ -36,6 +36,9 @@ AIR_ORIENT_SNAP_FLAT,
 AIR_ORIENT_SNAP_UPRIGHT,
 AIR_PLACE_ROOM_PAD_SIZE_M,
 AIR_PLACE_SITTING_PAD_SIZE_M,
+HEAD_CAPTION_DISTANCE_M,
+HEAD_CAPTION_DOWN_M,
+HEAD_CAPTION_SCALE,
 HEADSET_PAD_SIZE_M,
 PHONE_PAD_SIZE_M,
 PHONE_PANEL_FLAT,
@@ -334,6 +337,9 @@ private blinkCueRoot: Object3D | null = null;
 private blinkCueEntity: Entity | null = null;
 /** Panel Skip voice button mirrors speech.isBusy(); polled each frame. */
 private skipVoiceVisible = false;
+private headCaptionVisible = false;
+private headCaptionText = '';
+private readonly headCaptionOffset = new Vector3();
 /** Flat-mode Skip voice overlay: outside the panel HUD, bottom-right corner
  * of the screen (user feedback November 7: on phone and desktop the button
  * should not live inside the menu panel). VR/MR keep the panel button. */
@@ -457,6 +463,7 @@ this.speech.speak('lookAround');
 
 update(delta: number): void {
 this.updateAccessibilityCaptions();
+this.tickHeadCaption();
 if (!this.experienceActive) {
 return;
 }
@@ -3615,8 +3622,9 @@ panel?.getElementById('wall-tones-info-row')?.setProperties({
 display: this.experienceActive ? 'flex' : 'none',
 });
 this.lastInfoRowVisible = this.experienceActive;
+const headCaptionPresent = this.world.getSceneEntity('wall-tones-head-caption') != null;
 panel?.getElementById<UIKit.Text>('wall-tones-spoken-caption')?.setProperties({
-display: show && !flat && caption ? 'flex' : 'none', text: caption,
+display: show && !flat && !headCaptionPresent && caption ? 'flex' : 'none', text: caption,
 });
 }
 const menuCaption = enabled && flat && !this.experienceActive && Boolean(caption);
