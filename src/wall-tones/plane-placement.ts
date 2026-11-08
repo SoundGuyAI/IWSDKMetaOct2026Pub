@@ -15,6 +15,7 @@ import {
 type XRPlaneData = {
   orientation?: string;
   polygon?: DOMPointReadOnly[];
+  semanticLabel?: string;
 };
 
 export type PlacedPadTransform = {
@@ -87,11 +88,33 @@ function orientPadTowardPlayer(
   return [0, Math.sin(half), 0, Math.cos(half)];
 }
 
-/** Face-up pad on a table (thin axis points up). */
-function orientPadFlatOnTable(): [number, number, number, number] {
-  // -90° around X: local XY face becomes world XZ (horizontal).
-  const half = -Math.PI / 4;
-  return [Math.sin(half), 0, 0, Math.cos(half)];
+/**
+ * Face-up pad on a table (thin axis points up), yaw-aligned to the table's
+ * local axes so pad edges follow the detected table rectangle.
+ */
+function orientPadFlatOnTable(
+  yaw = 0,
+): [number, number, number, number] {
+  // qFlat: -90° around X - local XY face becomes world XZ (horizontal).
+  // Result is qYaw * qFlat (Hamilton product, qYaw = (0, s, 0, c)).
+  const f = Math.sin(-Math.PI / 4);
+  const g = Math.cos(-Math.PI / 4);
+  const s = Math.sin(yaw * 0.5);
+  const c = Math.cos(yaw * 0.5);
+  return [c * f, s * g, -s * f, c * g];
+}
+
+/** Yaw of a table plane's local X axis in world space (0 when degenerate). */
+function tablePlaneYaw(object3D: Object3D): number {
+  object3D.getWorldQuaternion(_quat);
+  _tmp.set(1, 0, 0).applyQuaternion(_quat);
+  _tmp.y = 0;
+  if (_tmp.lengthSq() < 1e-8) {
+    return 0;
+  }
+  _tmp.normalize();
+  // A Y rotation by yaw maps world +X onto (cos yaw, 0, -sin yaw).
+  return Math.atan2(-_tmp.z, _tmp.x);
 }
 
 function worldNormalFromPlaneObject(
@@ -311,7 +334,6 @@ export function generateTablePadCandidates(
   let candidateIndex = 0;
   const half = sizeM * 0.5;
   const step = sizeM + 0.08;
-  const flatQuat = orientPadFlatOnTable();
 
   tables.forEach((table, wallIndex) => {
     const object3D = table.entity.object3D;
@@ -319,6 +341,7 @@ export function generateTablePadCandidates(
       return;
     }
     object3D.updateWorldMatrix(true, false);
+    const flatQuat = orientPadFlatOnTable(tablePlaneYaw(object3D));
 
     const minX = table.localMinX + half + 0.04;
     const maxX = table.localMaxX - half - 0.04;
@@ -348,6 +371,135 @@ export function generateTablePadCandidates(
   });
 
   return candidates;
+}
+
+/**
+ * Centered four-pad arrangement on each table that fits one: a 2x2 lineup
+ * when the surface has the depth, otherwise a single row of four along the
+ * longer axis. Empty when no table fits four pads at this size.
+ */
+export function generateTablePadArrangements(
+  tables: WallSlot[],
+  sizeM = AIR_PLACE_SITTING_PAD_SIZE_M,
+): WallPadCandidate[] {
+  const candidates: WallPadCandidate[] = [];
+  let candidateIndex = 0;
+  const half = sizeM * 0.5;
+  const pitch = sizeM + 0.08;
+
+  tables.forEach((table, wallIndex) => {
+    const object3D = table.entity.object3D;
+    if (object3D == null) {
+      return;
+    }
+    object3D.updateWorldMatrix(true, false);
+    const quaternion = orientPadFlatOnTable(tablePlaneYaw(object3D));
+
+    const minX = table.localMinX + half + 0.04;
+    const maxX = table.localMaxX - half - 0.04;
+    const minZ = table.localMinZ + half + 0.04;
+    const maxZ = table.localMaxZ - half - 0.04;
+    const spanX = maxX - minX;
+    const spanZ = maxZ - minZ;
+    const centerX = (minX + maxX) * 0.5;
+    const centerZ = (minZ + maxZ) * 0.5;
+
+    const pushCell = (lx: number, lz: number): void => {
+      _localPoint.set(lx, 0.02, lz);
+      object3D.localToWorld(_localPoint);
+      candidates.push({
+        position: [
+          _localPoint.x + table.normal.x * 0.02,
+          _localPoint.y + table.normal.y * 0.02,
+          _localPoint.z + table.normal.z * 0.02,
+        ],
+        quaternion,
+        wallIndex,
+        candidateIndex,
+      });
+      candidateIndex += 1;
+    };
+
+    // Prefer a 2x2 lineup.
+    if (spanX >= pitch && spanZ >= pitch) {
+      for (const dx of [-pitch * 0.5, pitch * 0.5]) {
+        for (const dz of [-pitch * 0.5, pitch * 0.5]) {
+          pushCell(centerX + dx, centerZ + dz);
+        }
+      }
+      return;
+    }
+    // A row of four along the longer axis is also acceptable.
+    if (spanX >= 3 * pitch && spanX >= spanZ) {
+      for (let i = 0; i < 4; i += 1) {
+        pushCell(centerX + (i - 1.5) * pitch, centerZ);
+      }
+      return;
+    }
+    if (spanZ >= 3 * pitch) {
+      for (let i = 0; i < 4; i += 1) {
+        pushCell(centerX, centerZ + (i - 1.5) * pitch);
+      }
+    }
+  });
+
+  return candidates;
+}
+
+/**
+ * Minimum drop below the eyes for a horizontal plane to count as the floor.
+ * Tables sit 0.3-0.7m below a seated viewer; the floor is further down.
+ */
+const FLOOR_MIN_DROP_BELOW_VIEWER_M = 0.75;
+
+/**
+ * Best-effort real floor height. Prefers planes the runtime labels 'floor';
+ * otherwise the lowest horizontal plane at least FLOOR_MIN_DROP_BELOW_VIEWER_M
+ * below the viewer. A lone table-height plane is never promoted to floor - in
+ * that case (and with no planes at all) the standing-eye estimate is kept.
+ */
+export function detectFloorY(
+  planeEntities: Iterable<Entity>,
+  viewerY: number,
+): number {
+  let labeledFloorY = Number.POSITIVE_INFINITY;
+  let deepPlaneY = Number.POSITIVE_INFINITY;
+  for (const entity of planeEntities) {
+    const plane = readPlane(entity);
+    if (plane == null) {
+      continue;
+    }
+    const object3D = entity.object3D;
+    if (object3D == null) {
+      continue;
+    }
+    object3D.updateWorldMatrix(true, false);
+    object3D.getWorldQuaternion(_quat);
+    _worldNormal.set(0, 1, 0).applyQuaternion(_quat).normalize();
+    const isHorizontal =
+      plane.orientation === 'horizontal' || Math.abs(_worldNormal.y) > 0.7;
+    if (!isHorizontal) {
+      continue;
+    }
+    object3D.getWorldPosition(_worldPos);
+    if (plane.semanticLabel === 'floor') {
+      if (_worldPos.y < labeledFloorY) {
+        labeledFloorY = _worldPos.y;
+      }
+    } else if (
+      viewerY - _worldPos.y >= FLOOR_MIN_DROP_BELOW_VIEWER_M &&
+      _worldPos.y < deepPlaneY
+    ) {
+      deepPlaneY = _worldPos.y;
+    }
+  }
+  if (Number.isFinite(labeledFloorY)) {
+    return labeledFloorY;
+  }
+  if (Number.isFinite(deepPlaneY)) {
+    return deepPlaneY;
+  }
+  return viewerY - 1.45;
 }
 
 /** Auto plan used as a soft suggestion; prefer interactive pick when available. */
