@@ -135,8 +135,28 @@ screenshot or the editor view cannot show that fit.
 
 ## Pull requests and CI
 
+Keep each PR to one focused change; never fold unrelated fixes into another PR.
+
+Never merge without the repo owner's explicit approval for that specific PR.
+
 Run the full local e2e suite (`npm run test:e2e`) before opening a PR and before
 every push to a PR branch. A PR is only opened from a locally green tree.
+
+When handing a PR over for testing, include the preview link, the device to test
+on, and the exact steps to check. Before calling a preview ready, verify it
+actually serves the branch's latest commit - a failed preview deploy leaves the
+previous build at the same URL.
+
+Every new tests/e2e/*.spec.ts file must be registered in BOTH the e2e-desktop
+shard matrix and the coverage list in `.github/workflows/ci.yml`; CI fails the PR
+otherwise.
+
+Request a Codex review on each PR (`@codex review`), but while the owner's Codex
+review limit is exhausted, do not block the PR waiting for it - the owner will
+say when it is available again.
+
+This repository is public: never commit secrets, private information, or internal
+tooling details to code, comments, docs, or PR text.
 
 Gameplay e2e on GitHub runs automatically when a PR is first opened and on every
 push to main. Do not re-trigger it for intermediate PR pushes - the local suite
