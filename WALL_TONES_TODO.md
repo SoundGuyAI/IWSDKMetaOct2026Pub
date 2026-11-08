@@ -19,6 +19,9 @@ Personal backlog for what still needs work — not an agent task list. Move item
    - [ ] 37. Consider reworking the Listen line: reveal one note at a time instead of showing the whole pattern; also offer this as a store modifier purchasable before hints.
    - [ ] 38. Achievement screen rework: compact icon grid with a level number per achievement; unachieved entries greyed out; an explanation tooltip per achievement - tap pop-up on phone, gaze or ray in VR.
    - [ ] 39. Progressive achievements: do not cap levels at the current 5; keep leveling open-ended (threshold growth formula still to be decided with the user).
+   - [ ] 31. Store item: unlock another voice tied to story mode.
+   - [ ] 32. Special colored pads: the two new pads would have special effects - one could give double score when pressed (tentative example); the other pad's effect still to be decided.
+   - [ ] 44. Store rework as RPG skill tree (requested Nov 7): items unlock in a fixed purchase order - a new Listen store item (about 30 Bars) must be bought before the Hint becomes available; hint prices change from 10/15/22 to 25, 50, 100, ... doubling. Refines item 37. Open question for the user before implementation: what the paid Listen item means now that the Listen phase reveals squares progressively for free (PR #29) - do not gate the existing free playback silently.
 
 ### Future ideas - November 6,18:02 (backlog only, not implementation approval)
    - [ ] 11a. Add player-applied multipliers to the scoring system; mechanics unspecified.
@@ -29,20 +32,17 @@ Personal backlog for what still needs work — not an agent task list. Move item
 - [ ] 15. New trailer hinting that this is an ARG game.
 - [ ] 16. Something flies out of the walls in MR after certain scores; in flat mode it flies into the screen, with a button to look at it. Details to brainstorm.
 - [ ] 17. Rickroll fanfare. Open question: how many buttons does it need, and are 6 enough?
+- [ ] 33. Research: modifiers in incremental/clicker games; and whether a game has transformed Simon-style sequence-memory mechanics the way Balatro transformed poker.
+- [ ] 34. Consider making the repo private again and moving preview/production hosting to a Cloudflare Worker - only if the Devpost competition rules allow it (verify rules first).
 
 ### MR and menu polish - November 6
 
 - [ ] 22. In the game menu, make the window draggable by default; remove the top button's drag-mode toggle.
 - [ ] 29. MR achievement for playing standing at walls, or on a mixed wall+table layout.
 - [ ] 30. Research: can the SDK track how much a player moves (fitness-style) in wall or mixed wall+table modes? If not, estimate from the distances between the placed pads. For later score use; no health or calorie claims.
-- [ ] 31. Store item: unlock another voice tied to story mode.
-- [ ] 32. Special colored pads: the two new pads would have special effects - one could give double score when pressed (tentative example); the other pad's effect still to be decided.
-- [ ] 33. Research: modifiers in incremental/clicker games; and whether a game has transformed Simon-style sequence-memory mechanics the way Balatro transformed poker.
-- [ ] 34. Consider making the repo private again and moving preview/production hosting to a Cloudflare Worker - only if the Devpost competition rules allow it (verify rules first).
 - [ ] 41. Achievement VO narration when the achievements panel is opened (requested 2026-11-07): new recorded voice lines in both voices, first-time/once-ever gating; design together with the achievement grid rework (item 38).
 - [ ] 42. MR setup voice (reported Nov 7): the "Wall Tones can use your real-world environment" line plays twice when opening the setup window - it should play once. Reproduce first to confirm where the second play comes from.
 - [ ] 43. MR air-place setup voice (requested Nov 7): before "Pad one of four", first explain the two placement orientations (upright / flat) like the earlier flow did, then say to pinch to place pad 1. The current flow skips the orientation explanation.
-- [ ] 44. Store rework as RPG skill tree (requested Nov 7): items unlock in a fixed purchase order - a new Listen store item (about 30 Bars) must be bought before the Hint becomes available; hint prices change from 10/15/22 to 25, 50, 100, ... doubling. Refines item 37. Open question for the user before implementation: what the paid Listen item means now that the Listen phase reveals squares progressively for free (PR #29) - do not gate the existing free playback silently.
 
 ## In progress
 
@@ -80,6 +80,8 @@ Personal backlog for what still needs work — not an agent task list. Move item
 - [x] Verify desktop play and leave Quest plane, anchor, and fingertip checks noted here if a headset was not available.
 
 ## Notes
+
+- **2026-11-08 (Asia/Jerusalem):** Owner moved items 31, 32 and 44 into Store and pattern-row ideas, and 33 and 34 into Future ideas (out of MR and menu polish).
 
 - **2026-11-08 (Asia/Jerusalem):** Owner rule: after each PR merges or its review state changes, update this file the same day - move finished items to Done, mark active ones in progress. Audited on this date: items 9, 10, 24 and 40 marked done; items 20, 21, 23, 25, 26, 27 and 28 reflect their open PRs.
 
