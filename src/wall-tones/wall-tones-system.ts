@@ -275,7 +275,7 @@ private roomCaptureAttempted = false;
 private readonly planeEntityScratch: Entity[] = [];
 private airPlaceStep = 0;
 private airPadSizeM = AIR_PLACE_ROOM_PAD_SIZE_M;
-  private lastChooseModeScanStatusAt = 0;
+private lastChooseModeScanStatusAt = 0;
 private ghostPad: PadRuntime | null = null;
 private statusText = '';
 private panelBound = false;
@@ -496,9 +496,9 @@ this.statusText = 'Tap any pad to start (sound on)';
 if (this.flowPhase === 'scanning') {
 this.tickScan(delta);
 }
-  if (this.flowPhase === 'choose-mode' && !this.useDesktopPath()) {
-    this.tickChooseModeScanStatus();
-  }
+if (this.flowPhase === 'choose-mode' && !this.useDesktopPath()) {
+this.tickChooseModeScanStatus();
+}
 if (this.flowPhase === 'wall-picking') {
 this.tickWallPicking();
 }
@@ -1560,7 +1560,7 @@ await switchToWallTonesArWorld();
 return;
 }
 this.setSetupUiVisible(false);
-  this.setRescanUiVisible(false);
+this.setRescanUiVisible(false);
 if (mode === 'air') {
 this.startAirPlacement('chooseAirMenu');
 return;
@@ -1575,32 +1575,32 @@ this.statusText = 'Scanning the room...';
 this.renderPanel();
 }
 
-  /** Live scan summary + rescan affordance while choosing a play mode. */
-  private tickChooseModeScanStatus(): void {
-    const now = performance.now();
-    if (now - this.lastChooseModeScanStatusAt < 500) {
-      return;
-    }
-    this.lastChooseModeScanStatusAt = now;
-    this.setRescanUiVisible(true);
-    this.player.head.getWorldPosition(this.viewer);
-    this.planeEntityScratch.length = 0;
-    for (const entity of this.queries.planes.entities) {
-      this.planeEntityScratch.push(entity);
-    }
-    const walls = collectVerticalWalls(this.planeEntityScratch, this.viewer);
-    const tables = collectTablePlanes(
-      this.planeEntityScratch,
-      this.viewer.y - 1.45,
-      );
-    const planeCount = this.queries.planes.entities.size;
-    const meshCount = this.queries.meshes.entities.size;
-    this.statusText =
-      planeCount === 0 && meshCount === 0
-    ? 'Scanning the room - look around, then pick a mode.'
-      : `Scanned: ${walls.length} walls, ${tables.length} tables (${planeCount} planes, ${meshCount} meshes). Pick a mode, or rescan.`;
-    this.renderPanel();
-  }
+/** Live scan summary + rescan affordance while choosing a play mode. */
+private tickChooseModeScanStatus(): void {
+const now = performance.now();
+if (now - this.lastChooseModeScanStatusAt < 500) {
+return;
+}
+this.lastChooseModeScanStatusAt = now;
+this.setRescanUiVisible(true);
+this.player.head.getWorldPosition(this.viewer);
+this.planeEntityScratch.length = 0;
+for (const entity of this.queries.planes.entities) {
+this.planeEntityScratch.push(entity);
+}
+const walls = collectVerticalWalls(this.planeEntityScratch, this.viewer);
+const tables = collectTablePlanes(
+this.planeEntityScratch,
+this.viewer.y - 1.45,
+);
+const planeCount = this.queries.planes.entities.size;
+const meshCount = this.queries.meshes.entities.size;
+this.statusText =
+planeCount === 0 && meshCount === 0
+? 'Scanning the room - look around, then pick a mode.'
+: `Scanned: ${walls.length} walls, ${tables.length} tables (${planeCount} planes, ${meshCount} meshes). Pick a mode, or rescan.`;
+this.renderPanel();
+}
 private tickScan(_delta: number): void {
 const elapsed = performance.now() / 1000 - this.scanStartedAt;
 if (elapsed < SCAN_WAIT_S) {
@@ -3067,26 +3067,26 @@ private async onRescanRoom(): Promise<void> {
 if (!this.experienceActive) {
 return;
 }
-  if (this.flowPhase === 'choose-mode') {
-    // Rescan before play-mode selection: refresh room data, keep choosing.
-    this.speech.speak('rescanRoom');
-    this.statusText = 'Rescanning room...';
-    this.renderPanel();
-    const session = this.xrManager.getSession() as XRSession & {
-      initiateRoomCapture?: () => Promise<undefined>;
-    };
-    if (typeof session?.initiateRoomCapture === 'function') {
-      this.roomCaptureInFlight = true;
-      try {
-        await session.initiateRoomCapture();
-      } catch (error) {
-        console.warn('[wall-tones] rescan room capture failed', error);
-      } finally {
-        this.roomCaptureInFlight = false;
-      }
-    }
-    return;
-  }
+if (this.flowPhase === 'choose-mode') {
+// Rescan before play-mode selection: refresh room data, keep choosing.
+this.speech.speak('rescanRoom');
+this.statusText = 'Rescanning room...';
+this.renderPanel();
+const session = this.xrManager.getSession() as XRSession & {
+initiateRoomCapture?: () => Promise<undefined>;
+};
+if (typeof session?.initiateRoomCapture === 'function') {
+this.roomCaptureInFlight = true;
+try {
+await session.initiateRoomCapture();
+} catch (error) {
+console.warn('[wall-tones] rescan room capture failed', error);
+} finally {
+this.roomCaptureInFlight = false;
+}
+}
+return;
+}
 if (
 this.flowPhase !== 'air-placement' &&
 this.flowPhase !== 'playing' &&
