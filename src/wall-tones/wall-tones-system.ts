@@ -37,6 +37,7 @@ AIR_ORIENT_SNAP_UPRIGHT,
 AIR_PLACE_ROOM_PAD_SIZE_M,
 AIR_PLACE_SITTING_PAD_SIZE_M,
 TABLE_PAD_FALLBACK_SIZE_M,
+TABLE_PAD_SIZE_LADDER_M,
 HEADSET_PAD_SIZE_M,
 PHONE_PAD_SIZE_M,
 PHONE_PANEL_FLAT,
@@ -76,12 +77,15 @@ type WallTonePadId,
 import {
 collectTablePlanes,
 collectVerticalWalls,
+detectFloorY,
+generateTablePadArrangements,
 generateTablePadCandidates,
 maxCandidatesOnOneSurface,
 generateWallPadCandidates,
 PHONE_FLAT_GRID,
 planDesktopGridFromCamera,
 type PlacedPadTransform,
+type WallPadCandidate,
 } from './plane-placement.js';
 import {
 applyPadVisualState,
@@ -1600,7 +1604,7 @@ this.planeEntityScratch.push(entity);
 }
 
 if (this.setupMode === 'sitting') {
-const floorY = this.viewer.y - 1.45;
+const floorY = detectFloorY(this.planeEntityScratch, this.viewer.y);
 const tables = collectTablePlanes(this.planeEntityScratch, floorY);
 if (tables.length === 0) {
 this.startAirPlacement('noTable');
@@ -1671,13 +1675,26 @@ private startTablePicking(
 tables: ReturnType<typeof collectTablePlanes>,
 ): void {
 this.tablePadSizeM = AIR_PLACE_SITTING_PAD_SIZE_M;
-let candidates = generateTablePadCandidates(tables, this.tablePadSizeM);
-// Four default pads may not fit on one small table; retry with smaller pads.
+// Size ladder: big, then 25x25, then 20x20. The first size whose four pads
+// fit one table as a centered 2x2 lineup wins; a row of four is acceptable.
+let candidates: WallPadCandidate[] = [];
+for (const size of TABLE_PAD_SIZE_LADDER_M) {
+const attempt = generateTablePadArrangements(tables, size);
+if (maxCandidatesOnOneSurface(attempt) >= 4) {
+this.tablePadSizeM = size;
+candidates = attempt;
+break;
+}
+}
+if (candidates.length === 0) {
+// No tidy arrangement fits; fall back to the free grid, big then small.
+candidates = generateTablePadCandidates(tables, this.tablePadSizeM);
 if (maxCandidatesOnOneSurface(candidates) < 4) {
 const small = generateTablePadCandidates(tables, TABLE_PAD_FALLBACK_SIZE_M);
 if (maxCandidatesOnOneSurface(small) >= 4) {
 this.tablePadSizeM = TABLE_PAD_FALLBACK_SIZE_M;
 candidates = small;
+}
 }
 }
 this.beginSurfacePicking({
@@ -1687,9 +1704,9 @@ candidates,
 speech: 'pickTableSlots',
 emptyFallback: () => this.startAirPlacement('noTable'),
 statusLabel:
-this.tablePadSizeM === TABLE_PAD_FALLBACK_SIZE_M
-? 'smaller table slots'
-: 'table slots',
+this.tablePadSizeM === AIR_PLACE_SITTING_PAD_SIZE_M
+? 'table slots'
+: 'smaller table slots',
 });
 }
 
