@@ -1,0 +1,29 @@
+<!--
+  Head-locked MR subtitle caption (backlog item 21). Plain divs keep these
+  colors in both color schemes. The system drives visibility, position and
+  text every frame; hidden unless subtitles are on and a voice line is up.
+-->
+<style>
+  .caption {
+    flex-direction: column;
+    width: 560px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+    padding-left: 20px;
+    padding-right: 20px;
+    border-radius: 16px;
+    border-width: 1px;
+    border-color: #3a3b40;
+    background-color: #10161f;
+  }
+
+  .text {
+    color: #fafaf7;
+    font-size: 26px;
+    line-height: 34px;
+    text-align: center;
+  }
+</style>
+<div class="caption">
+  <span id="wall-tones-head-caption-text" class="text"></span>
+</div>
