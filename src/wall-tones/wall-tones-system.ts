@@ -1796,6 +1796,7 @@ if (!anySelectActive) {
 this.slotSelectLatched = false;
 }
 }
+
 /** Rising-edge fingertip touch on a slot's press volume, mirroring pad touch. */
 private tickSlotTouch(
 slot: SlotCandidateRuntime,
@@ -1823,6 +1824,7 @@ this.slotTouchArmed.set(index, false);
 this.selectWallSlot(slot);
 }
 }
+
 /** Closest slot under a controller/hand target ray within pad half-extent. */
 private findRayHoveredSlot(
 preferredHand?: 'left' | 'right',
