@@ -201,6 +201,10 @@
         <ButtonIcon><Hand></Hand></ButtonIcon>
         <ButtonLabel>Air place</ButtonLabel>
       </Button>
+      <Button id="mode-combined-button" class="button">
+        <ButtonIcon><Move></Move></ButtonIcon>
+        <ButtonLabel>Walls + table</ButtonLabel>
+      </Button>
     </div>
     <div id="air-orient-row" class="setup-row" style="display: none">
       <div id="air-orient-hint" class="status">
