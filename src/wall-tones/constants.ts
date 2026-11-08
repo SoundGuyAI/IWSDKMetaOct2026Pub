@@ -59,7 +59,7 @@ export const PANEL_PLAY_SCALE = 0.28;
 /** Backlog 21: head-locked MR subtitle distance from the headset (meters). */
 export const HEAD_CAPTION_DISTANCE_M = 1.2;
 /** Backlog 21: how far below eye level the MR subtitle rides (meters). */
-export const HEAD_CAPTION_DOWN_M = 0.32;
+export const HEAD_CAPTION_DOWN_M = 0.4;
 /** Backlog 21: head-locked MR subtitle panel scale. */
 export const HEAD_CAPTION_SCALE = 0.3;
 /** Simon-style startup: silence between the four-pad sweep and the green encore. */
