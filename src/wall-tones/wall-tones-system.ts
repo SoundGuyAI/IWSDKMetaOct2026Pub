@@ -166,6 +166,7 @@ roundCardText: string;
 roundCardVisibleText: string | null;
 barFloatsActive: boolean;
 infoRowVisible: boolean;
+scoreInfoVisible: boolean;
 toggleStore: () => void;
 toggleAchievements: () => void;
 buyHint: () => void;
@@ -1411,6 +1412,9 @@ return null;
 },
 get infoRowVisible() {
 return system.lastInfoRowVisible;
+},
+get scoreInfoVisible() {
+return system.lastScoreInfoVisible;
 },
 get barFloatsActive() {
 return system.barFloats.isActive();
@@ -3246,6 +3250,8 @@ private lastSequenceUnknownShown = 0;
 public lastRoundCardText = '';
 /** Last display state pushed to the info row (status + hint boxes). */
 public lastInfoRowVisible = false;
+/** Last display state pushed to the scoring rows (streak, Bars, total score, this-round card). */
+public lastScoreInfoVisible = true;
 /** Change keys for the achievements list; counters move progress text even
  * between unlocks, so the key spans every displayed value (no allocation). */
 private achievementKeyCount = -1;
@@ -3615,6 +3621,20 @@ panel?.getElementById('wall-tones-info-row')?.setProperties({
 display: this.experienceActive ? 'flex' : 'none',
 });
 this.lastInfoRowVisible = this.experienceActive;
+// Backlog 23: scoring info (streak, Bars, total score, this-round card)
+// shows only while the game loop is active (a run in playback or input);
+// setup mode and the idle menu keep the panel clean.
+const scoreInfoVisible = this.game.phase !== 'idle';
+panel?.getElementById('wall-tones-streak-row')?.setProperties({
+display: scoreInfoVisible ? 'flex' : 'none',
+});
+panel?.getElementById('wall-tones-score-row')?.setProperties({
+display: scoreInfoVisible ? 'flex' : 'none',
+});
+panel?.getElementById('wall-tones-round-card')?.setProperties({
+display: scoreInfoVisible ? 'flex' : 'none',
+});
+this.lastScoreInfoVisible = scoreInfoVisible;
 panel?.getElementById<UIKit.Text>('wall-tones-spoken-caption')?.setProperties({
 display: show && !flat && caption ? 'flex' : 'none', text: caption,
 });
