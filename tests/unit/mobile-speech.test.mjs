@@ -42,6 +42,8 @@ async function loadSpeech({ rejectFirst = false, subtitles = false } = {}) {
     needsExplicitMobileSoundUnlock: () => true,
   };
   globalThis.__subtitles = subtitles;
+  globalThis.__voicesOff = false;
+  globalThis.__captions = [];
   let source = readFileSync(new URL('../../src/wall-tones/speech.ts', import.meta.url), 'utf8');
   source = source.replace(/^import .* from '.\/audio.js';/m,
     'const {ensureAudioRunning, primeWallTonesAudioFromGesture, needsExplicitMobileSoundUnlock} = globalThis.__audioStub;');
@@ -50,7 +52,7 @@ async function loadSpeech({ rejectFirst = false, subtitles = false } = {}) {
   source = source.replace(/^import .* from '.\/clip-transcripts.js';/m,
     "const CLIP_TRANSCRIPTS = new Proxy({}, {get: (_target, id) => String(id)});");
   source = source.replace(/^import .* from '.\/accessibility.js';/m,
-    'const startSpokenCaption = () => 1; const endSpokenCaption = () => {}; const hearingSubtitlesEnabled = () => globalThis.__subtitles;');
+    'const startSpokenCaption = (t) => { globalThis.__captions.push(t); return 1; }; const endSpokenCaption = () => { globalThis.__captions.push(""); }; const hearingSubtitlesEnabled = () => globalThis.__subtitles; const voicesOffEnabled = () => !!globalThis.__voicesOff;');
   source = source.replace(/^import .* from '.\/new-best-(male|female).js';/gm, '');
   source = 'const NEW_BEST_MALE = {}; const NEW_BEST_FEMALE = {};\n' + source;
   const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
@@ -116,4 +118,29 @@ test('opted-in native welcome renders its own caption before world startup', asy
   assert.equal(h.elements[0].id, 'wall-tones-startup-subtitle');
   h.instances[0].end();
   assert.equal(h.elements[0].removed, true);
+});
+
+// Voices off silences audio, not words (user, November 8): with subtitles on,
+// speakAsync shows the caption for a reading beat and still paces the queue.
+test('voices off + subtitles on shows captions without audio', async () => {
+  const h = await loadSpeech({subtitles: true});
+  globalThis.__voicesOff = true;
+  const voice = new h.speech.WallTonesSpeech();
+  const line = voice.speakAsync('welcome', false);
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  assert.deepEqual(globalThis.__captions, ['welcome'], 'caption text shown');
+  assert.equal(voice.isBusy(), true, 'line still paces the queue');
+  assert.equal(h.instances.length, 0, 'no audio element created');
+  await line;
+  assert.equal(voice.isBusy(), false);
+  assert.deepEqual(globalThis.__captions, ['welcome', ''], 'caption cleared');
+}, 15000);
+
+test('voices off + subtitles off stays fully silent', async () => {
+  const h = await loadSpeech({subtitles: false});
+  globalThis.__voicesOff = true;
+  const voice = new h.speech.WallTonesSpeech();
+  await voice.speakAsync('welcome', false);
+  assert.deepEqual(globalThis.__captions, []);
+  assert.equal(h.instances.length, 0);
 });
