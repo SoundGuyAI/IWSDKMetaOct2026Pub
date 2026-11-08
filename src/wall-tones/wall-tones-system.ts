@@ -1796,7 +1796,33 @@ if (!anySelectActive) {
 this.slotSelectLatched = false;
 }
 }
-
+/** Rising-edge fingertip touch on a slot's press volume, mirroring pad touch. */
+private tickSlotTouch(
+slot: SlotCandidateRuntime,
+pressInside: boolean,
+): void {
+const index = slot.candidateIndex;
+if (!pressInside) {
+const exit = (this.slotTouchExitFrames.get(index) ?? 0) + 1;
+this.slotTouchExitFrames.set(index, exit);
+if (exit >= TOUCH_EXIT_FRAMES) {
+// Leaving the press box re-arms this slot for another touch.
+this.slotTouchArmed.set(index, true);
+this.slotTouchEnterFrames.set(index, 0);
+}
+return;
+}
+this.slotTouchExitFrames.set(index, 0);
+const enter = (this.slotTouchEnterFrames.get(index) ?? 0) + 1;
+this.slotTouchEnterFrames.set(index, enter);
+if (
+(this.slotTouchArmed.get(index) ?? true) &&
+enter >= TOUCH_ENTER_FRAMES
+) {
+this.slotTouchArmed.set(index, false);
+this.selectWallSlot(slot);
+}
+}
 /** Closest slot under a controller/hand target ray within pad half-extent. */
 private findRayHoveredSlot(
 preferredHand?: 'left' | 'right',
@@ -1899,6 +1925,9 @@ this.renderPanel();
 private clearRoomSetupVisuals(): void {
 disposeSlotCandidates(this.slotCandidates);
 this.slotArmed.clear();
+this.slotTouchArmed.clear();
+this.slotTouchEnterFrames.clear();
+this.slotTouchExitFrames.clear();
 this.selectedSlotTransforms = [];
 for (const entity of this.wallOverlayEntities) {
 entity.dispose({ disposeResources: true });
@@ -2540,19 +2569,19 @@ applyPadVisualState(pad, 'idle');
 * Requires a connected hand tip near that hand's grip.
 */
 private sampleTipInVolume(
-pad: PadRuntime,
+target: Pick<PadRuntime, 'root' | 'sizeM' | 'touchVolume' | 'hoverVolume'>,
 kind: 'hover' | 'press',
 ): number | null {
-const volume = kind === 'hover' ? pad.hoverVolume : pad.touchVolume;
-pad.root.updateWorldMatrix(true, false);
+const volume = kind === 'hover' ? target.hoverVolume : target.touchVolume;
+target.root.updateWorldMatrix(true, false);
 volume.updateWorldMatrix(true, false);
-pad.root.getWorldPosition(this.padWorldPos);
+target.root.getWorldPosition(this.padWorldPos);
 const margin =
 kind === 'hover'
 ? TOUCH_HOVER_CENTER_MARGIN_M
 : TOUCH_PRESS_CENTER_MARGIN_M;
 const scale = kind === 'hover' ? TOUCH_HOVER_SCALE : TOUCH_PRESS_SCALE;
-const maxCenter = pad.sizeM * 0.5 * Math.SQRT2 * scale + margin;
+const maxCenter = target.sizeM * 0.5 * Math.SQRT2 * scale + margin;
 const fallbackDepth =
 kind === 'hover' ? TOUCH_HOVER_DEPTH_M : TOUCH_PRESS_DEPTH_M;
 
@@ -2576,8 +2605,8 @@ const touchMesh = volume as import('@iwsdk/core').Mesh;
 const geom = touchMesh.geometry as {
 parameters?: { width?: number; height?: number; depth?: number };
 };
-const hx = (geom.parameters?.width ?? pad.sizeM) * 0.5;
-const hy = (geom.parameters?.height ?? pad.sizeM) * 0.5;
+const hx = (geom.parameters?.width ?? target.sizeM) * 0.5;
+const hy = (geom.parameters?.height ?? target.sizeM) * 0.5;
 const hz = (geom.parameters?.depth ?? fallbackDepth) * 0.5;
 // Front-biased slab around the face; no deep punch-through.
 if (
