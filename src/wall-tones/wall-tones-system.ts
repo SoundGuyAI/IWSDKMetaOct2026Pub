@@ -1601,6 +1601,7 @@ planeCount === 0 && meshCount === 0
 : `Scanned: ${walls.length} walls, ${tables.length} tables (${planeCount} planes, ${meshCount} meshes). Pick a mode, or rescan.`;
 this.renderPanel();
 }
+
 private tickScan(_delta: number): void {
 const elapsed = performance.now() / 1000 - this.scanStartedAt;
 if (elapsed < SCAN_WAIT_S) {
