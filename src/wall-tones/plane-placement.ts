@@ -282,6 +282,26 @@ export function generateWallPadCandidates(
   return candidates;
 }
 
+/** Largest candidate count found on any single surface (wallIndex). */
+export function maxCandidatesOnOneSurface(
+  candidates: WallPadCandidate[],
+): number {
+  const perSurface = new Map<number, number>();
+  for (const candidate of candidates) {
+    perSurface.set(
+      candidate.wallIndex,
+      (perSurface.get(candidate.wallIndex) ?? 0) + 1,
+    );
+  }
+  let max = 0;
+  for (const count of perSurface.values()) {
+    if (count > max) {
+      max = count;
+    }
+  }
+  return max;
+}
+
 /** Grid of sitting-sized candidates on horizontal table planes. */
 export function generateTablePadCandidates(
   tables: WallSlot[],
