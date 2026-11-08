@@ -1,6 +1,6 @@
 # Wall Tones progress
 
-Personal backlog for what still needs work — not an agent task list. Move items between sections as you go. Mark an item `in progress` when it starts and `done` when it meets the acceptance line in [WALL_TONES_PLAN.md](WALL_TONES_PLAN.md). Add a dated note for anything blocked or deliberately deferred. Times are Asia/Jerusalem.
+Personal backlog for what still needs work — not an agent task list. Move items between sections as you go. Mark an item `in progress` when it starts and `done` when it meets the acceptance line in [WALL_TONES_PLAN.md](WALL_TONES_PLAN.md). Add a dated note for anything blocked or deliberately deferred. After each PR merges or its review state changes, update this file the same day (owner rule, 2026-11-08). Times are Asia/Jerusalem.
 
 ## Not started
 
@@ -19,7 +19,6 @@ Personal backlog for what still needs work — not an agent task list. Move item
    - [ ] 37. Consider reworking the Listen line: reveal one note at a time instead of showing the whole pattern; also offer this as a store modifier purchasable before hints.
    - [ ] 38. Achievement screen rework: compact icon grid with a level number per achievement; unachieved entries greyed out; an explanation tooltip per achievement - tap pop-up on phone, gaze or ray in VR.
    - [ ] 39. Progressive achievements: do not cap levels at the current 5; keep leveling open-ended (threshold growth formula still to be decided with the user).
-   - [ ] 40. NEXT PR after PR29 lands, BEFORE other queued PRs (user sequencing, Nov 7): add the credit line "made by Oded Sharon" directly under the Settings button in the main menu; and add a repo note that the game was made by him and that anyone who wants to do anything with it must ask his permission and give attribution. License type unresolved - research current license/ownership options when that work begins; he reviews the exact notice wording before it is committed.
 
 ### Future ideas - November 6,18:02 (backlog only, not implementation approval)
    - [ ] 11a. Add player-applied multipliers to the scoring system; mechanics unspecified.
@@ -33,15 +32,7 @@ Personal backlog for what still needs work — not an agent task list. Move item
 
 ### MR and menu polish - November 6
 
-- [ ] 20. In mixed reality, investigate whether the boundary can be ignored.
-- [ ] 21. In MR, show subtitles at the bottom of the view, statically attached to the head, in a readable position.
 - [ ] 22. In the game menu, make the window draggable by default; remove the top button's drag-mode toggle.
-- [ ] 23. In setup mode, hide scoring info; show it only while the game loop is active.
-- [ ] 24. Before play-mode selection in setup mode, show the scanning data and allow a rescan.
-- [ ] 25. In setup mode, keep the menu panel from hiding behind the selection ray when it points at something in the environment to scan: ray-aware placement, a smart reverse of follow-the-look. Maybe also move the panel a little up, since there will probably not be things on the ceiling to select (tentative).
-- [ ] 26. Tabletop pads: shrink the panel buttons on the table from 25x25 to 20x20 if four of them cannot fit on one table.
-- [ ] 27. Add another play mode that combines both walls and tables.
-- [ ] 28. When selecting the 4 pad spots in wall or table setup mode, also allow walking up and touching the surface with the hand - the same two-collider mechanism as the pad buttons: highlight when the hand gets close, select when touching it. Ray/pinch selection stays available.
 - [ ] 29. MR achievement for playing standing at walls, or on a mixed wall+table layout.
 - [ ] 30. Research: can the SDK track how much a player moves (fitness-style) in wall or mixed wall+table modes? If not, estimate from the distances between the placed pads. For later score use; no health or calorie claims.
 - [ ] 31. Store item: unlock another voice tied to story mode.
@@ -55,8 +46,13 @@ Personal backlog for what still needs work — not an agent task list. Move item
 
 ## In progress
 
-- [ ] 9. Fade button transitions between lit and dim states in both directions.
-- [ ] 10. Add a skip dialog button.
+- [~] 20. Boundary investigation: PR #28 (Nov 7) shipped an unbounded tracking space; whether the Quest boundary stays hidden in MR still needs on-headset confirmation.
+- [~] 21. PR #43 open - head-locked MR subtitles at the bottom of the view; CI green, ready for on-device test (2026-11-08).
+- [~] 23. PR #44 open - hide scoring during setup, show during the game loop; CI green, ready for on-device test (2026-11-08).
+- [~] 25. PR #38 open - ray-aware setup panel; user requested changes 2026-11-08 (main menu must sit at eye level, not above the ceiling; panel only dodges upward when aiming at a selectable placement placeholder).
+- [~] 26. PR #37 open - table pad shrink 25x25 to 20x20; placement fix (pad yaw, floor detection) in progress 2026-11-08.
+- [~] 27. PR #41 open - combined walls + tables mode; CI green but shares the pre-fix table placement bugs (2026-11-08).
+- [~] 28. PR #40 open - walk-up touch selection; user tested good 2026-11-08, tweaks in progress (touch-first voice line, purple selected placeholder).
 - [~] 11. Score that grows exponentially with streak length (economy PR; PENDING the user's score-interpretation answer - Bars and streak persist meanwhile, no score display yet).
 - [~] 12. Store where players buy modifiers (economy PR: gold Bars, hint store).
    - [~] 12a. Your Turn hint modifier: each level gives 5 boxes of hints; buy upgrades for longer hints (economy PR: 10/15/22 Bars then ~1.3x growth, open-ended, tunable; persistent unlocks; Your Turn row hidden without a hint, per user November 7).
@@ -64,6 +60,11 @@ Personal backlog for what still needs work — not an agent task list. Move item
 - [~] 19. Achievements for streak, score, story and other milestones (economy PR: streak/Bar/store achievements, visual-only; score achievements once 11 lands).
 
 ## Done
+
+- [x] 9. Fade button transitions between lit and dim states in both directions (pad-glow cross-fade; verified on main 2026-11-08).
+- [x] 10. Skip button for voice lines, bottom-right on phone and desktop (verified on main 2026-11-08).
+- [x] 24. Scan data shown with rescan option before play-mode selection (PR #39, merged 2026-11-08).
+- [x] 40. "A game by Oded Sharon, Corbomite Games" credit under Settings in the main menu (PR #36, merged 2026-11-08); repo proprietary notice in README/NOTICE.
 
 - [x] Blink uses the cube's own color (saturated, slightly lighter), not white. Checked with before/after frames of all four pad flashes in the desktop build. Not yet checked on a headset.
 - [x] Replace the Wall Tones placeholder panel with mode choice, best streak, and round status. Keep `back-to-menu-button`.
@@ -79,6 +80,8 @@ Personal backlog for what still needs work — not an agent task list. Move item
 - [x] Verify desktop play and leave Quest plane, anchor, and fingertip checks noted here if a headset was not available.
 
 ## Notes
+
+- **2026-11-08 (Asia/Jerusalem):** Owner rule: after each PR merges or its review state changes, update this file the same day - move finished items to Done, mark active ones in progress. Audited on this date: items 9, 10, 24 and 40 marked done; items 20, 21, 23, 25, 26, 27 and 28 reflect their open PRs.
 
 - **2026-11-06 (Asia/Jerusalem):** Moved the future ideas and polish lists in from `todo.md` at the owner's request.
 
