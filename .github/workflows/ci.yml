@@ -68,9 +68,17 @@ jobs:
       - run: npm run build
 
   e2e-desktop:
+    # Test-frequency policy (user, November 8): gameplay e2e runs on the FIRST
+    # push of a PR (opened), on every main push, and on demand via
+    # Actions > CI > Run workflow - run it on the PR branch for the final head
+    # before merging. Intermediate PR pushes (synchronize) skip it and rely on
+    # local runs (`npm run test:e2e`), keeping runner-minutes proportional to
+    # review rounds instead of push count.
     runs-on: ubuntu-latest
     needs: [changes, build-and-typecheck]
-    if: needs.changes.outputs.gameplay == 'true'
+    if: >-
+      needs.changes.outputs.gameplay == 'true'
+      && (github.event_name != 'pull_request' || github.event.action == 'opened')
     strategy:
       fail-fast: false
       matrix:
