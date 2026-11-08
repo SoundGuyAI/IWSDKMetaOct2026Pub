@@ -1,0 +1,58 @@
+{
+  "version": "iwsdk.scene.v1",
+  "units": "meters",
+  "components": {
+    "com.iwsdk.components.IBLGradient": {
+      "sky": [0.72, 0.7, 0.8, 1],
+      "equator": [0.78, 0.78, 0.84, 1],
+      "ground": [0.5, 0.52, 0.58, 1],
+      "intensity": 0.15
+    }
+  },
+  "environment": {
+    "toneMapping": "aces",
+    "exposure": 1,
+    "shadows": false
+  },
+  "resources": {},
+  "nodes": [
+    {
+      "id": "main-menu-panel",
+      "name": "Main Menu Panel",
+      "content": { "type": "asset", "asset": "main-menu-panel" },
+      "transform": { "position": [0, 1.78, -2.75], "scale": 0.34 },
+      "components": { "RayInteractable": {} }
+    },
+    {
+      "id": "wall-tones-panel",
+      "name": "Wall Tones Panel",
+      "content": {
+        "type": "asset",
+        "asset": "wall-tones-panel"
+      },
+      "transform": {
+        "position": [0.75, 1.35, -0.95],
+        "scale": 0.28
+      },
+      "components": {
+        "RayInteractable": {}
+      }
+    },
+{
+        "id": "wall-tones-head-caption",
+        "name": "Wall Tones Head Caption",
+        "content": {
+            "type": "asset",
+            "asset": "wall-tones-head-caption"
+        },
+        "transform": {
+            "position": [
+                0,
+                -10,
+                -1
+            ],
+            "scale": 0.3
+        }
+    }
+  ]
+}
