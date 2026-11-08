@@ -133,6 +133,21 @@ invoke `iwsdk-glasses-test`: it sets the `metaVRGlasses` emulator device, checks
 that content fits that view, and drives gaze and pinch from the CLI. A Quest
 screenshot or the editor view cannot show that fit.
 
+## Pull requests and CI
+
+Run the full local e2e suite (`npm run test:e2e`) before opening a PR and before
+every push to a PR branch. A PR is only opened from a locally green tree.
+
+Gameplay e2e on GitHub runs automatically when a PR is first opened and on every
+push to main. Do not re-trigger it for intermediate PR pushes - the local suite
+covers those. Before merging any PR, run the merge-ready dispatch: Actions >
+CI > Run workflow on the PR branch with the PR head SHA pasted as `expected_sha`.
+That run merges current main into the head and tests the combined tree, so when
+main has advanced since the PR opened, the merge decision rests on a fresh e2e of
+the updated combined code, not a stale head-only green. If the PR head or main
+moved after the green run, re-dispatch instead of merging. The full procedure is
+documented in `.github/workflows/ci.yml` at the `workflow_dispatch` block.
+
 ## MCP and CLI are one surface, not two
 
 Nearly every capability exists both ways — `scene_render_file` and
