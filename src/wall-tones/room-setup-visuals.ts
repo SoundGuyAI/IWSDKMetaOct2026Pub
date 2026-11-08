@@ -23,7 +23,7 @@ export const ROOM_WALL_TINT = 0x4fc3f7;
 export const ROOM_MESH_TINT = 0xffb74d;
 export const ROOM_CANDIDATE_COLOR = 0x81c784;
 export const ROOM_CANDIDATE_HOVER = 0xfff176;
-export const ROOM_CANDIDATE_SELECTED = 0x66bb6a;
+export const ROOM_CANDIDATE_SELECTED = 0xab47bc;
 
 export type SlotCandidateRuntime = {
   entity: Entity;
