@@ -17,6 +17,8 @@ on:
     # Cloudflare side note (Nov 8): Workers Builds has Build watch paths
     # excluding pr-preview/*, so gh-pages preview-publish commits no longer
     # trigger failing builds there; source-branch builds are unaffected.
+    # The exclusion must exist under BOTH the Production and the Previews
+    # Base tabs - gh-pages publishes are preview builds.
     inputs:
       expected_sha:
         description: 'Merge-ready check: the PR head SHA this run must test (copy it from the PR page). The run fails fast if the branch has moved.'
