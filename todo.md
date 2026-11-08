@@ -79,5 +79,6 @@ Future ideas and polish lists moved to [WALL_TONES_TODO.md](WALL_TONES_TODO.md) 
 - [x] CI green with 3 shards on this PR, Codex review, user merge go-ahead.
 
 ## CI e2e test-frequency policy PR - in progress November 8
-- [ ] Gameplay e2e on GitHub runs on a PR's first push (opened), on every main push, and manually via Actions > CI > Run workflow for the final head before merging; intermediate PR pushes rely on local `npm run test:e2e` (user policy, November 8 - cut runner-minute spend ahead of any future private-repo move; build/typecheck stay automatic on every push).
+- [ ] Gameplay e2e on GitHub runs on a PR's first push (opened) and as a merge-ready run via Actions > CI > Run workflow on the PR branch with the `expected_sha` input; intermediate PR pushes and main pushes skip it and rely on the final-head dispatch plus local `npm run test:e2e` before every push (user policy, November 8 - cut runner-minute spend ahead of any future private-repo move; build/typecheck stay automatic on every push).
+- [ ] Merge-ready procedure: copy the PR head SHA from the PR page, dispatch CI on the PR branch with it as `expected_sha` (the run fails fast if the branch moved before the run started), and at merge time compare the current PR head against the SHA the green run tested - a push landing after the green run makes it stale, so re-dispatch instead of merging. `github.sha` on dispatch is the branch head itself; on pull_request events it is a merge-preview commit, so never compare across the two.
 - [ ] User review and merge go-ahead.
