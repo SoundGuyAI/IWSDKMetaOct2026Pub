@@ -68,3 +68,13 @@ test('build identity is exposed and matches the shipped package version', async 
   expect(info?.version).toBe(pkg.version);
   expect(info?.commit).toMatch(/^([0-9a-f]{7}|dev)$/);
 });
+
+test('scoring rows hide in setup and show once the game loop is active (backlog 23)', async ({ page }) => {
+  await page.addInitScript(() => sessionStorage.setItem('iwsdk-experience-mode', 'walltones'));
+  await page.goto('/');
+  await page.waitForFunction(() => (window as any).__wallTonesDebug?.flatAwaitingStart);
+  await page.waitForFunction(() => (window as any).__wallTonesDebug.scoreInfoVisible === false);
+  await page.evaluate(() => (window as any).__wallTonesDebug.submitPad(0));
+  await page.waitForFunction(() => (window as any).__wallTonesDebug.phase === 'input', undefined, { timeout: 90000 });
+  await page.waitForFunction(() => (window as any).__wallTonesDebug.scoreInfoVisible === true);
+});
