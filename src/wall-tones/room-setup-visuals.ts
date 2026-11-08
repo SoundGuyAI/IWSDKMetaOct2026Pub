@@ -9,7 +9,13 @@ import {
   type Entity,
   type World,
 } from '@iwsdk/core';
-import { HEADSET_PAD_SIZE_M } from './constants.js';
+import {
+  HEADSET_PAD_SIZE_M,
+  TOUCH_HOVER_DEPTH_M,
+  TOUCH_HOVER_SCALE,
+  TOUCH_PRESS_DEPTH_M,
+  TOUCH_PRESS_SCALE,
+} from './constants.js';
 import type { WallPadCandidate, WallSlot } from './plane-placement.js';
 import { WallSlotCandidate } from './wall-slot-candidate-component.js';
 
@@ -28,7 +34,28 @@ export type SlotCandidateRuntime = {
   wallIndex: number;
   transform: WallPadCandidate;
   selected: boolean;
+  sizeM: number;
+  /** Invisible press box (same two-collider scheme as pad buttons). */
+  touchVolume: Mesh;
+  /** Invisible proximity box for the pre-touch highlight. */
+  hoverVolume: Mesh;
 };
+
+function makeSlotVolumeMesh(
+  name: string,
+  width: number,
+  height: number,
+  depth: number,
+  z: number,
+): Mesh {
+  const mesh = new Mesh(
+    new BoxGeometry(width, height, depth),
+    new MeshBasicMaterial({ visible: false }),
+  );
+  mesh.name = name;
+  mesh.position.z = z;
+  return mesh;
+}
 
 type SavedMaterial = {
   mesh: Mesh;
@@ -111,6 +138,25 @@ export function createSlotCandidateRuntime(
   face.name = 'candidate-face';
   face.renderOrder = 20;
   root.add(face);
+  // Two-collider touch scheme, mirroring the pad buttons: a wide hover box
+  // highlights the slot when the hand gets close, a shallow press box in
+  // front of the face selects it on touch. Ray/pinch stays available.
+  const hoverVolume = makeSlotVolumeMesh(
+    'slot-hover-volume',
+    sizeM * TOUCH_HOVER_SCALE,
+    sizeM * TOUCH_HOVER_SCALE,
+    TOUCH_HOVER_DEPTH_M,
+    TOUCH_HOVER_DEPTH_M * 0.42,
+  );
+  const touchVolume = makeSlotVolumeMesh(
+    'slot-touch-volume',
+    sizeM * TOUCH_PRESS_SCALE,
+    sizeM * TOUCH_PRESS_SCALE,
+    TOUCH_PRESS_DEPTH_M,
+    TOUCH_PRESS_DEPTH_M * 0.42,
+  );
+  root.add(hoverVolume);
+  root.add(touchVolume);
   root.position.set(...candidate.position);
   root.quaternion.set(...candidate.quaternion);
 
@@ -130,6 +176,9 @@ export function createSlotCandidateRuntime(
     wallIndex: candidate.wallIndex,
     transform: candidate,
     selected: false,
+    sizeM,
+    touchVolume,
+    hoverVolume,
   };
 }
 
