@@ -43,13 +43,19 @@ export const TOUCH_CENTER_PAD_MARGIN_M = TOUCH_PRESS_CENTER_MARGIN_M;
 /** Pre-game Wall Tones panel: meters in front of the headset (world-anchored). */
 export const PANEL_FOLLOW_DISTANCE_M = 1.55;
 /** Panel height offset relative to headset (meters). */
-export const PANEL_FOLLOW_Y_OFFSET_M = -0.1;
+export const PANEL_FOLLOW_Y_OFFSET_M = 0;
 /** Panel re-anchor slerp/lerp factor per frame at ~72 Hz after look-away. */
 export const PANEL_FOLLOW_SLERP = 0.12;
 /** Panel scale while in setup (world-anchored). */
 export const PANEL_FOLLOW_SCALE = 0.3;
 /** Re-snap the setup panel only after looking this many degrees away from it. */
 export const PANEL_LOOK_AWAY_DEG = 24;
+/** Selection ray within this angle of the setup panel counts as blocked by it. */
+export const PANEL_RAY_BLOCK_DEG = 18;
+/** Minimum ray-to-panel separation after a dodge. */
+export const PANEL_RAY_DODGE_MIN_DEG = 50;
+/** Keep the dodged panel in place briefly after the ray moves off it. */
+export const PANEL_RAY_DODGE_HOLD_MS = 600;
 /** How close (meters) the panel must get to the target before a look-away snap finishes. */
 export const PANEL_SNAP_ARRIVE_M = 0.04;
 /** In-game HUD distance when first parked in front of the player. */
