@@ -4,8 +4,6 @@ Personal backlog for what still needs work — not an agent task list. Move item
 
 ## Not started
 
-- [ ] 1. Setup window: bigger threshold angle to jump back into view
-- [ ] 2. Setup window: after mode is selected, place it a little farther away, a little higher, and make it draggable
 - [ ] 3. Bug: first box in the pattern is not blinking in VR (arrow also not showing)
 - [ ] 4. Allow clicking the button with a ray
 - [ ] 5. Sports mode that disables ray button clicks
@@ -37,22 +35,25 @@ Personal backlog for what still needs work — not an agent task list. Move item
 
 ### MR and menu polish - November 6
 
-- [ ] 22. In the game menu, make the window draggable by default; remove the top button's drag-mode toggle.
 - [ ] 29. MR achievement for playing standing at walls, or on a mixed wall+table layout.
 - [ ] 30. Research: can the SDK track how much a player moves (fitness-style) in wall or mixed wall+table modes? If not, estimate from the distances between the placed pads. For later score use; no health or calorie claims.
 - [ ] 41. Achievement VO narration when the achievements panel is opened (requested 2026-11-07): new recorded voice lines in both voices, first-time/once-ever gating; design together with the achievement grid rework (item 38).
-- [ ] 42. MR setup voice (reported Nov 7): the "Wall Tones can use your real-world environment" line plays twice when opening the setup window - it should play once. Reproduce first to confirm where the second play comes from.
-- [ ] 43. MR air-place setup voice (requested Nov 7): before "Pad one of four", first explain the two placement orientations (upright / flat) like the earlier flow did, then say to pinch to place pad 1. The current flow skips the orientation explanation.
 
 ## In progress
 
+- [~] 1. Setup window: bigger threshold angle to jump back into view PR #38: implemented and pushed in the combined update at 5500c0e; local full suite 43/43 passed. Rebuilt preview verified at 5500c0e; on-headset acceptance pending (2026-11-08).
+- [~] 2. Setup window: after mode is selected, place it a little farther away, a little higher, and make it draggable PR #38: implemented and pushed in the combined update at 5500c0e; local full suite 43/43 passed. Rebuilt preview verified at 5500c0e; on-headset acceptance pending (2026-11-08).
+- [~] 22. In the game menu, make the window draggable by default; remove the top button's drag-mode toggle. PR #38: implemented and pushed in the combined update at 5500c0e; local full suite 43/43 passed. Rebuilt preview verified at 5500c0e; on-headset acceptance pending (2026-11-08).
+- [~] 42. MR setup voice (reported Nov 7): the "Wall Tones can use your real-world environment" line plays twice when opening the setup window - it should play once. Reproduce first to confirm where the second play comes from. PR #38: implemented and pushed in the combined update at 5500c0e; local full suite 43/43 passed. Rebuilt preview verified at 5500c0e; on-headset acceptance pending (2026-11-08).
+- [~] 43. MR air-place setup voice (requested Nov 7): before "Pad one of four", first explain the two placement orientations (upright / flat) like the earlier flow did, then say to pinch to place pad 1. The current flow skips the orientation explanation. PR #38: implemented and pushed in the combined update at 5500c0e; local full suite 43/43 passed. Rebuilt preview verified at 5500c0e; on-headset acceptance pending (2026-11-08).
+
 - [~] 20. Boundary investigation: PR #28 (Nov 7) shipped an unbounded tracking space; whether the Quest boundary stays hidden in MR still needs on-headset confirmation.
-- [~] 21. PR #43 open - head-locked MR subtitles at the bottom of the view; CI green, ready for on-device test (2026-11-08).
+- [~] 21. PR #43 open at b98045b - narration text now shows when subtitles are on and voice audio is off; empty MR bar is hidden and lowered from 0.32m to 0.40m below eye level. Full local suite 44/44 passed; rebuilt preview and build/typecheck verified. On-headset retest and acceptance pending; not merged (2026-11-08).
 - [~] 23. PR #44 open - hide scoring during setup, show during the game loop; CI green, ready for on-device test (2026-11-08).
-- [~] 25. PR #38 open - ray-aware setup panel; user requested changes 2026-11-08 (main menu must sit at eye level, not above the ceiling; panel only dodges upward when aiming at a selectable placement placeholder).
-- [~] 26. PR #37 open - table pad shrink 25x25 to 20x20; placement fix (pad yaw, floor detection) in progress 2026-11-08.
+- [~] 25. PR #38 open at 5500c0e - eye-level setup anchoring and upward-only dodge over selectable placeholders pushed together with items 1, 2, 22, 42 and 43. Full local suite 43/43 passed. Rebuilt preview verified at 5500c0e; on-headset acceptance pending; not merged (2026-11-08).
+- [~] 26. PR #37 open at 8111637 - table pad shrink 25x25 to 20x20, pad yaw and floor detection fix pushed; full local suite 43/43 passed and preview patch verified. On-headset retest and acceptance pending; not merged (2026-11-08).
 - [~] 27. PR #41 open - combined walls + tables mode; CI green but shares the pre-fix table placement bugs (2026-11-08).
-- [~] 28. PR #40 open - walk-up touch selection; user tested good 2026-11-08, tweaks in progress (touch-first voice line, purple selected placeholder).
+- [~] 28. PR #40 open - user tested walk-up touch selection good. Purple selected placeholder and approved touch-first transcripts pushed at 604f1475; four matching voice MP3 files are still not uploaded, awaiting credential-use approval. Full local suite 43/43 passed with all six local files, but the remote branch is partial. Updated audio and rebuilt preview verification pending; not ready for retest or merge (2026-11-08).
 - [~] 11. Score that grows exponentially with streak length (economy PR; PENDING the user's score-interpretation answer - Bars and streak persist meanwhile, no score display yet).
 - [~] 12. Store where players buy modifiers (economy PR: gold Bars, hint store).
    - [~] 12a. Your Turn hint modifier: each level gives 5 boxes of hints; buy upgrades for longer hints (economy PR: 10/15/22 Bars then ~1.3x growth, open-ended, tunable; persistent unlocks; Your Turn row hidden without a hint, per user November 7).
