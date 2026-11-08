@@ -872,7 +872,9 @@ PHONE_PANEL_FLAT.scale,
 );
 return;
 }
-this.applyPanelLayout(1.95, 1.48, -1.55, 0.26);
+// Desktop game HUD: align its center and visual height with the pad grid,
+// leaving a gap comparable to the spacing between the pads.
+this.applyPanelLayout(1.15, 1.01, -1.55, 0.405);
 }
 
 private layoutPanelForMrPlay(): void {
