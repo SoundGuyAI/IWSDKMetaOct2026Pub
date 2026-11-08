@@ -105,6 +105,8 @@ export const AIR_GHOST_HAND_OFFSET_M = 0.32;
 export const AIR_GHOST_MIN_HEAD_DISTANCE_M = 0.7;
 export const AIR_PLACE_SITTING_PAD_SIZE_M = 0.36;
 export const AIR_PLACE_ROOM_PAD_SIZE_M = 0.55;
+/** Smaller table pads used when four default pads cannot fit on one table. */
+export const TABLE_PAD_FALLBACK_SIZE_M = 0.2;
 export const SCAN_WAIT_S = 3;
 export const WRONG_RESET_DELAY_S = 0.9;
 /** Silence after the start intro finishes, before the first pad tone. */
