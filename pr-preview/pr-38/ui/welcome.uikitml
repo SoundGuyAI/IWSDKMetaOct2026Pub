@@ -1,0 +1,159 @@
+<!--
+  Panel, Button, ButtonIcon, and ButtonLabel come from the bundled Horizon kit.
+  RectangleGoggles and LogIn are bundled Lucide icon components. The :dark
+  styles apply because iwsdk.config.json prefers the dark color scheme.
+-->
+<style>
+  .panel-root {
+    flex-direction: column;
+    width: 420px;
+  }
+
+  .panel-content {
+    flex-direction: column;
+    gap: 9px;
+    padding: 22px;
+  }
+
+  .eyebrow {
+    color: #6b5a00;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+  }
+
+  .eyebrow:dark {
+    color: #f5d90a;
+  }
+
+  .heading {
+    color: #1c1d20;
+    font-size: 30px;
+    font-weight: 700;
+    line-height: 36px;
+  }
+
+  .heading:dark {
+    color: #fafaf7;
+  }
+
+  .body {
+    color: #3a3b40;
+    font-size: 20px;
+    line-height: 27px;
+  }
+
+  .body:dark {
+    color: #dddfe3;
+  }
+
+  .readouts {
+    flex-direction: row;
+    gap: 10px;
+    margin-top: 8px;
+  }
+
+  .readout {
+    flex-direction: column;
+    flex-grow: 1;
+    gap: 3px;
+    padding: 12px;
+    border-radius: 10px;
+    background-color: #e6f3fa;
+  }
+
+  .readout:dark {
+    background-color: #172c3a;
+  }
+
+  .readout-label {
+    color: #4a5d6a;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+
+  .readout-label:dark {
+    color: #9db8c8;
+  }
+
+  .readout-value {
+    color: #153526;
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  .readout-value:dark {
+    color: #9ff5ca;
+  }
+
+  .sensor-status {
+    color: #3a3b40;
+    font-size: 15px;
+    line-height: 21px;
+    margin-top: 2px;
+  }
+
+  .sensor-status:dark {
+    color: #c8d4dc;
+  }
+
+  .button {
+    justify-content: flex-start;
+    margin-left: 22px;
+    margin-right: 22px;
+    margin-bottom: 22px;
+  }
+
+  .button-label {
+    transform-translate-y: 1px;
+  }
+</style>
+<Panel class="panel-root">
+  <div class="panel-content">
+    <div class="eyebrow">EXPERIMENTAL WELLNESS</div>
+    <div class="heading">Breath &amp; Gaze Rest</div>
+    <div class="body">Start sensing, then follow the audio cue.</div>
+    <div class="readouts">
+      <div class="readout">
+        <div class="readout-label">EYES</div>
+        <div id="spatial-eye-status" class="readout-value">waiting for XR</div>
+      </div>
+      <div class="readout">
+        <div class="readout-label">BREATH</div>
+        <div id="spatial-breath-status" class="readout-value">off</div>
+      </div>
+    </div>
+    <div id="spatial-sensor-status" class="sensor-status">Sensors stopped</div>
+  </div>
+  <Button id="guided-sensing-button" class="button">
+    <ButtonIcon>
+      <Activity></Activity>
+    </ButtonIcon>
+    <ButtonLabel id="guided-sensing-button-label" class="button-label">Start guided sensing</ButtonLabel>
+  </Button>
+  <Button id="breath-calibration-button" class="button">
+    <ButtonIcon>
+      <Gauge></Gauge>
+    </ButtonIcon>
+    <ButtonLabel id="breath-calibration-button-label" class="button-label">Calibrate breathing</ButtonLabel>
+  </Button>
+  <Button id="xr-button" class="button">
+    <ButtonIcon>
+      <RectangleGoggles></RectangleGoggles>
+    </ButtonIcon>
+    <ButtonLabel class="button-label">Enter XR</ButtonLabel>
+  </Button>
+  <Button id="exit-button" class="button" style="display: none">
+    <ButtonIcon>
+      <LogIn></LogIn>
+    </ButtonIcon>
+    <ButtonLabel class="button-label">Exit to Browser</ButtonLabel>
+  </Button>
+  <Button id="back-to-menu-button" class="button" style="display: none">
+    <ButtonIcon>
+      <ArrowLeft></ArrowLeft>
+    </ButtonIcon>
+    <ButtonLabel class="button-label">Main menu</ButtonLabel>
+  </Button>
+</Panel>
