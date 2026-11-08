@@ -14,6 +14,9 @@ on:
     # 3. At merge time compare the current PR head against the SHA the green
     #    run tested AND check main has not advanced since that run. If either
     #    moved, re-dispatch instead of merging.
+    # Cloudflare side note (Nov 8): Workers Builds has Build watch paths
+    # excluding pr-preview/*, so gh-pages preview-publish commits no longer
+    # trigger failing builds there; source-branch builds are unaffected.
     inputs:
       expected_sha:
         description: 'Merge-ready check: the PR head SHA this run must test (copy it from the PR page). The run fails fast if the branch has moved.'
