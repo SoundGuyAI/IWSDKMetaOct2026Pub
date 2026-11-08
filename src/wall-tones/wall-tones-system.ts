@@ -3587,6 +3587,55 @@ return this.flatLayoutDirty;
 }
 
 /** Flat captions are anchored under the pad grid, never on top of a pad. */
+/**
+* Backlog 21: in MR the subtitles ride the head, pinned to the bottom of the
+* view, instead of living on the world-anchored game panel. Flat play keeps
+* the DOM overlay; the panel line below stays as the fallback when the node
+* is absent from the scene.
+*/
+private tickHeadCaption(): void {
+const entity = this.world.getSceneEntity('wall-tones-head-caption');
+if (entity == null) {
+return;
+}
+const immersive = this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
+const caption = currentSpokenCaption();
+const show = immersive && hearingSubtitlesEnabled() && caption.length > 0;
+if (show !== this.headCaptionVisible && entity.object3D != null) {
+entity.object3D.visible = show;
+this.headCaptionVisible = show;
+}
+if (!show) {
+this.headCaptionText = '';
+return;
+}
+this.player.head.getWorldPosition(this.viewer);
+this.player.head.getWorldQuaternion(this.headQuat);
+this.headCaptionOffset
+.set(0, -HEAD_CAPTION_DOWN_M, -HEAD_CAPTION_DISTANCE_M)
+.applyQuaternion(this.headQuat);
+const position = entity.getVectorView(Transform, 'position');
+position[0] = this.viewer.x + this.headCaptionOffset.x;
+position[1] = this.viewer.y + this.headCaptionOffset.y;
+position[2] = this.viewer.z + this.headCaptionOffset.z;
+const orientation = entity.getVectorView(Transform, 'orientation');
+orientation[0] = this.headQuat.x;
+orientation[1] = this.headQuat.y;
+orientation[2] = this.headQuat.z;
+orientation[3] = this.headQuat.w;
+const scale = entity.getVectorView(Transform, 'scale');
+scale[0] = HEAD_CAPTION_SCALE;
+scale[1] = HEAD_CAPTION_SCALE;
+scale[2] = HEAD_CAPTION_SCALE;
+if (caption !== this.headCaptionText) {
+this.headCaptionText = caption;
+this.world
+.getSceneObject<UIKitMLAsset>('wall-tones-head-caption')
+?.getElementById('wall-tones-head-caption-text')
+?.setProperties({ text: caption });
+}
+}
+
 private updateAccessibilityCaptions(): void {
 const enabled = hearingSubtitlesEnabled();
 const flat = this.world.visibilityState.peek() === VisibilityState.NonImmersive;
