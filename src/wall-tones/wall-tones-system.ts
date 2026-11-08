@@ -1720,6 +1720,7 @@ options.padSizeM,
 );
 this.slotCandidates.push(slot);
 this.slotArmed.set(slot.candidateIndex, true);
+this.slotTouchArmed.set(slot.candidateIndex, true);
 }
 
 // Need four distinct picks; fewer candidates traps the player in wall-picking.
@@ -1753,7 +1754,10 @@ const ecsHovered = this.entityInQuery(
 slot.entity,
 this.queries.slotHovered.entities,
 );
-const hovered = ecsHovered || slot === rayHovered;
+// Walk-up touch: highlight when a fingertip enters the hover box...
+const tipHovered = this.sampleTipInVolume(slot, 'hover') != null;
+const tipPressed = this.sampleTipInVolume(slot, 'press') != null;
+const hovered = ecsHovered || slot === rayHovered || tipHovered;
 const ecsPressed =
 ecsHovered &&
 this.entityInQuery(slot.entity, this.queries.slotPressed.entities);
@@ -1765,6 +1769,8 @@ if (ecsPressed && this.slotArmed.get(slot.candidateIndex)) {
 this.slotArmed.set(slot.candidateIndex, false);
 this.selectWallSlot(slot);
 }
+// ...and select on touching the surface itself (no pinch needed).
+this.tickSlotTouch(slot, tipPressed);
 }
 
 // Select via controller/hand trigger while the ray (or tip) is on a slot.
