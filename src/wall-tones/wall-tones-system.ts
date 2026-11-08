@@ -292,6 +292,10 @@ private idleReplayQueued = false;
 private panelRayRemoved = false;
 private lackingSpatialData = false;
 private slotCandidates: SlotCandidateRuntime[] = [];
+/** Fingertip-touch arming/debounce for slot candidates (two-collider touch). */
+private readonly slotTouchArmed = new Map<number, boolean>();
+private readonly slotTouchEnterFrames = new Map<number, number>();
+private readonly slotTouchExitFrames = new Map<number, number>();
 private wallOverlayEntities: Entity[] = [];
 private selectedSlotTransforms: PlacedPadTransform[] = [];
 private readonly slotArmed = new Map<number, boolean>();
