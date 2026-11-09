@@ -80,7 +80,7 @@ jobs:
           - shard: 2
             files: tests/e2e/wall-tones.desktop.spec.ts tests/e2e/wall-tones.desktop.pointer.spec.ts
           - shard: 3
-            files: tests/e2e/wall-tones.accessibility.spec.ts tests/e2e/wall-tones.feedback.spec.ts tests/e2e/wall-tones.loading.spec.ts tests/e2e/wall-tones.misc.spec.ts tests/e2e/wall-tones.mute.spec.ts tests/e2e/wall-tones.polish.spec.ts tests/e2e/wall-tones.xr-entry.spec.ts
+            files: tests/e2e/wall-tones.head-caption.spec.ts tests/e2e/wall-tones.accessibility.spec.ts tests/e2e/wall-tones.feedback.spec.ts tests/e2e/wall-tones.loading.spec.ts tests/e2e/wall-tones.misc.spec.ts tests/e2e/wall-tones.mute.spec.ts tests/e2e/wall-tones.polish.spec.ts tests/e2e/wall-tones.xr-entry.spec.ts
     name: e2e-desktop (shard ${{ matrix.shard }})
     steps:
       - uses: actions/checkout@v4
@@ -96,7 +96,7 @@ jobs:
       # 42421269922): economy and the desktop journeys dominate, so the heavy
       # files each get a runner and the lighter files share the third. Keep
       # the file lists here and in the coverage check below in sync.
-      - run: npm run test:e2e:ci -- ${{ matrix.files }}
+      - run: npm run test:e2e -- ${{ matrix.files }}
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -119,6 +119,7 @@ jobs:
             tests/e2e/wall-tones.desktop.pointer.spec.ts \
             tests/e2e/wall-tones.desktop.spec.ts \
             tests/e2e/wall-tones.economy.spec.ts \
+            tests/e2e/wall-tones.head-caption.spec.ts \
             tests/e2e/wall-tones.feedback.spec.ts \
             tests/e2e/wall-tones.loading.spec.ts \
             tests/e2e/wall-tones.misc.spec.ts \
