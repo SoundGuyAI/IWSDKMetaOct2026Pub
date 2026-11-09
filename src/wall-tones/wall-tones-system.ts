@@ -167,6 +167,9 @@ sequenceBoxesShown: number;
 sequenceUnknownShown: number;
 roundCardText: string;
 roundCardVisibleText: string | null;
+headCaptionVisibleText: string | null;
+/** Test-only: drives the exact head-caption setter path tickHeadCaption uses. */
+probeHeadCaptionText: (text: string) => void;
 barFloatsActive: boolean;
 infoRowVisible: boolean;
 toggleStore: () => void;
@@ -1415,6 +1418,33 @@ const t = child?.properties?.value?.text;
 if (typeof t === 'string') return t;
 }
 return null;
+},
+// Same live read-back for the MR head-locked caption (backlog 21): catches
+// the uikitml empty-element compile trap, where setProperties no-ops.
+get headCaptionVisibleText() {
+const el = system.world
+.getSceneObject<UIKitMLAsset>('wall-tones-head-caption')
+?.getElementById('wall-tones-head-caption-text');
+const own = (
+el as { properties?: { value?: { text?: unknown } } } | null | undefined
+)?.properties?.value?.text;
+if (typeof own === 'string') return own;
+const children =
+(el as { children?: { properties?: { value?: { text?: unknown } } }[] } | null)
+  ?.children ?? [];
+for (const child of children) {
+const t = child?.properties?.value?.text;
+if (typeof t === 'string') return t;
+}
+return null;
+},
+// Test-only: same setter call tickHeadCaption makes, so e2e can prove the
+// rendered caption text changes without an immersive session.
+probeHeadCaptionText: (text: string) => {
+system.world
+.getSceneObject<UIKitMLAsset>('wall-tones-head-caption')
+?.getElementById('wall-tones-head-caption-text')
+?.setProperties({ text });
 },
 get infoRowVisible() {
 return system.lastInfoRowVisible;
