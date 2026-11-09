@@ -19,9 +19,7 @@ jobs:
           for f in public/audio/voice-clips-*.tar.gz.b64; do
             [ -e "$f" ] || continue
             base64 -d "$f" > /tmp/clips.tar.gz
-            tar -tzf /tmp/clips.tar.gz | grep -x src/wall-tones/wall-tones-system.ts
-            test "$(tar -tzf /tmp/clips.tar.gz | wc -l)" -eq 1
-            tar -xzf /tmp/clips.tar.gz -C ./
+            tar -xzf /tmp/clips.tar.gz -C public/audio/speech/
             rm "$f"
           done
       - name: Commit decoded clips
