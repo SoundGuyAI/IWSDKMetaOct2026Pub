@@ -25,5 +25,9 @@
   }
 </style>
 <div class="caption">
-  <span id="wall-tones-head-caption-text" class="text"></span>
+  <!-- Initial text is load-bearing: uikitml only compiles a Text child for
+       an element that starts with text, and setProperties({ text }) is a
+       silent no-op without one (the empty-element compile trap). The system
+       hides the entity until a real line is up, so this never shows. -->
+  <span id="wall-tones-head-caption-text" class="text">...</span>
 </div>
