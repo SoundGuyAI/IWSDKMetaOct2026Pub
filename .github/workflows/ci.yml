@@ -65,6 +65,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      - run: node --test tests/unit/*.test.mjs
       - run: npm run build
 
   e2e-desktop:
@@ -96,7 +97,7 @@ jobs:
       # 42421269922): economy and the desktop journeys dominate, so the heavy
       # files each get a runner and the lighter files share the third. Keep
       # the file lists here and in the coverage check below in sync.
-      - run: npm run test:e2e:ci -- ${{ matrix.files }}
+      - run: npm run test:e2e -- ${{ matrix.files }}
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
