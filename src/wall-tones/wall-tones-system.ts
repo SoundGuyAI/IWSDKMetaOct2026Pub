@@ -167,6 +167,7 @@ roundCardVisibleText: string | null;
 barFloatsActive: boolean;
 infoRowVisible: boolean;
 scoreInfoVisible: boolean;
+scoringUiDisplays: Record<string, string | null>;
 toggleStore: () => void;
 toggleAchievements: () => void;
 buyHint: () => void;
@@ -322,7 +323,7 @@ const panel = this.sequenceIconPendingPanel;
 if (panel) this.reconcileSequenceIcons(panel);
 };
 private accessibilityPanel: UIKitMLAsset | undefined;
-private accessibilityState: { show: boolean; flat: boolean; active: boolean; caption: string; phase: string; status: string; names: boolean; sequence: number[]; reveal: number; shown: number } | undefined;
+private accessibilityState: { show: boolean; flat: boolean; active: boolean; caption: string; phase: string; flow: string; status: string; names: boolean; sequence: number[]; reveal: number; shown: number } | undefined;
 private sequenceIconRow: UIKit.Container | null = null;
 /** Setup HUD is world-anchored; look-away past a threshold re-snaps it. */
 private panelWorldAnchored = false;
@@ -1415,6 +1416,18 @@ return system.lastInfoRowVisible;
 },
 get scoreInfoVisible() {
 return system.lastScoreInfoVisible;
+},
+get scoringUiDisplays() {
+const panel = system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+return Object.fromEntries([
+'wall-tones-streak-row', 'wall-tones-score-row', 'wall-tones-round-card',
+'achievements-button', 'store-button',
+].map(id => {
+const el = panel?.getElementById(id) as unknown as {
+properties?: { value?: { display?: string } };
+} | null;
+return [id, el?.properties?.value?.display ?? null];
+}));
 },
 get barFloatsActive() {
 return system.barFloats.isActive();
@@ -2605,8 +2618,9 @@ setPadDebugCollidersVisible(this.ghostPad, visible);
 
 private syncDebugCollidersButton(): void {
 const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
-// Show in any immersive / MR session, including setup before pads exist.
-const showButton = !this.useDesktopPath() && this.experienceActive;
+// Keep normal placement focused. Collider diagnostics remain available in MR play.
+const showButton = !this.useDesktopPath() && this.experienceActive &&
+this.flowPhase === 'playing';
 panel
 ?.getElementById('debug-colliders-button')
 ?.setProperties({ display: showButton ? 'flex' : 'none' });
@@ -3603,13 +3617,13 @@ if (previous.sequence[i] !== this.game.sequence[i]) { sequenceChanged = true; br
 const accessibilityChanged = this.accessibilityPanel !== panel || !previous ||
 previous.show !== show || previous.flat !== flat ||
 previous.active !== this.experienceActive || previous.caption !== caption ||
-previous.phase !== this.game.phase || previous.status !== this.statusText ||
+previous.phase !== this.game.phase || previous.flow !== this.flowPhase || previous.status !== this.statusText ||
 previous.names !== names || previous.reveal !== this.economy.getHintRevealCount() ||
 previous.shown !== this.playbackShownCount || sequenceChanged;
 if (accessibilityChanged) {
 this.accessibilityPanel = panel;
 this.accessibilityState = { show, flat, active: this.experienceActive, caption,
-phase: this.game.phase, status: this.statusText, names, sequence: [...this.game.sequence],
+phase: this.game.phase, flow: this.flowPhase, status: this.statusText, names, sequence: [...this.game.sequence],
 reveal: this.economy.getHintRevealCount(), shown: this.playbackShownCount };
 if (panel && this.experienceActive) this.renderSequenceIcons(panel);
 // Bug fix (user report): the info row holds the Your Turn hint boxes; it
@@ -3621,10 +3635,11 @@ panel?.getElementById('wall-tones-info-row')?.setProperties({
 display: this.experienceActive ? 'flex' : 'none',
 });
 this.lastInfoRowVisible = this.experienceActive;
-// Backlog 23: scoring info (streak, Bars, total score, this-round card)
-// shows only while the game loop is active (a run in playback or input);
-// setup mode and the idle menu keep the panel clean.
-const scoreInfoVisible = this.game.phase !== 'idle';
+// Backlog 23: setup is the MR placement flow, not an idle game phase.
+// Show scoring during the intro after placement, and leave flat play unchanged.
+const scoreInfoVisible = ![
+'choose-mode', 'scanning', 'wall-picking', 'air-placement',
+].includes(this.flowPhase);
 panel?.getElementById('wall-tones-streak-row')?.setProperties({
 display: scoreInfoVisible ? 'flex' : 'none',
 });
@@ -3632,6 +3647,12 @@ panel?.getElementById('wall-tones-score-row')?.setProperties({
 display: scoreInfoVisible ? 'flex' : 'none',
 });
 panel?.getElementById('wall-tones-round-card')?.setProperties({
+display: scoreInfoVisible ? 'flex' : 'none',
+});
+panel?.getElementById('store-button')?.setProperties({
+display: scoreInfoVisible ? 'flex' : 'none',
+});
+panel?.getElementById('achievements-button')?.setProperties({
 display: scoreInfoVisible ? 'flex' : 'none',
 });
 this.lastScoreInfoVisible = scoreInfoVisible;
