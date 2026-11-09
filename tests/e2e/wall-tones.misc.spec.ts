@@ -54,6 +54,13 @@ test('MR head-locked subtitles asset, registration, scenes, and tick are wired (
   expect(arScene).toContain('"id": "wall-tones-head-caption"');
   expect(system).toContain('tickHeadCaption');
   expect(system).toContain('HEAD_CAPTION_DISTANCE_M');
+  // Regression guard for the empty-element compile trap: uikitml only
+  // compiles a Text child for an element that starts with text, and
+  // setProperties({ text }) silently no-ops without one. Both the
+  // head-locked caption and the legacy panel fallback must stay seeded.
+  expect(caption).toMatch(/id="wall-tones-head-caption-text"[^>]*>\.\.\./);
+  const placeholder = readFileSync(new URL('../../public/ui/wall-tones-placeholder.uikitml', import.meta.url), 'utf8');
+  expect(placeholder).toMatch(/id="wall-tones-spoken-caption"[^>]*>\.\.\./);
 });
 
 test('settings menu markup carries the build version line wired in app-mode', () => {
