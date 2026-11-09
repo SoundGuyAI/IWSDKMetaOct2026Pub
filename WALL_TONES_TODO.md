@@ -45,6 +45,8 @@ Personal backlog for what still needs work — not an agent task list. Move item
 
 ## In progress
 
+- [~] PR #47: separate test-only pad-flash reliability correction at 43f2a69 (2026-11-09). Install controlled clock before renderer startup; drive production animation in 16 ms steps. All original intermediate fade/color/settling assertions retained. Local typecheck/build and all 7 polish tests passed in bounded groups; fade passed 3/3 normal and 3/3 under 4x CPU throttling. Snap/frozen negative controls fail as expected and were fully restored. Ordinary GitHub CI is running; real-time rendering and Quest acceptance are not proved. PR #44 remains separate and blocked; not merged.
+
 - [~] PR #45: hide Enter XR on iPhone/Android main menus, including landscape; preserve desktop/Quest. Head 2646b00. Prior local 44/44 passed; live preview identity and iPhone-emulated menu checked Nov 9. All CI checks settled successfully (9 success, 2 expected skips); physical-device acceptance pending; not merged.
 - [~] PR #46: enlarge desktop game panel and move it beside the pad grid. Head 30b6d50. Prior local 44/44 passed; live preview identity and 1481x773 layout inspected Nov 9. All CI checks settled successfully (9 success, 2 expected skips); user visual acceptance pending; not merged.
 
