@@ -93,6 +93,19 @@ and subtle breakage. Exception: `import type { GLTF } from 'three/addons/...'`.
 | `ScreenSpace` given numbers                                    | clamped with a console warning                                           | it takes CSS strings: `'400px'`, `'25vw'`                                                |
 | `@iwsdk/reference` MCP tools in an old or `--no-install` app   | queries report warmup required                                           | run `npx @iwsdk/cli reference warmup`; fresh installed scaffolds do this during creation |
 
+## PR merge-readiness rule
+
+Before merging any PR, merge the latest `main` into that PR branch, resolve any
+conflicts, and check the resulting branch locally. Do not rely only on tests of
+an older branch head or on GitHub checks. Run typecheck, build, the relevant unit
+tests and the complete local e2e suite, including slow tests, on the reconciled
+head; record the commit and results. If `main` advances again before the merge,
+repeat the reconciliation and local checks.
+
+This is preparation, not permission to merge: each PR still needs the owner's
+explicit merge go-ahead. Keep device-only acceptance checks separate and visible.
+Owner instruction, 2026-11-09.
+
 ## Verify before you claim it works
 
 **Always `npm run --if-present typecheck` before testing.** Type errors stop systems
