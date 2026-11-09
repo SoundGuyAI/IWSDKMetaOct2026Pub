@@ -37,6 +37,8 @@ Personal backlog for what still needs work — not an agent task list. Move item
 
 ### MR and menu polish - November 6
 
+- [ ] 46. Remove the Debug colliders option before launch (requested 2026-11-09). Keep diagnostic availability during development; PR #44 only hides it during normal MR setup. Launch-wide removal is not implemented yet.
+
 - [ ] 29. MR achievement for playing standing at walls, or on a mixed wall+table layout.
 - [ ] 30. Research: can the SDK track how much a player moves (fitness-style) in wall or mixed wall+table modes? If not, estimate from the distances between the placed pads. For later score use; no health or calorie claims.
 - [ ] 41. Achievement VO narration when the achievements panel is opened (requested 2026-11-07): new recorded voice lines in both voices, first-time/once-ever gating; design together with the achievement grid rework (item 38).
@@ -54,7 +56,7 @@ Personal backlog for what still needs work — not an agent task list. Move item
 
 - [~] 20. Boundary investigation: PR #28 (Nov 7) shipped an unbounded tracking space; whether the Quest boundary stays hidden in MR still needs on-headset confirmation.
 - [~] 21. PR #43: empty-caption repair uploaded at 41d2fa8; both caption elements are seeded and a rendered-text regression was added. Typecheck/build and all 6 unit tests passed. Full GitHub e2e 45/45 passed, including slow, in run 42542245520. Ready for Quest retest. Exact-head preview identity and desktop menu checked Nov 9. Physical-headset subtitle text/position acceptance pending; not merged.
-- [~] 23. PR #44 open - hide scoring during setup, show during the game loop; CI green, ready for on-device test (2026-11-08).
+- [~] 23. PR #44 corrected at 9845d34: hide scoring, Store, Achievements and Debug colliders during MR setup; show scoring and buttons during intro, preserve flat mode. Collider diagnostics remain available in MR play during development. Local typecheck/build, focused e2e 2/2 and unit 5/5 passed. Full GitHub suite and exact-head preview verification in progress (2026-11-09); not merged.
 - [~] 25. PR #38 open at 5500c0e - eye-level setup anchoring and upward-only dodge over selectable placeholders pushed together with items 1, 2, 22, 42 and 43. Full local suite 43/43 passed. Rebuilt preview verified at 5500c0e; on-headset acceptance pending; not merged (2026-11-08).
 - [~] 26. PR #37 open at 8111637 - table pad shrink 25x25 to 20x20, pad yaw and floor detection fix pushed; full local suite 43/43 passed and preview patch verified. On-headset retest and acceptance pending; not merged (2026-11-08).
 - [~] 27. PR #41: combined walls + tables mode repaired at 58b4564. Seated floor detection and world-table-yaw alignment retain mixed wall/table metadata and 36 cm table pads. Typecheck/build and all 9 unit tests passed. Full GitHub e2e 43/43 passed, including slow, in run 42542230464. Ready for Quest retest. Exact-head preview identity and desktop gameplay checked Nov 9. Quest mixed-plane retest pending; not merged.
