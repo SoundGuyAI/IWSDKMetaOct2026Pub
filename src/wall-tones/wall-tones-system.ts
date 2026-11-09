@@ -74,6 +74,7 @@ type WallTonePadId,
 } from './constants.js';
 import {
 collectTablePlanes,
+detectFloorY,
 collectVerticalWalls,
 generateTablePadCandidates,
 generateWallPadCandidates,
@@ -1600,7 +1601,7 @@ this.planeEntityScratch.push(entity);
 }
 
 if (this.setupMode === 'sitting') {
-const floorY = this.viewer.y - 1.45;
+const floorY = detectFloorY(this.planeEntityScratch, this.viewer.y);
 const tables = collectTablePlanes(this.planeEntityScratch, floorY);
 if (tables.length === 0) {
 this.startAirPlacement('noTable');
@@ -1611,7 +1612,7 @@ return;
 }
 
 if (this.setupMode === 'combined') {
-const floorY = this.viewer.y - 1.45;
+const floorY = detectFloorY(this.planeEntityScratch, this.viewer.y);
 const tables = collectTablePlanes(this.planeEntityScratch, floorY);
 const walls = collectVerticalWalls(this.planeEntityScratch, this.viewer);
 if (walls.length === 0 && tables.length === 0) {
