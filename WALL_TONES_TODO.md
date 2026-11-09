@@ -21,6 +21,8 @@ Personal backlog for what still needs work — not an agent task list. Move item
    - [ ] 32. Special colored pads: the two new pads would have special effects - one could give double score when pressed (tentative example); the other pad's effect still to be decided.
    - [ ] 44. Store rework as RPG skill tree (requested Nov 7): items unlock in a fixed purchase order - a new Listen store item (about 30 Bars) must be bought before the Hint becomes available; hint prices change from 10/15/22 to 25, 50, 100, ... doubling. Refines item 37. Open question for the user before implementation: what the paid Listen item means now that the Listen phase reveals squares progressively for free (PR #29) - do not gate the existing free playback silently.
 
+   - [ ] 45. "Streak saver" modifier "when you lost" (requested 2026-11-09). Backlog only; exact behavior and cost are not specified yet.
+
 ### Future ideas - November 6,18:02 (backlog only, not implementation approval)
    - [ ] 11a. Add player-applied multipliers to the scoring system; mechanics unspecified.
    - [ ] 12b. Auto-presser modifier.
