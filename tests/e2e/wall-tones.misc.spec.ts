@@ -81,7 +81,7 @@ test('build identity is exposed and matches the shipped package version', async 
 async function scoringSnapshot(page: import('@playwright/test').Page) {
   return page.evaluate(() => {
     const d = (window as any).__wallTonesDebug;
-    return { flow: d.flowPhase, phase: d.phase, visible: d.scoreInfoVisible, displays: d.scoringUiDisplays };
+    return { flow: d.flowPhase, phase: d.phase, visible: d.scoreInfoVisible, displays: d.scoringUiDisplays, explanation: d.gameExplanationDisplay };
   });
 }
 
@@ -96,6 +96,7 @@ test('flat scoring, Store and Achievements stay visible before the first pad pre
   await expect.poll(async () => (await scoringSnapshot(page)).visible).toBe(true);
   const snap = await scoringSnapshot(page);
   expect(snap.phase).toBe('idle');
+  expect(snap.explanation).toBe('flex');
   expect(Object.values(snap.displays)).toEqual(['flex', 'flex', 'flex', 'flex', 'flex']);
 });
 
@@ -107,12 +108,14 @@ test('MR placement path hides scoring, Store and Achievements, then shows them d
     await expect.poll(async () => (await scoringSnapshot(page)).visible).toBe(false);
     const snap = await scoringSnapshot(page);
     expect(snap.flow).toBe('wall-picking');
+    expect(snap.explanation).toBe('none');
     expect(Object.values(snap.displays)).toEqual(['none', 'none', 'none', 'none', 'none']);
     await page.evaluate(i => (window as any).__wallTonesDebug.selectSlot(i), i);
   }
   await expect.poll(async () => (await scoringSnapshot(page)).visible).toBe(true);
   const intro = await scoringSnapshot(page);
   expect(intro.flow).toBe('playing');
+  expect(intro.explanation).toBe('flex');
   expect(intro.phase).toBe('idle'); // Intro is before startNewRun/playback.
   expect(Object.values(intro.displays)).toEqual(['flex', 'flex', 'flex', 'flex', 'flex']);
 });
