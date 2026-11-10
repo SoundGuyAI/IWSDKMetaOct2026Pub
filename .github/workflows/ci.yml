@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, deterministic-pad-fade-test]
+    branches: [main, hide-mobile-enter-xr]
   workflow_dispatch:
     # Merge-ready procedure (enduring rule, applies to every merge):
     # 1. Copy the PR head SHA from the PR page.
