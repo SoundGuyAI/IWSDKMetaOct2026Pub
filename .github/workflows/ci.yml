@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, deterministic-pad-fade-test]
   workflow_dispatch:
     # Merge-ready procedure (enduring rule, applies to every merge):
     # 1. Copy the PR head SHA from the PR page.
@@ -98,6 +98,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - run: node --test tests/unit/*.test.mjs
       - run: npm run typecheck
       - run: node --test tests/unit/*.test.mjs
       - run: npm run build
@@ -126,7 +127,7 @@ jobs:
           - shard: 2
             files: tests/e2e/wall-tones.desktop.spec.ts tests/e2e/wall-tones.desktop.pointer.spec.ts
           - shard: 3
-            files: tests/e2e/wall-tones.accessibility.spec.ts tests/e2e/wall-tones.feedback.spec.ts tests/e2e/wall-tones.loading.spec.ts tests/e2e/wall-tones.misc.spec.ts tests/e2e/wall-tones.mute.spec.ts tests/e2e/wall-tones.polish.spec.ts tests/e2e/wall-tones.xr-entry.spec.ts
+            files: tests/e2e/wall-tones.head-caption.spec.ts tests/e2e/wall-tones.accessibility.spec.ts tests/e2e/wall-tones.feedback.spec.ts tests/e2e/wall-tones.loading.spec.ts tests/e2e/wall-tones.misc.spec.ts tests/e2e/wall-tones.mute.spec.ts tests/e2e/wall-tones.polish.spec.ts tests/e2e/wall-tones.xr-entry.spec.ts
     name: e2e-desktop (shard ${{ matrix.shard }})
     steps:
       - uses: actions/checkout@v4
@@ -185,6 +186,7 @@ jobs:
             tests/e2e/wall-tones.desktop.pointer.spec.ts \
             tests/e2e/wall-tones.desktop.spec.ts \
             tests/e2e/wall-tones.economy.spec.ts \
+            tests/e2e/wall-tones.head-caption.spec.ts \
             tests/e2e/wall-tones.feedback.spec.ts \
             tests/e2e/wall-tones.loading.spec.ts \
             tests/e2e/wall-tones.misc.spec.ts \

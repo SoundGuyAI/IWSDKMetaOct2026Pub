@@ -211,7 +211,31 @@ export function prepareMobileWelcome(): void {
 /** Must be invoked directly in the native Start click, before any await. */
 export function startMobileWelcomeFromGesture(): Promise<void> {
   // This direct trusted-tap path bypasses speakAsync, so honor its mute gate.
-  if (voicesOffEnabled()) return Promise.resolve();
+  // Subtitles still show the welcome line without audio (user, November 8).
+  if (voicesOffEnabled()) {
+    if (!hearingSubtitlesEnabled()) return Promise.resolve();
+    const text = CLIP_TRANSCRIPTS.welcome;
+    const token = startSpokenCaption(text);
+    const words = text.split(/\s+/).filter(Boolean).length;
+    const readingMs = Math.min(9000, 1200 + words * 350);
+    const earlyCaption = document.createElement('div');
+    earlyCaption.id = 'wall-tones-startup-subtitle';
+    earlyCaption.setAttribute('aria-live', 'polite');
+    earlyCaption.textContent = text;
+    Object.assign(earlyCaption.style, {
+      position: 'fixed', bottom: '24px', left: '12px', right: '12px',
+      padding: '12px', background: '#081019', color: '#fff', borderRadius: '10px',
+      font: '16px/1.4 sans-serif', textAlign: 'center', zIndex: '100001',
+    });
+    document.body.appendChild(earlyCaption);
+    return new Promise<void>((resolve) => {
+      setTimeout(() => {
+        endSpokenCaption(token);
+        earlyCaption.remove();
+        resolve();
+      }, readingMs);
+    });
+  }
   prepareMobileWelcome();
   if (mobileVoice == null) return Promise.resolve();
   const audio = mobileVoice;
@@ -395,7 +419,12 @@ export class WallTonesSpeech {
   /** Play a clip and resolve when it finishes, fails, or times out. */
   speakAsync(id: WallTonesClipId, startupEntry = false): Promise<void> {
     if (voicesOffEnabled()) {
-      return Promise.resolve();
+      // Voices off silences the audio, not the words: with hearing subtitles
+      // on, the narration line still shows as a caption for a reading beat.
+      if (!hearingSubtitlesEnabled()) {
+        return Promise.resolve();
+      }
+      return this.captionOnly(id);
     }
     if (needsSpeechUnlock() && !speechUnlocked) {
       return Promise.resolve();
@@ -421,6 +450,50 @@ export class WallTonesSpeech {
       // stalled decode/fetch still resolves its run, so callers awaiting
       // speakAsync (round intro, milestone chains) resume immediately.
       return Promise.race([this.playClip(id, gen, startupEntry), cancelled]);
+    });
+    this.chain = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run.finally(() => {
+      this.runSettlers.delete(settleRun);
+      uncount();
+    });
+  }
+
+  /** Subtitles-only line: show the transcript as a caption, no audio. */
+  private captionOnly(id: WallTonesClipId): Promise<void> {
+    this.pendingLines += 1;
+    const gen = this.generation;
+    const uncount = () => {
+      if (this.busyRuns.delete(uncount)) {
+        this.pendingLines -= 1;
+      }
+    };
+    this.busyRuns.add(uncount);
+    let settleRun!: () => void;
+    const cancelled = new Promise<void>((resolve) => {
+      settleRun = resolve;
+    });
+    this.runSettlers.add(settleRun);
+    const run = this.chain.then(() => {
+      if (gen !== this.generation) {
+        return; // superseded by cancel() while queued
+      }
+      const text = CLIP_TRANSCRIPTS[id];
+      const token = startSpokenCaption(text);
+      const words = text.split(/\s+/).filter(Boolean).length;
+      const readingMs = Math.min(9000, 1200 + words * 350);
+      const timed = new Promise<void>((resolve) => {
+        setTimeout(() => {
+          endSpokenCaption(token);
+          resolve();
+        }, readingMs);
+      });
+      return Promise.race([
+        timed,
+        cancelled.then(() => endSpokenCaption(token)),
+      ]);
     });
     this.chain = run.then(
       () => undefined,
