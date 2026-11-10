@@ -21,6 +21,8 @@ Personal backlog for what still needs work — not an agent task list. Move item
    - [ ] 32. Special colored pads: the two new pads would have special effects - one could give double score when pressed (tentative example); the other pad's effect still to be decided.
    - [ ] 44. Store rework as RPG skill tree (requested Nov 7): items unlock in a fixed purchase order - a new Listen store item (about 30 Bars) must be bought before the Hint becomes available; hint prices change from 10/15/22 to 25, 50, 100, ... doubling. Refines item 37. Open question for the user before implementation: what the paid Listen item means now that the Listen phase reveals squares progressively for free (PR #29) - do not gate the existing free playback silently.
 
+   - [ ] 45. "Streak saver" modifier "when you lost" (requested 2026-11-09). Backlog only; exact behavior and cost are not specified yet.
+
 ### Future ideas - November 6,18:02 (backlog only, not implementation approval)
    - [ ] 11a. Add player-applied multipliers to the scoring system; mechanics unspecified.
    - [ ] 12b. Auto-presser modifier.
@@ -35,11 +37,18 @@ Personal backlog for what still needs work — not an agent task list. Move item
 
 ### MR and menu polish - November 6
 
+- [ ] 46. Remove the Debug colliders option before launch (requested 2026-11-09). Keep diagnostic availability during development; PR #44 only hides it during normal MR setup. Launch-wide removal is not implemented yet.
+
 - [ ] 29. MR achievement for playing standing at walls, or on a mixed wall+table layout.
 - [ ] 30. Research: can the SDK track how much a player moves (fitness-style) in wall or mixed wall+table modes? If not, estimate from the distances between the placed pads. For later score use; no health or calorie claims.
 - [ ] 41. Achievement VO narration when the achievements panel is opened (requested 2026-11-07): new recorded voice lines in both voices, first-time/once-ever gating; design together with the achievement grid rework (item 38).
 
 ## In progress
+
+- [~] PR #47: separate test-only pad-flash reliability correction at 43f2a69 (2026-11-09). Install controlled clock before renderer startup; drive production animation in 16 ms steps. All original intermediate fade/color/settling assertions retained. Local typecheck/build and all 7 polish tests passed in bounded groups; fade passed 3/3 normal and 3/3 under 4x CPU throttling. Snap/frozen negative controls fail as expected and were fully restored. Ordinary GitHub CI 42683711061 passed 43/43 e2e (8 + 10 + 25), including the corrected fade, plus typecheck/build and spec coverage. Ordinary CI excludes slow, so this is not a full-suite or merge-ready claim; real-time rendering and Quest acceptance are not proved. PR #44 remains separate and blocked; not merged.
+
+- [~] PR #45: hide Enter XR on iPhone/Android main menus, including landscape; preserve desktop/Quest. Head 2646b00. Prior local 44/44 passed; live preview identity and iPhone-emulated menu checked Nov 9. All CI checks settled successfully (9 success, 2 expected skips); physical-device acceptance pending; not merged.
+- [~] PR #46: enlarge desktop game panel and move it beside the pad grid. Head 30b6d50. Prior local 44/44 passed; live preview identity and 1481x773 layout inspected Nov 9. All CI checks settled successfully (9 success, 2 expected skips); user visual acceptance pending; not merged.
 
 - [~] 1. Setup window: bigger threshold angle to jump back into view PR #38: implemented and pushed in the combined update at 5500c0e; local full suite 43/43 passed. Rebuilt preview verified at 5500c0e; on-headset acceptance pending (2026-11-08).
 - [~] 2. Setup window: after mode is selected, place it a little farther away, a little higher, and make it draggable PR #38: implemented and pushed in the combined update at 5500c0e; local full suite 43/43 passed. Rebuilt preview verified at 5500c0e; on-headset acceptance pending (2026-11-08).
@@ -48,12 +57,12 @@ Personal backlog for what still needs work — not an agent task list. Move item
 - [~] 43. MR air-place setup voice (requested Nov 7): before "Pad one of four", first explain the two placement orientations (upright / flat) like the earlier flow did, then say to pinch to place pad 1. The current flow skips the orientation explanation. PR #38: implemented and pushed in the combined update at 5500c0e; local full suite 43/43 passed. Rebuilt preview verified at 5500c0e; on-headset acceptance pending (2026-11-08).
 
 - [~] 20. Boundary investigation: PR #28 (Nov 7) shipped an unbounded tracking space; whether the Quest boundary stays hidden in MR still needs on-headset confirmation.
-- [~] 21. PR #43 open at b98045b - narration text now shows when subtitles are on and voice audio is off; empty MR bar is hidden and lowered from 0.32m to 0.40m below eye level. Full local suite 44/44 passed; rebuilt preview and build/typecheck verified. On-headset retest and acceptance pending; not merged (2026-11-08).
-- [~] 23. PR #44 open - hide scoring during setup, show during the game loop; CI green, ready for on-device test (2026-11-08).
+- [~] 21. PR #43: empty-caption repair uploaded at 41d2fa8; both caption elements are seeded and a rendered-text regression was added. Typecheck/build and all 6 unit tests passed. Full GitHub e2e 45/45 passed, including slow, in run 42542245520. Ready for Quest retest. Exact-head preview identity and desktop menu checked Nov 9. Physical-headset subtitle text/position acceptance pending; not merged.
+- [~] 23. PR #44 corrected at 50093b6, with main fc75024 merged into the branch: scoring, Store, Achievements and Debug colliders hide during MR setup; scores and Store/Achievements return during intro, flat mode preserved. Collider diagnostics remain in MR play for development; launch removal is item 46. Combined-tree local typecheck/build, unit 5/5 and misc e2e 8/8 passed. Exact-head preview/rendered-control transition verified. Full GitHub 46-test run 42667953339 is in progress; full local suite and Quest acceptance remain pending. Not merge-ready or merged; recheck latest main and verify locally before any approved merge (2026-11-09).
 - [~] 25. PR #38 open at 5500c0e - eye-level setup anchoring and upward-only dodge over selectable placeholders pushed together with items 1, 2, 22, 42 and 43. Full local suite 43/43 passed. Rebuilt preview verified at 5500c0e; on-headset acceptance pending; not merged (2026-11-08).
 - [~] 26. PR #37 open at 8111637 - table pad shrink 25x25 to 20x20, pad yaw and floor detection fix pushed; full local suite 43/43 passed and preview patch verified. On-headset retest and acceptance pending; not merged (2026-11-08).
-- [~] 27. PR #41 open - combined walls + tables mode; CI green but shares the pre-fix table placement bugs (2026-11-08).
-- [~] 28. PR #40 open - user tested walk-up touch selection good. Purple selected placeholder and approved touch-first transcripts pushed at 604f1475; four matching voice MP3 files are still not uploaded, awaiting credential-use approval. Full local suite 43/43 passed with all six local files, but the remote branch is partial. Updated audio and rebuilt preview verification pending; not ready for retest or merge (2026-11-08).
+- [~] 27. PR #41: combined walls + tables mode repaired at 58b4564. Seated floor detection and world-table-yaw alignment retain mixed wall/table metadata and 36 cm table pads. Typecheck/build and all 9 unit tests passed. Full GitHub e2e 43/43 passed, including slow, in run 42542230464. Ready for Quest retest. Exact-head preview identity and desktop gameplay checked Nov 9. Quest mixed-plane retest pending; not merged.
+- [~] 28. PR #40: approved touch/ray guidance, purple selected placeholder and all four exact replacement MP3s uploaded at 917042b. Final-head ordinary CI (42540613336) and exact-head preview build (42540642667) passed. Deployed preview and all four audio files verified Nov 9. Prior full local 43/43 covered the intended six-file end state; ordinary CI excludes slow and is not a new full-suite claim. Ready for Quest retest and acceptance; not merged.
 - [~] 11. Score that grows exponentially with streak length (economy PR; PENDING the user's score-interpretation answer - Bars and streak persist meanwhile, no score display yet).
 - [~] 12. Store where players buy modifiers (economy PR: gold Bars, hint store).
    - [~] 12a. Your Turn hint modifier: each level gives 5 boxes of hints; buy upgrades for longer hints (economy PR: 10/15/22 Bars then ~1.3x growth, open-ended, tunable; persistent unlocks; Your Turn row hidden without a hint, per user November 7).
@@ -93,3 +102,11 @@ Personal backlog for what still needs work — not an agent task list. Move item
 - **2026-11-03 (Asia/Jerusalem):** Fixed Quest/browser audio (unlock Web Audio on menu + first pad tap) and flat start (pads were ignored until tap-to-start). Moved/shrank HUD and enlarged pad hit boxes so all four grid pads are reachable.
 - **2026-11-03 (Asia/Jerusalem):** Quieter voice (streak praise every 5 only); stronger pad tones (pointerdown audio priming + HTML WAV fallback).
 - **2026-11-03 (Asia/Jerusalem):** Air placement no longer sticks a solid pad on the face — ghost follows the hand as a hollow outline, stays ≥ ~0.7 m from the eyes, uses smaller sitting pads, and solidifies on pinch.
+
+## Review update - 2026-11-10
+
+- PR40, PR43 and PR46 have explicit owner merge approval. They are NOT merged. Latest-main reconciliation, complete local checks including slow tests, and final GitHub verification remain gates. The long local real-pointer test is not yet completed; interrupted/partial runs are not counted as a full pass.
+- PR45 main menu now fits phone portrait width with side padding (59d5c3e), preserves desktop/XR, and limits landscape height to avoid cropping. Local typecheck/build and6unit tests pass; portrait/landscape/desktop screenshots inspected; deployed identity verified.
+- PR44 setup explanation fix989436a: hides game instructions alongside scoring during MR setup, returns immediately at intro, leaves flat visible. Remote-source local typecheck/build, units5/5and focused e2e8/8pass. Deployed rendered-state transition verified; headset retest pending. Prior full-suite padfade failure is not cleared by these focused checks. Not merged.
+- PR37 feedback: orientation OK; one of two tables showed2x2but the previously populated second table had none. Each table now chooses its own size, including25cm/20cmmixes, retained through picking and final pad geometry. Runtime previewf96f6dfverified. Placement tests12/12; all units16/16after existing speech stub repair. Latest test-only head identity pending. Not merged.
+- PR38 device feedback: still moves away with no scene geometry to point at. Previous acceptance claim superseded. New73e8e03fix only dodges for an actual unselected candidate on the same ray, during wall-picking, upward only when blocking panel; empty-space hold cleared. Targeted4/4, all units8/8,typecheck/build pass. Preview still old5500c0e; new deployment unverified. Not merged.
