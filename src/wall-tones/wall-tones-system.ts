@@ -36,6 +36,9 @@ AIR_ORIENT_SNAP_FLAT,
 AIR_ORIENT_SNAP_UPRIGHT,
 AIR_PLACE_ROOM_PAD_SIZE_M,
 AIR_PLACE_SITTING_PAD_SIZE_M,
+HEAD_CAPTION_DISTANCE_M,
+HEAD_CAPTION_DOWN_M,
+HEAD_CAPTION_SCALE,
 HEADSET_PAD_SIZE_M,
 PHONE_PAD_SIZE_M,
 PHONE_PANEL_FLAT,
@@ -164,6 +167,9 @@ sequenceBoxesShown: number;
 sequenceUnknownShown: number;
 roundCardText: string;
 roundCardVisibleText: string | null;
+headCaptionVisibleText: string | null;
+/** Test-only: drives the exact head-caption setter path tickHeadCaption uses. */
+probeHeadCaptionText: (text: string) => void;
 barFloatsActive: boolean;
 infoRowVisible: boolean;
 toggleStore: () => void;
@@ -339,6 +345,9 @@ private blinkCueRoot: Object3D | null = null;
 private blinkCueEntity: Entity | null = null;
 /** Panel Skip voice button mirrors speech.isBusy(); polled each frame. */
 private skipVoiceVisible = false;
+private headCaptionVisible = false;
+private headCaptionText = '';
+private readonly headCaptionOffset = new Vector3();
 /** Flat-mode Skip voice overlay: outside the panel HUD, bottom-right corner
  * of the screen (user feedback November 7: on phone and desktop the button
  * should not live inside the menu panel). VR/MR keep the panel button. */
@@ -462,6 +471,7 @@ this.speech.speak('lookAround');
 
 update(delta: number): void {
 this.updateAccessibilityCaptions();
+this.tickHeadCaption();
 if (!this.experienceActive) {
 return;
 }
@@ -1418,6 +1428,33 @@ const t = child?.properties?.value?.text;
 if (typeof t === 'string') return t;
 }
 return null;
+},
+// Same live read-back for the MR head-locked caption (backlog 21): catches
+// the uikitml empty-element compile trap, where setProperties no-ops.
+get headCaptionVisibleText() {
+const el = system.world
+.getSceneObject<UIKitMLAsset>('wall-tones-head-caption')
+?.getElementById('wall-tones-head-caption-text');
+const own = (
+el as { properties?: { value?: { text?: unknown } } } | null | undefined
+)?.properties?.value?.text;
+if (typeof own === 'string') return own;
+const children =
+(el as { children?: { properties?: { value?: { text?: unknown } } }[] } | null)
+  ?.children ?? [];
+for (const child of children) {
+const t = child?.properties?.value?.text;
+if (typeof t === 'string') return t;
+}
+return null;
+},
+// Test-only: same setter call tickHeadCaption makes, so e2e can prove the
+// rendered caption text changes without an immersive session.
+probeHeadCaptionText: (text: string) => {
+system.world
+.getSceneObject<UIKitMLAsset>('wall-tones-head-caption')
+?.getElementById('wall-tones-head-caption-text')
+?.setProperties({ text });
 },
 get infoRowVisible() {
 return system.lastInfoRowVisible;
@@ -3675,6 +3712,55 @@ return this.flatLayoutDirty;
 }
 
 /** Flat captions are anchored under the pad grid, never on top of a pad. */
+/**
+* Backlog 21: in MR the subtitles ride the head, pinned to the bottom of the
+* view, instead of living on the world-anchored game panel. Flat play keeps
+* the DOM overlay; the panel line below stays as the fallback when the node
+* is absent from the scene.
+*/
+private tickHeadCaption(): void {
+const entity = this.world.getSceneEntity('wall-tones-head-caption');
+if (entity == null) {
+return;
+}
+const immersive = this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
+const caption = currentSpokenCaption();
+const show = immersive && hearingSubtitlesEnabled() && caption.length > 0;
+if (entity.object3D != null && entity.object3D.visible !== show) {
+entity.object3D.visible = show;
+}
+this.headCaptionVisible = show;
+if (!show) {
+this.headCaptionText = '';
+return;
+}
+this.player.head.getWorldPosition(this.viewer);
+this.player.head.getWorldQuaternion(this.headQuat);
+this.headCaptionOffset
+.set(0, -HEAD_CAPTION_DOWN_M, -HEAD_CAPTION_DISTANCE_M)
+.applyQuaternion(this.headQuat);
+const position = entity.getVectorView(Transform, 'position');
+position[0] = this.viewer.x + this.headCaptionOffset.x;
+position[1] = this.viewer.y + this.headCaptionOffset.y;
+position[2] = this.viewer.z + this.headCaptionOffset.z;
+const orientation = entity.getVectorView(Transform, 'orientation');
+orientation[0] = this.headQuat.x;
+orientation[1] = this.headQuat.y;
+orientation[2] = this.headQuat.z;
+orientation[3] = this.headQuat.w;
+const scale = entity.getVectorView(Transform, 'scale');
+scale[0] = HEAD_CAPTION_SCALE;
+scale[1] = HEAD_CAPTION_SCALE;
+scale[2] = HEAD_CAPTION_SCALE;
+if (caption !== this.headCaptionText) {
+this.headCaptionText = caption;
+this.world
+.getSceneObject<UIKitMLAsset>('wall-tones-head-caption')
+?.getElementById('wall-tones-head-caption-text')
+?.setProperties({ text: caption });
+}
+}
+
 private updateAccessibilityCaptions(): void {
 const enabled = hearingSubtitlesEnabled();
 const flat = this.world.visibilityState.peek() === VisibilityState.NonImmersive;
@@ -3710,8 +3796,9 @@ panel?.getElementById('wall-tones-info-row')?.setProperties({
 display: this.experienceActive ? 'flex' : 'none',
 });
 this.lastInfoRowVisible = this.experienceActive;
+const headCaptionPresent = this.world.getSceneEntity('wall-tones-head-caption') != null;
 panel?.getElementById<UIKit.Text>('wall-tones-spoken-caption')?.setProperties({
-display: show && !flat && caption ? 'flex' : 'none', text: caption,
+display: show && !flat && !headCaptionPresent && caption ? 'flex' : 'none', text: caption,
 });
 }
 const menuCaption = enabled && flat && !this.experienceActive && Boolean(caption);
