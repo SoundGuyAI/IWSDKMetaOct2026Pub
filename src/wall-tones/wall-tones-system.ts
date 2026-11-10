@@ -36,6 +36,8 @@ AIR_ORIENT_SNAP_FLAT,
 AIR_ORIENT_SNAP_UPRIGHT,
 AIR_PLACE_ROOM_PAD_SIZE_M,
 AIR_PLACE_SITTING_PAD_SIZE_M,
+TABLE_PAD_FALLBACK_SIZE_M,
+TABLE_PAD_SIZE_LADDER_M,
 HEAD_CAPTION_DISTANCE_M,
 HEAD_CAPTION_DOWN_M,
 HEAD_CAPTION_SCALE,
@@ -78,11 +80,15 @@ type WallTonePadId,
 import {
 collectTablePlanes,
 collectVerticalWalls,
+detectFloorY,
+generateMixedTablePadCandidates,
 generateTablePadCandidates,
+maxCandidatesOnOneSurface,
 generateWallPadCandidates,
 PHONE_FLAT_GRID,
 planDesktopGridFromCamera,
 type PlacedPadTransform,
+type WallPadCandidate,
 } from './plane-placement.js';
 import {
 applyPadVisualState,
@@ -284,6 +290,8 @@ private roomCaptureAttempted = false;
 private readonly planeEntityScratch: Entity[] = [];
 private airPlaceStep = 0;
 private airPadSizeM = AIR_PLACE_ROOM_PAD_SIZE_M;
+/** Sitting pads shrink to the fallback size when four cannot fit on one table. */
+private tablePadSizeM = AIR_PLACE_SITTING_PAD_SIZE_M;
 private lastChooseModeScanStatusAt = 0;
 private ghostPad: PadRuntime | null = null;
 private statusText = '';
@@ -1697,7 +1705,7 @@ this.planeEntityScratch.push(entity);
 }
 
 if (this.setupMode === 'sitting') {
-const floorY = this.viewer.y - 1.45;
+const floorY = detectFloorY(this.planeEntityScratch, this.viewer.y);
 const tables = collectTablePlanes(this.planeEntityScratch, floorY);
 if (tables.length === 0) {
 this.startAirPlacement('noTable');
@@ -1767,16 +1775,19 @@ statusLabel: 'wall slots',
 private startTablePicking(
 tables: ReturnType<typeof collectTablePlanes>,
 ): void {
+this.tablePadSizeM = AIR_PLACE_SITTING_PAD_SIZE_M;
+// Each table gets its own size ladder: keep candidates on both tables.
+const candidates = generateMixedTablePadCandidates(tables, TABLE_PAD_SIZE_LADDER_M);
 this.beginSurfacePicking({
 surfaces: tables,
-padSizeM: AIR_PLACE_SITTING_PAD_SIZE_M,
-candidates: generateTablePadCandidates(
-tables,
-AIR_PLACE_SITTING_PAD_SIZE_M,
-),
+padSizeM: this.tablePadSizeM,
+candidates,
 speech: 'pickTableSlots',
 emptyFallback: () => this.startAirPlacement('noTable'),
-statusLabel: 'table slots',
+statusLabel:
+this.tablePadSizeM === AIR_PLACE_SITTING_PAD_SIZE_M
+? 'table slots'
+: 'smaller table slots',
 });
 }
 
@@ -1813,7 +1824,7 @@ for (const candidate of options.candidates) {
 const slot = createSlotCandidateRuntime(
 this.world,
 candidate,
-options.padSizeM,
+candidate.sizeM ?? options.padSizeM,
 );
 this.slotCandidates.push(slot);
 this.slotArmed.set(slot.candidateIndex, true);
@@ -1928,7 +1939,7 @@ preferredHand?: 'left' | 'right',
 ): SlotCandidateRuntime | null {
 let best: SlotCandidateRuntime | null = null;
 let bestAlong = Number.POSITIVE_INFINITY;
-const hitRadius = this.placementPadSizeM() * 0.55;
+
 for (const hand of XR_HANDS) {
 if (preferredHand != null && hand !== preferredHand) {
 continue;
@@ -1955,7 +1966,7 @@ continue;
 }
 this.rayClosest.copy(this.rayOrigin).addScaledVector(this.rayDir, along);
 const lateral = this.rayClosest.distanceTo(this.padWorldPos);
-if (lateral <= hitRadius && along < bestAlong) {
+if (lateral <= (slot.transform.sizeM ?? this.placementPadSizeM()) * 0.55 && along < bestAlong) {
 bestAlong = along;
 best = slot;
 }
@@ -1969,14 +1980,14 @@ hand: 'left' | 'right',
 ): SlotCandidateRuntime | null {
 this.player.indexTipSpaces[hand].getWorldPosition(this.tipScratch);
 let best: SlotCandidateRuntime | null = null;
-let bestDist = this.placementPadSizeM() * 0.55;
+let bestDist = Number.POSITIVE_INFINITY;
 for (const slot of this.slotCandidates) {
 if (slot.selected) {
 continue;
 }
 slot.root.getWorldPosition(this.padWorldPos);
 const dist = this.tipScratch.distanceTo(this.padWorldPos);
-if (dist < bestDist) {
+if (dist <= (slot.transform.sizeM ?? this.placementPadSizeM()) * 0.55 && dist < bestDist) {
 bestDist = dist;
 best = slot;
 }
@@ -1989,12 +2000,12 @@ if (slot.selected || this.selectedSlotTransforms.length >= 4) {
 return;
 }
 // Keep picks spread out so pads do not stack.
-const minSpacing = this.placementPadSizeM() * 0.75;
+const pickedSize = slot.transform.sizeM ?? this.placementPadSizeM();
 const tooClose = this.selectedSlotTransforms.some((prior) => {
 const dx = prior.position[0] - slot.transform.position[0];
 const dy = prior.position[1] - slot.transform.position[1];
 const dz = prior.position[2] - slot.transform.position[2];
-return Math.hypot(dx, dy, dz) < minSpacing;
+return Math.hypot(dx, dy, dz) < ((prior.sizeM ?? this.placementPadSizeM()) + pickedSize) * 0.5 + 0.04;
 });
 if (tooClose) {
 this.statusText = 'Too close to another pick - choose a farther slot';
@@ -2005,6 +2016,7 @@ setCandidateVisualState(slot, 'selected');
 this.selectedSlotTransforms.push({
 position: slot.transform.position,
 quaternion: slot.transform.quaternion,
+sizeM: pickedSize,
 });
 const count = this.selectedSlotTransforms.length;
 if (count >= 4) {
@@ -2052,7 +2064,7 @@ entity.object3D.visible = visible;
 
 private placementPadSizeM(): number {
 return this.setupMode === 'sitting'
-? AIR_PLACE_SITTING_PAD_SIZE_M
+? this.tablePadSizeM
 : defaultHeadsetPadSize();
 }
 
@@ -2329,7 +2341,7 @@ this.setAirOrientUiVisible(false);
 this.setSpatialMeshesVisible(false);
 const size = this.placementPadSizeM();
 transforms.forEach((transform, index) => {
-const pad = createPadRuntime(this.world, index as WallTonePadId, size, {
+const pad = createPadRuntime(this.world, index as WallTonePadId, transform.sizeM ?? size, {
 rayInteractable: false,
 anchor: true,
 });
