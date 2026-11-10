@@ -63,6 +63,10 @@ export default defineAssets({
     'wall-tones-placeholder.uikitml',
     'Wall Tones Placeholder',
   ),
+  'wall-tones-head-caption': uikitml(
+    'wall-tones-head-caption.uikitml',
+    'Wall Tones Head Caption',
+  ),
   'demo-nav-panel': uikitml('demo-nav.uikitml', 'Demo Nav'),
   'label-grab': uikitml('label-grab.uikitml', 'Grab Label'),
   'label-select': uikitml('label-select.uikitml', 'Select Label'),

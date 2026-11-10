@@ -53,3 +53,4 @@ blob-report/
 playwright-report/
 test-results/
 blob-report/
+tests/unit/build/

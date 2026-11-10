@@ -56,6 +56,12 @@ export const PANEL_SNAP_ARRIVE_M = 0.04;
 export const PANEL_PLAY_DISTANCE_M = 1.4;
 /** In-game HUD scale. */
 export const PANEL_PLAY_SCALE = 0.28;
+/** Backlog 21: head-locked MR subtitle distance from the headset (meters). */
+export const HEAD_CAPTION_DISTANCE_M = 1.2;
+/** Backlog 21: how far below eye level the MR subtitle rides (meters). */
+export const HEAD_CAPTION_DOWN_M = 0.4;
+/** Backlog 21: head-locked MR subtitle panel scale. */
+export const HEAD_CAPTION_SCALE = 0.3;
 /** Simon-style startup: silence between the four-pad sweep and the green encore. */
 export const SIMON_FANFARE_MID_PAUSE_S = 0.5;
 /** Simon-style startup: silence after the encore before voice / first note. */
@@ -105,6 +111,16 @@ export const AIR_GHOST_HAND_OFFSET_M = 0.32;
 export const AIR_GHOST_MIN_HEAD_DISTANCE_M = 0.7;
 export const AIR_PLACE_SITTING_PAD_SIZE_M = 0.36;
 export const AIR_PLACE_ROOM_PAD_SIZE_M = 0.55;
+/** Mid-size table pads tried before the smallest fallback. */
+export const TABLE_PAD_MID_SIZE_M = 0.25;
+/** Smaller table pads used when four default pads cannot fit on one table. */
+export const TABLE_PAD_FALLBACK_SIZE_M = 0.2;
+/** Table pad sizes tried in order; the first size that fits four on one table wins. */
+export const TABLE_PAD_SIZE_LADDER_M = [
+  AIR_PLACE_SITTING_PAD_SIZE_M,
+  TABLE_PAD_MID_SIZE_M,
+  TABLE_PAD_FALLBACK_SIZE_M,
+];
 export const SCAN_WAIT_S = 3;
 export const WRONG_RESET_DELAY_S = 0.9;
 /** Silence after the start intro finishes, before the first pad tone. */

@@ -11,6 +11,7 @@ import {
   UIKitMLAsset,
   VisibilityState,
 } from '@iwsdk/core';
+import { enterXrButtonVisible } from './enter-xr-visibility.js';
 
 /** Main-menu Enter XR is owned by AppModeSystem (starts Wall Tones + launchXR). */
 const XR_EXIT_PANEL_NODE_IDS = ['main-menu-panel', 'welcome-panel'] as const;
@@ -23,7 +24,7 @@ const MAIN_MENU_DESKTOP = {
 } as const;
 
 /**
- * Phone flat viewports only. Lowered and shrunk so the full hub stays inside
+ * Phone flat viewports only. Width-fit with side padding so the hub fills
  * an iPhone frame. Desktop and immersive scene transforms are untouched.
  */
 const MAIN_MENU_MOBILE = {
@@ -129,32 +130,27 @@ export class PanelSystem extends createSystem({}) {
   }
 
   /**
-   * Flat chrome only. Desktop keeps the established large Enter XR; phones use
-   * a shorter button so the stack fits. Immersive restores Exit / hides Enter XR.
-   * When XR is unavailable (`world.xrEnabled` false), Enter XR stays hidden.
+   * Flat chrome only. Desktop keeps the established large Enter XR; phones
+   * (compact flat viewports) hide Enter XR entirely - the owner requested a flat-only mobile menu. Immersive restores Exit / hides Enter XR. When XR is
+   * unavailable (`world.xrEnabled` false), Enter XR stays hidden.
    */
   private syncMainMenuChrome(is2D: boolean): void {
-    const mobile = is2D && isCompactFlatViewport();
-    const showEnterXr = is2D && this.world.xrEnabled;
+    const showEnterXr = enterXrButtonVisible(
+      is2D,
+      this.world.xrEnabled,
+      is2D && isCompactFlatViewport(),
+      typeof navigator === 'undefined' ? '' : navigator.userAgent,
+    );
     for (const nodeId of XR_EXIT_PANEL_NODE_IDS) {
       const panel = this.world.getSceneObject<UIKitMLAsset>(nodeId);
       const xrButton = panel?.getElementById('xr-button');
       if (nodeId === 'main-menu-panel' && showEnterXr) {
-        xrButton?.setProperties(
-          mobile
-            ? {
-                display: 'flex',
-                height: 64,
-                paddingTop: 14,
-                paddingBottom: 14,
-              }
-            : {
-                display: 'flex',
-                height: 96,
-                paddingTop: 22,
-                paddingBottom: 22,
-              },
-        );
+        xrButton?.setProperties({
+          display: 'flex',
+          height: 96,
+          paddingTop: 22,
+          paddingBottom: 22,
+        });
       } else {
         xrButton?.setProperties({
           display: showEnterXr ? 'flex' : 'none',
@@ -195,8 +191,19 @@ export class PanelSystem extends createSystem({}) {
     position[0] = layout.position[0];
     position[1] = layout.position[1];
     position[2] = layout.position[2];
-    scale[0] = layout.scale;
-    scale[1] = layout.scale;
-    scale[2] = layout.scale;
+    let flatScale: number = layout.scale;
+    if (isCompactFlatViewport()) {
+      // 520 cm authored width; 90% of the frustum leaves 5% padding per side.
+      // Limit height in landscape instead of cropping the controls.
+      const camera = this.world.camera;
+      const fov = 'fov' in camera ? Number(camera.fov) : 70;
+      const depth = Math.abs(camera.position.z - layout.position[2]);
+      const frustumHeight = 2 * depth * Math.tan(fov * Math.PI / 360);
+      flatScale = Math.min(frustumHeight * (window.innerWidth / window.innerHeight) * 0.9 / 5.2,
+        frustumHeight * 0.86 / 6.2);
+    }
+    scale[0] = flatScale;
+    scale[1] = flatScale;
+    scale[2] = flatScale;
   }
 }

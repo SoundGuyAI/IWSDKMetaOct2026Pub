@@ -37,6 +37,22 @@
       "components": {
         "RayInteractable": {}
       }
+    },
+{
+        "id": "wall-tones-head-caption",
+        "name": "Wall Tones Head Caption",
+        "content": {
+            "type": "asset",
+            "asset": "wall-tones-head-caption"
+        },
+        "transform": {
+            "position": [
+                0,
+                -10,
+                -1
+            ],
+            "scale": 0.3
+        }
     }
   ]
 }

@@ -311,6 +311,26 @@ export function generateWallPadCandidates(
   return candidates;
 }
 
+/** Largest candidate count found on any single surface (wallIndex). */
+export function maxCandidatesOnOneSurface(
+  candidates: WallPadCandidate[],
+): number {
+  const perSurface = new Map<number, number>();
+  for (const candidate of candidates) {
+    perSurface.set(
+      candidate.wallIndex,
+      (perSurface.get(candidate.wallIndex) ?? 0) + 1,
+    );
+  }
+  let max = 0;
+  for (const count of perSurface.values()) {
+    if (count > max) {
+      max = count;
+    }
+  }
+  return max;
+}
+
 /** Grid of sitting-sized candidates on horizontal table planes. */
 export function generateTablePadCandidates(
   tables: WallSlot[],
@@ -327,6 +347,7 @@ export function generateTablePadCandidates(
       return;
     }
     object3D.updateWorldMatrix(true, false);
+    const flatQuat = orientPadFlatOnTable(tablePlaneYaw(object3D));
 
     const flatQuat = orientPadFlatOnTable(tablePlaneYaw(object3D));
 
@@ -355,6 +376,79 @@ export function generateTablePadCandidates(
           kind: 'table',
         });
         candidateIndex += 1;
+      }
+    }
+  });
+
+  return candidates;
+}
+
+/**
+ * Centered four-pad arrangement on each table that fits one: a 2x2 lineup
+ * when the surface has the depth, otherwise a single row of four along the
+ * longer axis. Empty when no table fits four pads at this size.
+ */
+export function generateTablePadArrangements(
+  tables: WallSlot[],
+  sizeM = AIR_PLACE_SITTING_PAD_SIZE_M,
+): WallPadCandidate[] {
+  const candidates: WallPadCandidate[] = [];
+  let candidateIndex = 0;
+  const half = sizeM * 0.5;
+  const pitch = sizeM + 0.08;
+
+  tables.forEach((table, wallIndex) => {
+    const object3D = table.entity.object3D;
+    if (object3D == null) {
+      return;
+    }
+    object3D.updateWorldMatrix(true, false);
+    const quaternion = orientPadFlatOnTable(tablePlaneYaw(object3D));
+
+    const minX = table.localMinX + half + 0.04;
+    const maxX = table.localMaxX - half - 0.04;
+    const minZ = table.localMinZ + half + 0.04;
+    const maxZ = table.localMaxZ - half - 0.04;
+    const spanX = maxX - minX;
+    const spanZ = maxZ - minZ;
+    const centerX = (minX + maxX) * 0.5;
+    const centerZ = (minZ + maxZ) * 0.5;
+
+    const pushCell = (lx: number, lz: number): void => {
+      _localPoint.set(lx, 0.02, lz);
+      object3D.localToWorld(_localPoint);
+      candidates.push({
+        position: [
+          _localPoint.x + table.normal.x * 0.02,
+          _localPoint.y + table.normal.y * 0.02,
+          _localPoint.z + table.normal.z * 0.02,
+        ],
+        quaternion,
+        wallIndex,
+        candidateIndex,
+      });
+      candidateIndex += 1;
+    };
+
+    // Prefer a 2x2 lineup.
+    if (spanX >= pitch && spanZ >= pitch) {
+      for (const dx of [-pitch * 0.5, pitch * 0.5]) {
+        for (const dz of [-pitch * 0.5, pitch * 0.5]) {
+          pushCell(centerX + dx, centerZ + dz);
+        }
+      }
+      return;
+    }
+    // A row of four along the longer axis is also acceptable.
+    if (spanX >= 3 * pitch && spanX >= spanZ) {
+      for (let i = 0; i < 4; i += 1) {
+        pushCell(centerX + (i - 1.5) * pitch, centerZ);
+      }
+      return;
+    }
+    if (spanZ >= 3 * pitch) {
+      for (let i = 0; i < 4; i += 1) {
+        pushCell(centerX, centerZ + (i - 1.5) * pitch);
       }
     }
   });
@@ -555,3 +649,24 @@ export function planDesktopGridFromCamera(
     };
   });
 }
+
+/** Choose each table independently so a larger table never hides a smaller one. */
+export function generateMixedTablePadCandidates(tables: WallSlot[], sizes: readonly number[]): WallPadCandidate[] {
+  const result: WallPadCandidate[] = [];
+  tables.forEach((table, wallIndex) => {
+    let cells: WallPadCandidate[] = [];
+    let chosenSize = sizes[sizes.length - 1]!;
+    for (const size of sizes) {
+      const arrangement = generateTablePadArrangements([table], size);
+      if (arrangement.length >= 4) {
+        cells = arrangement;
+        chosenSize = size;
+        break;
+      }
+    }
+    // Even a surface that cannot fit four should still offer its usable cells.
+    if (cells.length === 0) cells = generateTablePadCandidates([table], chosenSize);
+    for (const cell of cells) result.push({ ...cell, wallIndex, candidateIndex: result.length, sizeM: chosenSize });
+  });
+  return result;
+        }

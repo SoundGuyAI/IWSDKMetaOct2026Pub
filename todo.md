@@ -76,4 +76,10 @@ Future ideas and polish lists moved to [WALL_TONES_TODO.md](WALL_TONES_TODO.md) 
 - [x] e2e-coverage job fails CI if a tests/e2e spec is not assigned to a shard.
 - [x] changes job computes gameplay: Markdown/wrangler.jsonc-only changes skip e2e; build and typecheck always run.
 - [x] deploy-pages tolerates a skipped e2e job and still requires it when it runs.
-- [ ] CI green with 3 shards on this PR, Codex review, user merge go-ahead.
+- [x] CI green with 3 shards on this PR, Codex review, user merge go-ahead.
+
+## CI e2e test-frequency policy PR - in progress November 8
+- [x] Gameplay e2e on GitHub runs on a PR's first push (opened), on every main push (safety net for the deployed result), and as a merge-ready run via Actions > CI > Run workflow on the PR branch with the `expected_sha` input; intermediate PR pushes skip it and rely on the final-head dispatch plus local `npm run test:e2e` before every push (user policy, November 8 - keep intermediate pushes light, but main advancing after a PR opened always gets fresh e2e against the combined code; build/typecheck stay automatic on every push).
+- [ ] User review and merge go-ahead.
+
+The merge-ready procedure is an enduring rule for every merge, not work in this PR; it is documented in .github/workflows/ci.yml at the workflow_dispatch block (expected_sha guard, combined-tree merge step, merge-time comparisons).
