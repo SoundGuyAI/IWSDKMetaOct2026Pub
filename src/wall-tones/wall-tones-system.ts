@@ -1035,87 +1035,29 @@ this.restorePanelPointerCapture();
 */
 private tickPanelRayDodge(): boolean {
 const now = performance.now();
-// Right after a manual drag the ray still points at the drop point; give the
-// hand a moment to move on before the dodge can swing the panel away again.
-if (now - this.panelDragDoneAt < PANEL_DRAG_DODGE_COOLDOWN_MS) {
+// Only a real, unselected placement placeholder under this hand can trigger
+// avoidance. Pointing at empty space or the menu must leave it still.
+if (this.flowPhase !== 'wall-picking' || now - this.panelDragDoneAt < PANEL_DRAG_DODGE_COOLDOWN_MS) {
+this.panelDodgeUntil = 0;
 return false;
 }
-let conflict = false;
 for (const hand of XR_HANDS) {
-const adapter = this.input.xr.visualAdapters[hand].peek();
-if (adapter != null && !adapter.connected) {
-continue;
-}
-const raySpace = this.player.raySpaces[hand];
-raySpace.updateWorldMatrix(true, false);
-raySpace.getWorldPosition(this.rayOrigin);
-raySpace.getWorldQuaternion(this.gripQuat);
-// XR target rays point along local -Z.
-this.rayDir.set(0, 0, -1).applyQuaternion(this.gripQuat).normalize();
-
-// Horizontal angle between the ray and the direction to the panel.
-this.panelDodgeScratchA.copy(this.panelFollowPos).sub(this.rayOrigin);
-this.panelDodgeScratchA.y = 0;
-if (this.panelDodgeScratchA.lengthSq() < 1e-6) {
-continue;
-}
-this.panelDodgeScratchA.normalize();
-this.panelDodgeScratchB.copy(this.rayDir);
-this.panelDodgeScratchB.y = 0;
-if (this.panelDodgeScratchB.lengthSq() < 1e-6) {
-continue;
-}
-this.panelDodgeScratchB.normalize();
-const dot = Math.min(
-1,
-Math.max(-1, this.panelDodgeScratchA.dot(this.panelDodgeScratchB)),
-);
-const angleDeg = (Math.acos(dot) * 180) / Math.PI;
-if (angleDeg >= PANEL_RAY_BLOCK_DEG) {
-continue;
-}
-conflict = true;
-// Upward-only dodge while the ray is on a selectable placeholder: lift the
-// panel straight up out of the way instead of swinging it sideways, so the
-// slot being aimed at stays visually stable.
-if (this.queries.slotHovered.entities.size > 0) {
+const slot = this.findRayHoveredSlot(hand);
+if (slot == null || slot.selected) continue;
+// Require the ray to pass through the panel's horizontal footprint as well.
+this.panelDodgeScratchA.copy(this.panelFollowPos).sub(this.rayOrigin).setY(0);
+this.panelDodgeScratchB.copy(this.rayDir).setY(0);
+if (this.panelDodgeScratchA.lengthSq() < 1e-6 || this.panelDodgeScratchB.lengthSq() < 1e-6) continue;
+const dot = Math.max(-1, Math.min(1, this.panelDodgeScratchA.normalize().dot(this.panelDodgeScratchB.normalize())));
+if (Math.acos(dot) * 180 / Math.PI >= PANEL_RAY_BLOCK_DEG) continue;
 this.panelDodgeTargetPos.copy(this.panelFollowPos);
 this.panelDodgeTargetPos.y = this.viewer.y + PANEL_RAY_DODGE_UP_M;
-break;
-}
-// Rotate the panel direction away from the ray, on whichever side
-// separates them further; keep the usual distance and height.
-const neededRad = ((PANEL_RAY_DODGE_MIN_DEG - angleDeg) * Math.PI) / 180;
-for (const sign of [1, -1]) {
-const cosA = Math.cos(sign * neededRad);
-const sinA = Math.sin(sign * neededRad);
-const x = this.panelDodgeScratchA.x;
-const z = this.panelDodgeScratchA.z;
-this.panelDodgeScratchB.set(
-x * cosA + z * sinA,
-0,
-z * cosA - x * sinA,
-);
-const sepDot = Math.min(
-1,
-Math.max(-1, this.panelDodgeScratchB.dot(this.rayDir.setY(0).normalize())),
-);
-const sepDeg = (Math.acos(sepDot) * 180) / Math.PI;
-if (sepDeg >= PANEL_RAY_DODGE_MIN_DEG || sign === -1) {
-this.panelDodgeTargetPos
-.copy(this.viewer)
-.addScaledVector(this.panelDodgeScratchB, PANEL_FOLLOW_DISTANCE_M);
-this.panelDodgeTargetPos.y =
-this.viewer.y + PANEL_FOLLOW_Y_OFFSET_M;
-break;
-}
-}
-break;
-}
-if (conflict) {
 this.panelDodgeUntil = now + PANEL_RAY_DODGE_HOLD_MS;
+return true;
 }
-return now < this.panelDodgeUntil;
+// Do not retain an old ray dodge after the ray leaves all candidates.
+this.panelDodgeUntil = 0;
+return false;
 }
 
 private resetSetupPanelAnchor(): void {
@@ -3831,4 +3773,4 @@ return new Promise((resolve) => {
 window.setTimeout(resolve, seconds * 1000);
 });
 }
-}
+  }
