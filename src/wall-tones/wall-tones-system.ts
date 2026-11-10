@@ -78,7 +78,7 @@ import {
 collectTablePlanes,
 collectVerticalWalls,
 detectFloorY,
-generateTablePadArrangements,
+generateMixedTablePadCandidates,
 generateTablePadCandidates,
 maxCandidatesOnOneSurface,
 generateWallPadCandidates,
@@ -1675,28 +1675,8 @@ private startTablePicking(
 tables: ReturnType<typeof collectTablePlanes>,
 ): void {
 this.tablePadSizeM = AIR_PLACE_SITTING_PAD_SIZE_M;
-// Size ladder: big, then 25x25, then 20x20. The first size whose four pads
-// fit one table as a centered 2x2 lineup wins; a row of four is acceptable.
-let candidates: WallPadCandidate[] = [];
-for (const size of TABLE_PAD_SIZE_LADDER_M) {
-const attempt = generateTablePadArrangements(tables, size);
-if (maxCandidatesOnOneSurface(attempt) >= 4) {
-this.tablePadSizeM = size;
-candidates = attempt;
-break;
-}
-}
-if (candidates.length === 0) {
-// No tidy arrangement fits; fall back to the free grid, big then small.
-candidates = generateTablePadCandidates(tables, this.tablePadSizeM);
-if (maxCandidatesOnOneSurface(candidates) < 4) {
-const small = generateTablePadCandidates(tables, TABLE_PAD_FALLBACK_SIZE_M);
-if (maxCandidatesOnOneSurface(small) >= 4) {
-this.tablePadSizeM = TABLE_PAD_FALLBACK_SIZE_M;
-candidates = small;
-}
-}
-}
+// Each table gets its own size ladder: keep candidates on both tables.
+const candidates = generateMixedTablePadCandidates(tables, TABLE_PAD_SIZE_LADDER_M);
 this.beginSurfacePicking({
 surfaces: tables,
 padSizeM: this.tablePadSizeM,
@@ -1743,7 +1723,7 @@ for (const candidate of options.candidates) {
 const slot = createSlotCandidateRuntime(
 this.world,
 candidate,
-options.padSizeM,
+candidate.sizeM ?? options.padSizeM,
 );
 this.slotCandidates.push(slot);
 this.slotArmed.set(slot.candidateIndex, true);
@@ -1824,7 +1804,7 @@ preferredHand?: 'left' | 'right',
 ): SlotCandidateRuntime | null {
 let best: SlotCandidateRuntime | null = null;
 let bestAlong = Number.POSITIVE_INFINITY;
-const hitRadius = this.placementPadSizeM() * 0.55;
+
 for (const hand of XR_HANDS) {
 if (preferredHand != null && hand !== preferredHand) {
 continue;
@@ -1851,7 +1831,7 @@ continue;
 }
 this.rayClosest.copy(this.rayOrigin).addScaledVector(this.rayDir, along);
 const lateral = this.rayClosest.distanceTo(this.padWorldPos);
-if (lateral <= hitRadius && along < bestAlong) {
+if (lateral <= (slot.transform.sizeM ?? this.placementPadSizeM()) * 0.55 && along < bestAlong) {
 bestAlong = along;
 best = slot;
 }
@@ -1865,14 +1845,14 @@ hand: 'left' | 'right',
 ): SlotCandidateRuntime | null {
 this.player.indexTipSpaces[hand].getWorldPosition(this.tipScratch);
 let best: SlotCandidateRuntime | null = null;
-let bestDist = this.placementPadSizeM() * 0.55;
+let bestDist = Number.POSITIVE_INFINITY;
 for (const slot of this.slotCandidates) {
 if (slot.selected) {
 continue;
 }
 slot.root.getWorldPosition(this.padWorldPos);
 const dist = this.tipScratch.distanceTo(this.padWorldPos);
-if (dist < bestDist) {
+if (dist <= (slot.transform.sizeM ?? this.placementPadSizeM()) * 0.55 && dist < bestDist) {
 bestDist = dist;
 best = slot;
 }
@@ -1885,12 +1865,12 @@ if (slot.selected || this.selectedSlotTransforms.length >= 4) {
 return;
 }
 // Keep picks spread out so pads do not stack.
-const minSpacing = this.placementPadSizeM() * 0.75;
+const pickedSize = slot.transform.sizeM ?? this.placementPadSizeM();
 const tooClose = this.selectedSlotTransforms.some((prior) => {
 const dx = prior.position[0] - slot.transform.position[0];
 const dy = prior.position[1] - slot.transform.position[1];
 const dz = prior.position[2] - slot.transform.position[2];
-return Math.hypot(dx, dy, dz) < minSpacing;
+return Math.hypot(dx, dy, dz) < ((prior.sizeM ?? this.placementPadSizeM()) + pickedSize) * 0.5 + 0.04;
 });
 if (tooClose) {
 this.statusText = 'Too close to another pick - choose a farther slot';
@@ -1901,6 +1881,7 @@ setCandidateVisualState(slot, 'selected');
 this.selectedSlotTransforms.push({
 position: slot.transform.position,
 quaternion: slot.transform.quaternion,
+sizeM: pickedSize,
 });
 const count = this.selectedSlotTransforms.length;
 if (count >= 4) {
@@ -2222,7 +2203,7 @@ this.setAirOrientUiVisible(false);
 this.setSpatialMeshesVisible(false);
 const size = this.placementPadSizeM();
 transforms.forEach((transform, index) => {
-const pad = createPadRuntime(this.world, index as WallTonePadId, size, {
+const pad = createPadRuntime(this.world, index as WallTonePadId, transform.sizeM ?? size, {
 rayInteractable: false,
 anchor: true,
 });
@@ -3738,4 +3719,4 @@ return new Promise((resolve) => {
 window.setTimeout(resolve, seconds * 1000);
 });
 }
-}
+  }
