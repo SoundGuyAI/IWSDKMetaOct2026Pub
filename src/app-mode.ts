@@ -265,6 +265,7 @@ export class AppModeSystem extends createSystem({}) {
         'xr-button',
         'exit-button',
         'settings-button',
+        'main-menu-credit',
       ]) {
         setDisplay(id, 'none');
       }
@@ -278,6 +279,7 @@ export class AppModeSystem extends createSystem({}) {
       setDisplay('main-menu-content', 'flex');
       setDisplay('mode-walltones-button', 'flex');
       setDisplay('settings-button', 'flex');
+      setDisplay('main-menu-credit', 'flex');
       // Same rule PanelSystem uses: Enter XR on flat, Exit while immersive.
       setDisplay('xr-button', flat && this.world.xrEnabled ? 'flex' : 'none');
       setDisplay('exit-button', !flat && this.world.xrEnabled ? 'flex' : 'none');

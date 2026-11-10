@@ -164,29 +164,22 @@ test.describe('Wall Tones polish: fade + skip voice', () => {
   test('pad flash cross-fades in and back out instead of snapping', async ({
     page,
   }) => {
+    // Install before startup so the renderer captures controlled RAF/timers.
+    await page.clock.install();
     await bootWallTones(page);
     await skipSpeech(page); // keep narration out of the timing picture
     await expect
       .poll(() => flatAwaitingStart(page), { timeout: 60_000 })
       .toBe(true);
 
-    // The start tap flashes pad 0 for ~280 ms. Sample the whole window from
-    // inside the page so slow headless frames cannot slip past the fade.
-    const samples: (PadFadeState | null)[] = await page.evaluate(async () => {
-      const d = (window as unknown as {
-        __wallTonesDebug: { padFade(i: number): PadFadeState | null; submitPad(i: number): void };
-      }).__wallTonesDebug;
-      // Start and observe in one browser task. A separate host round trip can
-      // arrive after the entire fade-in on a busy CI renderer.
-      d.submitPad(0);
-      const out: (PadFadeState | null)[] = [];
-      const t0 = performance.now();
-      while (performance.now() - t0 < 900) {
-        out.push(d.padFade(0));
-        await new Promise((resolve) => setTimeout(resolve, 4));
-      }
-      return out;
-    });
+    // Advance to a future page-clock instant, not the host clock (which may lag).
+    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 10_000));
+    await submitPad(page, 0);
+    const samples: (PadFadeState | null)[] = [await padFade(page, 0)];
+    for (let frame = 0; frame < 60; frame++) {
+      await page.clock.runFor(16);
+      samples.push(await padFade(page, 0));
+    }
     const seen = samples.filter((s): s is PadFadeState => s != null);
     expect(seen.length).toBeGreaterThan(10);
     // The flash was really commanded (target grew).
@@ -205,6 +198,7 @@ test.describe('Wall Tones polish: fade + skip voice', () => {
     expect(midwayOut.length).toBeGreaterThan(0);
     // Color cross-fades too: mid-transition the displayed color lags the target.
     expect(seen.some((s) => s.colorDistance > 0.01)).toBe(true);
+    await page.clock.runFor(1000);
     // Both fades settle: scale back to 1 and color converged.
     await expect
       .poll(async () => (await padFade(page, 0))!.scale, { timeout: 5_000 })
