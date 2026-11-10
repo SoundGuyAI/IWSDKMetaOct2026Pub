@@ -50,7 +50,7 @@ async function loadSpeech({ rejectFirst = false, subtitles = false } = {}) {
   source = source.replace(/^import .* from '.\/clip-transcripts.js';/m,
     "const CLIP_TRANSCRIPTS = new Proxy({}, {get: (_target, id) => String(id)});");
   source = source.replace(/^import .* from '.\/accessibility.js';/m,
-    'const startSpokenCaption = () => 1; const endSpokenCaption = () => {}; const hearingSubtitlesEnabled = () => globalThis.__subtitles;');
+    'const startSpokenCaption = () => 1; const endSpokenCaption = () => {}; const hearingSubtitlesEnabled = () => globalThis.__subtitles; const voicesOffEnabled = () => false;');
   source = source.replace(/^import .* from '.\/new-best-(male|female).js';/gm, '');
   source = 'const NEW_BEST_MALE = {}; const NEW_BEST_FEMALE = {};\n' + source;
   const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
