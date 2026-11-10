@@ -45,9 +45,7 @@ Personal backlog for what still needs work — not an agent task list. Move item
 
 ## In progress
 
-- [~] PR #47: separate test-only pad-flash reliability correction at 43f2a69 (2026-11-09). Install controlled clock before renderer startup; drive production animation in 16 ms steps. All original intermediate fade/color/settling assertions retained. Local typecheck/build and all 7 polish tests passed in bounded groups; fade passed 3/3 normal and 3/3 under 4x CPU throttling. Snap/frozen negative controls fail as expected and were fully restored. Ordinary GitHub CI 42683711061 passed 43/43 e2e (8 + 10 + 25), including the corrected fade, plus typecheck/build and spec coverage. Ordinary CI excludes slow, so this is not a full-suite or merge-ready claim; real-time rendering and Quest acceptance are not proved. PR #44 remains separate and blocked; not merged.
 
-- [~] PR #45: wider phone menu at59d5c3e. Portrait width-fit with padding, landscape height-limited, Enter XR hidden on phones; desktop/XR preserved. Local typecheck/build and6units pass; portrait/landscape/desktop pixels and preview identity verified. Physical-device acceptance pending; not merged.
 
 - [~] 1. Setup window: bigger threshold angle to jump back into view PR #38: implemented and pushed in the combined update at 5500c0e; local full suite 43/43 passed. Rebuilt preview verified at 5500c0e; on-headset acceptance pending (2026-11-08).
 - [~] 2. Setup window: after mode is selected, place it a little farther away, a little higher, and make it draggable PR #38: implemented and pushed in the combined update at 5500c0e; local full suite 43/43 passed. Rebuilt preview verified at 5500c0e; on-headset acceptance pending (2026-11-08).
@@ -56,9 +54,7 @@ Personal backlog for what still needs work — not an agent task list. Move item
 - [~] 43. MR air-place setup voice (requested Nov 7): before "Pad one of four", first explain the two placement orientations (upright / flat) like the earlier flow did, then say to pinch to place pad 1. The current flow skips the orientation explanation. PR #38: implemented and pushed in the combined update at 5500c0e; local full suite 43/43 passed. Rebuilt preview verified at 5500c0e; on-headset acceptance pending (2026-11-08).
 
 - [~] 20. Boundary investigation: PR #28 (Nov 7) shipped an unbounded tracking space; whether the Quest boundary stays hidden in MR still needs on-headset confirmation.
-- [~] 23. PR #44 at989436a: explanation, scoring, Store and Achievements hide during MR placement setup and return immediately at intro; flat stays visible. Local typecheck/build, units5/5 and focused e2e8/8pass; deployed rendered transition verified. Prior full-suite padfade failure remains uncleared for this PR; physical Quest retest pending. Not merged.
 - [~] 25. PR #38: new73e8e03runtime fix requires actual unselected same-ray slot and blocking panel during wall picking, upward-only; empty-space hold cleared. Four targeted tests and all8units/typecheck/build pass. Runtime preview73e8e03verified; later80af8fbcomment-only. Headset retest pending; not merged.
-- [~] 26. PR #37 latest56a146d: per-table size choice, including25/20cmmixes, retained through hit-testing and final geometry. Orientation/floor fixes preserved. Placement12/12; allunits16/16after existing fixture repair; typecheck/build pass. Latest preview identity verified. Full-suite and headset retest pending; not merged.
 - [~] 27. PR #41: combined walls + tables mode repaired at 58b4564. Seated floor detection and world-table-yaw alignment retain mixed wall/table metadata and 36 cm table pads. Typecheck/build and all 9 unit tests passed. Full GitHub e2e 43/43 passed, including slow, in run 42542230464. Ready for Quest retest. Exact-head preview identity and desktop gameplay checked Nov 9. Quest mixed-plane retest pending; not merged.
 - [~] 11. Score that grows exponentially with streak length (economy PR; PENDING the user's score-interpretation answer - Bars and streak persist meanwhile, no score display yet).
 - [~] 12. Store where players buy modifiers (economy PR: gold Bars, hint store).
@@ -67,6 +63,11 @@ Personal backlog for what still needs work — not an agent task list. Move item
 - [~] 19. Achievements for streak, score, story and other milestones (economy PR: streak/Bar/store achievements, visual-only; score achievements once 11 lands).
 
 ## Done
+
+- [x] PR #47: deterministic automated pad-fade correction, owner-approved merge58ab5bf at00:53 on11Nov. Exact combined e796dde: full public e2e46/46,6units/typecheck/build/spec coverage passed. No gameplay change or new device acceptance claim.
+- [x] PR #45: width-fit phone menu and phone Enter XR hiding, owner-approved mergebe38840 at01:04 on11Nov. Latest47main included; exact5e38de1 full public e2e46/46,8units/typecheck/build/spec coverage passed. Physical-device checks are separate.
+- [x] 23. PR #44: explanation, scoring, Store and Achievements hidden during MR placement, restored at intro; flat unchanged. Owner-approved merge9afba20 at01:18 on11Nov. Latest45main included; exacte32f110 full public e2e48/48,9units/typecheck/build/spec coverage passed. Quest acceptance is separate.
+- [x] 26. PR #37: independent per-table pad sizing, including25/20cm mixes, retained through hit-testing and final geometry. Owner-approved merge6319838 at01:31 on11Nov. Latest44main included; exact28f51cb full public e2e48/48,21units/typecheck/build/spec coverage passed. Quest placement is separate.
 
 - [x] PR #46: desktop panel enlargement, owner-approved merge930df96 at20:56 on10Nov. Current main included before exact-head d72a076 full public e2e44/44 plus4units/typecheck/build/coverage passed; local typecheck/build and all7polish tests passed in bounded groups.
 - [x] 28. PR #40: touch selection, walk-up/ray guidance, purple selected placeholder and approved voice clips. Owner-approved merge7808cdb at21:13 on10Nov. Latest main930df96 included; exact-head d2a83d9 full public e2e44/44 plus4units/typecheck/build/coverage passed; local combined checks passed.
@@ -110,3 +111,11 @@ Personal backlog for what still needs work — not an agent task list. Move item
 - PR46,PR40,PR43 are now merged in order; each next branch included the newly advanced main and reran the complete suite before its merge. Main556d51e. No other feature merge was authorized or made.
 - Review fixes37/38/44/45 remain unmerged as detailed above. Chinder is excluded from the testing guide. PR47 remains a separate, unmerged test-only proposal.
 - Full runs: PR46 https://github.com/SoundGuyAI/IWSDKMetaOct2026Pub/actions/runs/42877355773 ; PR40 https://github.com/SoundGuyAI/IWSDKMetaOct2026Pub/actions/runs/42880591744 ; PR43 https://github.com/SoundGuyAI/IWSDKMetaOct2026Pub/actions/runs/42883266235 .
+
+## Review update - 2026-11-11,01:32 Asia/Jerusalem
+
+- Owner approved PR47,45,44,37 and complete public GitHub verification. All four merged in that order. Each branch included newly advanced main before combined-tree checks. Main6319838. Final main complete run is next after this documentation update, not yet claimed green.
+- Full runs: PR47 https://github.com/SoundGuyAI/IWSDKMetaOct2026Pub/actions/runs/42917198854 ; PR45 https://github.com/SoundGuyAI/IWSDKMetaOct2026Pub/actions/runs/42918811513 ; PR44 https://github.com/SoundGuyAI/IWSDKMetaOct2026Pub/actions/runs/42920418211 ; PR37 https://github.com/SoundGuyAI/IWSDKMetaOct2026Pub/actions/runs/42922486456 .
+- PR38 new review feedback supersedes the prior ray-dodge approach: lower edge above head in air placement and above eyes for wall selection; tilt toward viewer,50degree horizontal follow threshold, frozen snap target, per-hand menu/placement routing and header drag. After wall/seated placement search front/adjacent wall space avoiding pads, never behind, floating fallback. Implemented locally with14targeted geometry/production-method tests and synthetic UIKit pixels/raycast checks. Latest main integrated locally; final integration/testing and preview push pending. No physical Quest acceptance or merge approval.
+- PR41 requires one combined walls-and-tables prompt rather than two sequential announcements. Implementation and new recorded assets are in progress separately. No merge approval.
+- Cloudflare production failure analysis and proposed CloudFlareProd promotion branch are pending. Main builds remain disabled by the owner; no account or deployment settings changed.
