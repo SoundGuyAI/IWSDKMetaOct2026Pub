@@ -92,6 +92,18 @@
     color: #9a9ea6;
   }
 
+  .credit-label {
+    color: #6a6c72;
+    font-size: 14px;
+    line-height: 18px;
+    text-align: center;
+    margin-bottom: 20px;
+  }
+
+  .credit-label:dark {
+    color: #9a9ea6;
+  }
+
   .xr-button-label {
     font-size: 30px;
     font-weight: 700;
@@ -113,10 +125,11 @@
     <ButtonIcon><RectangleGoggles></RectangleGoggles></ButtonIcon>
     <ButtonLabel id="xr-button-label" class="xr-button-label">Enter XR</ButtonLabel>
   </Button>
-  <Button id="settings-button" class="button" style="height: 64px; margin-bottom: 28px">
+  <Button id="settings-button" class="button" style="height: 64px; margin-bottom: 10px">
     <ButtonIcon><Settings></Settings></ButtonIcon>
     <ButtonLabel id="settings-button-label" class="button-label">Settings</ButtonLabel>
   </Button>
+  <div id="main-menu-credit" class="credit-label">A game by Oded Sharon,  Corbomite Games.</div>
   <div id="settings-dialog" class="settings-dialog" style="display: none">
     <div id="settings-eyebrow" class="eyebrow">SETTINGS</div>
     <div id="settings-heading" class="heading">Voice &amp; Accessibility</div>
