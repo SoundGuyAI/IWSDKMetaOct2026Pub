@@ -157,3 +157,23 @@ test('a real floor plane is not collected as a table at sitting eye height', () 
   assert.equal(tables.length, 1);
   assert.ok(Math.abs(tables[0].center.y - 0.75) < 1e-6);
 });
+
+test('two tables choose 25cm and 20cm independently, in either input order', () => {
+  for (const dimensions of [[0.70, 0.60], [0.60, 0.70]]) {
+    const tables = dimensions.map(side => makeTable(side, side));
+    const cells = placement.generateMixedTablePadCandidates(tables, constants.TABLE_PAD_SIZE_LADDER_M);
+    assert.equal(cells.length, 8);
+    dimensions.forEach((side, tableIndex) => {
+      const onTable = cells.filter(c => c.wallIndex === tableIndex);
+      assert.equal(onTable.length, 4);
+      assert.ok(onTable.every(c => c.sizeM === (side === 0.70 ? 0.25 : 0.20)));
+    });
+    assert.equal(new Set(cells.map(c => c.candidateIndex)).size, 8);
+  }
+});
+
+test('small table keeps available cells even when it cannot fit four', () => {
+  const cells = placement.generateMixedTablePadCandidates([makeTable(1.2,1.2), makeTable(0.4,0.4)], constants.TABLE_PAD_SIZE_LADDER_M);
+  assert.equal(cells.filter(c => c.wallIndex === 0).length, 4);
+  assert.ok(cells.some(c => c.wallIndex === 1 && c.sizeM === 0.2));
+});
