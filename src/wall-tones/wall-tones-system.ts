@@ -1035,7 +1035,7 @@ this.restorePanelPointerCapture();
 */
 private tickPanelRayDodge(): boolean {
 const now = performance.now();
-// Only a real, unselected placement placeholder under this hand can trigger
+// Only a real, unselected placement placeholder under this same hand ray can trigger
 // avoidance. Pointing at empty space or the menu must leave it still.
 if (this.flowPhase !== 'wall-picking' || now - this.panelDragDoneAt < PANEL_DRAG_DODGE_COOLDOWN_MS) {
 this.panelDodgeUntil = 0;
