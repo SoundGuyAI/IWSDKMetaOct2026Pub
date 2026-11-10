@@ -20,6 +20,9 @@ applicable IWSDK guide or concept page.
 and polish notes. `todo.md` is the working list for you and other agents: active
 work, approvals, and verification state. Record the owner's ideas in
 `WALL_TONES_TODO.md`; track agent work in `todo.md`.
+After each Wall Tones PR update (including pushed review fixes), merge, or review-state change, update
+`WALL_TONES_TODO.md` the same day: move finished items to Done and mark active
+ones in progress (owner rule, 2026-11-08). Keep pushed but unaccepted work in progress, and record partial uploads and pending device checks rather than marking it done.
 
 ## What is not standard Vite
 
@@ -90,6 +93,19 @@ and subtle breakage. Exception: `import type { GLTF } from 'three/addons/...'`.
 | `ScreenSpace` given numbers                                    | clamped with a console warning                                           | it takes CSS strings: `'400px'`, `'25vw'`                                                |
 | `@iwsdk/reference` MCP tools in an old or `--no-install` app   | queries report warmup required                                           | run `npx @iwsdk/cli reference warmup`; fresh installed scaffolds do this during creation |
 
+## PR merge-readiness rule
+
+Before merging any PR, merge the latest `main` into that PR branch, resolve any
+conflicts, and check the resulting branch locally. Do not rely only on tests of
+an older branch head or on GitHub checks. Run typecheck, build, the relevant unit
+tests and the complete local e2e suite, including slow tests, on the reconciled
+head; record the commit and results. If `main` advances again before the merge,
+repeat the reconciliation and local checks.
+
+This is preparation, not permission to merge: each PR still needs the owner's
+explicit merge go-ahead. Keep device-only acceptance checks separate and visible.
+Owner instruction, 2026-11-09.
+
 ## Verify before you claim it works
 
 **Always `npm run --if-present typecheck` before testing.** Type errors stop systems
@@ -132,6 +148,41 @@ claiming an app works on the glasses, or when it uses gaze or eye tracking,
 invoke `iwsdk-glasses-test`: it sets the `metaVRGlasses` emulator device, checks
 that content fits that view, and drives gaze and pinch from the CLI. A Quest
 screenshot or the editor view cannot show that fit.
+
+## Pull requests and CI
+
+Keep each PR to one focused change; never fold unrelated fixes into another PR.
+
+Never merge without the repo owner's explicit approval for that specific PR.
+
+Run the full local e2e suite (`npm run test:e2e`) before opening a PR and before
+every push to a PR branch. A PR is only opened from a locally green tree.
+
+When handing a PR over for testing, include the preview link, the device to test
+on, and the exact steps to check. Before calling a preview ready, verify it
+actually serves the branch's latest commit - a failed preview deploy leaves the
+previous build at the same URL.
+
+Every new tests/e2e/*.spec.ts file must be registered in BOTH the e2e-desktop
+shard matrix and the coverage list in `.github/workflows/ci.yml`; CI fails the PR
+otherwise.
+
+Request a Codex review on each PR (`@codex review`), but while the owner's Codex
+review limit is exhausted, do not block the PR waiting for it - the owner will
+say when it is available again.
+
+This repository is public: never commit secrets, private information, or internal
+tooling details to code, comments, docs, or PR text.
+
+Gameplay e2e on GitHub runs automatically when a PR is first opened and on every
+push to main. Do not re-trigger it for intermediate PR pushes - the local suite
+covers those. Before merging any PR, run the merge-ready dispatch: Actions >
+CI > Run workflow on the PR branch with the PR head SHA pasted as `expected_sha`.
+That run merges current main into the head and tests the combined tree, so when
+main has advanced since the PR opened, the merge decision rests on a fresh e2e of
+the updated combined code, not a stale head-only green. If the PR head or main
+moved after the green run, re-dispatch instead of merging. The full procedure is
+documented in `.github/workflows/ci.yml` at the `workflow_dispatch` block.
 
 ## MCP and CLI are one surface, not two
 
