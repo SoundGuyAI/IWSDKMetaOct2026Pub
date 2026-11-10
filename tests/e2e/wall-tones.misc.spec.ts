@@ -98,3 +98,45 @@ test('build identity is exposed and matches the shipped package version', async 
   expect(info?.version).toBe(pkg.version);
   expect(info?.commit).toMatch(/^([0-9a-f]{7}|dev)$/);
 });
+
+async function scoringSnapshot(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const d = (window as any).__wallTonesDebug;
+    return { flow: d.flowPhase, phase: d.phase, visible: d.scoreInfoVisible, displays: d.scoringUiDisplays, explanation: d.gameExplanationDisplay };
+  });
+}
+
+async function bootScoringCheck(page: import('@playwright/test').Page) {
+  await page.addInitScript(() => sessionStorage.setItem('iwsdk-experience-mode', 'walltones'));
+  await page.goto('/');
+  await page.waitForFunction(() => (window as any).__wallTonesDebug?.flatAwaitingStart);
+}
+
+test('flat scoring, Store and Achievements stay visible before the first pad press (backlog 23)', async ({ page }) => {
+  await bootScoringCheck(page);
+  await expect.poll(async () => (await scoringSnapshot(page)).visible).toBe(true);
+  const snap = await scoringSnapshot(page);
+  expect(snap.phase).toBe('idle');
+  expect(snap.explanation).toBe('flex');
+  expect(Object.values(snap.displays)).toEqual(['flex', 'flex', 'flex', 'flex', 'flex']);
+});
+
+test('MR placement path hides scoring, Store and Achievements, then shows them during intro (backlog 23)', async ({ page }) => {
+  await bootScoringCheck(page);
+  // Synthetic slots exercise the production picking/finish path, not real XR planes.
+  await page.evaluate(() => (window as any).__wallTonesDebug.startFakeWallPick());
+  for (let i = 0; i < 4; i++) {
+    await expect.poll(async () => (await scoringSnapshot(page)).visible).toBe(false);
+    const snap = await scoringSnapshot(page);
+    expect(snap.flow).toBe('wall-picking');
+    expect(snap.explanation).toBe('none');
+    expect(Object.values(snap.displays)).toEqual(['none', 'none', 'none', 'none', 'none']);
+    await page.evaluate(i => (window as any).__wallTonesDebug.selectSlot(i), i);
+  }
+  await expect.poll(async () => (await scoringSnapshot(page)).visible).toBe(true);
+  const intro = await scoringSnapshot(page);
+  expect(intro.flow).toBe('playing');
+  expect(intro.explanation).toBe('flex');
+  expect(intro.phase).toBe('idle'); // Intro is before startNewRun/playback.
+  expect(Object.values(intro.displays)).toEqual(['flex', 'flex', 'flex', 'flex', 'flex']);
+});

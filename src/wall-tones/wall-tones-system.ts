@@ -178,6 +178,9 @@ headCaptionVisibleText: string | null;
 probeHeadCaptionText: (text: string) => void;
 barFloatsActive: boolean;
 infoRowVisible: boolean;
+scoreInfoVisible: boolean;
+gameExplanationDisplay: unknown;
+scoringUiDisplays: Record<string, string | null>;
 toggleStore: () => void;
 toggleAchievements: () => void;
 buyHint: () => void;
@@ -340,7 +343,7 @@ const panel = this.sequenceIconPendingPanel;
 if (panel) this.reconcileSequenceIcons(panel);
 };
 private accessibilityPanel: UIKitMLAsset | undefined;
-private accessibilityState: { show: boolean; flat: boolean; active: boolean; caption: string; phase: string; status: string; names: boolean; sequence: number[]; reveal: number; shown: number } | undefined;
+private accessibilityState: { show: boolean; flat: boolean; active: boolean; caption: string; phase: string; flow: string; status: string; names: boolean; sequence: number[]; reveal: number; shown: number } | undefined;
 private sequenceIconRow: UIKit.Container | null = null;
 /** Setup HUD is world-anchored; look-away past a threshold re-snaps it. */
 private panelWorldAnchored = false;
@@ -1182,13 +1185,17 @@ this.flatBackdropHidden = false;
 /* The panel canvas font covers ASCII only: U+2026, curly quotes and em-dashes
  * render as tofu squares on the panel. Keep every panel-bound string ASCII. */
 private setFlatHintVisible(visible: boolean): void {
-// User decision 2026-11-07: the title block and instructions stay visible
-// permanently so the panel size no longer changes between phases.
+// Keep the game explanation in flat play and after placement, not in MR setup.
+// The panel heading remains present, so setup still has a stable anchor.
 void visible;
-this.world
-.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+this.syncGameExplanationVisibility();
+}
+
+private syncGameExplanationVisibility(): void {
+const setup = ['choose-mode', 'scanning', 'wall-picking', 'air-placement'].includes(this.flowPhase);
+this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel')
 ?.getElementById('flat-play-hint')
-?.setProperties({ display: 'flex' });
+?.setProperties({ display: setup ? 'none' : 'flex' });
 }
 
 private setPanelHeaderVisible(visible: boolean): void {
@@ -1466,6 +1473,25 @@ system.world
 },
 get infoRowVisible() {
 return system.lastInfoRowVisible;
+},
+get gameExplanationDisplay() {
+return system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('flat-play-hint')?.properties.peek().display;
+},
+get scoreInfoVisible() {
+return system.lastScoreInfoVisible;
+},
+get scoringUiDisplays() {
+const panel = system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+return Object.fromEntries([
+'wall-tones-streak-row', 'wall-tones-score-row', 'wall-tones-round-card',
+'achievements-button', 'store-button',
+].map(id => {
+const el = panel?.getElementById(id) as unknown as {
+properties?: { value?: { display?: string } };
+} | null;
+return [id, el?.properties?.value?.display ?? null];
+}));
 },
 get barFloatsActive() {
 return system.barFloats.isActive();
@@ -2725,8 +2751,9 @@ setPadDebugCollidersVisible(this.ghostPad, visible);
 
 private syncDebugCollidersButton(): void {
 const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
-// Show in any immersive / MR session, including setup before pads exist.
-const showButton = !this.useDesktopPath() && this.experienceActive;
+// Keep normal placement focused. Collider diagnostics remain available in MR play.
+const showButton = !this.useDesktopPath() && this.experienceActive &&
+this.flowPhase === 'playing';
 panel
 ?.getElementById('debug-colliders-button')
 ?.setProperties({ display: showButton ? 'flex' : 'none' });
@@ -3390,6 +3417,8 @@ private lastSequenceUnknownShown = 0;
 public lastRoundCardText = '';
 /** Last display state pushed to the info row (status + hint boxes). */
 public lastInfoRowVisible = false;
+/** Last display state pushed to the scoring rows (streak, Bars, total score, this-round card). */
+public lastScoreInfoVisible = true;
 /** Change keys for the achievements list; counters move progress text even
  * between unlocks, so the key spans every displayed value (no allocation). */
 private achievementKeyCount = -1;
@@ -3790,13 +3819,13 @@ if (previous.sequence[i] !== this.game.sequence[i]) { sequenceChanged = true; br
 const accessibilityChanged = this.accessibilityPanel !== panel || !previous ||
 previous.show !== show || previous.flat !== flat ||
 previous.active !== this.experienceActive || previous.caption !== caption ||
-previous.phase !== this.game.phase || previous.status !== this.statusText ||
+previous.phase !== this.game.phase || previous.flow !== this.flowPhase || previous.status !== this.statusText ||
 previous.names !== names || previous.reveal !== this.economy.getHintRevealCount() ||
 previous.shown !== this.playbackShownCount || sequenceChanged;
 if (accessibilityChanged) {
 this.accessibilityPanel = panel;
 this.accessibilityState = { show, flat, active: this.experienceActive, caption,
-phase: this.game.phase, status: this.statusText, names, sequence: [...this.game.sequence],
+phase: this.game.phase, flow: this.flowPhase, status: this.statusText, names, sequence: [...this.game.sequence],
 reveal: this.economy.getHintRevealCount(), shown: this.playbackShownCount };
 if (panel && this.experienceActive) this.renderSequenceIcons(panel);
 // Bug fix (user report): the info row holds the Your Turn hint boxes; it
@@ -3808,6 +3837,28 @@ panel?.getElementById('wall-tones-info-row')?.setProperties({
 display: this.experienceActive ? 'flex' : 'none',
 });
 this.lastInfoRowVisible = this.experienceActive;
+// Backlog 23: setup is the MR placement flow, not an idle game phase.
+// Show scoring during the intro after placement, and leave flat play unchanged.
+this.syncGameExplanationVisibility();
+const scoreInfoVisible = ![
+'choose-mode', 'scanning', 'wall-picking', 'air-placement',
+].includes(this.flowPhase);
+panel?.getElementById('wall-tones-streak-row')?.setProperties({
+display: scoreInfoVisible ? 'flex' : 'none',
+});
+panel?.getElementById('wall-tones-score-row')?.setProperties({
+display: scoreInfoVisible ? 'flex' : 'none',
+});
+panel?.getElementById('wall-tones-round-card')?.setProperties({
+display: scoreInfoVisible ? 'flex' : 'none',
+});
+panel?.getElementById('store-button')?.setProperties({
+display: scoreInfoVisible ? 'flex' : 'none',
+});
+panel?.getElementById('achievements-button')?.setProperties({
+display: scoreInfoVisible ? 'flex' : 'none',
+});
+this.lastScoreInfoVisible = scoreInfoVisible;
 const headCaptionPresent = this.world.getSceneEntity('wall-tones-head-caption') != null;
 panel?.getElementById<UIKit.Text>('wall-tones-spoken-caption')?.setProperties({
 display: show && !flat && !headCaptionPresent && caption ? 'flex' : 'none', text: caption,
