@@ -1,9 +1,12 @@
+import {selectionPanelPose, horizontalLookAway, panelOverlapsPad, rectangleInsidePolygon} from './panel-placement.js';
 import { shouldAnnounceRecord } from './record-feedback.js';
 import { BarFloatPool } from './bar-floats.js';
 import { achievementIconSrc } from './achievement-icons.js';
 import { hearingSubtitlesEnabled, colorNamesEnabled, currentSpokenCaption, voicesOffEnabled } from './accessibility.js';
 import {
 ConeGeometry,
+Matrix4,
+Raycaster,
 CylinderGeometry,
 DoubleSide,
 Hovered,
@@ -927,6 +930,7 @@ this.panelDragActiveHands.clear();
 this.player.head.getWorldPosition(this.viewer);
 this.player.head.getWorldQuaternion(this.headQuat);
 this.ghostForward.set(0, 0, -1).applyQuaternion(this.headQuat).normalize();
+if(this.setupMode!=='air'&&this.tryParkPanelOnWall())return;
 this.panelFollowTargetPos
 .copy(this.viewer)
 .addScaledVector(this.ghostForward, PANEL_PLAY_DISTANCE_M);
@@ -937,6 +941,50 @@ this.panelFollowTargetPos.z,
 PANEL_PLAY_SCALE,
 this.headQuat,
 );
+}
+
+/** Search front-facing wall space first, then adjacent walls; never behind. */
+private tryParkPanelOnWall(): boolean {
+this.planeEntityScratch.length=0;
+for(const entity of this.queries.planes.entities)this.planeEntityScratch.push(entity);
+const walls=collectVerticalWalls(this.planeEntityScratch,this.viewer);
+const forward=this.ghostForward.clone().setY(0).normalize();
+const size=this.panelWorldSize(PANEL_PLAY_SCALE);
+// A side wall can have its plane origin alongside or behind the viewer
+// while still offering space ahead. Rank surfaces, then gate each candidate.
+const ranked=walls.map(w=>{
+ const d=new Vector3(w.center.x-this.viewer.x,0,w.center.z-this.viewer.z).normalize();
+ const normal=new Vector3(w.normal.x,0,w.normal.z).normalize();
+ return {w,dot:d.dot(forward),front:Math.abs(normal.dot(forward))>=0.7};
+}).sort((a,b)=>Number(b.front)-Number(a.front)||b.dot-a.dot);
+for(const {w} of ranked){
+const normal=new Vector3(w.normal.x,0,w.normal.z).normalize();
+const right=new Vector3(normal.z,0,-normal.x);
+const offsets=[0];
+for(let x=0.25;x<=w.widthM/2;x+=0.25)offsets.push(x,-x);
+for(const yOffset of [0,0.25,-0.25,0.5,-0.5,0.75,-0.75])for(const xOffset of offsets){
+const pos=new Vector3(w.center.x,this.viewer.y+yOffset,w.center.z).addScaledVector(right,xOffset).addScaledVector(normal,0.08);
+if(new Vector3().subVectors(pos,this.viewer).setY(0).dot(forward)<=0)continue;
+let fits=true;
+const corners:{x:number;z:number}[]=[];
+for(const x of [-size.width/2-0.08,size.width/2+0.08])for(const y of [-size.height/2-0.08,size.height/2+0.08]){
+ this.panelCorner.copy(pos).addScaledVector(right,x);this.panelCorner.y+=y;
+ const surface=w.entity.object3D;
+ if(surface==null){fits=false;continue;}
+ surface.updateWorldMatrix(true,false);
+ surface.worldToLocal(this.panelCorner);
+ corners.push({x:this.panelCorner.x,z:this.panelCorner.z});
+ if(this.panelCorner.x<w.localMinX||this.panelCorner.x>w.localMaxX||this.panelCorner.z<w.localMinZ||this.panelCorner.z>w.localMaxZ)fits=false;
+}
+if(!fits||w.plane.polygon==null||!rectangleInsidePolygon([corners[0]!,corners[1]!,corners[3]!,corners[2]!],w.plane.polygon))continue;
+if(this.pads.some(p=>{p.root.getWorldPosition(this.padWorldPos);return panelOverlapsPad(pos,right,normal,size.width,size.height,this.padWorldPos,p.sizeM);}))continue;
+this.panelMatrix.lookAt(pos.clone().add(normal),pos,new Vector3(0,1,0));
+this.panelFollowTargetQuat.setFromRotationMatrix(this.panelMatrix);
+this.applyPanelLayout(pos.x,pos.y,pos.z,PANEL_PLAY_SCALE,this.panelFollowTargetQuat);
+return true;
+}
+}
+return false;
 }
 
 private isSetupPanelFollowActive(): boolean {
@@ -954,108 +1002,79 @@ this.flowPhase === 'air-placement')
 * World-anchored setup HUD: place once in front, then only slerp-snap when the
 * player looks ~PANEL_LOOK_AWAY_DEG away from the panel.
 */
-private tickSetupPanelFollow(delta: number): void {
-if (!this.isSetupPanelFollowActive()) {
-this.panelSnapActive = false;
-return;
-}
-const entity = this.world.getSceneEntity('wall-tones-panel');
-if (entity == null) {
-return;
-}
-const position = entity.getVectorView(Transform, 'position');
-const orientation = entity.getVectorView(Transform, 'orientation');
-const scale = entity.getVectorView(Transform, 'scale');
-if (!this.panelPositionSaved) {
-this.savedPanelPosition.set(position);
-this.savedPanelScale.set(scale);
-this.panelPositionSaved = true;
+private panelRaycaster = new Raycaster();
+private panelRayHits: import('three').Intersection[] = [];
+private panelMatrix = new Matrix4();
+private panelCorner = new Vector3();
+
+/** Read the live UIKit rectangle, including document scale, not a guessed HUD size. */
+private panelWorldSize(scaleValue: number): {width:number; height:number} {
+const panel=this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+const root=panel?.document.querySelector('.panel-root');
+const size=root?.size.value;
+const docScale=panel?.document.scale.x ?? 1;
+return {width:(size?.[0] ?? 420)/100*docScale*scaleValue,
+height:(size?.[1] ?? 650)/100*docScale*scaleValue};
 }
 
+/** Per-hand ray test: a UI hand must not also select a surface or place a pad. */
+private handPointsAtPanel(hand:'left'|'right', headerOnly=false): boolean {
+const panel=this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+if (panel==null) return false;
+const raySpace=this.player.raySpaces[hand];
+raySpace.updateWorldMatrix(true,false);
+raySpace.getWorldPosition(this.panelRaycaster.ray.origin);
+raySpace.getWorldQuaternion(this.gripQuat);
+this.panelRaycaster.ray.direction.set(0,0,-1).applyQuaternion(this.gripQuat).normalize();
+this.panelRaycaster.near=0; this.panelRaycaster.far=6;
+this.panelRayHits.length=0;
+const target=headerOnly?panel.getElementById('wall-tones-panel-header'):panel;
+if(target==null)return false;
+this.panelRaycaster.intersectObject(target,true,this.panelRayHits);
+return this.panelRayHits.some(hit=>hit.distance>0.01);
+}
+
+private tickSetupPanelFollow(delta: number): void {
+if (!this.isSetupPanelFollowActive()) {this.panelSnapActive=false;return;}
+if (this.panelDragging) return;
+const entity=this.world.getSceneEntity('wall-tones-panel');
+if (entity==null)return;
+const position=entity.getVectorView(Transform,'position');
+const orientation=entity.getVectorView(Transform,'orientation');
+const scale=entity.getVectorView(Transform,'scale');
+if(!this.panelPositionSaved){this.savedPanelPosition.set(position);this.savedPanelScale.set(scale);this.panelPositionSaved=true;}
 this.player.head.getWorldPosition(this.viewer);
 this.player.head.getWorldQuaternion(this.headQuat);
-this.ghostForward.set(0, 0, -1).applyQuaternion(this.headQuat).normalize();
-// Eye-level menu: ignore gaze pitch so the panel height stays at eye level
-// even when the player looks down at the pads while setup starts.
-this.ghostForward.y = 0;
-if (this.ghostForward.lengthSq() < 1e-6) {
-this.ghostForward.set(0, 0, -1);
+this.ghostForward.set(0,0,-1).applyQuaternion(this.headQuat).setY(0).normalize();
+if(this.ghostForward.lengthSq()<1e-6)this.ghostForward.set(0,0,-1);
+this.panelFollowPos.set(position[0]!,position[1]!,position[2]!);
+this.panelFollowQuat.set(orientation[0]!,orientation[1]!,orientation[2]!,orientation[3]!);
+const selecting=this.flowPhase==='wall-picking'||this.flowPhase==='air-placement';
+const threshold=selecting?50:PANEL_LOOK_AWAY_DEG;
+// Freeze the destination for an entire snap. Head motion and a candidate ray
+// can no longer write competing targets on successive frames.
+if(!this.panelWorldAnchored || (!this.panelSnapActive && horizontalLookAway(this.viewer,this.ghostForward,this.panelFollowPos)>=threshold)){
+if(selecting){
+ const height=this.panelWorldSize(PANEL_FOLLOW_SCALE).height;
+ const target=selectionPanelPose(this.viewer,this.ghostForward,height,PANEL_FOLLOW_DISTANCE_M,this.flowPhase==='air-placement');
+ this.panelFollowTargetPos.set(target.x,target.y,target.z);
+}else{
+ this.panelFollowTargetPos.copy(this.viewer).addScaledVector(this.ghostForward,PANEL_FOLLOW_DISTANCE_M);
+ this.panelFollowTargetPos.y=this.viewer.y+PANEL_FOLLOW_Y_OFFSET_M;
 }
-this.ghostForward.normalize();
-this.panelFollowTargetPos
-.copy(this.viewer)
-.addScaledVector(this.ghostForward, PANEL_FOLLOW_DISTANCE_M);
-this.panelFollowTargetPos.y = this.viewer.y + PANEL_FOLLOW_Y_OFFSET_M;
-this.panelFollowTargetQuat.copy(this.headQuat);
-
-this.panelFollowPos.set(position[0]!, position[1]!, position[2]!);
-this.panelFollowQuat.set(
-orientation[0]!,
-orientation[1]!,
-orientation[2]!,
-orientation[3]!,
-);
-
-if (!this.panelWorldAnchored) {
-position[0] = this.panelFollowTargetPos.x;
-position[1] = this.panelFollowTargetPos.y;
-position[2] = this.panelFollowTargetPos.z;
-orientation[0] = this.panelFollowTargetQuat.x;
-orientation[1] = this.panelFollowTargetQuat.y;
-orientation[2] = this.panelFollowTargetQuat.z;
-orientation[3] = this.panelFollowTargetQuat.w;
-scale[0] = PANEL_FOLLOW_SCALE;
-scale[1] = PANEL_FOLLOW_SCALE;
-scale[2] = PANEL_FOLLOW_SCALE;
-this.panelWorldAnchored = true;
-this.panelSnapActive = false;
-this.restorePanelPointerCapture();
-return;
+this.panelMatrix.lookAt(this.viewer,this.panelFollowTargetPos,new Vector3(0,1,0));
+this.panelFollowTargetQuat.setFromRotationMatrix(this.panelMatrix);
+this.panelSnapActive=true;
+if(!this.panelWorldAnchored){this.panelFollowPos.copy(this.panelFollowTargetPos);this.panelFollowQuat.copy(this.panelFollowTargetQuat);this.panelWorldAnchored=true;}
 }
-
-const dodging = this.tickPanelRayDodge();
-if (dodging) {
-this.panelFollowTargetPos.copy(this.panelDodgeTargetPos);
-this.panelSnapActive = true;
-} else {
-this.toPanel.copy(this.panelFollowPos).sub(this.viewer);
-if (this.toPanel.lengthSq() > 1e-6) {
-this.toPanel.normalize();
-const lookDot = Math.min(
-1,
-Math.max(-1, this.ghostForward.dot(this.toPanel)),
-);
-const lookAwayDeg = (Math.acos(lookDot) * 180) / Math.PI;
-if (lookAwayDeg >= PANEL_LOOK_AWAY_DEG) {
-this.panelSnapActive = true;
-}
-}
-}
-
-if (!this.panelSnapActive) {
-scale[0] = PANEL_FOLLOW_SCALE;
-scale[1] = PANEL_FOLLOW_SCALE;
-scale[2] = PANEL_FOLLOW_SCALE;
-return;
-}
-
-const alpha =
-1 - Math.pow(1 - PANEL_FOLLOW_SLERP, Math.max(delta, 1 / 120) * 72);
-this.panelFollowPos.lerp(this.panelFollowTargetPos, alpha);
-this.panelFollowQuat.slerp(this.panelFollowTargetQuat, alpha);
-position[0] = this.panelFollowPos.x;
-position[1] = this.panelFollowPos.y;
-position[2] = this.panelFollowPos.z;
-orientation[0] = this.panelFollowQuat.x;
-orientation[1] = this.panelFollowQuat.y;
-orientation[2] = this.panelFollowQuat.z;
-orientation[3] = this.panelFollowQuat.w;
-scale[0] = PANEL_FOLLOW_SCALE;
-scale[1] = PANEL_FOLLOW_SCALE;
-scale[2] = PANEL_FOLLOW_SCALE;
-if (this.panelFollowPos.distanceTo(this.panelFollowTargetPos) <= PANEL_SNAP_ARRIVE_M) {
-this.panelSnapActive = false;
-}
+if(!this.panelSnapActive)return;
+const alpha=1-Math.pow(1-PANEL_FOLLOW_SLERP,Math.max(delta,1/120)*72);
+this.panelFollowPos.lerp(this.panelFollowTargetPos,alpha);
+this.panelFollowQuat.slerp(this.panelFollowTargetQuat,alpha);
+position[0]=this.panelFollowPos.x;position[1]=this.panelFollowPos.y;position[2]=this.panelFollowPos.z;
+orientation[0]=this.panelFollowQuat.x;orientation[1]=this.panelFollowQuat.y;orientation[2]=this.panelFollowQuat.z;orientation[3]=this.panelFollowQuat.w;
+scale[0]=scale[1]=scale[2]=PANEL_FOLLOW_SCALE;
+if(this.panelFollowPos.distanceTo(this.panelFollowTargetPos)<=PANEL_SNAP_ARRIVE_M)this.panelSnapActive=false;
 this.restorePanelPointerCapture();
 }
 
@@ -1620,6 +1639,7 @@ this.player.head.getWorldPosition(this.viewer);
 this.clearRoomSetupVisuals();
 this.clearPads();
 this.flowPhase = 'wall-picking';
+this.resetSetupPanelAnchor();
 this.selectedSlotTransforms = [];
 this.slotSelectLatched = false;
 // Panel stays head-followed until play starts.
@@ -1863,6 +1883,7 @@ this.clearRoomSetupVisuals();
 this.clearPads();
 this.setSpatialMeshesVisible(true);
 this.flowPhase = 'wall-picking';
+this.resetSetupPanelAnchor();
 this.lackingSpatialData = false;
 this.selectedSlotTransforms = [];
 this.slotSelectLatched = false;
@@ -1927,8 +1948,9 @@ const tipHovered = this.sampleTipInVolume(slot, 'hover') != null;
 const tipPressed = this.sampleTipInVolume(slot, 'press') != null;
 const hovered = ecsHovered || slot === rayHovered || tipHovered;
 const ecsPressed =
-ecsHovered &&
-this.entityInQuery(slot.entity, this.queries.slotPressed.entities);
+ecsHovered && this.entityInQuery(slot.entity, this.queries.slotPressed.entities) &&
+XR_HANDS.some(hand=>!this.handPointsAtPanel(hand) && !this.panelDragActiveHands.has(hand) &&
+(this.findRayHoveredSlot(hand)===slot || this.findTipHoveredSlot(hand)===slot));
 setCandidateVisualState(slot, hovered ? 'hovered' : 'idle');
 if (!ecsPressed) {
 this.slotArmed.set(slot.candidateIndex, true);
@@ -1949,6 +1971,7 @@ if (!select.active && !select.start) {
 continue;
 }
 anySelectActive = true;
+if(this.handPointsAtPanel(hand)||this.panelDragActiveHands.has(hand))continue;
 if (this.slotSelectLatched && !select.start) {
 continue;
 }
@@ -2008,6 +2031,7 @@ const adapter = this.input.xr.visualAdapters[hand].peek();
 if (adapter != null && !adapter.connected) {
 continue;
 }
+if(this.handPointsAtPanel(hand))continue;
 const raySpace = this.player.raySpaces[hand];
 raySpace.updateWorldMatrix(true, false);
 raySpace.getWorldPosition(this.rayOrigin);
@@ -2132,6 +2156,7 @@ private startAirPlacement(line: WallTonesClipId): void {
 this.clearRoomSetupVisuals();
 this.setSpatialMeshesVisible(false);
 this.flowPhase = 'air-placement';
+this.resetSetupPanelAnchor();
 this.airPlaceStep = 0;
 this.lackingSpatialData = true;
 this.airOrientationLocked = null;
@@ -2216,7 +2241,7 @@ return;
 this.updateGhostPadPose(hand, delta);
 
 const select = this.input.xr.getSelectState(hand);
-if (!select.start) {
+if (!select.start || this.handPointsAtPanel(hand) || this.panelDragActiveHands.has(hand)) {
 return;
 }
 if (this.dominantHand == null) {
@@ -2842,9 +2867,7 @@ this.panelDragSkipHands.clear();
 this.panelDragActiveHands.clear();
 return;
 }
-const panelHovered =
-this.world.getSceneEntity('wall-tones-panel')?.hasComponent(Hovered) ===
-true;
+
 const distance = playingDrag ? PANEL_PLAY_DISTANCE_M : PANEL_FOLLOW_DISTANCE_M;
 const scaleValue = playingDrag ? PANEL_PLAY_SCALE : PANEL_FOLLOW_SCALE;
 let selectHeld = false;
@@ -2856,6 +2879,7 @@ this.panelDragActiveHands.delete(hand);
 continue;
 }
 if (select.start) {
+const panelHovered=this.handPointsAtPanel(hand,setupDrag);
 if (playingDrag === panelHovered) {
 this.panelDragSkipHands.add(hand);
 this.panelDragActiveHands.delete(hand);
@@ -2870,6 +2894,8 @@ this.panelDragSkipHands.has(hand) ||
 ) {
 continue;
 }
+// A deliberate grab owns the pose until release, including orientation.
+this.panelSnapActive = false;
 selectHeld = true;
 const raySpace = this.player.raySpaces[hand];
 raySpace.getWorldPosition(this.rayOrigin);
@@ -2879,12 +2905,20 @@ this.panelFollowTargetPos
 .copy(this.rayOrigin)
 .addScaledVector(this.rayDir, distance);
 if (setupDrag) {
+this.player.head.getWorldPosition(this.viewer);
+const height=this.panelWorldSize(scaleValue).height;
+const clearance=this.flowPhase==='air-placement'?0.25:0.10;
+this.panelFollowTargetPos.y=Math.max(this.panelFollowTargetPos.y,this.viewer.y+clearance+height/2);
 // Keep the follow anchor at the drop point so the panel stays put.
 this.panelFollowPos.copy(this.panelFollowTargetPos);
 this.panelWorldAnchored = true;
 }
 this.player.head.getWorldPosition(this.viewer);
 this.player.head.getWorldQuaternion(this.headQuat);
+if(setupDrag){
+this.panelMatrix.lookAt(this.viewer,this.panelFollowTargetPos,new Vector3(0,1,0));
+this.headQuat.setFromRotationMatrix(this.panelMatrix);
+}
 this.applyPanelLayout(
 this.panelFollowTargetPos.x,
 this.panelFollowTargetPos.y,
@@ -4018,4 +4052,4 @@ return new Promise((resolve) => {
 window.setTimeout(resolve, seconds * 1000);
 });
 }
-  }
+                                 }
