@@ -24,7 +24,7 @@ const MAIN_MENU_DESKTOP = {
 } as const;
 
 /**
- * Phone flat viewports only. Lowered and shrunk so the full hub stays inside
+ * Phone flat viewports only. Width-fit with side padding so the hub fills
  * an iPhone frame. Desktop and immersive scene transforms are untouched.
  */
 const MAIN_MENU_MOBILE = {
@@ -191,8 +191,19 @@ export class PanelSystem extends createSystem({}) {
     position[0] = layout.position[0];
     position[1] = layout.position[1];
     position[2] = layout.position[2];
-    scale[0] = layout.scale;
-    scale[1] = layout.scale;
-    scale[2] = layout.scale;
+    let flatScale: number = layout.scale;
+    if (isCompactFlatViewport()) {
+      // 520 cm authored width; 90% of the frustum leaves 5% padding per side.
+      // Limit height in landscape instead of cropping the controls.
+      const camera = this.world.camera;
+      const fov = 'fov' in camera ? Number(camera.fov) : 70;
+      const depth = Math.abs(camera.position.z - layout.position[2]);
+      const frustumHeight = 2 * depth * Math.tan(fov * Math.PI / 360);
+      flatScale = Math.min(frustumHeight * (window.innerWidth / window.innerHeight) * 0.9 / 5.2,
+        frustumHeight * 0.86 / 6.2);
+    }
+    scale[0] = flatScale;
+    scale[1] = flatScale;
+    scale[2] = flatScale;
   }
 }
