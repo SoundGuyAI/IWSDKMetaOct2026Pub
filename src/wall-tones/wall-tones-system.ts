@@ -167,6 +167,7 @@ roundCardVisibleText: string | null;
 barFloatsActive: boolean;
 infoRowVisible: boolean;
 scoreInfoVisible: boolean;
+gameExplanationDisplay: unknown;
 scoringUiDisplays: Record<string, string | null>;
 toggleStore: () => void;
 toggleAchievements: () => void;
@@ -1160,13 +1161,17 @@ this.flatBackdropHidden = false;
 /* The panel canvas font covers ASCII only: U+2026, curly quotes and em-dashes
  * render as tofu squares on the panel. Keep every panel-bound string ASCII. */
 private setFlatHintVisible(visible: boolean): void {
-// User decision 2026-11-07: the title block and instructions stay visible
-// permanently so the panel size no longer changes between phases.
+// Keep the game explanation in flat play and after placement, not in MR setup.
+// The panel heading remains present, so setup still has a stable anchor.
 void visible;
-this.world
-.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+this.syncGameExplanationVisibility();
+}
+
+private syncGameExplanationVisibility(): void {
+const setup = ['choose-mode', 'scanning', 'wall-picking', 'air-placement'].includes(this.flowPhase);
+this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel')
 ?.getElementById('flat-play-hint')
-?.setProperties({ display: 'flex' });
+?.setProperties({ display: setup ? 'none' : 'flex' });
 }
 
 private setPanelHeaderVisible(visible: boolean): void {
@@ -1417,6 +1422,10 @@ return null;
 },
 get infoRowVisible() {
 return system.lastInfoRowVisible;
+},
+get gameExplanationDisplay() {
+return system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('flat-play-hint')?.properties.peek().display;
 },
 get scoreInfoVisible() {
 return system.lastScoreInfoVisible;
@@ -3689,6 +3698,7 @@ display: this.experienceActive ? 'flex' : 'none',
 this.lastInfoRowVisible = this.experienceActive;
 // Backlog 23: setup is the MR placement flow, not an idle game phase.
 // Show scoring during the intro after placement, and leave flat play unchanged.
+this.syncGameExplanationVisibility();
 const scoreInfoVisible = ![
 'choose-mode', 'scanning', 'wall-picking', 'air-placement',
 ].includes(this.flowPhase);
@@ -3800,4 +3810,4 @@ return new Promise((resolve) => {
 window.setTimeout(resolve, seconds * 1000);
 });
 }
-}
+  }
