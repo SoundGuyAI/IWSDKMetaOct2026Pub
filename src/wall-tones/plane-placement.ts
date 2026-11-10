@@ -21,6 +21,8 @@ type XRPlaneData = {
 export type PlacedPadTransform = {
   position: [number, number, number];
   quaternion: [number, number, number, number];
+  /** Per-surface pad size, retained through picking and final placement. */
+  sizeM?: number;
 };
 
 export type WallSlot = {
@@ -639,3 +641,24 @@ export function planDesktopGridFromCamera(
     };
   });
 }
+
+/** Choose each table independently so a larger table never hides a smaller one. */
+export function generateMixedTablePadCandidates(tables: WallSlot[], sizes: readonly number[]): WallPadCandidate[] {
+  const result: WallPadCandidate[] = [];
+  tables.forEach((table, wallIndex) => {
+    let cells: WallPadCandidate[] = [];
+    let chosenSize = sizes[sizes.length - 1]!;
+    for (const size of sizes) {
+      const arrangement = generateTablePadArrangements([table], size);
+      if (arrangement.length >= 4) {
+        cells = arrangement;
+        chosenSize = size;
+        break;
+      }
+    }
+    // Even a surface that cannot fit four should still offer its usable cells.
+    if (cells.length === 0) cells = generateTablePadCandidates([table], chosenSize);
+    for (const cell of cells) result.push({ ...cell, wallIndex, candidateIndex: result.length, sizeM: chosenSize });
+  });
+  return result;
+        }
