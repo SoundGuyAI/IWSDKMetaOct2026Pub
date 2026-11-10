@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, hide-mobile-enter-xr]
+    branches: [main, setup-hide-scoring]
   workflow_dispatch:
     # Merge-ready procedure (enduring rule, applies to every merge):
     # 1. Copy the PR head SHA from the PR page.
@@ -100,6 +100,7 @@ jobs:
       - run: npm ci
       - run: node --test tests/unit/*.test.mjs
       - run: npm run typecheck
+      - run: node --test tests/unit/*.test.mjs
       - run: npm run build
 
   e2e-desktop:

@@ -144,7 +144,7 @@
       Watch the sequence, then press each pad once. Wrong pad resets this run; best streak stays.
     </div>
     </div>
-    <div class="stat-row">
+    <div id="wall-tones-streak-row" class="stat-row">
       <div class="stat-label">Streak</div>
       <div style="flex-direction: row; align-items: center; gap: 5px">
         <div class="stat-label">current</div>
@@ -153,7 +153,7 @@
         <div id="wall-tones-best-streak" class="stat-value">0</div>
       </div>
     </div>
-    <div class="stat-row">
+    <div id="wall-tones-score-row" class="stat-row">
       <div style="flex-direction: row; align-items: center; gap: 6px">
         <img id="bars-icon-img" src="ui/bars-icon.png" style="width: 20px; height: 20px" />
         <div class="stat-label">Gold Bars</div>
