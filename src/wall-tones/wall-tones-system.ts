@@ -1,3 +1,6 @@
+import { getVoiceGender } from './speech.js';
+import { CypherProgress, type CypherWindow } from './cypher-progress.js';
+import { captureCypherCast } from './cypher-voice.js';
 import {selectionPanelPose, horizontalLookAway, panelOverlapsPad, rectangleInsidePolygon} from './panel-placement.js';
 import { shouldAnnounceRecord } from './record-feedback.js';
 import { BarFloatPool } from './bar-floats.js';
@@ -143,6 +146,7 @@ import {
   WallTonesEconomy,
   nextOpenThreshold,
 } from './economy.js';
+import { SAVER_PRICE_BARS, saverRetryPlan, saverUnitsForStreak } from './consumable-values.js';
 import {
 getActiveWorldKind,
 switchBackToHubMenu,
@@ -164,6 +168,9 @@ const FLAT_BACKDROP_NODE_IDS = [
 ] as const;
 
 type WallTonesDebugBridge = {
+cypherWindowsStarted: number;
+cypherSeamVisible: boolean;
+previewCypherSeam: (visible: boolean) => void;
 phase: string;
 flowPhase: string;
 sequence: readonly number[];
@@ -178,6 +185,18 @@ unlockedAchievements: string[];
 purchases: number;
 presses: number;
 storeOpen: boolean;
+/** Game Over popup is showing (a wrong note ended the run). */
+gameOverOpen: boolean;
+gameOverUseSaver: () => void;
+gameOverBuySaver: () => void;
+savers: number;
+streakNow: number;
+/** Test-only: the New run button action. */
+gameOverNewRun: () => void;
+/** Whether the run's single automatic replay is spent (test-only). */
+idleReplaySpent: boolean;
+/** Status line text currently shown (test-only). */
+statusLineText: string;
 sequenceRowVisible: boolean;
 sequenceBoxesShown: number;
 sequenceUnknownShown: number;
@@ -199,6 +218,10 @@ buyTopSecret: () => void;
 ownsTopSecret: boolean;
 /** Test-only wallet funding for e2e. */
 grantBars: (amount: number) => void;
+/** Test-only saver inventory seeding for e2e. */
+grantSavers: (units: number) => void;
+/** Test-only streak seeding for e2e Game Over cost checks. */
+setStreak: (streak: number) => void;
 flatAwaitingStart: boolean;
 slotCandidateCount: number;
 selectedSlotCount: number;
@@ -263,6 +286,13 @@ private readonly game = new WallTonesSequence();
 private readonly economy = new WallTonesEconomy();
 private storeOpen = false;
 private achievementsOpen = false;
+/** Game Over popup shown after a wrong note; New run starts the next run. */
+private gameOverOpen = false;
+// No buy-confirm arming: buying a saver is a single press that applies it when enough are held (owner request 2026-11-11).
+/** Run id whose single automatic replay has been used. */
+private idleReplayUsedRunId = -1;
+/** Until this time the status line shows the caption-only idle nudge. */
+private idleNudgeUntil = 0;
 private readonly viewer = new Vector3();
 private readonly captionProjection = new Vector3();
 private readonly cameraForward = new Vector3();
@@ -303,6 +333,10 @@ private flowPhase: FlowPhase = 'inactive';
 private setupMode: SetupMode | null = null;
 private pads: PadRuntime[] = [];
 private playbackQueue: Promise<void> = Promise.resolve();
+private readonly cypherProgress = new CypherProgress();
+private cypherSeam: Object3D | null = null;
+private cypherSeamEntity: Entity | null = null;
+private cypherFlatSeam: HTMLElement | null = null;
 private scanStartedAt = -1;
 /** One-shot room capture while scanning; blocks repeat initiateRoomCapture calls. */
 private roomCaptureInFlight = false;
@@ -377,6 +411,8 @@ private panelDragging = false;
 private readonly panelDragSkipHands = new Set<string>();
 /** Hands whose current pinch IS dragging the panel. */
 private readonly panelDragActiveHands = new Set<string>();
+private readonly rayPressLatched = new Set<number>();
+private readonly gazeSelectLatched = new Set<string>();
 /** Last time a drag ended; briefly suppresses the ray dodge at the drop point. */
 private panelDragDoneAt = 0;
 private blinkCuePad: PadRuntime | null = null;
@@ -568,6 +604,7 @@ this.flowPhase === 'playing' &&
 (this.game.phase === 'input' || this.inputNeedsClear)
 ) {
 this.readFingertipTouches();
+this.readRayAndGazeTouches();
 }
 this.tickIdleReplay();
 }
@@ -644,6 +681,15 @@ panel
 panel
 .getElementById('achievements-close-button')
 ?.addEventListener('click', () => this.setAchievementsOpen(false));
+panel
+.getElementById('gameover-use-saver-button')
+?.addEventListener('click', () => this.onGameOverUseSaver());
+panel
+.getElementById('gameover-buy-saver-button')
+?.addEventListener('click', () => this.onGameOverBuySaver());
+panel
+.getElementById('gameover-newrun-button')
+?.addEventListener('click', () => this.onGameOverNewRun());
 
 panel
 .getElementById('buy-hint-button')
@@ -723,9 +769,11 @@ return;
 }
 this.experienceActive = false;
 this.flowPhase = 'inactive';
+this.setCypherSeam(false);
 this.barFloats.clear();
 this.achievementsOpen = false;
 this.storeOpen = false;
+this.gameOverOpen = false;
 this.syncMenuPopupVisibility();
 this.roundBarsEarned = 0;
 this.roundBonusEarned = 0;
@@ -769,6 +817,8 @@ this.setRepeatUiVisible(false);
 this.panelDragging = false;
 this.panelDragSkipHands.clear();
 this.panelDragActiveHands.clear();
+this.rayPressLatched.clear();
+this.gazeSelectLatched.clear();
 this.setBlinkCuePad(null);
 this.disposeBlinkCueArrow();
 this.skipVoiceVisible = false;
@@ -935,6 +985,8 @@ private layoutPanelForMrPlay(): void {
 this.panelDragging = false;
 this.panelDragSkipHands.clear();
 this.panelDragActiveHands.clear();
+this.rayPressLatched.clear();
+this.gazeSelectLatched.clear();
 this.player.head.getWorldPosition(this.viewer);
 this.player.head.getWorldQuaternion(this.headQuat);
 this.ghostForward.set(0, 0, -1).applyQuaternion(this.headQuat).normalize();
@@ -1450,6 +1502,9 @@ button.style.bottom = `max(${rounded}px, env(safe-area-inset-bottom))`;
 private publishDebugBridge(): void {
 const system = this;
 window.__wallTonesDebug = {
+get cypherWindowsStarted() { return system.cypherProgress.completedWindows; },
+get cypherSeamVisible() { return system.cypherSeam != null; },
+previewCypherSeam: (visible) => { system.setCypherSeam(visible); },
 get phase() {
 return system.game.phase;
 },
@@ -1495,6 +1550,25 @@ return system.economy.getPresses();
 },
 get storeOpen() {
 return system.storeOpen;
+},
+get gameOverOpen() {
+return system.gameOverOpen;
+},
+gameOverNewRun: () => system.onGameOverNewRun(),
+gameOverUseSaver: () => system.onGameOverUseSaver(),
+gameOverBuySaver: () => system.onGameOverBuySaver(),
+get savers() {
+return system.economy.getSavers();
+},
+get streakNow() {
+return system.game.streak;
+},
+get idleReplaySpent() {
+return system.idleReplayUsedRunId === system.game.runId;
+},
+get statusLineText() {
+return String(system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('wall-tones-status')?.properties.peek().text ?? '');
 },
 get sequenceRowVisible() {
 return system.lastSequenceRowVisible;
@@ -1601,6 +1675,12 @@ return system.economy.ownsTopSecret();
 // Test-only: fund the wallet without grinding rounds.
 grantBars: (amount: number) => {
 system.debugGrantBars(amount);
+},
+grantSavers: (units: number) => {
+system.debugGrantSavers(units);
+},
+setStreak: (streak: number) => {
+system.debugSetStreak(streak);
 },
 get flatAwaitingStart() {
 return system.flatAwaitingStart;
@@ -2497,7 +2577,9 @@ this.setSpatialMeshesVisible(false);
 transforms.forEach((transform, index) => {
 const size = transform.sizeM ?? this.placementPadSizeM();
 const pad = createPadRuntime(this.world, index as WallTonePadId, size, {
-rayInteractable: false,
+// RayInteractable so a controller/hand ray (and the shared Hovered/Pressed
+// state) can press the pad; fingertip volumes stay the primary touch path.
+rayInteractable: true,
 anchor: true,
 });
 pad.root.position.set(...transform.position);
@@ -2809,6 +2891,126 @@ this.handlePadInput(pad.padIndex);
 }
 this.syncPadProximityVisual(pad, now);
 }
+}
+
+// Ray, gaze and pinch presses on the play grid. The desktop grid already
+// presses pads through the shared Hovered/Pressed state, and wall slots are
+// picked with a hand ray plus pinch; play pads get the same far input so a
+// tone can be pressed without walking up to the grid. Fingertip touch stays
+// the primary path and runs first each frame; hover/press visuals merge in
+// after it has reset them.
+private readRayAndGazeTouches(): void {
+const now = performance.now() / 1000;
+// (a) Controller/hand rays: play pads are RayInteractable, so the shared
+// input system already tracks ray hover and pinch press per pad. A private
+// latch keeps this edge-trigger independent of the fingertip re-arm.
+for (const pad of this.pads) {
+const hovered = this.entityInQuery(pad.entity, this.queries.padHovered.entities);
+const pressed =
+hovered &&
+this.entityInQuery(pad.entity, this.queries.padPressed.entities);
+if (hovered && !pad.hoverInside) {
+pad.hoverInside = true;
+this.syncPadProximityVisual(pad, now);
+}
+if (!pressed) {
+this.rayPressLatched.delete(pad.padIndex);
+continue;
+}
+if (this.rayPressLatched.has(pad.padIndex)) {
+continue;
+}
+this.rayPressLatched.add(pad.padIndex);
+if (this.inputNeedsClear) {
+continue;
+}
+const prevFinger = pad.fingerInside;
+pad.fingerInside = true;
+this.syncPadProximityVisual(pad, now);
+pad.fingerInside = prevFinger;
+this.handlePadInput(pad.padIndex);
+}
+// (b) Gaze: a head-forward ray against the pads, committed by a pinch from
+// either hand. A pinch aimed at the panel, or one whose hand ray already
+// rests on a pad, belongs to that target instead.
+const gazePad = this.findGazeHoveredPad();
+if (gazePad != null && !gazePad.hoverInside) {
+gazePad.hoverInside = true;
+this.syncPadProximityVisual(gazePad, now);
+}
+for (const hand of XR_HANDS) {
+const select = this.input.xr.getSelectState(hand);
+if (!select.active && !select.start) {
+this.gazeSelectLatched.delete(hand);
+continue;
+}
+if (this.gazeSelectLatched.has(hand) && !select.start) {
+continue;
+}
+if (
+gazePad == null ||
+this.inputNeedsClear ||
+this.handPointsAtPanel(hand) ||
+this.panelDragActiveHands.has(hand) ||
+this.findRayHoveredPad(hand) != null
+) {
+this.gazeSelectLatched.add(hand);
+continue;
+}
+this.gazeSelectLatched.add(hand);
+const prevFinger = gazePad.fingerInside;
+gazePad.fingerInside = true;
+this.syncPadProximityVisual(gazePad, now);
+gazePad.fingerInside = prevFinger;
+this.handlePadInput(gazePad.padIndex);
+}
+}
+
+// Closest play pad under a hand's controller/hand ray, or null. Mirrors the
+// slot-picking ray test.
+private findRayHoveredPad(hand: 'left' | 'right'): PadRuntime | null {
+const adapter = this.input.xr.visualAdapters[hand].peek();
+if (adapter != null && !adapter.connected) {
+return null;
+}
+if (this.handPointsAtPanel(hand)) {
+return null;
+}
+const raySpace = this.player.raySpaces[hand];
+raySpace.updateWorldMatrix(true, false);
+raySpace.getWorldPosition(this.rayOrigin);
+raySpace.getWorldQuaternion(this.gripQuat);
+// XR target rays point along local -Z.
+this.rayDir.set(0, 0, -1).applyQuaternion(this.gripQuat).normalize();
+return this.findPadAlongRay();
+}
+
+// Closest play pad under the head-forward gaze ray, or null.
+private findGazeHoveredPad(): PadRuntime | null {
+this.player.head.getWorldPosition(this.rayOrigin);
+this.player.head.getWorldQuaternion(this.headQuat);
+this.rayDir.set(0, 0, -1).applyQuaternion(this.headQuat).normalize();
+return this.findPadAlongRay();
+}
+
+private findPadAlongRay(): PadRuntime | null {
+let best: PadRuntime | null = null;
+let bestAlong = Number.POSITIVE_INFINITY;
+for (const pad of this.pads) {
+pad.root.getWorldPosition(this.padWorldPos);
+this.rayToSlot.copy(this.padWorldPos).sub(this.rayOrigin);
+const along = this.rayToSlot.dot(this.rayDir);
+if (along < 0.05 || along > 6) {
+continue;
+}
+this.rayClosest.copy(this.rayOrigin).addScaledVector(this.rayDir, along);
+const lateral = this.rayClosest.distanceTo(this.padWorldPos);
+if (lateral <= pad.sizeM * 0.55 && along < bestAlong) {
+bestAlong = along;
+best = pad;
+}
+}
+return best;
 }
 
 private syncPadProximityVisual(pad: PadRuntime, _now: number): void {
@@ -3157,6 +3359,7 @@ this.barsFirstEarnedPending = true;
 }
 this.renderPanel();
 if (completed) {
+if (this.cypherSeam) this.setCypherSeam(false);
 // Lock input immediately so a held finger/click cannot eat the next round.
 this.game.phase = 'playback';
 this.inputNeedsClear = true;
@@ -3232,9 +3435,74 @@ await this.speech.speakAsync('barsFirstEarn');
 if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
 }
+if (narrIntact()) {
+const window = this.cypherProgress.beginWindow(streak);
+if (window) await this.playCypherWindow(window, narrIntact);
+}
+if (!this.experienceActive || this.flowPhase !== 'playing') return;
 await this.playSequence();
 });
 }
+}
+
+/** Between patterns only: all voices and effects share the existing Skip lifecycle. */
+private async playCypherWindow(window: CypherWindow, intact: () => boolean): Promise<void> {
+const cast = captureCypherCast(getVoiceGender());
+if (window.seam === 'closed') this.setCypherSeam(false);
+if (window.fault) {
+this.statusText = 'Diagnostic: timing fault. Checking...';
+this.renderPanel();
+await this.speech.speakStoryEffect('glitch');
+} else if (window.seam === 'closed') {
+await this.speech.speakStoryEffect('shimmer');
+} else if (window.speaker === 'cypher') {
+await this.speech.speakStoryEffect(['next-window', 'your-machine', 'next-lock', 'longer-window'].includes(window.id) ? 'squawk' : 'open');
+}
+if (window.seam === 'open' && intact()) this.setCypherSeam(true);
+for (const id of window.lines) {
+if (!intact()) break;
+await this.speech.speakStoryLine(id, cast);
+if (intact()) this.cypherProgress.lineCompleted();
+}
+if (window.speaker === 'cypher' && intact()) await this.speech.speakStoryEffect('close');
+if (!intact()) this.setCypherSeam(false);
+}
+
+/** A small fictional light seam beside the play field, never a flash or pad overlay. */
+private setCypherSeam(visible: boolean): void {
+this.cypherFlatSeam?.remove();
+this.cypherFlatSeam = null;
+if (visible && this.isFlatView()) {
+const seam = document.createElement('div');
+seam.id = 'wall-tones-story-seam';
+seam.setAttribute('aria-hidden', 'true');
+Object.assign(seam.style, {position: 'fixed', left: '12%', top: '36%', width: '12px', height: '90px', background: '#c5faff', boxShadow: '0 0 8px 2px #49c9e3', clipPath: 'polygon(25% 0, 100% 35%, 35% 55%, 90% 100%, 0 55%, 65% 35%)', pointerEvents: 'none', zIndex: '100000'});
+document.body.appendChild(seam);
+this.cypherFlatSeam = seam;
+}
+this.cypherSeamEntity?.dispose({ disposeResources: true });
+this.cypherSeamEntity = null;
+this.cypherSeam = null;
+if (!visible) return;
+const root = new Object3D();
+root.name = 'CypherLightSeam';
+const camera = this.world.camera;
+const points = [new Vector3(0, 0.2, 0), new Vector3(0.025, 0.07, 0), new Vector3(-0.018, -0.04, 0), new Vector3(0.015, -0.2, 0)];
+for (let i = 1; i < points.length; i++) {
+const a = points[i - 1]!, b = points[i]!;
+const mesh = new Mesh(new CylinderGeometry(0.003, 0.003, a.distanceTo(b), 6), new MeshBasicMaterial({color: 0x77dfff, depthTest: false, depthWrite: false}));
+mesh.position.copy(a).add(b).multiplyScalar(0.5);
+mesh.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), b.clone().sub(a).normalize());
+mesh.updateMatrix();
+root.add(mesh);
+}
+this.cypherSeamEntity = this.world.createTransformEntity(root);
+camera.getWorldPosition(root.position);
+camera.getWorldQuaternion(root.quaternion);
+root.position.add(new Vector3(0, 0.9, -2).applyQuaternion(root.quaternion));
+root.updateMatrix();
+root.updateMatrixWorld(true);
+this.cypherSeam = root;
 }
 
 private async startFlatPlayFromPad(padIndex: number): Promise<void> {
@@ -3270,6 +3538,7 @@ return this.game.runImprovedBest;
 }
 
 private async onWrongInput(): Promise<void> {
+this.setCypherSeam(false);
 this.firstRun = false;
 this.roundBarsEarned = 0;
 this.roundBonusEarned = 0;
@@ -3294,8 +3563,98 @@ await this.wait(WRONG_RESET_DELAY_S);
 if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
 }
+// The run is over: no automatic restart. A Game Over popup (a panel in
+// MR) waits for New run.
+this.storeOpen = false;
+this.achievementsOpen = false;
+this.gameOverOpen = true;
+this.statusText = 'Game Over';
+this.syncMenuPopupVisibility();
+this.renderGameOverSummary();
+this.renderPanel();
+});
+}
+
+private renderGameOverSummary(): void {
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+panel
+?.getElementById<UIKit.Text>('gameover-summary')
+?.setProperties({
+text: `You reached ${this.game.streak}. Best ${this.game.bestStreak}.`,
+});
+const need = saverUnitsForStreak(this.game.streak);
+const have = this.economy.getSavers();
+panel
+?.getElementById<UIKit.Text>('gameover-saver-status')
+?.setProperties({ text: `Streak savers: ${have}. Retry the same pattern costs ${need}.` });
+panel
+?.getElementById<UIKit.Text>('gameover-use-saver-label')
+?.setProperties({
+text: have >= need ? `Use ${need} saver${need > 1 ? 's' : ''} - retry same pattern` : `Need ${need} saver${need > 1 ? 's' : ''} to retry`,
+color: have >= need ? 0x1c1d20 : 0x8a8f98,
+});
+const missing = Math.max(0, need - have);
+const plan = saverRetryPlan(have, need, this.economy.getBars(), SAVER_PRICE_BARS);
+panel
+?.getElementById<UIKit.Text>('gameover-buy-saver-label')
+?.setProperties({
+text: `Buy ${missing} saver${missing > 1 ? 's' : ''} & retry - ${plan.costBars}`,
+color: plan.affordable ? 0x1c1d20 : 0xd43a3a,
+});
+}
+
+/** One-press purchase (owner request 2026-11-11, no confirm step): buys exactly the savers missing for an immediate retry and applies them in the same press. Cost model unchanged: missing units at 18 Bars each. */
+private onGameOverBuySaver(): void {
+if (!this.gameOverOpen) return;
+const need = saverUnitsForStreak(this.game.streak);
+const plan = saverRetryPlan(this.economy.getSavers(), need, this.economy.getBars(), SAVER_PRICE_BARS);
+if (!plan.affordable) {
+void playErrorTone();
+this.renderGameOverSummary();
+return;
+}
+for (let i = 0; i < plan.buy; i++) this.economy.buySaver(SAVER_PRICE_BARS);
+this.showAchievementToasts();
+if (plan.apply) {
+this.onGameOverUseSaver();
+return;
+}
+this.renderGameOverSummary();
+this.renderPanel();
+}
+
+/** Spend savers and replay the same pattern; the streak and pattern stay. */
+private onGameOverUseSaver(): void {
+if (!this.gameOverOpen || !this.experienceActive || this.flowPhase !== 'playing') return;
+const need = saverUnitsForStreak(this.game.streak);
+if (!this.economy.useSavers(need)) {
+void playErrorTone();
+return;
+}
+this.gameOverOpen = false;
+this.syncMenuPopupVisibility();
+this.game.inputStep = 0;
+this.game.phase = 'playback';
+this.idleReplayQueued = false;
+this.renderPanel();
+this.playbackQueue = this.playbackQueue.then(async () => {
+if (!this.experienceActive || this.flowPhase !== 'playing') return;
+await this.playSequence();
+});
+}
+
+private onGameOverNewRun(): void {
+if (!this.gameOverOpen || !this.experienceActive || this.flowPhase !== 'playing') {
+return;
+}
+this.gameOverOpen = false;
+this.syncMenuPopupVisibility();
 this.game.onWrongInput();
 this.renderPanel();
+this.playbackQueue = this.playbackQueue.then(async () => {
+if (!this.experienceActive || this.flowPhase !== 'playing') {
+return;
+}
 // Same Simon fanfare as a fresh start, pause, then the first note again.
 await this.playSimonStartupFanfare();
 if (!this.experienceActive || this.flowPhase !== 'playing') {
@@ -3460,6 +3819,16 @@ return;
 if (now - this.lastInputAt < IDLE_REPLAY_S) {
 return;
 }
+if (this.idleReplayUsedRunId === this.game.runId) {
+// The run's one automatic replay is spent: only a caption-only nudge,
+// no audio and no replay.
+this.lastInputAt = now;
+this.idleNudgeUntil = performance.now() + 6000;
+this.renderPanel();
+window.setTimeout(() => this.renderPanel(), 6100);
+return;
+}
+this.idleReplayUsedRunId = this.game.runId;
 this.idleReplayQueued = true;
 this.lastInputAt = now;
 this.game.inputStep = 0;
@@ -3495,7 +3864,9 @@ this.renderSequenceIcons(panel);
 panel
 .getElementById<UIKit.Text>('wall-tones-status')
 ?.setProperties({
-text: this.game.phase === 'input' ? 'Hint:' : this.statusText || 'Ready',
+text: this.game.phase === 'input'
+? (performance.now() < this.idleNudgeUntil ? 'Still there?' : 'Hint:')
+: this.statusText || 'Ready',
 });
 panel
 .getElementById<UIKit.Text>('wall-tones-current-streak')
@@ -3878,6 +4249,20 @@ this.renderPanel();
 }
 }
 
+private debugGrantSavers(units: number): void {
+this.economy.debugGrantSavers(units);
+this.renderPanel();
+}
+
+private debugSetStreak(streak: number): void {
+if (!Number.isFinite(streak) || streak < 0) return;
+this.game.streak = Math.floor(streak);
+if (this.game.streak > this.game.bestStreak) {
+this.game.bestStreak = this.game.streak;
+}
+this.renderPanel();
+}
+
 private setAchievementsOpen(open: boolean): void {
 if (this.achievementsOpen === open) return;
 this.achievementsOpen = open;
@@ -3914,7 +4299,7 @@ this.speech.speak(id);
 
 private syncMenuPopupVisibility(): void {
 const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
-const popupOpen = this.storeOpen || this.achievementsOpen;
+const popupOpen = this.storeOpen || this.achievementsOpen || this.gameOverOpen;
 panel
 ?.getElementById<UIKit.Container>('menu-view')
 ?.setProperties({ display: popupOpen ? 'none' : 'flex' });
@@ -3924,6 +4309,9 @@ panel
 panel
 ?.getElementById<UIKit.Container>('achievements-popup')
 ?.setProperties({ display: this.achievementsOpen ? 'flex' : 'none' });
+panel
+?.getElementById<UIKit.Container>('gameover-popup')
+?.setProperties({ display: this.gameOverOpen ? 'flex' : 'none' });
 }
 
 private onToggleStore(): void {
