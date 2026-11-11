@@ -3666,13 +3666,12 @@ gap: 2,
 width: TILE,
 height: TILE + 16,
 borderRadius: 14,
-backgroundColor: locked ? 0x2a2c31 : 0x3a3410,
-opacity: locked ? 0.45 : 1,
 });
 tile.add(new UIKit.Image({
 src: achievementIconSrc(cat.id),
-width: 40,
-height: 40,
+width: 44,
+height: 44,
+opacity: locked ? 0.55 : 1,
 }));
 tile.add(new UIKit.Text({
 fontSize: 13,
