@@ -211,6 +211,10 @@ buyTopSecret: () => void;
 ownsTopSecret: boolean;
 /** Test-only wallet funding for e2e. */
 grantBars: (amount: number) => void;
+/** Test-only saver inventory seeding for e2e. */
+grantSavers: (units: number) => void;
+/** Test-only streak seeding for e2e Game Over cost checks. */
+setStreak: (streak: number) => void;
 flatAwaitingStart: boolean;
 slotCandidateCount: number;
 selectedSlotCount: number;
@@ -1647,6 +1651,12 @@ return system.economy.ownsTopSecret();
 // Test-only: fund the wallet without grinding rounds.
 grantBars: (amount: number) => {
 system.debugGrantBars(amount);
+},
+grantSavers: (units: number) => {
+system.debugGrantSavers(units);
+},
+setStreak: (streak: number) => {
+system.debugSetStreak(streak);
 },
 get flatAwaitingStart() {
 return system.flatAwaitingStart;
@@ -3887,6 +3897,20 @@ this.renderPanel();
 }
 }
 
+private debugGrantSavers(units: number): void {
+this.economy.debugGrantSavers(units);
+this.renderPanel();
+}
+
+private debugSetStreak(streak: number): void {
+if (!Number.isFinite(streak) || streak < 0) return;
+this.game.streak = Math.floor(streak);
+if (this.game.streak > this.game.bestStreak) {
+this.game.bestStreak = this.game.streak;
+}
+this.renderPanel();
+}
+
 private setAchievementsOpen(open: boolean): void {
 if (this.achievementsOpen === open) return;
 this.achievementsOpen = open;
@@ -4269,4 +4293,4 @@ return new Promise((resolve) => {
 window.setTimeout(resolve, seconds * 1000);
 });
 }
-        }
+  }
