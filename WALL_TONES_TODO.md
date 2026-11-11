@@ -56,7 +56,7 @@ Oded tested the merged main build and reported that everything looks fine. The a
 
 - [ ] 29. MR achievement for playing standing at walls, or on a mixed wall+table layout.
 - [ ] 30. Research: can the SDK track how much a player moves (fitness-style) in wall or mixed wall+table modes? If not, estimate from the distances between the placed pads. For later score use; no health or calorie claims.
-- [ ] 41. Achievement VO narration when the achievements panel is opened (requested 2026-11-07): new recorded voice lines in both voices, first-time/once-ever gating; design together with the achievement grid rework (item 38).
+- [ ] 41. Achievement VO narration (requested 2026-11-07). IMPLEMENTED in PR #61 (not merged): six new recorded lines (male Puck and female Laomedeia, for PC, iPhone and MR), approved wording, played once ever the first time the Achievements board opens (localStorage wall-tones-achievements-intro-played), respecting Voices off (skips without marking) and Skip voice. Verified: transcripts match the approved wording; unit tests; local browser check on desktop (plays once, not on reopen, silent and unmarked with voices off). NOT verified: nobody has listened to the clips; headset (MR) and iPhone listening and level check pending.
 
 ## In progress
 
