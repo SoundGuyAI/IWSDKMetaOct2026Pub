@@ -343,6 +343,11 @@ export function solidifyGhostPad(pad: PadRuntime, sizeM: number): void {
   if (!pad.isGhost) {
     return;
   }
+  // Play pads must answer controller/hand rays like the flat grid ones
+  // (createPadRuntime adds this for them); ghosts skip it while placing.
+  if (!pad.entity.hasComponent(RayInteractable)) {
+    pad.entity.addComponent(RayInteractable);
+  }
   pad.sizeM = sizeM;
   const toRemove: Object3D[] = [];
   pad.root.traverse((child) => {
