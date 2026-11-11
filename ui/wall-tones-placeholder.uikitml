@@ -239,7 +239,7 @@
   <div id="achievements-popup" class="popup-overlay" style="display: none">
     <div class="popup-card">
       <div class="heading" style="font-size: 22px">Achievements</div>
-      <div id="achievements-screen-list" style="flex-direction: column; gap: 8px"></div>
+      <div id="achievements-screen-list" style="flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 8px; width: 308px; height: 232px"></div>
       <Button id="achievements-close-button" class="button" style="margin-top: 6px">
         <ButtonIcon><X></X></ButtonIcon>
         <ButtonLabel>Close</ButtonLabel>
