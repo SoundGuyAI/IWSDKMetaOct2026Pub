@@ -116,8 +116,6 @@ Oded tested the merged main build and reported that everything looks fine. The a
 
 ## Notes
 
-- **2026-11-11 (Asia/Jerusalem):** Reference link filed by Oded: https://sandflow.ai/sand3d/ .
-
 - **2026-11-08 (Asia/Jerusalem):** Owner moved items 31, 32 and 44 into Store and pattern-row ideas, and 33 and 34 into Future ideas (out of MR and menu polish).
 
 - **2026-11-08 (Asia/Jerusalem):** Owner rule: after each PR merges or its review state changes, update this file the same day - move finished items to Done, mark active ones in progress. Audited on this date: items 9, 10, 24 and 40 marked done; items 20, 21, 23, 25, 26, 27 and 28 reflect their open PRs.
