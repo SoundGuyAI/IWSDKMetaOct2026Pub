@@ -9,8 +9,19 @@ import {
   createSystem,
   Transform,
   UIKitMLAsset,
+  Visibility,
   VisibilityState,
 } from '@iwsdk/core';
+import { Matrix4, Quaternion, Vector3 } from 'three';
+import {
+  PANEL_FOLLOW_DISTANCE_M,
+  PANEL_FOLLOW_SCALE,
+  PANEL_FOLLOW_SLERP,
+  PANEL_FOLLOW_Y_OFFSET_M,
+  PANEL_LOOK_AWAY_DEG,
+  PANEL_SNAP_ARRIVE_M,
+} from './wall-tones/constants.js';
+import { horizontalLookAway } from './wall-tones/panel-placement.js';
 import { enterXrButtonVisible } from './enter-xr-visibility.js';
 
 /** Main-menu Enter XR is owned by AppModeSystem (starts Wall Tones + launchXR). */
@@ -57,6 +68,93 @@ export class PanelSystem extends createSystem({}) {
   private mainMenuLayoutSaved = false;
   /** When true, flat (non-immersive) layout should be applied. */
   private flatLayoutActive = false;
+  private menuAnchored = false;
+  private menuSnapping = false;
+  private readonly menuViewer = new Vector3();
+  private readonly menuForward = new Vector3();
+  private readonly menuHeadQuat = new Quaternion();
+  private readonly menuPos = new Vector3();
+  private readonly menuTargetPos = new Vector3();
+  private readonly menuQuat = new Quaternion();
+  private readonly menuTargetQuat = new Quaternion();
+  private readonly menuMatrix = new Matrix4();
+  private readonly menuUp = new Vector3(0, 1, 0);
+
+  /**
+   * Item 47: in immersive XR the startup main menu follows the player with the
+   * same placement rules as the in-game panel (distance, height offset, scale,
+   * look-away threshold, eased snap). Flat layouts are untouched.
+   */
+  update(delta: number): void {
+    const entity = this.world.getSceneEntity('main-menu-panel');
+    const immersive =
+      this.world.xrEnabled &&
+      this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
+    if (
+      entity == null ||
+      !immersive ||
+      entity.getValue(Visibility, 'isVisible') !== true
+    ) {
+      this.menuAnchored = false;
+      this.menuSnapping = false;
+      return;
+    }
+    const position = entity.getVectorView(Transform, 'position');
+    const orientation = entity.getVectorView(Transform, 'orientation');
+    const scale = entity.getVectorView(Transform, 'scale');
+    this.player.head.getWorldPosition(this.menuViewer);
+    this.player.head.getWorldQuaternion(this.menuHeadQuat);
+    this.menuForward.set(0, 0, -1).applyQuaternion(this.menuHeadQuat).setY(0);
+    if (this.menuForward.lengthSq() < 1e-6) {
+      this.menuForward.set(0, 0, -1);
+    }
+    this.menuForward.normalize();
+    this.menuPos.set(position[0]!, position[1]!, position[2]!);
+    if (
+      !this.menuAnchored ||
+      (!this.menuSnapping &&
+        horizontalLookAway(this.menuViewer, this.menuForward, this.menuPos) >=
+          PANEL_LOOK_AWAY_DEG)
+    ) {
+      this.menuTargetPos
+        .copy(this.menuViewer)
+        .addScaledVector(this.menuForward, PANEL_FOLLOW_DISTANCE_M);
+      this.menuTargetPos.y = this.menuViewer.y + PANEL_FOLLOW_Y_OFFSET_M;
+      this.menuMatrix.lookAt(this.menuViewer, this.menuTargetPos, this.menuUp);
+      this.menuTargetQuat.setFromRotationMatrix(this.menuMatrix);
+      this.menuSnapping = true;
+      if (!this.menuAnchored) {
+        this.menuPos.copy(this.menuTargetPos);
+        this.menuQuat.copy(this.menuTargetQuat);
+        this.menuAnchored = true;
+      } else {
+        this.menuQuat.set(
+          orientation[0]!,
+          orientation[1]!,
+          orientation[2]!,
+          orientation[3]!,
+        );
+      }
+    }
+    if (!this.menuSnapping) {
+      return;
+    }
+    const alpha =
+      1 - Math.pow(1 - PANEL_FOLLOW_SLERP, Math.max(delta, 1 / 120) * 72);
+    this.menuPos.lerp(this.menuTargetPos, alpha);
+    this.menuQuat.slerp(this.menuTargetQuat, alpha);
+    position[0] = this.menuPos.x;
+    position[1] = this.menuPos.y;
+    position[2] = this.menuPos.z;
+    orientation[0] = this.menuQuat.x;
+    orientation[1] = this.menuQuat.y;
+    orientation[2] = this.menuQuat.z;
+    orientation[3] = this.menuQuat.w;
+    scale[0] = scale[1] = scale[2] = PANEL_FOLLOW_SCALE;
+    if (this.menuPos.distanceTo(this.menuTargetPos) <= PANEL_SNAP_ARRIVE_M) {
+      this.menuSnapping = false;
+    }
+  }
 
   init(): void {
     if (!this.world.xrEnabled) {
@@ -206,4 +304,4 @@ export class PanelSystem extends createSystem({}) {
     scale[1] = flatScale;
     scale[2] = flatScale;
   }
-}
+          }
