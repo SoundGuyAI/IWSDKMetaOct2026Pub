@@ -127,7 +127,7 @@ jobs:
           - shard: 2
             files: tests/e2e/wall-tones.desktop.spec.ts tests/e2e/wall-tones.desktop.pointer.spec.ts
           - shard: 3
-            files: tests/e2e/wall-tones.head-caption.spec.ts tests/e2e/wall-tones.accessibility.spec.ts tests/e2e/wall-tones.feedback.spec.ts tests/e2e/wall-tones.loading.spec.ts tests/e2e/wall-tones.misc.spec.ts tests/e2e/wall-tones.mute.spec.ts tests/e2e/wall-tones.polish.spec.ts tests/e2e/wall-tones.xr-entry.spec.ts
+            files: tests/e2e/wall-tones.head-caption.spec.ts tests/e2e/wall-tones.accessibility.spec.ts tests/e2e/wall-tones.feedback.spec.ts tests/e2e/wall-tones.loading.spec.ts tests/e2e/wall-tones.misc.spec.ts tests/e2e/wall-tones.movement.spec.ts tests/e2e/wall-tones.mute.spec.ts tests/e2e/wall-tones.polish.spec.ts tests/e2e/wall-tones.xr-entry.spec.ts
     name: e2e-desktop (shard ${{ matrix.shard }})
     steps:
       - uses: actions/checkout@v4
@@ -213,6 +213,7 @@ jobs:
             tests/e2e/wall-tones.feedback.spec.ts \
             tests/e2e/wall-tones.loading.spec.ts \
             tests/e2e/wall-tones.misc.spec.ts \
+            tests/e2e/wall-tones.movement.spec.ts \
             tests/e2e/wall-tones.mute.spec.ts \
             tests/e2e/wall-tones.polish.spec.ts \
             tests/e2e/wall-tones.xr-entry.spec.ts \
