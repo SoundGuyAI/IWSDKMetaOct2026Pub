@@ -24,6 +24,13 @@
       "components": { "RayInteractable": {} }
     },
     {
+      "id": "thumbs-lab-panel",
+      "name": "Thumbs Lab Panel",
+      "content": { "type": "asset", "asset": "thumbs-lab-panel" },
+      "transform": { "position": [0, 1.78, -2.75], "scale": 0.34 },
+      "components": { "RayInteractable": {} }
+    },
+    {
       "id": "wall-tones-panel",
       "name": "Wall Tones Panel",
       "content": {
