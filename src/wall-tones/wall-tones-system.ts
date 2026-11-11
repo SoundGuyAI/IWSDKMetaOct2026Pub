@@ -102,6 +102,7 @@ import {
 applyPadVisualState,
 createGhostPadRuntime,
 createPadRuntime,
+findPadById,
 defaultDesktopPadSize,
 defaultHeadsetPadSize,
 disposePadRuntimes,
@@ -2647,7 +2648,7 @@ await this.wait(SIMON_FANFARE_END_PAUSE_S);
 /** Pads are placed in fanfare order in MR air placement, so array position
 * is NOT the pad id there. Always resolve a note/press id to its pad. */
 private padById(padIndex: number): PadRuntime | undefined {
-return this.pads.find((p) => p.padIndex === padIndex);
+return findPadById(this.pads, padIndex);
 }
 
 private async blinkPadNote(padIndex: number): Promise<void> {
