@@ -19,7 +19,11 @@ export class WallTonesSequence {
     return this.streak > this.bestStreakBeforeRun;
   }
 
+  /** Counts runs (a run is one game until a wrong note). */
+  runId = 0;
+
   resetRun(): void {
+    this.runId += 1;
     this.bestStreakBeforeRun = this.bestStreak;
     this.sequence.length = 0;
     this.inputStep = 0;
@@ -33,6 +37,7 @@ export class WallTonesSequence {
   }
 
   startNewRun(): void {
+    this.runId += 1;
     this.bestStreakBeforeRun = this.bestStreak;
     this.sequence.length = 0;
     this.inputStep = 0;
