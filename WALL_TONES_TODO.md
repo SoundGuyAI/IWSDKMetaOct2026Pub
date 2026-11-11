@@ -49,6 +49,7 @@ Oded tested the merged main build and reported that everything looks fine. The a
 
 - [ ] 48. Achievement screen mockup with icons, extending item 38. Produce after Oded reviews the list; do not implement the screen yet.
 - [ ] 49. Store mockup as a visual icon progression tree, like skill development. Extends item 44; mockup only, purchase/unlock rules remain undecided. Await backlog review before starting.
+- [ ] 50. Air-placed pad colours must match the fanfare note order: pads 1/2/3/4 = green/red/blue/yellow (G R B Y). Reported by Oded 2026-11-11; he thinks the current order differs - verify the actual current order first, then fix if wrong.
 
 ### Remaining MR polish
 
