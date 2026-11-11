@@ -58,6 +58,32 @@ export interface AchievementCategory {
   hidden?: boolean;
 }
 
+/** Open-ended levels (backlog 39, user approved "for now"): past the listed
+ * thresholds, categories keep leveling on the 10/25/50/100 pattern repeated
+ * per decade (100, 250, 500, 1000, 2500, 5000, 10000, ...). Listed
+ * thresholds are never changed; the hidden Secret category stays single level. */
+export function nextOpenThreshold(after: number): number {
+  for (let scale = 1; ; scale *= 10) {
+    for (const m of [10, 25, 50]) {
+      const t = m * scale;
+      if (t > after) return t;
+    }
+  }
+}
+
+/** Every threshold a value has reached: the listed ones, then open levels. */
+export function reachedThresholds(cat: { levels: readonly number[]; hidden?: boolean }, value: number): number[] {
+  const out: number[] = [];
+  for (const t of cat.levels) if (value >= t) out.push(t);
+  if (cat.hidden === true || out.length < cat.levels.length) return out;
+  let t = nextOpenThreshold(cat.levels[cat.levels.length - 1]!);
+  while (value >= t) {
+    out.push(t);
+    t = nextOpenThreshold(t);
+  }
+  return out;
+}
+
 export const ACHIEVEMENT_CATEGORIES: readonly AchievementCategory[] = [
   { id: 'streak', label: 'Streak', description: 'Best pattern streak.', levels: [5, 10, 15, 20, 25] },
   { id: 'bars', label: 'Bars', description: 'Lifetime gold Bars earned.', levels: [5, 10, 25, 50, 100] },
@@ -170,15 +196,14 @@ export class WallTonesEconomy {
     const cat = ACHIEVEMENT_CATEGORIES.find((c) => c.id === id);
     if (cat == null) return { value: 0, level: 0, next: null };
     const value = this.categoryValue(cat, liveStreak);
-    let level = 0;
-    for (const threshold of cat.levels) {
-      if (value >= threshold) level += 1;
-    }
-    return {
-      value,
-      level,
-      next: level < cat.levels.length ? cat.levels[level]! : null,
-    };
+    const reached = reachedThresholds(cat, value);
+    const level = reached.length;
+    const last = reached[level - 1];
+    let next: number | null;
+    if (level < cat.levels.length) next = cat.levels[level]!;
+    else if (cat.hidden === true) next = null;
+    else next = nextOpenThreshold(last ?? cat.levels[cat.levels.length - 1]!);
+    return { value, level, next };
   }
 
   /** Pattern boxes revealed during Your Turn at the owned hint level. */
@@ -262,10 +287,8 @@ export class WallTonesEconomy {
     for (const cat of ACHIEVEMENT_CATEGORIES) {
       if (cat.hidden) continue;
       const value = this.categoryValue(cat, liveStreak);
-      for (const threshold of cat.levels) {
-        if (value >= threshold) {
-          this.unlock(`${cat.id}-${threshold}`, `${cat.label} ${threshold}`, cat.description);
-        }
+      for (const threshold of reachedThresholds(cat, value)) {
+        this.unlock(`${cat.id}-${threshold}`, `${cat.label} ${threshold}`, cat.description);
       }
     }
   }
