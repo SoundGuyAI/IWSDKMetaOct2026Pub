@@ -410,4 +410,4 @@ export class AppModeSystem extends createSystem({}) {
       display: mode === 'meditation' ? 'flex' : 'none',
     });
   }
-                                                                      }
+}
