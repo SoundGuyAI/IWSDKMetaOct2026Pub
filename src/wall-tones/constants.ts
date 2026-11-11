@@ -88,8 +88,8 @@ export const SIMON_FANFARE_END_PAUSE_S = 0.65;
 /** Times the first pad repeats in the startup fanfare. */
 export const SIMON_FANFARE_FIRST_PAD_REPEATS = 4;
 
-/** Startup fanfare pad order: green, red, yellow, blue. */
-export const SIMON_FANFARE_PAD_ORDER: readonly number[] = [0, 1, 3, 2];
+/** Startup fanfare pad order: green, red, blue, yellow (matches air placement order, backlog item 50). */
+export const SIMON_FANFARE_PAD_ORDER: readonly number[] = [0, 1, 2, 3];
 /** If a blinking pad is outside this view cone (degrees from look), show a cue arrow. */
 export const BLINK_CUE_OFFSCREEN_DEG = 28;
 /** Ghost orientation slerp factor per frame at ~72 Hz (higher = snappier). */
