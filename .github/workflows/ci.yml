@@ -156,7 +156,30 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      # Browser first (downloads from the Playwright CDN, no apt). System
+      # packages are installed through apt only when Chromium cannot launch
+      # without them, and apt is retried, because apt mirrors failing DNS
+      # lookups (Nov 11: three runs died at "apt-get update") must not stop
+      # the whole suite. No test is skipped or changed.
+      - name: Install Playwright Chromium
+        run: |
+          set -euo pipefail
+          npx playwright install chromium
+          launch_check() {
+            node -e "require('@playwright/test').chromium.launch().then(b=>b.close()).catch(e=>{console.error(e.message.split('\\n')[0]);process.exit(1)})"
+          }
+          if launch_check; then
+            echo 'Chromium launches without extra system packages.'
+          else
+            ok=false
+            for attempt in 1 2 3 4; do
+              if sudo apt-get update -o Acquire::Retries=5 && npx playwright install-deps chromium; then ok=true; break; fi
+              echo "apt attempt $attempt failed; retrying"
+              sleep $((attempt * 20))
+            done
+            [ "$ok" = true ] || { echo '::error::Could not install Chromium system packages after 4 attempts.'; exit 1; }
+            launch_check
+          fi
       - run: npm run build
       # Serial per runner (workers: 1) because gameplay timing and audio are
       # global to a page. Groups are split by measured CI duration (run
