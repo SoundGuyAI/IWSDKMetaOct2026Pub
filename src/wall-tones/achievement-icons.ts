@@ -66,6 +66,7 @@ const FILL: Record<string, [string, string]> = {
   score: ['#f59a4a', '#a8622b'],
   store: ['#4a90e2', '#2c5687'],
   presses: ['#e5534b', '#89312d'],
+  movement: ['#22d3ee', '#0e7490'],
   secret: ['#a78bfa', '#645396'],
 };
 export type TileState = 'on' | 'sel' | 'off';
@@ -104,6 +105,14 @@ function glyphPath(ctx: CanvasRenderingContext2D, id: string): void {
     }
     ctx.closePath();
     ctx.stroke();
+  } else if (id === 'movement') {
+    // Double-headed arrow over stride dots: walking between two points.
+    P('M14 28h36M14 28l7-7M14 28l7 7M50 28l-7-7M50 28l-7 7');
+    for (const dx of [-8, 0, 8]) {
+      ctx.beginPath();
+      ctx.arc(32 + dx, 44, 1.8, 0, Math.PI * 2);
+      ctx.fill();
+    }
   } else {
     P('M22 24c0-12 20-12 20 0 0 7-10 8-10 16');
     ctx.beginPath();
@@ -297,4 +306,4 @@ export function achievementIconSrc(id: string): string {
   const url = canvas.toDataURL('image/png');
   cache.set(id, url);
   return url;
-    }
+      }
