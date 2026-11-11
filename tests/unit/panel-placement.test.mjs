@@ -109,3 +109,39 @@ test('actual setup header drag cancels an in-flight follow snap',()=>{
  Object.assign(h,{useDesktopPath:()=>false,flowPhase:'wall-picking',panelSnapActive:true,panelDragSkipHands:new Set(),panelDragActiveHands:new Set(),input:{xr:{getSelectState:()=>({start:true,active:true})}},handPointsAtPanel:()=>true,player:{raySpaces:{left:{getWorldPosition:v=>v.set(0,1.3,0),getWorldQuaternion:q=>q.identity()}},head:{getWorldPosition:v=>v.copy(eye),getWorldQuaternion:q=>q.identity()}},rayOrigin:new Vector3(),gripQuat:new Quaternion(),rayDir:new Vector3(),panelFollowTargetPos:new Vector3(),panelFollowPos:new Vector3(),panelWorldSize:()=>({height:1,width:1}),viewer:new Vector3(),headQuat:new Quaternion(),panelMatrix:new Matrix4(),applyPanelLayout:()=>{}});
  h.tickPanelDrag();assert.equal(h.panelSnapActive,false);assert.equal(h.panelDragging,true);
 });
+
+// Use both production input methods: real per-hand ray target selection feeds
+// the per-pinch drag latch, rather than stubbing the latch's hover decision.
+const inputJs=ts.transpileModule('class InputHarness { '+method('tickPanelDrag')+' '+method('handPointsAtPanel')+' }',{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
+const InputHarness=new Function('XR_HANDS','PANEL_PLAY_DISTANCE_M','PANEL_FOLLOW_DISTANCE_M','PANEL_PLAY_SCALE','PANEL_FOLLOW_SCALE','Vector3',inputJs+';return InputHarness;')(['left','right'],1.2,1.7,.28,.3,Vector3);
+function inputFixture(phase='playing'){
+ const h=new InputHarness(),header={},panel={getElementById:id=>id==='wall-tones-panel-header'?header:null};
+ const states={left:{start:false,active:false},right:{start:false,active:false}},hits={left:'wall',right:'wall'},layouts=[];let currentHand;
+ const rays=Object.fromEntries(['left','right'].map(hand=>[hand,{updateWorldMatrix:()=>{currentHand=hand;},getWorldPosition:v=>v.set(hand==='left'?-.2:.2,1.3,0),getWorldQuaternion:q=>q.identity()}]));
+ Object.assign(h,{useDesktopPath:()=>false,flowPhase:phase,panelSnapActive:true,panelDragging:false,panelDragSkipHands:new Set(),panelDragActiveHands:new Set(),input:{xr:{getSelectState:hand=>states[hand]}},world:{getSceneObject:()=>panel},panelRaycaster:{ray:{origin:new Vector3(),direction:new Vector3()},intersectObject:(target,recursive,out)=>{if(hits[currentHand]==='header'||(target===panel&&hits[currentHand]==='button'))out.push({distance:1});}},panelRayHits:[],player:{raySpaces:rays,head:{getWorldPosition:v=>v.copy(eye),getWorldQuaternion:q=>q.identity()}},rayOrigin:new Vector3(),gripQuat:new Quaternion(),rayDir:new Vector3(),panelFollowTargetPos:new Vector3(),panelFollowPos:new Vector3(),panelWorldSize:()=>({height:1,width:1}),viewer:new Vector3(),headQuat:new Quaternion(),panelMatrix:new Matrix4(),applyPanelLayout:(...args)=>layouts.push(args),renderPanel:()=>{}});
+ return {h,states,hits,layouts};
+}
+test('production gameplay routing: wall, pad, empty-space and UI-button pinches never move panel',()=>{
+ for(const hand of ['left','right'])for(const target of ['wall','pad','empty','button']){
+  const f=inputFixture();f.hits[hand]=target;f.states[hand]={start:true,active:true};f.h.tickPanelDrag();
+  assert.equal(f.layouts.length,0,`${hand} ${target}`);assert.equal(f.h.panelDragging,false);assert.equal(f.h.panelSnapActive,true);
+  // Moving a held gameplay pinch onto the header must not convert it to drag.
+  f.hits[hand]='header';f.states[hand]={start:false,active:true};f.h.tickPanelDrag();assert.equal(f.layouts.length,0);
+  f.states[hand]={start:false,active:false};f.h.tickPanelDrag();assert.equal(f.h.panelDragSkipHands.size,0);
+ }
+});
+test('production header drag/drop works in play and setup, latches until release and can regrab',()=>{
+ for(const phase of ['playing','wall-picking','air-placement'])for(const hand of ['left','right']){
+  const f=inputFixture(phase);f.hits[hand]='header';f.states[hand]={start:true,active:true};f.h.tickPanelDrag();
+  assert.equal(f.layouts.length,1,`${phase} ${hand}`);assert.equal(f.h.panelDragging,true);assert.equal(f.h.panelSnapActive,false);
+  f.hits[hand]='wall';f.states[hand]={start:false,active:true};f.h.tickPanelDrag();assert.equal(f.layouts.length,2);
+  const drop=f.layouts.at(-1);f.states[hand]={start:false,active:false};f.h.tickPanelDrag();assert.equal(f.h.panelDragging,false);assert.equal(f.h.panelDragActiveHands.size,0);
+  f.states[hand]={start:true,active:true};f.h.tickPanelDrag();assert.equal(f.layouts.length,2);assert.deepEqual(f.layouts.at(-1),drop);
+  f.states[hand]={start:false,active:false};f.h.tickPanelDrag();f.hits[hand]='header';f.states[hand]={start:true,active:true};f.h.tickPanelDrag();assert.equal(f.layouts.length,3);
+ }
+});
+test('production setup placement and UI buttons do not arm dragging',()=>{
+ for(const phase of ['wall-picking','air-placement'])for(const target of ['wall','button']){
+  const f=inputFixture(phase);f.hits.left=target;f.states.left={start:true,active:true};f.h.tickPanelDrag();assert.equal(f.layouts.length,0);
+ }
+});
