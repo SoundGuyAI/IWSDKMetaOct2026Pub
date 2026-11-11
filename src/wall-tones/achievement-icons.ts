@@ -52,9 +52,88 @@ function number(ctx: CanvasRenderingContext2D, text: string, y: number): void {
   ctx.fillText(text, SIZE / 2, y);
 }
 
+
+/**
+ * Category tiles: square, dark, neon border, white outline glyph. One glyph per
+ * category, same stroke weight, so the meaning reads at a glance.
+ */
+const LINE_SIZE = 96;
+const NEON: Record<string, string> = {
+  streak: '#ff8a3d',
+  bars: '#f5d90a',
+  score: '#4aa8ff',
+  store: '#3ddc84',
+  presses: '#ff5a8a',
+  secret: '#b48cff',
+};
+
+function lineGlyph(id: string): string {
+  const hit = cache.get('line:' + id);
+  if (hit !== undefined) return hit;
+  const c = document.createElement('canvas');
+  c.width = LINE_SIZE;
+  c.height = LINE_SIZE;
+  const ctx = c.getContext('2d');
+  if (ctx == null) return '';
+  const neon = NEON[id] ?? '#ffffff';
+  ctx.fillStyle = '#15181d';
+  ctx.beginPath();
+  ctx.roundRect(3, 3, LINE_SIZE - 6, LINE_SIZE - 6, 14);
+  ctx.fill();
+  ctx.strokeStyle = neon;
+  ctx.lineWidth = 4;
+  ctx.stroke();
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 5;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  const m = LINE_SIZE / 2;
+  ctx.beginPath();
+  if (id === 'streak') {
+    ctx.moveTo(m, 18);
+    ctx.bezierCurveTo(m + 26, 38, m + 24, 62, m, 78);
+    ctx.bezierCurveTo(m - 24, 62, m - 26, 38, m, 18);
+    ctx.moveTo(m, 46);
+    ctx.bezierCurveTo(m + 10, 56, m + 9, 66, m, 72);
+    ctx.bezierCurveTo(m - 9, 66, m - 10, 56, m, 46);
+  } else if (id === 'bars') {
+    ctx.moveTo(30, 40); ctx.lineTo(66, 40); ctx.lineTo(72, 54); ctx.lineTo(24, 54); ctx.closePath();
+    ctx.moveTo(22, 58); ctx.lineTo(48, 58); ctx.lineTo(52, 72); ctx.lineTo(16, 72); ctx.closePath();
+    ctx.moveTo(52, 58); ctx.lineTo(74, 58); ctx.lineTo(80, 72); ctx.lineTo(56, 72); ctx.closePath();
+    ctx.moveTo(38, 26); ctx.lineTo(58, 26);
+  } else if (id === 'score') {
+    for (let i = 0; i < 10; i++) {
+      const r = i % 2 === 0 ? 32 : 14;
+      const a = -Math.PI / 2 + (i * Math.PI) / 5;
+      const x = m + Math.cos(a) * r;
+      const y = m + 3 + Math.sin(a) * r;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+  } else if (id === 'store') {
+    ctx.roundRect(24, 40, 48, 38, 8);
+    ctx.moveTo(34, 40); ctx.arc(m, 40, 14, Math.PI, 0);
+    ctx.moveTo(m, 54); ctx.lineTo(m, 64);
+  } else if (id === 'presses') {
+    ctx.roundRect(20, 20, 24, 24, 6);
+    ctx.roundRect(52, 20, 24, 24, 6);
+    ctx.roundRect(20, 52, 24, 24, 6);
+    ctx.roundRect(52, 52, 24, 24, 6);
+  } else {
+    ctx.arc(m, 38, 14, Math.PI * 1.05, Math.PI * 2.4);
+    ctx.bezierCurveTo(m + 16, 54, m, 54, m, 62);
+    ctx.moveTo(m, 74); ctx.lineTo(m, 75);
+  }
+  ctx.stroke();
+  const url = c.toDataURL('image/png');
+  cache.set('line:' + id, url);
+  return url;
+}
+
 import { ACHIEVEMENT_ICON_PNG } from './achievement-icon-art.js';
 
 export function achievementIconSrc(id: string): string {
+  if (id in NEON) return lineGlyph(id);
   const hit = cache.get(id);
   if (hit !== undefined) return hit;
   const art = ACHIEVEMENT_ICON_PNG[id];
@@ -136,4 +215,4 @@ export function achievementIconSrc(id: string): string {
   const url = canvas.toDataURL('image/png');
   cache.set(id, url);
   return url;
-}
+      }
