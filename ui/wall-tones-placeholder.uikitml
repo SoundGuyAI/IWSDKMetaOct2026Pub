@@ -163,10 +163,6 @@
         <ButtonLabel>Achievements</ButtonLabel>
       </Button>
     </div>
-    <Button id="debug-colliders-button" class="button">
-      <ButtonIcon><Bug></Bug></ButtonIcon>
-      <ButtonLabel id="debug-colliders-label">Debug colliders: OFF</ButtonLabel>
-    </Button>
     <div id="setup-mode-row" class="setup-row">
       <Button id="mode-room-scale-button" class="button">
         <ButtonIcon><LayoutGrid></LayoutGrid></ButtonIcon>
