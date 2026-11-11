@@ -150,3 +150,11 @@ Oded tested the merged main build and reported that everything looks fine. The a
 - Final accepted build: b2fa460. Complete main CI: https://github.com/SoundGuyAI/IWSDKMetaOct2026Pub/actions/runs/42935989499 .
 - Owner requested creation of CloudFlareProd from the tested main for his own Cloudflare setup. No Cloudflare settings, credentials or deployment action is part of this update.
 - Ray button interaction (4), achievement icon mockup (48), and store icon progression-tree mockup (49) are captured for his list review. No new gameplay or mockup work has started. Older unresolved economy/score and boundary-specific questions remain open; general main acceptance is not a claim that each separate investigation was explicitly tested.
+
+## Review update - 2026-11-11,19:00 Asia/Jerusalem (PR63 scope and what is left)
+
+- PR63 (branch gameover-popup, unmerged) contains only: Game Over popup with New run, one automatic replay per run (caption-only "Still there?" afterwards), and streak savers in the popup (inline Bars purchase with a confirm step, retry of the same pattern). Values are TEST VALUES, change later, all in `src/wall-tones/consumable-values.ts`: saver 18 Bars; 1/2/4/8/16 savers per miss for streaks 1-10/11-20/21-30/31-40/41-50, doubling every further 10.
+- The owner approved those numbers as starting test values on 2026-11-11 18:30 (WhatsApp reply "Yes" to the 18:29 proposal), not as final prices.
+- NOT built yet (still to do, in order of the original list): skill-tree store with levels per category and "reach level X" gates; Listen item (30 Bars, bought once, test value) and the Listen gate on the playback row; Autoplay levels (12/30/65/130 Bars then doubling; level k plays the first 5k buttons); free Replay earn (first at Hint coverage + 5, stock kept after failure, cap 2).
+- Still unsettled, not to be guessed: the tree gate X values; repeat free Replay grants beyond the first; any paid "unlock Replay" item; whether autoplayed presses earn Bars; how Listen ownership should appear for testing before the store exists; idle-prompt wording variants.
+- PR61 (achievements) needs rework after the owner's iPhone test: one-word names under icons, nicer locked icons, grid that uses the panel width, tapping a second tile must switch details instead of closing. Not merged.
