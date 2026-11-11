@@ -106,6 +106,27 @@ export function storeTileSrc(id: string, state: TileState, badge: string): strin
   const pair = FILL[id] ?? ['#888888', '#555555'];
   const locked = state === 'off';
   const X = 8, Y = 6, W = 72, R = 18;
+  if (locked) {
+    // Dimmed face behind the greyed glyph: an opaque backing keeps the
+    // tile layout size stable inside nested flex rows (a glyph-only
+    // transparent PNG renders tiny there), and matches the greyed-locked
+    // achievement tile language.
+    const n = parseInt(pair[0].slice(1), 16);
+    const dim = `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},0.16)`;
+    ctx.fillStyle = '#141a26';
+    ctx.beginPath();
+    ctx.roundRect(X, Y, W, W, R);
+    ctx.fill();
+    ctx.fillStyle = dim;
+    ctx.beginPath();
+    ctx.roundRect(X, Y, W, W, R);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(150,158,176,0.45)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(X, Y, W, W, R);
+    ctx.stroke();
+  }
   if (!locked) {
     ctx.save();
     ctx.shadowColor = pair[0] + 'aa';
