@@ -159,7 +159,13 @@ export function storeTileSrc(id: string, state: TileState, badge: string): strin
   }
   glyphPath(ctx, id);
   ctx.restore();
-  // Badge: dark centre, category-colour ring, text on top.
+  // Badge: dark centre, category-colour ring, text on top. An empty badge
+  // means no badge at all (one-time items show no fake level number).
+  if (badge === '') {
+    const url = c.toDataURL('image/png');
+    cache.set(key, url);
+    return url;
+  }
   const bx = X + W - 4, by = Y + W - 4, br = 11;
   ctx.beginPath();
   ctx.arc(bx, by, br, 0, Math.PI * 2);
