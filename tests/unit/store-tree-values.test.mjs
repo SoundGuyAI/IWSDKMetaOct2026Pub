@@ -1,0 +1,150 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import ts from 'typescript';
+
+const ui = readFileSync(
+  new URL('../../public/ui/wall-tones-placeholder.uikitml', import.meta.url),
+  'utf8',
+);
+const sys = readFileSync(
+  new URL('../../src/wall-tones/wall-tones-system.ts', import.meta.url),
+  'utf8',
+);
+
+test('skill tree wiring: store popup ids, glyphs, gates and repeat label exist', () => {
+  for (const id of [
+    'id="store-heading"',
+    'id="store-tree-list"',
+    'id="store-detail-title"',
+    'id="store-detail-body"',
+    'id="store-buy-button"',
+    'id="store-detail-status"',
+    'id="repeat-pattern-label"',
+  ]) {
+    assert.ok(ui.includes(id), `uikitml missing ${id}`);
+  }
+  for (const snippet of [
+    'storeTileSrc',
+    'selectStoreTile',
+    'onBuySelected',
+    'reconcileStore',
+    'withDemoBarsFlag',
+    'demoBars',
+    'Locked: buy Listen first.',
+    'reach Hint level',
+    'replaysFree',
+    'isReplayMilestone',
+    'useReplay',
+  ]) {
+    assert.ok(sys.includes(snippet), `system missing ${snippet}`);
+  }
+});
+
+const src = readFileSync(new URL('../../src/wall-tones/economy.ts', import.meta.url), 'utf8');
+const js = ts.transpileModule(src, { compilerOptions: { module: 'esnext', target: 'es2022' } }).outputText;
+const {
+  WallTonesEconomy,
+  LISTEN_COST,
+  REPLAY_PRICE_BARS,
+  REPLAY_FREE_CAP,
+  AUTOPLAY_UNLOCK_HINT_LEVEL,
+} = await import('data:text/javascript;base64,' + Buffer.from(js).toString('base64'));
+
+/** Fresh economy with `bars` test-funded (in-memory; no localStorage in node). */
+function ecoWith(bars) {
+  const eco = new WallTonesEconomy();
+  eco.debugGrant(bars);
+  return eco;
+}
+
+test('approved test prices: Listen 30, Hint 25/50/100 then doubling, Autoplay 12/30/65/130 then doubling, Replay 20', () => {
+  assert.equal(LISTEN_COST, 30);
+  assert.equal(REPLAY_PRICE_BARS, 20);
+  const eco = ecoWith(0);
+  assert.deepEqual([1, 2, 3, 4, 5].map((l) => eco.hintCost(l)), [25, 50, 100, 200, 400]);
+  assert.deepEqual([1, 2, 3, 4, 5].map((l) => eco.autoplayCost(l)), [12, 30, 65, 130, 260]);
+});
+
+test('gates: Hint L1 needs Listen, Autoplay needs Hint L4 (owner 2026-11-11)', () => {
+  const eco = ecoWith(1000);
+  assert.equal(eco.hintUnlocked(), false);
+  assert.equal(eco.buyNextHintLevel(), false, 'hint refused before Listen');
+  assert.equal(eco.buyListen(), true);
+  assert.equal(eco.getBars(), 970);
+  assert.equal(eco.buyListen(), false, 'Listen is one-time');
+  assert.equal(eco.hintUnlocked(), true);
+  assert.equal(eco.autoplayUnlocked(), false);
+  assert.equal(eco.buyNextAutoplayLevel(), false, 'autoplay refused before Hint L4');
+  for (let i = 0; i < 3; i++) assert.equal(eco.buyNextHintLevel(), true);
+  assert.equal(eco.getHintLevel(), 3);
+  assert.equal(eco.autoplayUnlocked(), false);
+  assert.equal(eco.buyNextHintLevel(), true);
+  assert.equal(eco.getHintLevel(), AUTOPLAY_UNLOCK_HINT_LEVEL);
+  assert.equal(eco.autoplayUnlocked(), true);
+  assert.equal(eco.buyNextAutoplayLevel(), true);
+  assert.equal(eco.getAutoplayLevel(), 1);
+  assert.equal(eco.getAutoplayNoteCount(), 5);
+  // 1000 - 30 - 25 - 50 - 100 - 200 - 12 = 583
+  assert.equal(eco.getBars(), 583);
+});
+
+test('Replay inventory: 2 free cap, paid on top, grant at cap lost, free spent first', () => {
+  const eco = ecoWith(100);
+  assert.equal(REPLAY_FREE_CAP, 2);
+  assert.equal(eco.grantFreeReplay(), true);
+  assert.equal(eco.grantFreeReplay(), true);
+  assert.equal(eco.grantFreeReplay(), false, 'grant at the full free cap is lost');
+  assert.equal(eco.getReplaysFree(), 2);
+  assert.equal(eco.buyReplay(), true, 'paid Replays sit on top of the cap');
+  assert.equal(eco.getReplaysPaid(), 1);
+  assert.equal(eco.getReplaysTotal(), 3);
+  assert.equal(eco.getBars(), 80);
+  assert.equal(eco.useReplay(), true);
+  assert.equal(eco.useReplay(), true);
+  assert.equal(eco.getReplaysFree(), 0, 'free ones are spent first');
+  assert.equal(eco.getReplaysPaid(), 1);
+  assert.equal(eco.useReplay(), true);
+  assert.equal(eco.useReplay(), false, 'empty inventory refuses');
+  // No purchase limit: two more buys land.
+  assert.equal(eco.buyReplay(), true);
+  assert.equal(eco.buyReplay(), true);
+  assert.equal(eco.getReplaysPaid(), 2);
+});
+
+test('free Replay milestones: every 5 notes beyond the current Hint coverage', () => {
+  const eco = ecoWith(500);
+  // No Hint: coverage 0, milestones at 5, 10, 15...
+  assert.equal(eco.isReplayMilestone(4), false);
+  assert.equal(eco.isReplayMilestone(5), true);
+  assert.equal(eco.isReplayMilestone(7), false);
+  assert.equal(eco.isReplayMilestone(10), true);
+  eco.buyListen();
+  eco.buyNextHintLevel();
+  eco.buyNextHintLevel(); // coverage 10
+  assert.equal(eco.isReplayMilestone(10), false);
+  assert.equal(eco.isReplayMilestone(14), false);
+  assert.equal(eco.isReplayMilestone(15), true);
+  assert.equal(eco.isReplayMilestone(20), true);
+  assert.equal(eco.isReplayMilestone(23), false);
+});
+
+test('demoBars boost: spendable, spent first, never touches the real balance', () => {
+  const eco = ecoWith(5);
+  eco.applyDemoBoost(100);
+  assert.equal(eco.getBars(), 105);
+  assert.equal(eco.getBarsTotal(), 0, 'boost is not lifetime earnings');
+  assert.equal(eco.buyListen(), true);
+  assert.equal(eco.getBars(), 75);
+  assert.equal(eco.getDemoBoost(), 70, 'boost spends before real Bars');
+  eco.applyDemoBoost(0);
+  assert.equal(eco.getDemoBoost(), 70);
+  // Once the boost runs out, real Bars pay.
+  eco.debugGrant(0);
+  eco.applyDemoBoost(0);
+  const eco2 = ecoWith(50);
+  eco2.applyDemoBoost(10);
+  assert.equal(eco2.buyReplay(), true); // 20: 10 boost + 10 real
+  assert.equal(eco2.getBars(), 40);
+  assert.equal(eco2.getDemoBoost(), 0);
+});
