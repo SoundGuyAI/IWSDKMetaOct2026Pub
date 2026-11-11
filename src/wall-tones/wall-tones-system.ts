@@ -3614,14 +3614,6 @@ list.remove(list.children[0]!);
 }
 const TILE = 92;
 const TILE_H = TILE + 18;
-const BADGE_COLOR: Record<string, number> = {
-streak: 0x4fd39a,
-bars: 0xf0c24a,
-score: 0xf59a4a,
-store: 0x5aa0ee,
-presses: 0xec6258,
-secret: 0xb79af6,
-};
 const SHORT_NAMES: Record<string, string> = {
 streak: 'Streak',
 bars: 'Bars',
@@ -3637,6 +3629,8 @@ const GRID_W = 308;
 const COLS = 3;
 const ROW_H = TILE_H + 8;
 const POPUP_W = 190;
+const POPUP_H = 124;
+const VIEW_H = 232;
 const gridLeft = Math.floor((GRID_W - (COLS * TILE + (COLS - 1) * 8)) / 2);
 const popup = new UIKit.Container({
 display: 'none',
@@ -3644,7 +3638,9 @@ positionType: 'absolute',
 positionLeft: 0,
 positionTop: 0,
 zIndex: 20,
+pointerEvents: 'none',
 width: POPUP_W,
+height: POPUP_H,
 flexDirection: 'column',
 gap: 4,
 padding: 10,
@@ -3663,16 +3659,16 @@ let activeCat: string | null = null;
 // like a second tap on the open one and closes it.
 let stickyCat: string | null = null;
 const place = (col: number, row: number, uvx: number, uvy: number): void => {
-const x = gridLeft + col * (TILE + 8) + uvx * TILE + 14;
-const y = row * ROW_H + (1 - uvy) * TILE_H + 14;
-// Keep the pop-up inside the visible part of the scroll area (the popup
-// lives in the scrolled content, so clamp by the current scroll offset).
+// Pointer position in scroll-content space: tile origin + tile-local uv.
+// Never mixes in screen or button sizes.
+const px = gridLeft + col * (TILE + 8) + uvx * TILE;
+const py = row * ROW_H + (1 - uvy) * TILE_H;
 const sy = list.scrollPosition?.value?.[1] ?? 0;
-const VIEW_H = 232;
-const POPUP_H = 112;
+// One rule, no flipping: the card sits just right/below the pointer and is
+// clamped into the visible area, so it slides smoothly and never jumps.
 popup.setProperties({
-positionLeft: Math.max(0, Math.min(GRID_W - POPUP_W, x)),
-positionTop: Math.max(sy + 2, y + POPUP_H <= sy + VIEW_H - 2 ? y : y - 14 - POPUP_H - 6),
+positionLeft: Math.max(0, Math.min(GRID_W - POPUP_W, px + 14)),
+positionTop: Math.max(sy + 2, Math.min(sy + VIEW_H - POPUP_H - 2, py + 14)),
 });
 };
 const tileSetters = new Map<string, (on: boolean) => void>();
@@ -3725,33 +3721,19 @@ width: TILE,
 height: TILE_H,
 });
 const tileImg = new UIKit.Image({
-src: achievementTileSrc(glyphId, locked ? 'off' : 'on'),
+src: achievementTileSrc(glyphId, locked ? 'off' : 'on', level),
 width: TILE,
 height: TILE,
 });
 tile.add(tileImg);
-const badgeNum = new UIKit.Container({
-positionType: 'absolute',
-positionLeft: TILE - 30,
-positionTop: TILE - 30,
-width: 28,
-height: 28,
-borderRadius: 14,
-borderWidth: 2,
-borderColor: locked ? 0x6b7488 : (BADGE_COLOR[glyphId] ?? 0xffffff),
-backgroundColor: 0x15181d,
-alignItems: 'center',
-justifyContent: 'center',
-});
-badgeNum.add(new UIKit.Text({ fontSize: 14, color: locked ? 0xaab2c2 : 0xffffff, text: String(level) }));
-tile.add(badgeNum);
+
 tile.add(new UIKit.Text({
 fontSize: 14,
 color: locked ? 0x9aa4b6 : 0xffffff,
 text: secret ? 'Secret' : (SHORT_NAMES[cat.id] ?? cat.label),
 }));
 const setSel = (on: boolean): void => {
-tileImg.setProperties({ src: achievementTileSrc(glyphId, locked ? 'off' : (on ? 'sel' : 'on')) });
+tileImg.setProperties({ src: achievementTileSrc(glyphId, locked ? 'off' : (on ? 'sel' : 'on'), level) });
 };
 tileSetters.set(cat.id, setSel);
 const show = (uv?: { x: number; y: number }): void => {
