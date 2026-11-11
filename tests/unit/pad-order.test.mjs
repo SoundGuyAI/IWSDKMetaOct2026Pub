@@ -58,6 +58,7 @@ test('playback, fanfare and press feedback resolve pads by id, not position', ()
     (systemSource.match(/this\.padById\(/g) || []).length >= 4,
     'fanfare, sequence playback, press feedback and flat start all use padById',
   );
+  assert.match(systemSource, /return findPadById\(this\.pads, padIndex\)/);
   assert.doesNotMatch(systemSource, /this\.pads\[padIndex\]/);
   assert.doesNotMatch(systemSource, /this\.pads\[padId\]/);
 });
