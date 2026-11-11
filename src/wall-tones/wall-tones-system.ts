@@ -3612,16 +3612,29 @@ this.achievementKeyPresses = eco.getPresses();
 while (list.children.length > 0) {
 list.remove(list.children[0]!);
 }
-const TILE = 68;
-const GAP = 8;
-const COLS = 2;
-const POPUP_W = 150;
-let index = 0;
+const TILE = 96;
+const SHORT_NAMES: Record<string, string> = {
+streak: 'Streak',
+bars: 'Bars',
+score: 'Score',
+store: 'Store',
+presses: 'Presses',
+secret: 'Secret',
+};
+// Details are a floating overlay on top of the grid, so the window keeps one
+// fixed height whether or not details are showing. It follows the pointer
+// (PC mouse, MR ray) and pins on a tap (iPhone).
+const GRID_W = 308;
+const COLS = 3;
+const ROW_H = TILE + 12 + 8;
+const POPUP_W = 190;
+const gridLeft = Math.floor((GRID_W - (COLS * TILE + (COLS - 1) * 8)) / 2);
 const popup = new UIKit.Container({
 display: 'none',
 positionType: 'absolute',
 positionLeft: 0,
 positionTop: 0,
+zIndex: 20,
 width: POPUP_W,
 flexDirection: 'column',
 gap: 4,
@@ -3630,20 +3643,34 @@ borderRadius: 12,
 borderWidth: 1,
 borderColor: 0x6b7a90,
 backgroundColor: 0x222c3a,
-zIndex: 10,
 });
-const popupTitle = new UIKit.Text({ fontSize: 14, color: 0xfafaf7, text: '' });
-const popupBody = new UIKit.Text({ fontSize: 12, color: 0xaab6c6, text: '' });
+const popupTitle = new UIKit.Text({ fontSize: 15, color: 0xfafaf7, text: '' });
+const popupBody = new UIKit.Text({ fontSize: 13, color: 0xaab6c6, text: '' });
 popup.add(popupTitle);
 popup.add(popupBody);
 let activeCat: string | null = null;
-let sticky = false;
+// Only a click makes a tile "sticky". pointerenter (which touch fires just
+// before the click) must not count, otherwise tapping a second tile looks
+// like a second tap on the open one and closes it.
+let stickyCat: string | null = null;
+const place = (col: number, row: number, uvx: number, uvy: number): void => {
+const x = gridLeft + col * (TILE + 8) + uvx * TILE + 14;
+const y = row * ROW_H + (1 - uvy) * (TILE + 12) + 14;
+popup.setProperties({
+positionLeft: Math.max(0, Math.min(GRID_W - POPUP_W, x)),
+positionTop: Math.max(0, y),
+});
+};
 const hide = (): void => {
 activeCat = null;
-sticky = false;
+stickyCat = null;
 popup.setProperties({ display: 'none' });
 };
+let tileIndex = 0;
 for (const cat of ACHIEVEMENT_CATEGORIES) {
+const col = tileIndex % COLS;
+const row = Math.floor(tileIndex / COLS);
+tileIndex += 1;
 const { value, level, next } = eco.getCategoryProgress(cat.id, this.game.streak);
 const locked = level === 0;
 const secret = cat.hidden === true && locked;
@@ -3652,52 +3679,57 @@ const body = secret
 ? 'A secret. It stays secret.'
 : `${cat.description}` +
 (next == null ? ' Top level reached.' : ` Next level: ${next} (now ${value}).`);
-const col = index % COLS;
-const row = Math.floor(index / COLS);
-index += 1;
-// Pop-up sits beside the grid, level with the tile it describes.
-const left = COLS * (TILE + GAP) + 4;
-const top = row * (TILE + GAP + 16);
 const tile = new UIKit.Container({
 flexDirection: 'column',
 alignItems: 'center',
 justifyContent: 'center',
-gap: 2,
+gap: 6,
 width: TILE,
-height: TILE + 16,
+height: TILE + 12,
 borderRadius: 14,
+borderWidth: 1,
+borderColor: locked ? 0x4a5568 : 0xf5d90a,
+backgroundColor: locked ? 0x2b3342 : 0x34435c,
 });
 tile.add(new UIKit.Image({
 src: achievementIconSrc(cat.id),
-width: 44,
-height: 44,
-opacity: locked ? 0.55 : 1,
+width: 48,
+height: 48,
+opacity: locked ? 0.7 : 1,
 }));
 tile.add(new UIKit.Text({
-fontSize: 13,
-color: locked ? 0xb8bec8 : 0xf5d90a,
-text: secret ? '?' : `Lv ${level}`,
+fontSize: 14,
+color: locked ? 0xc3cad6 : 0xffffff,
+text: secret ? 'Secret' : (SHORT_NAMES[cat.id] ?? cat.label),
 }));
-const show = (): void => {
+const show = (uv?: { x: number; y: number }): void => {
 activeCat = cat.id;
 popupTitle.setProperties({ text: title });
 popupBody.setProperties({ text: body });
-popup.setProperties({ display: 'flex', positionLeft: left, positionTop: top });
+place(col, row, uv?.x ?? 0.5, uv?.y ?? 0.5);
+popup.setProperties({ display: 'flex' });
 };
 // PC hover and MR gaze/ray arrive as pointerenter/pointerleave; iPhone
-// touch (and a ray click) arrives as click and keeps the pop-up open until
-// the next tap on the same tile or another tile.
-tile.addEventListener('pointerenter', show);
-tile.addEventListener('pointerleave', () => {
-if (!sticky && activeCat === cat.id) hide();
+// touch (and a ray click) arrives as click and keeps the details open until
+// the next tap on the same tile; another tile switches the details.
+tile.addEventListener('pointerenter', (e) => show(e.uv));
+// Follow the pointer over the tile (mouse or ray) unless a tap pinned
+// another tile's details.
+tile.addEventListener('pointermove', (e) => {
+if (stickyCat != null && stickyCat !== cat.id) return;
+if (stickyCat === cat.id) return;
+if (e.uv != null) place(col, row, e.uv.x, e.uv.y);
 });
-tile.addEventListener('click', () => {
-if (sticky && activeCat === cat.id) {
+tile.addEventListener('pointerleave', () => {
+if (stickyCat == null && activeCat === cat.id) hide();
+});
+tile.addEventListener('click', (e) => {
+if (stickyCat === cat.id) {
 hide();
 return;
 }
-show();
-sticky = true;
+show(e.uv);
+stickyCat = cat.id;
 });
 list.add(tile);
 }
