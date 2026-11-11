@@ -3591,8 +3591,6 @@ private achievementKeyPurchases = -1;
 private achievementKeyPresses = -1;
 /** Bars icon src resolved against the app base once (codex P3: nested previews). */
 private barsIconSrcFixed = false;
-/** Text shown under the achievements grid (last hovered/selected tile). */
-private achievementTip = 'Hover, touch or point at a tile for details.';
 private reconcileAchievements(panel: UIKitMLAsset): void {
 const list = panel.getElementById<UIKit.Container>('achievements-screen-list');
 if (list == null) return;
@@ -3614,29 +3612,67 @@ this.achievementKeyPresses = eco.getPresses();
 while (list.children.length > 0) {
 list.remove(list.children[0]!);
 }
+const TILE = 68;
+const GAP = 8;
+const COLS = 2;
+const POPUP_W = 150;
+let index = 0;
+const popup = new UIKit.Container({
+display: 'none',
+positionType: 'absolute',
+positionLeft: 0,
+positionTop: 0,
+width: POPUP_W,
+flexDirection: 'column',
+gap: 4,
+padding: 10,
+borderRadius: 12,
+borderWidth: 1,
+borderColor: 0x6b7a90,
+backgroundColor: 0x222c3a,
+zIndex: 10,
+});
+const popupTitle = new UIKit.Text({ fontSize: 14, color: 0xfafaf7, text: '' });
+const popupBody = new UIKit.Text({ fontSize: 12, color: 0xaab6c6, text: '' });
+popup.add(popupTitle);
+popup.add(popupBody);
+let activeCat: string | null = null;
+let sticky = false;
+const hide = (): void => {
+activeCat = null;
+sticky = false;
+popup.setProperties({ display: 'none' });
+};
 for (const cat of ACHIEVEMENT_CATEGORIES) {
 const { value, level, next } = eco.getCategoryProgress(cat.id, this.game.streak);
 const locked = level === 0;
 const secret = cat.hidden === true && locked;
-const tip = secret
-? '??? - A secret. It stays secret.'
-: `${cat.label} - level ${level}. ${cat.description}` +
-(next == null ? ' Top level reached.' : ` Next level at ${next} (now ${value}).`);
+const title = secret ? '???' : `${cat.label} - Level ${level}`;
+const body = secret
+? 'A secret. It stays secret.'
+: `${cat.description}` +
+(next == null ? ' Top level reached.' : ` Next level: ${next} (now ${value}).`);
+const col = index % COLS;
+const row = Math.floor(index / COLS);
+index += 1;
+// Pop-up sits beside the grid, level with the tile it describes.
+const left = COLS * (TILE + GAP) + 4;
+const top = row * (TILE + GAP + 16);
 const tile = new UIKit.Container({
 flexDirection: 'column',
 alignItems: 'center',
 justifyContent: 'center',
 gap: 2,
-width: 72,
-height: 84,
+width: TILE,
+height: TILE + 16,
 borderRadius: 14,
 backgroundColor: locked ? 0x2a2c31 : 0x3a3410,
 opacity: locked ? 0.45 : 1,
 });
 tile.add(new UIKit.Image({
 src: achievementIconSrc(cat.id),
-width: 44,
-height: 44,
+width: 40,
+height: 40,
 }));
 tile.add(new UIKit.Text({
 fontSize: 13,
@@ -3644,20 +3680,29 @@ color: locked ? 0xb8bec8 : 0xf5d90a,
 text: secret ? '?' : `Lv ${level}`,
 }));
 const show = (): void => {
-this.achievementTip = tip;
-this.world
-.getSceneObject<UIKitMLAsset>('wall-tones-panel')
-?.getElementById<UIKit.Text>('achievements-tooltip')
-?.setProperties({ text: tip });
+activeCat = cat.id;
+popupTitle.setProperties({ text: title });
+popupBody.setProperties({ text: body });
+popup.setProperties({ display: 'flex', positionLeft: left, positionTop: top });
 };
-// Touch/click and ray select on every platform; pointerenter covers PC hover.
-tile.addEventListener('click', show);
+// PC hover and MR gaze/ray arrive as pointerenter/pointerleave; iPhone
+// touch (and a ray click) arrives as click and keeps the pop-up open until
+// the next tap on the same tile or another tile.
 tile.addEventListener('pointerenter', show);
+tile.addEventListener('pointerleave', () => {
+if (!sticky && activeCat === cat.id) hide();
+});
+tile.addEventListener('click', () => {
+if (sticky && activeCat === cat.id) {
+hide();
+return;
+}
+show();
+sticky = true;
+});
 list.add(tile);
 }
-panel
-.getElementById<UIKit.Text>('achievements-tooltip')
-?.setProperties({ text: this.achievementTip });
+list.add(popup);
 }
 
 /** Visual-only achievement toast; voice stays milestone-only (user rule). */
