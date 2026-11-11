@@ -150,3 +150,10 @@ Oded tested the merged main build and reported that everything looks fine. The a
 - Final accepted build: b2fa460. Complete main CI: https://github.com/SoundGuyAI/IWSDKMetaOct2026Pub/actions/runs/42935989499 .
 - Owner requested creation of CloudFlareProd from the tested main for his own Cloudflare setup. No Cloudflare settings, credentials or deployment action is part of this update.
 - Ray button interaction (4), achievement icon mockup (48), and store icon progression-tree mockup (49) are captured for his list review. No new gameplay or mockup work has started. Older unresolved economy/score and boundary-specific questions remain open; general main acceptance is not a claim that each separate investigation was explicitly tested.
+
+
+## Story planning update - 2026-11-11
+
+- [~] 51. Cypher ARG episode: dialogue-heavy radio break-ins after the five-streak opening, ten-streak communication window and proposed longer gates; luminous cracks and optional MR drone rescue. Separate from items 14 and 31, which remain open. Starter is documentation only in `CYPHER_DIALOGUE.md`; dialogue, gate/repeat/failure rules, casting and effects await review. No story gameplay or voice assets are implemented. Public story PR explicitly requested by Oded; no merge approval.
+
+- [ ] 52. After Cypher is implemented, open a separate feasibility PR to test player yes/no input. Investigate nod/headshake and spoken yes/no without choosing a modality yet; include deliberate answer windows, false-positive checks, runtime capability detection, microphone consent where needed and button fallback. Deferred until Cypher gameplay exists, not merely the documentation PR. No input spike or recognizer is implemented now.
