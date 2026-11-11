@@ -21,6 +21,7 @@ writeFileSync(join(buildDir, 'constants.js'), js);
 const { WALL_TONE_PADS, SIMON_FANFARE_PAD_ORDER } = await import(join(buildDir, 'constants.js'));
 
 const systemSource = readFileSync(join(here, '../../src/wall-tones/wall-tones-system.ts'), 'utf8');
+const padsSource = readFileSync(join(here, '../../src/wall-tones/pads.ts'), 'utf8');
 
 test('pad ids 0-3 are green, red, blue, yellow', () => {
   assert.deepEqual(
@@ -45,4 +46,25 @@ test('air placement assigns pad ids in fanfare order', () => {
     [0, 1, 2, 3].map((step) => WALL_TONE_PADS[SIMON_FANFARE_PAD_ORDER[step % 4]].name),
     ['green', 'red', 'yellow', 'blue'],
   );
+});
+
+// Headset test on the PR preview (Oded, 2026-11-12 01:19): with pads placed in
+// fanfare order, the array position no longer matched the pad id - the yellow
+// note lit the blue pad and correct yellow presses read as wrong. Every
+// note/press id must resolve to its pad by padIndex, never by array position.
+test('playback, fanfare and press feedback resolve pads by id, not position', () => {
+  assert.match(systemSource, /private padById\(padIndex: number\)/);
+  assert.ok(
+    (systemSource.match(/this\.padById\(/g) || []).length >= 4,
+    'fanfare, sequence playback, press feedback and flat start all use padById',
+  );
+  assert.doesNotMatch(systemSource, /this\.pads\[padIndex\]/);
+  assert.doesNotMatch(systemSource, /this\.pads\[padId\]/);
+});
+
+// Same headset test: controller/hand ray presses did nothing on air-placed
+// pads because solidified ghosts never became RayInteractable.
+test('air-placed pads become RayInteractable when solidified', () => {
+  const solidify = padsSource.slice(padsSource.indexOf('export function solidifyGhostPad'));
+  assert.match(solidify, /addComponent\(RayInteractable\)/);
 });
