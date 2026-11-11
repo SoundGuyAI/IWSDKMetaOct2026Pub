@@ -18,6 +18,7 @@ const LISTEN_KEY = 'wall-tones-listen-owned';
 const AUTOPLAY_LEVEL_KEY = 'wall-tones-autoplay-level';
 const REPLAY_FREE_KEY = 'wall-tones-replays-free';
 const REPLAY_PAID_KEY = 'wall-tones-replays-paid';
+const SAVERS_KEY = 'wall-tones-savers';
 
 // Skill-tree store prices (owner-approved 2026-11-11 as starting balance for
 // testing, not final). Hint: 25/50/100 Bars then doubling. Open-ended by
@@ -174,6 +175,7 @@ LISTEN_KEY,
 AUTOPLAY_LEVEL_KEY,
 REPLAY_FREE_KEY,
 REPLAY_PAID_KEY,
+SAVERS_KEY,
 ]) {
 try { globalThis.localStorage?.removeItem(key); } catch { /* private mode */ }
 }
@@ -192,6 +194,7 @@ export class WallTonesEconomy {
   private autoplayLevel = readNumber(AUTOPLAY_LEVEL_KEY);
   private replaysFree = readNumber(REPLAY_FREE_KEY);
   private replaysPaid = readNumber(REPLAY_PAID_KEY);
+  private savers = readNumber(SAVERS_KEY);
   /** In-memory test Bars from the ?demoBars URL flag. Never persisted, never
    * counted in lifetime totals, and always spent before real Bars so the
    * saved balance stays untouched (owner-approved preview aid 2026-11-11). */
@@ -235,6 +238,32 @@ export class WallTonesEconomy {
 
   getBarsTotal(): number {
     return this.barsTotal;
+  }
+
+  /** Streak savers in stock (test-value consumable, see consumable-values). */
+  getSavers(): number {
+    return this.savers;
+  }
+
+  /** Buy one saver for `price` Bars. Never partial. */
+  buySaver(price: number): boolean {
+    if (this.bars < price) return false;
+    this.bars -= price;
+    this.savers += 1;
+    writeNumber(BARS_KEY, this.bars);
+    writeNumber(SAVERS_KEY, this.savers);
+    this.purchases += 1;
+    writeNumber(PURCHASES_KEY, this.purchases);
+    this.checkAchievements(0);
+    return true;
+  }
+
+  /** Spend `units` savers only when the full amount is owned. */
+  useSavers(units: number): boolean {
+    if (units < 1 || this.savers < units) return false;
+    this.savers -= units;
+    writeNumber(SAVERS_KEY, this.savers);
+    return true;
   }
 
   getHintLevel(): number {
@@ -518,6 +547,14 @@ export class WallTonesEconomy {
   debugGrant(amount: number): void {
     this.bars += amount;
     writeNumber(BARS_KEY, this.bars);
+  }
+
+  /** Test-only: seed saver inventory without a purchase. */
+  debugGrantSavers(units: number): void {
+    if (units > 0) {
+      this.savers += Math.floor(units);
+      writeNumber(SAVERS_KEY, this.savers);
+    }
   }
 
   /** Backlog 18: the best streak persists across reloads and mode entries. */
