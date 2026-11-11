@@ -4018,8 +4018,6 @@ while (list.children.length > 0) {
 list.remove(list.children[0]!);
 }
 const eco = this.economy;
-const TILE = 92;
-const TILE_H = TILE + 18;
 interface StoreTile {
 id: string;
 name: string;
@@ -4070,39 +4068,155 @@ state: 'on',
 { id: 'pads56', name: 'Pads 5-6', badge: '?', state: 'off' },
 { id: 'narrator', name: 'Act 3', badge: '?', state: 'off' },
 ];
-// Same wrap layout as the achievements grid: tiles flow directly into the
-// list (row + flex-wrap in the uikitml), which keeps rows from overlapping.
-for (const t of tiles) {
-if (t.id === 'multiplier') {
-// Start the clearly-marked future row.
-list.add(
-new UIKit.Text({ fontSize: 13, color: 0x9aa4b6, width: 308, textAlign: 'center', text: 'Future (room in the tree, not implemented):' }),
-);
-}
+// Skill-tree layout (owner-approved concept 2026-11-11; the lost mockup's
+// caption: "each category has its own levels, with level gates on the
+// connections"). A root row of no-prerequisite categories, then the gated
+// chain Listen -> Hint -> Autoplay as labeled vertical connections, each
+// gated category with its own level track.
+const TREE_W = 308;
+const TILE_S = 70;
+const LINE_COLOR = 0x9aa4b6;
+const LINE_OK = 0x4cc38a;
+const byId = new Map(tiles.map((t) => [t.id, t]));
+const makeTile = (t: StoreTile): UIKit.Container => {
 const selected = this.storeSelected === t.id;
 const tile = new UIKit.Container({
 flexDirection: 'column',
 alignItems: 'center',
 gap: 2,
-width: TILE,
-height: TILE_H,
+width: TILE_S,
+height: TILE_S + 18,
+flexShrink: 0,
 });
-const img = new UIKit.Image({
+tile.add(
+new UIKit.Image({
 src: storeTileSrc(t.id, selected && t.state === 'on' ? 'sel' : t.state, t.badge),
-width: TILE,
-height: TILE,
-});
-tile.add(img);
+width: TILE_S,
+height: TILE_S,
+}),
+);
 tile.add(
 new UIKit.Text({
-fontSize: 14,
+fontSize: 13,
 color: t.state === 'off' ? 0x9aa4b6 : 0xffffff,
 text: t.name,
 }),
 );
 tile.addEventListener('click', () => this.selectStoreTile(t.id));
-list.add(tile);
+return tile;
+};
+// Connection row: a vertical line segment under the chain column's tile
+// center, carrying the gate label; green once the gate is satisfied.
+const connection = (label: string, open: boolean): UIKit.Container => {
+const row = new UIKit.Container({
+flexDirection: 'row',
+alignItems: 'center',
+gap: 8,
+width: TREE_W,
+});
+row.add(new UIKit.Container({ width: TILE_S / 2 - 1, height: 1 }));
+row.add(
+new UIKit.Container({
+width: 2,
+height: 16,
+backgroundColor: open ? LINE_OK : LINE_COLOR,
+}),
+);
+row.add(
+new UIKit.Text({
+fontSize: 12,
+color: open ? LINE_OK : LINE_COLOR,
+text: label,
+}),
+);
+return row;
+};
+// Level track: one filled pip per owned level (category colour), then the
+// next level outlined (the one the Buy button sells). Uncapped by design;
+// the display caps at 9 pips plus a "+N" counter.
+const levelTrack = (level: number, color: number): UIKit.Container => {
+const track = new UIKit.Container({
+flexDirection: 'row',
+alignItems: 'center',
+gap: 4,
+width: 240,
+});
+const shown = Math.min(level, 9);
+for (let i = 0; i < shown; i += 1) {
+track.add(
+new UIKit.Container({
+width: 12,
+height: 12,
+borderRadius: 3,
+backgroundColor: color,
+}),
+);
 }
+if (level > 9) {
+track.add(new UIKit.Text({ fontSize: 12, color, text: `+${level - 9}` }));
+}
+track.add(
+new UIKit.Container({
+width: 12,
+height: 12,
+borderRadius: 3,
+borderWidth: 2,
+borderColor: color,
+}),
+);
+return track;
+};
+// Tile above, level track below: images keep their size inside pure
+// columns (mixed image+container rows mis-size the image in uikit).
+const chainRow = (t: StoreTile, level: number, color: number): UIKit.Container => {
+// Row+wrap like the list itself (tile images mis-size inside plain
+// columns): the 240-wide track wraps under the 70px tile.
+const col = new UIKit.Container({
+flexDirection: 'row',
+flexWrap: 'wrap',
+gap: 4,
+width: TREE_W,
+});
+col.add(makeTile(t));
+col.add(levelTrack(level, color));
+return col;
+};
+// Root row: Listen is the chain root; Replay and Saver have no
+// prerequisites (owner rule 2026-11-11); Secret stands alone.
+const rootRow = new UIKit.Container({
+flexDirection: 'row',
+gap: 8,
+width: TREE_W,
+});
+for (const id of ['listen', 'replay', 'saver', 'secret']) {
+rootRow.add(makeTile(byId.get(id)!));
+}
+list.add(rootRow);
+// Gated chain: Listen -> Hint L1 -> (reach Hint L4) -> Autoplay.
+list.add(connection('unlocks Hint L1', eco.hintUnlocked()));
+list.add(chainRow(byId.get('hint')!, hintLevel, 0xf2c14e));
+list.add(
+connection(
+eco.autoplayUnlocked()
+? 'Autoplay unlocked'
+: `reach Hint L${AUTOPLAY_UNLOCK_HINT_LEVEL} to unlock Autoplay (now L${hintLevel})`,
+eco.autoplayUnlocked(),
+),
+);
+list.add(chainRow(byId.get('autoplay')!, autoplayLevel, 0x4cc38a));
+// Room for the future modifiers the owner listed (2026-11-11).
+list.add(
+new UIKit.Text({ fontSize: 13, color: 0x9aa4b6, width: TREE_W, textAlign: 'center', text: 'Future (room in the tree, not implemented):' }),
+);
+const futureRow = new UIKit.Container({
+flexDirection: 'row',
+gap: 8,
+width: TREE_W,
+});
+for (const id of ['multiplier', 'speed', 'pads56', 'narrator']) {
+futureRow.add(makeTile(byId.get(id)!));
+}
+list.add(futureRow);
 list.setProperties({ overflow: 'scroll' });
 // Details + Buy for the selection.
 const title = panel.getElementById<UIKit.Text>('store-detail-title');
