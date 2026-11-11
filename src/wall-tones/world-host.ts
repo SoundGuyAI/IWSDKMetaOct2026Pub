@@ -11,6 +11,7 @@ import { GuidedSensingSystem } from '../guided-sensing.js';
 import { PanelSystem } from '../panel.js';
 import { RobotSystem } from '../robot.js';
 import { WallTonesSystem } from './wall-tones-system.js';
+import { ThumbsLabSystem } from '../thumbs-lab/thumbs-lab-system.js';
 
 const MODE_STORAGE_KEY = 'iwsdk-experience-mode';
 
@@ -32,12 +33,14 @@ function registerHubSystems(world: World): void {
   world.registerSystem(RobotSystem);
   world.registerSystem(PanelSystem);
   world.registerSystem(WallTonesSystem);
+  world.registerSystem(ThumbsLabSystem);
 }
 
 function registerArSystems(world: World): void {
   world.registerSystem(AppModeSystem);
   world.registerSystem(PanelSystem);
   world.registerSystem(WallTonesSystem);
+  world.registerSystem(ThumbsLabSystem);
 }
 
 function buildArWorldOptions(): WorldOptions {
@@ -194,4 +197,4 @@ export function startInitialWorld(container: HTMLElement): Promise<World> {
   }
   bootPromise = bootHubWorld(container);
   return bootPromise;
-  }
+}
