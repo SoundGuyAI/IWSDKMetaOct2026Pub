@@ -34,3 +34,11 @@ Deploy builds the default branch and serves it at
   is an additional target.
 - The build version/hash line in Settings keeps working: on Cloudflare builds
   the commit hash comes from the git checkout.
+
+## Production release - 2026-11-11
+
+- Release source: accepted main `b2fa4600da7482496ba3b5d879c0d406e001ae09`.
+- Oded tested this build and approved the first production build.
+- This release-note-only commit triggers the configured `CloudFlareProd`
+  build without changing app code, assets, dependencies or build settings.
+- Future production promotions require a separate approval.
