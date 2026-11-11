@@ -93,3 +93,12 @@ The merge-ready procedure is an enduring rule for every merge, not work in this 
 4. [ ] Review dialogue, input options, streak gates, repeat/failure rules, unlock, comfort and persistence before any gameplay slice or voice generation.
 5. [ ] After approval, implement and test in focused follow-up PRs. No runtime, economy, audio or deployment change is part of this starter.
 6. [ ] Backlog item 52: only after Cypher gameplay is added, open a separate yes/no input feasibility PR (voice and nod/headshake options remain open).
+
+
+## Cypher v0.2 review update
+
+1. [x] Preserve exact v0.1 as a readable inspiration backup and revise current dialogue for hidden-channel Act 1.
+2. [x] Record Act 2 discovery direction and Act 3 joint mission ending at streak 1024; do not silently invent intermediate gates or new characters.
+3. [ ] Implement hidden story achievements, including drone defeat, only when real story encounter completion events exist; current PR records design and checks, not runtime completion.
+4. [ ] After Cypher gameplay, item 52 separate yes/no feasibility PR also explores thumbs-up/down, alongside nod/headshake and voice.
+5. [ ] Oded rereads the current draft; no voice generation, gameplay deployment or merge is approved by this revision.
