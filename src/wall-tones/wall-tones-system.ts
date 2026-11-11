@@ -4218,6 +4218,28 @@ futureRow.add(makeTile(byId.get(id)!));
 }
 list.add(futureRow);
 list.setProperties({ overflow: 'scroll' });
+// Keep the selected tile's tree row inside the 260px scroll viewport
+// (review 2026-11-12: a selected chain tile sat below the fold while only
+// its detail panel showed). Row tops derived from the fixed row heights
+// above; verified visually.
+const ROW_TILE_H = TILE_S + 18;
+const ROW_CONN_H = 16;
+const ROW_CHAIN_H = ROW_TILE_H + 4 + 16;
+const ROW_GAP = 8;
+const rowTop = new Map<string, number>();
+let cursorY = 0;
+for (const id of ['listen', 'replay', 'saver', 'secret']) rowTop.set(id, 0);
+cursorY += ROW_TILE_H + ROW_GAP + ROW_CONN_H + ROW_GAP;
+rowTop.set('hint', cursorY);
+cursorY += ROW_CHAIN_H + ROW_GAP + ROW_CONN_H + ROW_GAP;
+rowTop.set('autoplay', cursorY);
+cursorY += ROW_CHAIN_H + ROW_GAP + 18 + ROW_GAP;
+for (const id of ['multiplier', 'speed', 'pads56', 'narrator']) {
+rowTop.set(id, cursorY);
+}
+const selectedTop =
+this.storeSelected == null ? 0 : rowTop.get(this.storeSelected) ?? 0;
+list.scrollPosition.value = [0, selectedTop];
 // Details + Buy for the selection.
 const title = panel.getElementById<UIKit.Text>('store-detail-title');
 const body = panel.getElementById<UIKit.Text>('store-detail-body');
