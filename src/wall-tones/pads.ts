@@ -209,6 +209,16 @@ function basePadFields(
   };
 }
 
+/** Pads placed in fanfare order in MR air placement are NOT in id order in
+ * the pads array, so every note/press id resolves through here, never by
+ * array position. */
+export function findPadById<T extends { padIndex: number }>(
+  pads: readonly T[],
+  padIndex: number,
+): T | undefined {
+  return pads.find((p) => p.padIndex === padIndex);
+}
+
 export function createPadRuntime(
   world: World,
   padIndex: number,
@@ -493,4 +503,4 @@ export function defaultDesktopPadSize(): number {
 
 export function defaultHeadsetPadSize(): number {
   return HEADSET_PAD_SIZE_M;
-    }
+}
