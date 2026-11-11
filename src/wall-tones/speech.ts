@@ -4,6 +4,12 @@ import { NEW_BEST_MALE } from './new-best-male.js';
 import { NEW_BEST_FEMALE } from './new-best-female.js';
 import { PICK_COMBINED_MALE } from './pick-combined-male.js';
 import { PICK_COMBINED_FEMALE } from './pick-combined-female.js';
+import { ACHV_INTRO_MALE_PC } from './achv-intro-male-pc.js';
+import { ACHV_INTRO_MALE_IPHONE } from './achv-intro-male-iphone.js';
+import { ACHV_INTRO_MALE_MR } from './achv-intro-male-mr.js';
+import { ACHV_INTRO_FEMALE_PC } from './achv-intro-female-pc.js';
+import { ACHV_INTRO_FEMALE_IPHONE } from './achv-intro-female-iphone.js';
+import { ACHV_INTRO_FEMALE_MR } from './achv-intro-female-mr.js';
 /**
  * Prerecorded voice lines for Wall Tones (English).
  *
@@ -50,6 +56,9 @@ export type WallTonesClipId =
   | 'pickWallSlots'
   | 'pickTableSlots'
   | 'pickCombinedSlots'
+  | 'achvIntroPc'
+  | 'achvIntroIphone'
+  | 'achvIntroMr'
   | 'notEnoughWallSpace'
   | 'tableFound'
   | 'padsOnWalls'
@@ -105,6 +114,9 @@ export const WALL_TONES_CLIP_FILES: Record<WallTonesClipId, string> = {
   pickWallSlots: 'pick-wall-slots.mp3',
   pickTableSlots: 'pick-table-slots.mp3',
   pickCombinedSlots: 'pick-combined-slots.mp3',
+  achvIntroPc: 'embedded-achv-intro-pc.mp3',
+  achvIntroIphone: 'embedded-achv-intro-iphone.mp3',
+  achvIntroMr: 'embedded-achv-intro-mr.mp3',
   notEnoughWallSpace: 'not-enough-wall-space.mp3',
   tableFound: 'table-found.mp3',
   padsOnWalls: 'pads-on-walls.mp3',
@@ -192,6 +204,12 @@ export function setVoiceGender(gender: WallTonesVoiceGender): void {
 function clipUrl(id: WallTonesClipId): string {
   if (id === 'newBest1' || id === 'newBest2' || id === 'newBest3') {
     return (currentGender === 'female' ? NEW_BEST_FEMALE : NEW_BEST_MALE)[id];
+  }
+  if (id === 'achvIntroPc' || id === 'achvIntroIphone' || id === 'achvIntroMr') {
+    const female = currentGender === 'female';
+    if (id === 'achvIntroPc') return female ? ACHV_INTRO_FEMALE_PC : ACHV_INTRO_MALE_PC;
+    if (id === 'achvIntroIphone') return female ? ACHV_INTRO_FEMALE_IPHONE : ACHV_INTRO_MALE_IPHONE;
+    return female ? ACHV_INTRO_FEMALE_MR : ACHV_INTRO_MALE_MR;
   }
   if (id === 'pickCombinedSlots') {
     return currentGender === 'female' ? PICK_COMBINED_FEMALE : PICK_COMBINED_MALE;

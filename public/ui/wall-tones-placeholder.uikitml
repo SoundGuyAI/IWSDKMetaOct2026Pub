@@ -163,10 +163,6 @@
         <ButtonLabel>Achievements</ButtonLabel>
       </Button>
     </div>
-    <Button id="debug-colliders-button" class="button">
-      <ButtonIcon><Bug></Bug></ButtonIcon>
-      <ButtonLabel id="debug-colliders-label">Debug colliders: OFF</ButtonLabel>
-    </Button>
     <div id="setup-mode-row" class="setup-row">
       <Button id="mode-room-scale-button" class="button">
         <ButtonIcon><LayoutGrid></LayoutGrid></ButtonIcon>
@@ -243,7 +239,7 @@
   <div id="achievements-popup" class="popup-overlay" style="display: none">
     <div class="popup-card">
       <div class="heading" style="font-size: 22px">Achievements</div>
-      <div id="achievements-screen-list" style="flex-direction: column; gap: 8px"></div>
+      <div id="achievements-screen-list" style="flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 8px; width: 308px; height: 232px"></div>
       <Button id="achievements-close-button" class="button" style="margin-top: 6px">
         <ButtonIcon><X></X></ButtonIcon>
         <ButtonLabel>Close</ButtonLabel>

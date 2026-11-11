@@ -26,6 +26,10 @@ export const TOUCH_PRESS_SCALE = 1.02;
 export const TOUCH_HOVER_SCALE = 1.42;
 /** @deprecated Prefer TOUCH_PRESS_SCALE. */
 export const TOUCH_SLOP_SCALE = TOUCH_PRESS_SCALE;
+/** Ray/pinch collider face inflate: only a little bigger than the pad itself (owner request 2026-11-11) - not the big fingertip boxes. */
+export const RAY_TARGET_SCALE = 1.1;
+/** Ray/pinch collider depth (meters). */
+export const RAY_TARGET_DEPTH_M = 0.08;
 /** Consecutive frames inside the press volume before a press counts. */
 export const TOUCH_ENTER_FRAMES = 2;
 /** Frames outside the press volume before the pad re-arms. */

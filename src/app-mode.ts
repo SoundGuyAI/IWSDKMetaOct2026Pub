@@ -5,11 +5,18 @@ import { hearingSubtitlesEnabled, colorNamesEnabled, setHearingSubtitles, setCol
  */
 import {
   createSystem,
+  RayInteractable,
   UIKit,
   UIKitMLAsset,
   Visibility,
   VisibilityState,
 } from '@iwsdk/core';
+
+/** Panels whose ray targeting follows their visibility. */
+const RAY_TOGGLED_PANEL_IDS: ReadonlySet<string> = new Set([
+  'main-menu-panel',
+  'wall-tones-panel',
+]);
 import { primeWallTonesAudioFromGesture } from './wall-tones/audio.js';
 import { resetWallTonesStats } from './wall-tones/economy.js';
 import { WALL_TONES_BUILD_LABEL } from './build-info.js';
@@ -197,6 +204,15 @@ export class AppModeSystem extends createSystem({}) {
       return;
     }
     entity.setValue(Visibility, 'isVisible', visible);
+    // A hidden panel must not stay ray-targetable: an invisible panel placed
+    // nearer than the visible one can intercept the controller ray.
+    if (RAY_TOGGLED_PANEL_IDS.has(nodeId)) {
+      if (visible && !entity.hasComponent(RayInteractable)) {
+        entity.addComponent(RayInteractable);
+      } else if (!visible && entity.hasComponent(RayInteractable)) {
+        entity.removeComponent(RayInteractable);
+      }
+    }
   }
 
   private startWallTonesFlat(): void {
