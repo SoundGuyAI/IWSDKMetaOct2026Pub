@@ -11,7 +11,7 @@ Oded tested the merged main build and reported that everything looks fine. The a
 ## Not started
 
 - [ ] 3. Bug: first box in the pattern is not blinking in VR (arrow also not showing)
-- [ ] 4. Add ray interaction to menu/buttons (reconfirmed Nov 11 as the likely next task). Await the owner's backlog review before implementation.
+- [ ] 4. Ray interaction on the startup main menu (owner answered Nov 11 that the startup menu is the one failing). PR A: hidden panels no longer stay ray-targetable, which is a hypothesis for the cause, and the menu now follows the player closer (see 47). Needs a headset test to confirm; not confirmed as the root cause.
 - [ ] 5. Sports mode that disables ray button clicks
 - [ ] 6. Animation and juice
 - [ ] 7. Wrist band that shows the buttons playing the pattern
@@ -43,7 +43,7 @@ Oded tested the merged main build and reported that everything looks fine. The a
 
 ### MR and menu polish - November 6
 
-- [ ] 47. MR startup MAIN MENU follow (reported Nov 11): the initial main-menu panel appears too high and anchored at an arbitrary place. Make it follow the player with behavior similar to the in-game panel. This is distinct from the already completed MR setup/selection and gameplay panel work in PR #38; no implementation started.
+- [ ] 47. MR startup MAIN MENU follow (reported Nov 11): in XR the panel now follows the player with the in-game panel's distance, height offset, scale and look-away rule. PR A, awaiting headset test.
 
 ### Visual mockups - November 11 (after backlog review)
 
@@ -52,7 +52,7 @@ Oded tested the merged main build and reported that everything looks fine. The a
 
 ### Remaining MR polish
 
-- [ ] 46. Remove the Debug colliders option before launch (requested 2026-11-09). Keep diagnostic availability during development; PR #44 only hides it during normal MR setup. Launch-wide removal is not implemented yet.
+- [ ] 46. Debug colliders toggle moved from the in-game panel to the main menu Settings (owner Nov 11, replaces 'remove before launch'). Hidden on flat/desktop. PR A, awaiting headset test.
 
 - [ ] 29. MR achievement for playing standing at walls, or on a mixed wall+table layout.
 - [ ] 30. Research: can the SDK track how much a player moves (fitness-style) in wall or mixed wall+table modes? If not, estimate from the distances between the placed pads. For later score use; no health or calorie claims.

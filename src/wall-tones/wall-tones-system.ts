@@ -626,8 +626,10 @@ panel
 panel
 .getElementById('rescan-room-button')
 ?.addEventListener('click', () => void this.onRescanRoom());
-panel
-.getElementById('debug-colliders-button')
+// Item 46: the Debug colliders toggle lives in the main menu Settings.
+this.world
+.getSceneObject<UIKitMLAsset>('main-menu-panel')
+?.getElementById('debug-colliders-button')
 ?.addEventListener('click', () => this.toggleTouchDebug());
 panel
 .getElementById('store-button')
@@ -2901,13 +2903,12 @@ setPadDebugCollidersVisible(this.ghostPad, visible);
 }
 
 private syncDebugCollidersButton(): void {
-const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
-// Keep normal placement focused. Collider diagnostics remain available in MR play.
-const showButton = !this.useDesktopPath() && this.experienceActive &&
-this.flowPhase === 'playing';
+// The toggle sits in the main menu Settings. Colliders exist only in VR/MR,
+// so the control is hidden on flat/desktop.
+const panel = this.world.getSceneObject<UIKitMLAsset>('main-menu-panel');
 panel
 ?.getElementById('debug-colliders-button')
-?.setProperties({ display: showButton ? 'flex' : 'none' });
+?.setProperties({ display: this.useDesktopPath() ? 'none' : 'flex' });
 panel
 ?.getElementById<UIKit.Text>('debug-colliders-label')
 ?.setProperties({
