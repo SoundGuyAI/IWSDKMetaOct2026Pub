@@ -3591,6 +3591,8 @@ private achievementKeyPurchases = -1;
 private achievementKeyPresses = -1;
 /** Bars icon src resolved against the app base once (codex P3: nested previews). */
 private barsIconSrcFixed = false;
+/** Text shown under the achievements grid (last hovered/selected tile). */
+private achievementTip = 'Hover, touch or point at a tile for details.';
 private reconcileAchievements(panel: UIKitMLAsset): void {
 const list = panel.getElementById<UIKit.Container>('achievements-screen-list');
 if (list == null) return;
@@ -3616,28 +3618,46 @@ for (const cat of ACHIEVEMENT_CATEGORIES) {
 const { value, level, next } = eco.getCategoryProgress(cat.id, this.game.streak);
 const locked = level === 0;
 const secret = cat.hidden === true && locked;
-const text = secret
-? '??? - ???'
-: `${cat.label} - level ${level}/${cat.levels.length}` +
-(next == null ? ' - MAX' : ` - next at ${next} (have ${value})`);
-const row = new UIKit.Container({
-flexDirection: 'row',
+const tip = secret
+? '??? - A secret. It stays secret.'
+: `${cat.label} - level ${level}. ${cat.description}` +
+(next == null ? ' Top level reached.' : ` Next level at ${next} (now ${value}).`);
+const tile = new UIKit.Container({
+flexDirection: 'column',
 alignItems: 'center',
-gap: 8,
-opacity: locked ? 0.75 : 1,
+justifyContent: 'center',
+gap: 2,
+width: 72,
+height: 84,
+borderRadius: 14,
+backgroundColor: locked ? 0x2a2c31 : 0x3a3410,
+opacity: locked ? 0.45 : 1,
 });
-row.add(new UIKit.Image({
+tile.add(new UIKit.Image({
 src: achievementIconSrc(cat.id),
-width: 28,
-height: 28,
+width: 44,
+height: 44,
 }));
-row.add(new UIKit.Text({
+tile.add(new UIKit.Text({
 fontSize: 13,
 color: locked ? 0xb8bec8 : 0xf5d90a,
-text,
+text: secret ? '?' : `Lv ${level}`,
 }));
-list.add(row);
+const show = (): void => {
+this.achievementTip = tip;
+this.world
+.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById<UIKit.Text>('achievements-tooltip')
+?.setProperties({ text: tip });
+};
+// Touch/click and ray select on every platform; pointerenter covers PC hover.
+tile.addEventListener('click', show);
+tile.addEventListener('pointerenter', show);
+list.add(tile);
 }
+panel
+.getElementById<UIKit.Text>('achievements-tooltip')
+?.setProperties({ text: this.achievementTip });
 }
 
 /** Visual-only achievement toast; voice stays milestone-only (user rule). */
