@@ -413,4 +413,4 @@ export class NodLabSystem extends createSystem({}) {
       answerCount: this.answerCount,
     };
   }
-      }
+}
