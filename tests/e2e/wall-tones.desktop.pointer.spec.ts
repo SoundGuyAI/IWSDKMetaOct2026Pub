@@ -162,6 +162,12 @@ test.describe('Wall Tones desktop POINTER path (real mouse)', () => {
     const wrong = (snap.sequence[snap.inputStep]! + 1) % 4;
     await pointerClick(page, ...PAD_XY[wrong]!);
     await waitForPhase(page, 'resetting');
+    // Game Over popup opens; New run (debug bridge, the panel button's action)
+    // starts the next run.
+    await expect
+      .poll(() => page.evaluate(() => (window as any).__wallTonesDebug.gameOverOpen), { timeout: 60_000 })
+      .toBe(true);
+    await page.evaluate(() => (window as any).__wallTonesDebug.gameOverNewRun());
     await expect
       .poll(async () => {
         const s = await readDebug(page);
