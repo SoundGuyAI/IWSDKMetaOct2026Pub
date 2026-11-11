@@ -81,7 +81,6 @@ import {
 collectTablePlanes,
 detectFloorY,
 collectVerticalWalls,
-detectFloorY,
 generateMixedTablePadCandidates,
 generateTablePadCandidates,
 maxCandidatesOnOneSurface,
@@ -2061,11 +2060,10 @@ return;
 // Keep picks spread out so pads do not stack.
 const tooClose = this.selectedSlotTransforms.some((prior) => {
 const priorSize = prior.sizeM ?? slot.sizeM;
-const minSpacing = Math.max(slot.sizeM, priorSize) * 0.75;
 const dx = prior.position[0] - slot.transform.position[0];
 const dy = prior.position[1] - slot.transform.position[1];
 const dz = prior.position[2] - slot.transform.position[2];
-return Math.hypot(dx, dy, dz) < ((prior.sizeM ?? this.placementPadSizeM()) + pickedSize) * 0.5 + 0.04;
+return Math.hypot(dx, dy, dz) < (priorSize + slot.sizeM) * 0.5 + 0.04;
 });
 if (tooClose) {
 this.statusText = 'Too close to another pick - choose a farther slot';
