@@ -16,6 +16,7 @@ import {
 const RAY_TOGGLED_PANEL_IDS: ReadonlySet<string> = new Set([
   'main-menu-panel',
   'wall-tones-panel',
+  'thumbs-lab-panel',
 ]);
 import { primeWallTonesAudioFromGesture } from './wall-tones/audio.js';
 import { resetWallTonesStats } from './wall-tones/economy.js';
@@ -28,7 +29,7 @@ import {
   type WallTonesVoiceGender,
 } from './wall-tones/speech.js';
 
-export type ExperienceMode = 'menu' | 'demo' | 'meditation' | 'walltones';
+export type ExperienceMode = 'menu' | 'demo' | 'meditation' | 'walltones' | 'thumbslab';
 
 const MODE_STORAGE_KEY = 'iwsdk-experience-mode';
 
@@ -51,6 +52,7 @@ function readStoredMode(): ExperienceMode {
     stored === 'demo' ||
     stored === 'meditation' ||
     stored === 'walltones' ||
+    stored === 'thumbslab' ||
     stored === 'menu'
   ) {
     return stored;
@@ -176,9 +178,11 @@ export class AppModeSystem extends createSystem({}) {
     const showDemo = mode === 'demo';
     const showMeditation = mode === 'meditation';
     const showWallTones = mode === 'walltones';
+    const showThumbsLab = mode === 'thumbslab';
 
     this.setNodeVisible('main-menu-panel', showMenu);
     this.setNodeVisible('wall-tones-panel', showWallTones);
+    this.setNodeVisible('thumbs-lab-panel', showThumbsLab);
 
     for (const nodeId of DEMO_NODE_IDS) {
       this.setNodeVisible(nodeId, showDemo);
@@ -238,8 +242,15 @@ export class AppModeSystem extends createSystem({}) {
     }
     const wallTonesButton = panel.getElementById('mode-walltones-button');
     const xrButton = panel.getElementById('xr-button');
+    const thumbsLabButton = panel.getElementById('thumbs-lab-button');
     wallTonesButton?.addEventListener('click', () => this.startWallTonesFlat());
     xrButton?.addEventListener('click', () => this.enterXrIntoWallTones());
+    thumbsLabButton?.addEventListener('click', () => {
+      primeWallTonesAudioFromGesture();
+      unlockSpeechFromGesture();
+      this.setMode('thumbslab');
+    });
+    this.bindThumbsLabBack();
     this.bindSettingsMenu(panel);
     if (wallTonesButton != null) {
       wallTonesButton.name = 'Btn_ModeWallTones';
@@ -247,7 +258,19 @@ export class AppModeSystem extends createSystem({}) {
     if (xrButton != null) {
       xrButton.name = 'Btn_EnterXrWallTones';
     }
+    if (thumbsLabButton != null) {
+      thumbsLabButton.name = 'Btn_ThumbsLab';
+    }
     return panel;
+  }
+
+  private bindThumbsLabBack(): void {
+    const panel = this.world.getSceneObject<UIKitMLAsset>('thumbs-lab-panel');
+    const back = panel?.getElementById('thumbs-lab-back-button');
+    back?.addEventListener('click', () => this.setMode('menu'));
+    if (back != null) {
+      back.name = 'Btn_ThumbsLabBackToMenu';
+    }
   }
 
   /**
@@ -400,6 +423,7 @@ export class AppModeSystem extends createSystem({}) {
       demo: 'Starter demo',
       meditation: 'Breath & gaze rest',
       walltones: 'Wall Tones 2: too fast to wall',
+      thumbslab: 'Wall Tones 2: thumbs yes/no lab',
     };
     document.title = titles[mode];
 
@@ -410,4 +434,4 @@ export class AppModeSystem extends createSystem({}) {
       display: mode === 'meditation' ? 'flex' : 'none',
     });
   }
-}
+                 }
