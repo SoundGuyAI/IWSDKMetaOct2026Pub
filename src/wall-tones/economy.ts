@@ -14,6 +14,7 @@ const BEST_STREAK_KEY = 'wall-tones-best-streak';
 const PURCHASES_KEY = 'wall-tones-purchases';
 const PRESSES_KEY = 'wall-tones-presses';
 const TOP_SECRET_KEY = 'wall-tones-top-secret';
+const SAVERS_KEY = 'wall-tones-savers';
 
 // Tunable store prices. The user's examples are 10/15/22 Bars for the first
 // three levels; each further level keeps growing at about 1.3x ("each next 5
@@ -118,6 +119,7 @@ BEST_STREAK_KEY,
 PURCHASES_KEY,
 PRESSES_KEY,
 TOP_SECRET_KEY,
+SAVERS_KEY,
 ]) {
 try { globalThis.localStorage?.removeItem(key); } catch { /* private mode */ }
 }
@@ -132,6 +134,7 @@ export class WallTonesEconomy {
   private purchases = readNumber(PURCHASES_KEY);
   private presses = readNumber(PRESSES_KEY);
   private topSecretOwned = readNumber(TOP_SECRET_KEY) === 1;
+  private savers = readNumber(SAVERS_KEY);
   /** Latest unlocks since the last drain, for a visual panel toast. */
   private pendingToasts: AchievementDef[] = [];
 
@@ -141,6 +144,32 @@ export class WallTonesEconomy {
 
   getBarsTotal(): number {
     return this.barsTotal;
+  }
+
+  /** Streak savers in stock (test-value consumable, see consumable-values). */
+  getSavers(): number {
+    return this.savers;
+  }
+
+  /** Buy one saver for `price` Bars. Never partial. */
+  buySaver(price: number): boolean {
+    if (this.bars < price) return false;
+    this.bars -= price;
+    this.savers += 1;
+    writeNumber(BARS_KEY, this.bars);
+    writeNumber(SAVERS_KEY, this.savers);
+    this.purchases += 1;
+    writeNumber(PURCHASES_KEY, this.purchases);
+    this.checkAchievements(0);
+    return true;
+  }
+
+  /** Spend `units` savers only when the full amount is owned. */
+  useSavers(units: number): boolean {
+    if (units < 1 || this.savers < units) return false;
+    this.savers -= units;
+    writeNumber(SAVERS_KEY, this.savers);
+    return true;
   }
 
   getHintLevel(): number {
