@@ -3368,7 +3368,7 @@ panel
 panel
 ?.getElementById<UIKit.Text>('gameover-use-saver-label')
 ?.setProperties({
-text: have >= need ? `Use ${need} saver${need > 1 ? 's' : ''} - retry same pattern` : `Need ${need} savers to retry`,
+text: have >= need ? `Use ${need} saver${need > 1 ? 's' : ''} - retry same pattern` : `Need ${need} saver${need > 1 ? 's' : ''} to retry`,
 color: have >= need ? 0x1c1d20 : 0x8a8f98,
 });
 const affordable = this.economy.getBars() >= SAVER_PRICE_BARS;
@@ -4273,4 +4273,4 @@ return new Promise((resolve) => {
 window.setTimeout(resolve, seconds * 1000);
 });
 }
-  }
+}
