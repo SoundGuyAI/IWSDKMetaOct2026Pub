@@ -67,23 +67,50 @@ const NEON: Record<string, string> = {
   secret: '#b48cff',
 };
 
-function lineGlyph(id: string): string {
-  const hit = cache.get('line:' + id);
+/** Tile fill per category (filled colour tiles, white line glyphs). */
+const FILL: Record<string, [string, string]> = {
+  streak: ['#4fd39a', '#2f9e6e'],
+  bars: ['#f0c24a', '#b88a2a'],
+  score: ['#f59a4a', '#c0662a'],
+  store: ['#5aa0ee', '#356fb8'],
+  presses: ['#ec6258', '#b53a36'],
+  secret: ['#b79af6', '#7d5fd0'],
+};
+function lockedStroke(hex: string): string {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},0.62)`;
+}
+export type TileState = 'on' | 'sel' | 'off';
+
+function lineGlyph(id: string, state: TileState = 'on'): string {
+  const key = 'line:' + id + ':' + state;
+  const hit = cache.get(key);
   if (hit !== undefined) return hit;
   const c = document.createElement('canvas');
   c.width = LINE_SIZE;
   c.height = LINE_SIZE;
   const ctx = c.getContext('2d');
   if (ctx == null) return '';
-  const neon = NEON[id] ?? '#ffffff';
-  ctx.fillStyle = '#15181d';
-  ctx.beginPath();
-  ctx.roundRect(3, 3, LINE_SIZE - 6, LINE_SIZE - 6, 14);
-  ctx.fill();
-  ctx.strokeStyle = neon;
-  ctx.lineWidth = 4;
-  ctx.stroke();
-  ctx.strokeStyle = '#ffffff';
+  const pair = FILL[id] ?? ['#888888', '#555555'];
+  if (state === 'off') {
+    // Locked: no box. Just the glyph in the category colour, dimmed.
+  } else {
+    const g = ctx.createLinearGradient(0, 0, 0, LINE_SIZE);
+    g.addColorStop(0, pair[0]);
+    g.addColorStop(1, pair[1]);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.roundRect(4, 4, LINE_SIZE - 8, LINE_SIZE - 8, 16);
+    ctx.fill();
+    if (state === 'sel') {
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.roundRect(2, 2, LINE_SIZE - 4, LINE_SIZE - 4, 18);
+      ctx.stroke();
+    }
+  }
+  ctx.strokeStyle = state === 'off' ? lockedStroke(pair[0]) : '#ffffff';
   ctx.lineWidth = 5;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
@@ -126,11 +153,15 @@ function lineGlyph(id: string): string {
   }
   ctx.stroke();
   const url = c.toDataURL('image/png');
-  cache.set('line:' + id, url);
+  cache.set(key, url);
   return url;
 }
 
 import { ACHIEVEMENT_ICON_PNG } from './achievement-icon-art.js';
+
+export function achievementTileSrc(id: string, state: TileState): string {
+  return lineGlyph(id, state);
+}
 
 export function achievementIconSrc(id: string): string {
   if (id in NEON) return lineGlyph(id);
@@ -215,4 +246,4 @@ export function achievementIconSrc(id: string): string {
   const url = canvas.toDataURL('image/png');
   cache.set(id, url);
   return url;
-      }
+}
