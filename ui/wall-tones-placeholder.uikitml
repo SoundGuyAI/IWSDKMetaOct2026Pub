@@ -86,19 +86,6 @@
     margin-bottom: 24px;
   }
 
-  .drag-bar {
-    flex-direction: column;
-    margin-left: 16px;
-    margin-right: 16px;
-    margin-top: 12px;
-    margin-bottom: 4px;
-  }
-
-  .drag-handle {
-    justify-content: center;
-    height: 44px;
-  }
-
   .popup-overlay {
     flex-direction: column;
     align-items: center;
@@ -123,19 +110,8 @@
     border-color: #4a4d55;
   }
 
-  .drag-handle-label {
-    font-size: 15px;
-    font-weight: 700;
-    transform-translate-y: 1px;
-  }
 </style>
 <Panel class="panel-root">
-  <div id="panel-drag-bar" class="drag-bar" style="display: none">
-    <Button id="panel-drag-handle" class="drag-handle" style="height: 44px">
-      <ButtonIcon><Move></Move></ButtonIcon>
-      <ButtonLabel id="panel-drag-label" class="drag-handle-label">Drag to move panel</ButtonLabel>
-    </Button>
-  </div>
   <div id="menu-view" style="flex-direction: column">
   <div id="panel-content" class="content">
     <div id="wall-tones-panel-header" style="flex-direction: column; gap: 10px">
