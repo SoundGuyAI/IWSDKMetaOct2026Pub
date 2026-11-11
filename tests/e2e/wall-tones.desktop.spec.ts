@@ -141,15 +141,75 @@ test.describe('Wall Tones desktop (flat mode)', () => {
     const wrong = (snap.sequence[snap.inputStep]! + 1) % 4;
     await submitPad(page, wrong);
     await waitForPhase(page, 'resetting');
+    // The run is over: a Game Over popup opens and nothing restarts by itself.
+    await expect
+      .poll(() => page.evaluate(() => (window as any).__wallTonesDebug.gameOverOpen))
+      .toBe(true);
+    await page.waitForTimeout(3_000);
+    snap = await readDebug(page);
+    expect(snap.phase).toBe('resetting');
+    expect(snap.sequence.length).toBe(2);
+    // New run starts a fresh run and keeps the best streak.
+    await page.evaluate(() => (window as any).__wallTonesDebug.gameOverNewRun());
     await expect
       .poll(async () => {
         const s = await readDebug(page);
         return s.phase === 'input' && s.sequence.length === 1;
       })
       .toBe(true);
+    expect(await page.evaluate(() => (window as any).__wallTonesDebug.gameOverOpen)).toBe(false);
     snap = await readDebug(page);
     expect(snap.streak).toBe(0);
     expect(snap.bestStreak).toBe(1);
+  });
+
+  test('idle prompt replays the pattern once per run, then only shows a caption', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await bootWallTones(page);
+    await startFlatPlay(page);
+    const dbg = () =>
+      page.evaluate(() => {
+        const d = (window as any).__wallTonesDebug;
+        return { spent: d.idleReplaySpent, text: d.statusLineText, phase: d.phase };
+      });
+    // First idle stretch: the one allowed replay runs (phase leaves input).
+    await expect.poll(async () => (await dbg()).spent, { timeout: 40_000 }).toBe(true);
+    await expect.poll(async () => (await dbg()).phase, { timeout: 30_000 }).toBe('input');
+    // Second idle stretch: no replay, caption only.
+    await expect.poll(async () => (await dbg()).text, { timeout: 40_000 }).toBe('Still there?');
+    expect((await dbg()).phase).toBe('input');
+  });
+
+  test('Game Over: buy a saver with a confirm step, then retry the same pattern', async ({
+    page,
+  }) => {
+    await bootWallTones(page);
+    await startFlatPlay(page);
+    await page.evaluate(() => (window as any).__wallTonesDebug.grantBars(40));
+    let snap = await readDebug(page);
+    const wrong = (snap.sequence[0]! + 1) % 4;
+    const before = snap.sequence.slice();
+    await submitPad(page, wrong);
+    await expect
+      .poll(() => page.evaluate(() => (window as any).__wallTonesDebug.gameOverOpen))
+      .toBe(true);
+    const dbg = (fn: string) =>
+      page.evaluate((f) => (window as any).__wallTonesDebug[f](), fn);
+    // First press only arms the confirm; nothing is spent yet.
+    await dbg('gameOverBuySaver');
+    expect(await page.evaluate(() => (window as any).__wallTonesDebug.savers)).toBe(0);
+    await dbg('gameOverBuySaver');
+    expect(await page.evaluate(() => (window as any).__wallTonesDebug.savers)).toBe(1);
+    await dbg('gameOverUseSaver');
+    await expect
+      .poll(async () => (await readDebug(page)).phase === 'input')
+      .toBe(true);
+    snap = await readDebug(page);
+    expect(snap.sequence).toEqual(before);
+    expect(await page.evaluate(() => (window as any).__wallTonesDebug.savers)).toBe(0);
+    expect(await page.evaluate(() => (window as any).__wallTonesDebug.gameOverOpen)).toBe(false);
   });
 
   test('stored voice choice controls which speech clips load', async ({
