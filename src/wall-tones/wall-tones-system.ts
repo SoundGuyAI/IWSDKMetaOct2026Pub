@@ -148,6 +148,7 @@ import {
   nextOpenThreshold,
 } from './economy.js';
 import { storeTileSrc, type TileState as StoreTileState } from './store-icons.js';
+import { SAVER_PRICE_BARS, saverRetryPlan, saverUnitsForStreak } from './consumable-values.js';
 import {
 getActiveWorldKind,
 switchBackToHubMenu,
@@ -200,6 +201,18 @@ unlockedAchievements: string[];
 purchases: number;
 presses: number;
 storeOpen: boolean;
+/** Game Over popup is showing (a wrong note ended the run). */
+gameOverOpen: boolean;
+gameOverUseSaver: () => void;
+gameOverBuySaver: () => void;
+savers: number;
+streakNow: number;
+/** Test-only: the New run button action. */
+gameOverNewRun: () => void;
+/** Whether the run's single automatic replay is spent (test-only). */
+idleReplaySpent: boolean;
+/** Status line text currently shown (test-only). */
+statusLineText: string;
 sequenceRowVisible: boolean;
 sequenceBoxesShown: number;
 sequenceUnknownShown: number;
@@ -219,6 +232,7 @@ buyHint: () => void;
 buyListen: () => void;
 buyAutoplay: () => void;
 buyReplay: () => void;
+buySaver: () => void;
 buyTopSecret: () => void;
 /** Test-only: spends one Replay through the Repeat button path. */
 repeatPattern: () => void;
@@ -239,6 +253,10 @@ replaysTotal: number;
 demoBoost: number;
 /** Test-only wallet funding for e2e. */
 grantBars: (amount: number) => void;
+/** Test-only saver inventory seeding for e2e. */
+grantSavers: (units: number) => void;
+/** Test-only streak seeding for e2e Game Over cost checks. */
+setStreak: (streak: number) => void;
 flatAwaitingStart: boolean;
 slotCandidateCount: number;
 selectedSlotCount: number;
@@ -303,6 +321,13 @@ private readonly game = new WallTonesSequence();
 private readonly economy = withDemoBarsFlag(new WallTonesEconomy());
 private storeOpen = false;
 private achievementsOpen = false;
+/** Game Over popup shown after a wrong note; New run starts the next run. */
+private gameOverOpen = false;
+// No buy-confirm arming: buying a saver is a single press that applies it when enough are held (owner request 2026-11-11).
+/** Run id whose single automatic replay has been used. */
+private idleReplayUsedRunId = -1;
+/** Until this time the status line shows the caption-only idle nudge. */
+private idleNudgeUntil = 0;
 private readonly viewer = new Vector3();
 private readonly captionProjection = new Vector3();
 private readonly cameraForward = new Vector3();
@@ -687,6 +712,15 @@ panel
 panel
 .getElementById('achievements-close-button')
 ?.addEventListener('click', () => this.setAchievementsOpen(false));
+panel
+.getElementById('gameover-use-saver-button')
+?.addEventListener('click', () => this.onGameOverUseSaver());
+panel
+.getElementById('gameover-buy-saver-button')
+?.addEventListener('click', () => this.onGameOverBuySaver());
+panel
+.getElementById('gameover-newrun-button')
+?.addEventListener('click', () => this.onGameOverNewRun());
 
 panel
 .getElementById('store-buy-button')
@@ -766,6 +800,7 @@ this.flowPhase = 'inactive';
 this.barFloats.clear();
 this.achievementsOpen = false;
 this.storeOpen = false;
+this.gameOverOpen = false;
 this.syncMenuPopupVisibility();
 this.roundBarsEarned = 0;
 this.roundBonusEarned = 0;
@@ -1540,6 +1575,25 @@ return system.economy.getPresses();
 get storeOpen() {
 return system.storeOpen;
 },
+get gameOverOpen() {
+return system.gameOverOpen;
+},
+gameOverNewRun: () => system.onGameOverNewRun(),
+gameOverUseSaver: () => system.onGameOverUseSaver(),
+gameOverBuySaver: () => system.onGameOverBuySaver(),
+get savers() {
+return system.economy.getSavers();
+},
+get streakNow() {
+return system.game.streak;
+},
+get idleReplaySpent() {
+return system.idleReplayUsedRunId === system.game.runId;
+},
+get statusLineText() {
+return String(system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('wall-tones-status')?.properties.peek().text ?? '');
+},
 get sequenceRowVisible() {
 return system.lastSequenceRowVisible;
 },
@@ -1651,6 +1705,10 @@ buyReplay: () => {
 system.selectStoreTile('replay');
 system.onBuySelected();
 },
+buySaver: () => {
+system.selectStoreTile('saver');
+system.onBuySelected();
+},
 buyTopSecret: () => {
 system.selectStoreTile('secret');
 system.onBuySelected();
@@ -1694,6 +1752,12 @@ system.selectStoreTile(id);
 // Test-only: fund the wallet without grinding rounds.
 grantBars: (amount: number) => {
 system.debugGrantBars(amount);
+},
+grantSavers: (units: number) => {
+system.debugGrantSavers(units);
+},
+setStreak: (streak: number) => {
+system.debugSetStreak(streak);
 },
 get flatAwaitingStart() {
 return system.flatAwaitingStart;
@@ -3549,8 +3613,98 @@ await this.wait(WRONG_RESET_DELAY_S);
 if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
 }
+// The run is over: no automatic restart. A Game Over popup (a panel in
+// MR) waits for New run.
+this.storeOpen = false;
+this.achievementsOpen = false;
+this.gameOverOpen = true;
+this.statusText = 'Game Over';
+this.syncMenuPopupVisibility();
+this.renderGameOverSummary();
+this.renderPanel();
+});
+}
+
+private renderGameOverSummary(): void {
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+panel
+?.getElementById<UIKit.Text>('gameover-summary')
+?.setProperties({
+text: `You reached ${this.game.streak}. Best ${this.game.bestStreak}.`,
+});
+const need = saverUnitsForStreak(this.game.streak);
+const have = this.economy.getSavers();
+panel
+?.getElementById<UIKit.Text>('gameover-saver-status')
+?.setProperties({ text: `Streak savers: ${have}. Retry the same pattern costs ${need}.` });
+panel
+?.getElementById<UIKit.Text>('gameover-use-saver-label')
+?.setProperties({
+text: have >= need ? `Use ${need} saver${need > 1 ? 's' : ''} - retry same pattern` : `Need ${need} saver${need > 1 ? 's' : ''} to retry`,
+color: have >= need ? 0x1c1d20 : 0x8a8f98,
+});
+const missing = Math.max(0, need - have);
+const plan = saverRetryPlan(have, need, this.economy.getBars(), SAVER_PRICE_BARS);
+panel
+?.getElementById<UIKit.Text>('gameover-buy-saver-label')
+?.setProperties({
+text: `Buy ${missing} saver${missing > 1 ? 's' : ''} & retry - ${plan.costBars}`,
+color: plan.affordable ? 0x1c1d20 : 0xd43a3a,
+});
+}
+
+/** One-press purchase (owner request 2026-11-11, no confirm step): buys exactly the savers missing for an immediate retry and applies them in the same press. Cost model unchanged: missing units at 18 Bars each. */
+private onGameOverBuySaver(): void {
+if (!this.gameOverOpen) return;
+const need = saverUnitsForStreak(this.game.streak);
+const plan = saverRetryPlan(this.economy.getSavers(), need, this.economy.getBars(), SAVER_PRICE_BARS);
+if (!plan.affordable) {
+void playErrorTone();
+this.renderGameOverSummary();
+return;
+}
+for (let i = 0; i < plan.buy; i++) this.economy.buySaver(SAVER_PRICE_BARS);
+this.showAchievementToasts();
+if (plan.apply) {
+this.onGameOverUseSaver();
+return;
+}
+this.renderGameOverSummary();
+this.renderPanel();
+}
+
+/** Spend savers and replay the same pattern; the streak and pattern stay. */
+private onGameOverUseSaver(): void {
+if (!this.gameOverOpen || !this.experienceActive || this.flowPhase !== 'playing') return;
+const need = saverUnitsForStreak(this.game.streak);
+if (!this.economy.useSavers(need)) {
+void playErrorTone();
+return;
+}
+this.gameOverOpen = false;
+this.syncMenuPopupVisibility();
+this.game.inputStep = 0;
+this.game.phase = 'playback';
+this.idleReplayQueued = false;
+this.renderPanel();
+this.playbackQueue = this.playbackQueue.then(async () => {
+if (!this.experienceActive || this.flowPhase !== 'playing') return;
+await this.playSequence();
+});
+}
+
+private onGameOverNewRun(): void {
+if (!this.gameOverOpen || !this.experienceActive || this.flowPhase !== 'playing') {
+return;
+}
+this.gameOverOpen = false;
+this.syncMenuPopupVisibility();
 this.game.onWrongInput();
 this.renderPanel();
+this.playbackQueue = this.playbackQueue.then(async () => {
+if (!this.experienceActive || this.flowPhase !== 'playing') {
+return;
+}
 // Same Simon fanfare as a fresh start, pause, then the first note again.
 await this.playSimonStartupFanfare();
 if (!this.experienceActive || this.flowPhase !== 'playing') {
@@ -3725,6 +3879,16 @@ return;
 if (now - this.lastInputAt < IDLE_REPLAY_S) {
 return;
 }
+if (this.idleReplayUsedRunId === this.game.runId) {
+// The run's one automatic replay is spent: only a caption-only nudge,
+// no audio and no replay.
+this.lastInputAt = now;
+this.idleNudgeUntil = performance.now() + 6000;
+this.renderPanel();
+window.setTimeout(() => this.renderPanel(), 6100);
+return;
+}
+this.idleReplayUsedRunId = this.game.runId;
 this.idleReplayQueued = true;
 this.lastInputAt = now;
 this.game.inputStep = 0;
@@ -3760,7 +3924,9 @@ this.renderSequenceIcons(panel);
 panel
 .getElementById<UIKit.Text>('wall-tones-status')
 ?.setProperties({
-text: this.game.phase === 'input' ? 'Hint:' : this.statusText || 'Ready',
+text: this.game.phase === 'input'
+? (performance.now() < this.idleNudgeUntil ? 'Still there?' : 'Hint:')
+: this.statusText || 'Ready',
 });
 panel
 .getElementById<UIKit.Text>('wall-tones-current-streak')
@@ -3866,7 +4032,8 @@ const tiles: StoreTile[] = [
 {
 id: 'listen',
 name: 'Listen',
-badge: eco.ownsListen() ? '\u2713' : '1',
+// One-time item: no level number; a check once owned, no badge before.
+badge: eco.ownsListen() ? '\u2713' : '',
 state: 'on',
 },
 {
@@ -3887,9 +4054,9 @@ name: 'Replay',
 badge: String(eco.getReplaysTotal()),
 state: 'on',
 },
-// Saver inventory arrives with the Game Over update (PR #63); the tile is
-// visible in the tree now, without a purchase action yet.
-{ id: 'saver', name: 'Saver', badge: '-', state: 'off' },
+// Streak saver: no unlock prerequisites (owner rule 2026-11-11), stock is
+// the shared PR #63 inventory the Game Over popup spends from.
+{ id: 'saver', name: 'Saver', badge: String(eco.getSavers()), state: 'on' },
 {
 id: 'secret',
 name: 'Secret',
@@ -4000,7 +4167,9 @@ break;
 case 'saver':
 titleText = 'Streak saver';
 bodyText =
-'Use when you miss to retry the same pattern. No unlock prerequisites. Arrives with the Game Over update (PR #63).';
+'Use when you miss to retry the same pattern (Game Over popup). A retry costs 1 saver per 10-streak stretch, doubling after (streak 1-10: 1, 11-20: 2, ...). Held: ' + eco.getSavers() + '.';
+buyText = 'Saver - ' + SAVER_PRICE_BARS + ' Bars';
+cost = SAVER_PRICE_BARS;
 break;
 case 'secret':
 titleText = 'Top Secret';
@@ -4338,6 +4507,20 @@ this.renderPanel();
 }
 }
 
+private debugGrantSavers(units: number): void {
+this.economy.debugGrantSavers(units);
+this.renderPanel();
+}
+
+private debugSetStreak(streak: number): void {
+if (!Number.isFinite(streak) || streak < 0) return;
+this.game.streak = Math.floor(streak);
+if (this.game.streak > this.game.bestStreak) {
+this.game.bestStreak = this.game.streak;
+}
+this.renderPanel();
+}
+
 private setAchievementsOpen(open: boolean): void {
 if (this.achievementsOpen === open) return;
 this.achievementsOpen = open;
@@ -4374,7 +4557,7 @@ this.speech.speak(id);
 
 private syncMenuPopupVisibility(): void {
 const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
-const popupOpen = this.storeOpen || this.achievementsOpen;
+const popupOpen = this.storeOpen || this.achievementsOpen || this.gameOverOpen;
 panel
 ?.getElementById<UIKit.Container>('menu-view')
 ?.setProperties({ display: popupOpen ? 'none' : 'flex' });
@@ -4384,6 +4567,9 @@ panel
 panel
 ?.getElementById<UIKit.Container>('achievements-popup')
 ?.setProperties({ display: this.achievementsOpen ? 'flex' : 'none' });
+panel
+?.getElementById<UIKit.Container>('gameover-popup')
+?.setProperties({ display: this.gameOverOpen ? 'flex' : 'none' });
 }
 
 private onToggleStore(): void {
@@ -4421,6 +4607,12 @@ private storeSelected: string | null = null;
 private selectStoreTile(id: string): void {
 this.storeSelected = id;
 this.renderPanel();
+// A new selection resets the status line, so a previous tile's "Bought."
+// or denial never lingers over another item's details.
+this.world
+.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById<UIKit.Text>('store-detail-status')
+?.setProperties({ text: 'Prices are test values.' });
 }
 
 /** Buy the selected store tile. Gates and denial feedback live here so the
@@ -4450,6 +4642,7 @@ id === 'listen' ? this.economy.buyListen()
 : id === 'hint' ? this.economy.buyNextHintLevel()
 : id === 'autoplay' ? this.economy.buyNextAutoplayLevel()
 : id === 'replay' ? this.economy.buyReplay()
+: id === 'saver' ? this.economy.buySaver(SAVER_PRICE_BARS)
 : id === 'secret' ? this.economy.buyTopSecret()
 : false;
 if (!ok) {
