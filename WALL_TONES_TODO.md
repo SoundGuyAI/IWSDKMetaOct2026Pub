@@ -47,15 +47,8 @@ Personal backlog for what still needs work — not an agent task list. Move item
 
 
 
-- [~] 1. Setup window: bigger threshold angle to jump back into view PR #38: implemented and pushed in the combined update at 5500c0e; local full suite 43/43 passed. Rebuilt preview verified at 5500c0e; on-headset acceptance pending (2026-11-08).
-- [~] 2. Setup window: after mode is selected, place it a little farther away, a little higher, and make it draggable PR #38: implemented and pushed in the combined update at 5500c0e; local full suite 43/43 passed. Rebuilt preview verified at 5500c0e; on-headset acceptance pending (2026-11-08).
-- [~] 22. In the game menu, make the window draggable by default; remove the top button's drag-mode toggle. PR #38: implemented and pushed in the combined update at 5500c0e; local full suite 43/43 passed. Rebuilt preview verified at 5500c0e; on-headset acceptance pending (2026-11-08).
-- [~] 42. MR setup voice (reported Nov 7): the "Wall Tones can use your real-world environment" line plays twice when opening the setup window - it should play once. Reproduce first to confirm where the second play comes from. PR #38: implemented and pushed in the combined update at 5500c0e; local full suite 43/43 passed. Rebuilt preview verified at 5500c0e; on-headset acceptance pending (2026-11-08).
-- [~] 43. MR air-place setup voice (requested Nov 7): before "Pad one of four", first explain the two placement orientations (upright / flat) like the earlier flow did, then say to pinch to place pad 1. The current flow skips the orientation explanation. PR #38: implemented and pushed in the combined update at 5500c0e; local full suite 43/43 passed. Rebuilt preview verified at 5500c0e; on-headset acceptance pending (2026-11-08).
 
 - [~] 20. Boundary investigation: PR #28 (Nov 7) shipped an unbounded tracking space; whether the Quest boundary stays hidden in MR still needs on-headset confirmation.
-- [~] 25. PR #38: new73e8e03runtime fix requires actual unselected same-ray slot and blocking panel during wall picking, upward-only; empty-space hold cleared. Four targeted tests and all8units/typecheck/build pass. Runtime preview73e8e03verified; later80af8fbcomment-only. Headset retest pending; not merged.
-- [~] 27. PR #41: combined walls + tables mode repaired at 58b4564. Seated floor detection and world-table-yaw alignment retain mixed wall/table metadata and 36 cm table pads. Typecheck/build and all 9 unit tests passed. Full GitHub e2e 43/43 passed, including slow, in run 42542230464. Ready for Quest retest. Exact-head preview identity and desktop gameplay checked Nov 9. Quest mixed-plane retest pending; not merged.
 - [~] 11. Score that grows exponentially with streak length (economy PR; PENDING the user's score-interpretation answer - Bars and streak persist meanwhile, no score display yet).
 - [~] 12. Store where players buy modifiers (economy PR: gold Bars, hint store).
    - [~] 12a. Your Turn hint modifier: each level gives 5 boxes of hints; buy upgrades for longer hints (economy PR: 10/15/22 Bars then ~1.3x growth, open-ended, tunable; persistent unlocks; Your Turn row hidden without a hint, per user November 7).
@@ -63,6 +56,14 @@ Personal backlog for what still needs work — not an agent task list. Move item
 - [~] 19. Achievements for streak, score, story and other milestones (economy PR: streak/Bar/store achievements, visual-only; score achievements once 11 lands).
 
 ## Done
+
+- [x] 25. PR #38: raised/tilted setup panel, 50-degree horizontal follow, frozen snap, per-hand menu routing, front/adjacent safe wall placement and explicit header-only drag/drop. Gameplay pinches no longer reposition it. Owner-approved merge b97f623 at02:37:57 on11Nov; exact2126021 full48e2e+42units/type/build/coverage passed with current main050f3f1 included.
+- [x] 27. PR #41: combined wall/table picking and approved combined guidance in both voices, preserving single-surface voices. Owner-approved merge5ea8050 at03:01 on11Nov. New mainb97f623 included before exact95e101d complete48e2e+51units/type/build/coverage passed in run42934467110. Size compatibility keeps real per-slot size first, with transform fallback. Physical mixed-plane/voice acceptance remains on main.
+- [x] 1. Setup window: bigger threshold angle to jump back into view PR #38 merged 11 Nov as b97f623; final headset acceptance on main remains pending.
+- [x] 2. Setup window: after mode is selected, place it a little farther away, a little higher, and make it draggable PR #38 merged 11 Nov as b97f623; final headset acceptance on main remains pending.
+- [x] 22. In the game menu, make the window draggable by default; remove the top button's drag-mode toggle. PR #38 merged 11 Nov as b97f623; final headset acceptance on main remains pending.
+- [x] 42. MR setup voice (reported Nov 7): the "Wall Tones can use your real-world environment" line plays twice when opening the setup window - it should play once. Reproduce first to confirm where the second play comes from. PR #38 merged 11 Nov as b97f623; final headset acceptance on main remains pending.
+- [x] 43. MR air-place setup voice (requested Nov 7): before "Pad one of four", first explain the two placement orientations (upright / flat) like the earlier flow did, then say to pinch to place pad 1. The current flow skips the orientation explanation. PR #38 merged 11 Nov as b97f623; final headset acceptance on main remains pending.
 
 - [x] PR #47: deterministic automated pad-fade correction, owner-approved merge58ab5bf at00:53 on11Nov. Exact combined e796dde: full public e2e46/46,6units/typecheck/build/spec coverage passed. No gameplay change or new device acceptance claim.
 - [x] PR #45: width-fit phone menu and phone Enter XR hiding, owner-approved mergebe38840 at01:04 on11Nov. Latest47main included; exact5e38de1 full public e2e46/46,8units/typecheck/build/spec coverage passed. Physical-device checks are separate.
@@ -119,3 +120,11 @@ Personal backlog for what still needs work — not an agent task list. Move item
 - PR38 new review feedback supersedes the prior ray-dodge approach: lower edge above head in air placement and above eyes for wall selection; tilt toward viewer,50degree horizontal follow threshold, frozen snap target, per-hand menu/placement routing and header drag. After wall/seated placement search front/adjacent wall space avoiding pads, never behind, floating fallback. Implemented locally with14targeted geometry/production-method tests and synthetic UIKit pixels/raycast checks. Latest main integrated locally; final integration/testing and preview push pending. No physical Quest acceptance or merge approval.
 - PR41 requires one combined walls-and-tables prompt rather than two sequential announcements. Implementation and new recorded assets are in progress separately. No merge approval.
 - Cloudflare production failure analysis and proposed CloudFlareProd promotion branch are pending. Main builds remain disabled by the owner; no account or deployment settings changed.
+
+## Review update - 2026-11-11,03:02 Asia/Jerusalem
+
+- Owner approved PR38 and PR41 at02:36:59. Both merged sequentially; PR41 included the newly advanced main and passed the complete public suite before its merge. Main5ea8050. No other feature PRs remain open.
+- PR38 complete run: https://github.com/SoundGuyAI/IWSDKMetaOct2026Pub/actions/runs/42929726303 . PR41 combined complete run: https://github.com/SoundGuyAI/IWSDKMetaOct2026Pub/actions/runs/42934467110 . Full suites include all48e2e, not a synchronize-event skip. PR41 combined tree has51units.
+- Final main full run follows this documentation update. Do not treat it as passed until that run finishes.
+- Production gate: user will test main after the complete main CI passes, likely after the conference. Only after that test and his go-ahead can the production branch be opened. No CloudFlareProd branch or Cloudflare settings changes were made.
+- The reported Cloudflare EMFILE failure was followed by successful builds. The investigation found the Vite config's UIKit icon import chain and descriptor-limit sensitivity; it did not establish an ongoing outage or justify an unrequested dependency/settings change.
