@@ -141,6 +141,7 @@ import {
   ACHIEVEMENT_CATEGORIES,
   TOP_SECRET_COST,
   WallTonesEconomy,
+  nextOpenThreshold,
 } from './economy.js';
 import {
 getActiveWorldKind,
@@ -3702,8 +3703,15 @@ let { value, level, next } = demoParam == null || cat.id === 'secret'
 : { value: 0, level: 0, next: cat.levels[0] ?? null };
 if (demoParam != null && cat.id !== 'secret') {
 level = demoLevels[cat.id] ?? 0;
-value = level > 0 ? (cat.levels[level - 1] ?? 0) : 0;
-next = cat.levels[level] ?? null;
+// Mirror the real rule: levels are open-ended past the listed ones
+// (10/25/50 per decade), so the sample view must never claim a top level
+// for a normal category, and the sample value follows the same pattern.
+const ths: number[] = [...cat.levels];
+while (ths.length < level) ths.push(nextOpenThreshold(ths[ths.length - 1] ?? 0));
+value = level > 0 ? ths[level - 1]! : 0;
+next = cat.hidden === true
+? null
+: (level < ths.length ? ths[level]! : nextOpenThreshold(ths[ths.length - 1] ?? 0));
 }
 const locked = level === 0;
 const secret = cat.hidden === true && locked;
