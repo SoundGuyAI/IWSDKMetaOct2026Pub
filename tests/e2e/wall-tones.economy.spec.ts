@@ -18,6 +18,14 @@ interface DebugSnap {
   barsTotal: number;
   hintLevel: number;
   hintRevealCount: number;
+  ownsListen: boolean;
+  hintUnlocked: boolean;
+  autoplayLevel: number;
+  autoplayUnlocked: boolean;
+  replaysFree: number;
+  replaysPaid: number;
+  replaysTotal: number;
+  demoBoost: number;
   unlockedAchievements: string[];
   presses: number;
   storeOpen: boolean;
@@ -46,6 +54,14 @@ const readState = (page: Page): Promise<DebugSnap> =>
       barsTotal: d.barsTotal,
       hintLevel: d.hintLevel,
       hintRevealCount: d.hintRevealCount,
+      ownsListen: d.ownsListen,
+      hintUnlocked: d.hintUnlocked,
+      autoplayLevel: d.autoplayLevel,
+      autoplayUnlocked: d.autoplayUnlocked,
+      replaysFree: d.replaysFree,
+      replaysPaid: d.replaysPaid,
+      replaysTotal: d.replaysTotal,
+      demoBoost: d.demoBoost,
       unlockedAchievements: [...d.unlockedAchievements],
       presses: d.presses,
       storeOpen: d.storeOpen,
@@ -218,14 +234,18 @@ test.describe('Wall Tones economy: Bars, store, hints, achievements', () => {
       })
       .toBe('false:0');
 
-    // Buy level 1 and start a fresh round: exactly 5 boxes show.
-    await grantBars(page, 50);
+    // Skill-tree gate (owner 2026-11-11): Hint L1 needs Listen first.
+    await grantBars(page, 60);
     await dbg(page, 'toggleStore');
     expect((await readState(page)).storeOpen).toBe(true);
     await dbg(page, 'buyHint');
+    expect((await readState(page)).hintLevel).toBe(0); // refused: no Listen
+    await dbg(page, 'buyListen');
+    await dbg(page, 'buyHint');
     let snap = await readState(page);
+    expect(snap.ownsListen).toBe(true);
     expect(snap.hintLevel).toBe(1);
-    expect(snap.bars).toBe(40);
+    expect(snap.bars).toBe(5); // 60 - 30 (Listen) - 25 (Hint L1)
     expect(snap.hintRevealCount).toBe(5);
     expect(snap.unlockedAchievements).toContain('store-1');
 
@@ -288,8 +308,9 @@ test.describe('Wall Tones economy: Bars, store, hints, achievements', () => {
     const speechRequests: string[] = [];
     await abortSpeech(page, speechRequests);
     await bootWallTones(page, true);
-    await grantBars(page, 50);
+    await grantBars(page, 60);
     await dbg(page, 'toggleStore');
+    await dbg(page, 'buyListen');
     await dbg(page, 'buyHint');
     await submitPad(page, 0);
 
@@ -332,9 +353,10 @@ test.describe('Wall Tones economy: Bars, store, hints, achievements', () => {
     );
     await expect(squares).toHaveCount(0);
 
-    // Own a level-1 hint, then reach a 6-note round.
-    await grantBars(page, 50);
+    // Own Listen and a level-1 hint, then reach a 6-note round.
+    await grantBars(page, 60);
     await dbg(page, 'toggleStore');
+    await dbg(page, 'buyListen');
     await dbg(page, 'buyHint');
     await playToStreak(page, 5);
     await expect
@@ -370,28 +392,34 @@ test.describe('Wall Tones economy: Bars, store, hints, achievements', () => {
     const speechRequests: string[] = [];
     await abortSpeech(page, speechRequests);
     await bootWallTones(page, true);
-    await grantBars(page, 12);
+    await grantBars(page, 30);
     await dbg(page, 'toggleStore');
-    await dbg(page, 'buyHint');
+    await dbg(page, 'buyListen');
     let snap = await readState(page);
-    expect(snap.hintLevel).toBe(1); // 12 - 10 = 2 Bars left
-    expect(snap.bars).toBe(2);
+    expect(snap.ownsListen).toBe(true);
+    expect(snap.bars).toBe(0);
     await dbg(page, 'buyHint');
     snap = await readState(page);
-    expect(snap.hintLevel).toBe(1); // 15 Bars needed, purchase refused
-    expect(snap.bars).toBe(2);
+    expect(snap.hintLevel).toBe(0); // 25 Bars needed, purchase refused
+    expect(snap.bars).toBe(0);
 
-    await grantBars(page, 100);
-    await dbg(page, 'buyHint');
+    await grantBars(page, 25);
     await dbg(page, 'buyHint');
     snap = await readState(page);
-    expect(snap.hintLevel).toBe(3); // 2 - 15 - 22 + 100 = 65
-    expect(snap.bars).toBe(65);
-    // No level cap: level 4 costs round(22 * 1.3) = 29 Bars.
+    expect(snap.hintLevel).toBe(1);
+    expect(snap.bars).toBe(0);
+
+    await grantBars(page, 350);
+    await dbg(page, 'buyHint'); // L2: 50
+    await dbg(page, 'buyHint'); // L3: 100
+    snap = await readState(page);
+    expect(snap.hintLevel).toBe(3); // 350 - 50 - 100 = 200
+    expect(snap.bars).toBe(200);
+    // No level cap: level 4 costs 200 Bars (25/50/100 then doubling).
     await dbg(page, 'buyHint');
     snap = await readState(page);
     expect(snap.hintLevel).toBe(4);
-    expect(snap.bars).toBe(36); // 65 - 29
+    expect(snap.bars).toBe(0);
     expect(snap.hintRevealCount).toBe(20);
   });
 
