@@ -141,15 +141,110 @@ test.describe('Wall Tones desktop (flat mode)', () => {
     const wrong = (snap.sequence[snap.inputStep]! + 1) % 4;
     await submitPad(page, wrong);
     await waitForPhase(page, 'resetting');
+    // The run is over: a Game Over popup opens and nothing restarts by itself.
+    await expect
+      .poll(() => page.evaluate(() => (window as any).__wallTonesDebug.gameOverOpen))
+      .toBe(true);
+    await page.waitForTimeout(3_000);
+    snap = await readDebug(page);
+    expect(snap.phase).toBe('resetting');
+    expect(snap.sequence.length).toBe(2);
+    // New run starts a fresh run and keeps the best streak.
+    await page.evaluate(() => (window as any).__wallTonesDebug.gameOverNewRun());
     await expect
       .poll(async () => {
         const s = await readDebug(page);
         return s.phase === 'input' && s.sequence.length === 1;
       })
       .toBe(true);
+    expect(await page.evaluate(() => (window as any).__wallTonesDebug.gameOverOpen)).toBe(false);
     snap = await readDebug(page);
     expect(snap.streak).toBe(0);
     expect(snap.bestStreak).toBe(1);
+  });
+
+  test('idle prompt replays the pattern once per run, then only shows a caption', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await bootWallTones(page);
+    await startFlatPlay(page);
+    const dbg = () =>
+      page.evaluate(() => {
+        const d = (window as any).__wallTonesDebug;
+        return { spent: d.idleReplaySpent, text: d.statusLineText, phase: d.phase };
+      });
+    // First idle stretch: the one allowed replay runs (phase leaves input).
+    await expect.poll(async () => (await dbg()).spent, { timeout: 40_000 }).toBe(true);
+    await expect.poll(async () => (await dbg()).phase, { timeout: 30_000 }).toBe('input');
+    // Second idle stretch: no replay, caption only.
+    await expect.poll(async () => (await dbg()).text, { timeout: 40_000 }).toBe('Still there?');
+    expect((await dbg()).phase).toBe('input');
+  });
+
+  test('Game Over: one press buys the missing savers and retries the same pattern', async ({
+    page,
+  }) => {
+    await bootWallTones(page);
+    await startFlatPlay(page);
+    await page.evaluate(() => (window as any).__wallTonesDebug.grantBars(40));
+    let snap = await readDebug(page);
+    const wrong = (snap.sequence[0]! + 1) % 4;
+    const before = snap.sequence.slice();
+    await submitPad(page, wrong);
+    await expect
+      .poll(() => page.evaluate(() => (window as any).__wallTonesDebug.gameOverOpen))
+      .toBe(true);
+    const dbg = (fn: string) =>
+      page.evaluate((f) => (window as any).__wallTonesDebug[f](), fn);
+    // One press (owner-approved 2026-11-11, no confirm step): buys exactly the
+    // missing savers at 18 Bars each and applies them in the same press.
+    await dbg('gameOverBuySaver');
+    await expect
+      .poll(async () => (await readDebug(page)).phase === 'input')
+      .toBe(true);
+    snap = await readDebug(page);
+    expect(snap.sequence).toEqual(before);
+    // Bought 1 saver for 18 Bars and consumed it on the immediate retry.
+    expect(await page.evaluate(() => (window as any).__wallTonesDebug.bars)).toBe(22);
+    expect(await page.evaluate(() => (window as any).__wallTonesDebug.savers)).toBe(0);
+    expect(await page.evaluate(() => (window as any).__wallTonesDebug.gameOverOpen)).toBe(false);
+  });
+
+  test('Game Over: one press buys ALL missing units - unaffordable, partial, multi-unit', async ({
+    page,
+  }) => {
+    await bootWallTones(page);
+    await startFlatPlay(page);
+    // Streak 11 => a retry costs 2 savers (doubling table, 18 Bars each).
+    await page.evaluate(() => (window as any).__wallTonesDebug.setStreak(11));
+    await page.evaluate(() => (window as any).__wallTonesDebug.grantBars(20));
+    let snap = await readDebug(page);
+    const wrong = (snap.sequence[0]! + 1) % 4;
+    const before = snap.sequence.slice();
+    await submitPad(page, wrong);
+    await expect
+      .poll(() => page.evaluate(() => (window as any).__wallTonesDebug.gameOverOpen))
+      .toBe(true);
+    const dbg = (fn: string) =>
+      page.evaluate((f) => (window as any).__wallTonesDebug[f](), fn);
+    // Unaffordable (need 2 x 18 = 36, have 20): error only, nothing changes.
+    await dbg('gameOverBuySaver');
+    expect(await page.evaluate(() => (window as any).__wallTonesDebug.gameOverOpen)).toBe(true);
+    expect(await page.evaluate(() => (window as any).__wallTonesDebug.bars)).toBe(20);
+    expect(await page.evaluate(() => (window as any).__wallTonesDebug.savers)).toBe(0);
+    // Partially held inventory: 1 in stock, 1 missing => buys exactly 1 for 18.
+    await page.evaluate(() => (window as any).__wallTonesDebug.grantBars(100));
+    await page.evaluate(() => (window as any).__wallTonesDebug.grantSavers(1));
+    await dbg('gameOverBuySaver');
+    await expect
+      .poll(async () => (await readDebug(page)).phase === 'input')
+      .toBe(true);
+    snap = await readDebug(page);
+    expect(snap.sequence).toEqual(before);
+    expect(await page.evaluate(() => (window as any).__wallTonesDebug.bars)).toBe(102);
+    expect(await page.evaluate(() => (window as any).__wallTonesDebug.savers)).toBe(0);
+    expect(await page.evaluate(() => (window as any).__wallTonesDebug.gameOverOpen)).toBe(false);
   });
 
   test('stored voice choice controls which speech clips load', async ({

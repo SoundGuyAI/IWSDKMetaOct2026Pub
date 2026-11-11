@@ -246,4 +246,23 @@
       </Button>
     </div>
   </div>
+  <div id="gameover-popup" class="popup-overlay" style="display: none">
+    <div class="popup-card">
+      <div class="heading" style="font-size: 22px">Game Over</div>
+      <div id="gameover-summary" class="status">You reached 0. Best 0.</div>
+      <div id="gameover-saver-status" class="status">Streak savers: 0</div>
+      <Button id="gameover-use-saver-button" class="button">
+        <ButtonLabel id="gameover-use-saver-label">Use saver</ButtonLabel>
+      </Button>
+      <Button id="gameover-buy-saver-button" class="button">
+        <img id="gameover-buy-saver-bars-icon" src="ui/bars-icon.png" style="width: 16px; height: 16px" />
+        <ButtonLabel id="gameover-buy-saver-label">Buy saver</ButtonLabel>
+      </Button>
+      <div class="status">Test values, change later.</div>
+      <Button id="gameover-newrun-button" class="button">
+        <ButtonIcon><RefreshCw></RefreshCw></ButtonIcon>
+        <ButtonLabel>New run</ButtonLabel>
+      </Button>
+    </div>
+  </div>
 </Panel>
