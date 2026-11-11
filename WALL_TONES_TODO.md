@@ -8,6 +8,8 @@ Oded tested the merged main build and reported that everything looks fine. The a
 
 `CloudFlareProd` is the promotion branch from that exact tested main for Oded to configure in Cloudflare himself. Branch creation does not change Cloudflare configuration. New gameplay work waits for his backlog review and selection.
 
+**2026-11-11, 22:50 Asia/Jerusalem:** PR #60 (startup menu and Debug colliders) merged at 22:06 on Oded's explicit go-ahead (22:04: "PR 60 . you can merge."). Main is now a8b7a91; its CI test jobs all passed (build/typecheck, unit tests, e2e shards 1-3, spec coverage). The GitHub Pages deploy job's verify step failed and is being re-checked; CloudFlareProd and the Cloudflare configuration are unchanged. PR #61 and PR #63 remain open and unmerged. PR #65 (ray and gaze+pinch pad presses, item 51) is open and unmerged, awaiting Oded's headset check. Store gate choices for item 44 were asked at 22:18 and await his picks.
+
 ## Not started
 
 - [ ] 3. Bug: first box in the pattern is not blinking in VR (arrow also not showing)
@@ -25,7 +27,7 @@ Oded tested the merged main build and reported that everything looks fine. The a
    - [ ] 39. Progressive achievements: do not cap levels at the current 5; keep leveling open-ended (threshold growth formula still to be decided with the user).
    - [ ] 31. Store item: unlock another voice tied to story mode.
    - [ ] 32. Special colored pads: the two new pads would have special effects - one could give double score when pressed (tentative example); the other pad's effect still to be decided.
-   - [ ] 44. Store rework as RPG skill tree (requested Nov 7): items unlock in a fixed purchase order - a new Listen store item (about 30 Bars) must be bought before the Hint becomes available; hint prices change from 10/15/22 to 25, 50, 100, ... doubling. Refines item 37. Open question for the user before implementation: what the paid Listen item means now that the Listen phase reveals squares progressively for free (PR #29) - do not gate the existing free playback silently.
+   - [ ] 44. Store rework as RPG skill tree (requested Nov 7): items unlock in a fixed purchase order - a new Listen store item must be bought before the Hint becomes available; hint prices change from 10/15/22 to 25, 50, 100, ... doubling. Refines item 37. Decisions 2026-11-11 (approved 18:29-18:30 as starting balance for testing, not final): Listen store item 30 Bars bought once - Oded's rule: "Listen without it you don't have the listen line. If you have it you have the listen line but no hints." (This supersedes the earlier open question about not gating the free progressive reveal - gating it behind the item is his instruction.) Autoplay: each level auto-plays the first N notes in increments of 5; test prices 12 / 30 / 65 / 130 Bars then doubling. Saver 18 Bars each, 1/2/4/8/16 per 10-streak stretch doubling. Earned Replays cap 2, kept in inventory after failure. Using a saver retries the same pattern. Update 22:07 (Oded, verbatim): "you can buy replayes at the store, free ones, only 2 max, but you get them every, i donno what i saif before. 5 i guess. yeah." - free Replays are earned at every 5-note milestone, capped at 2 held, and Replays will also be purchasable in the store; paid price and stock still open. STILL OPEN (asked 22:18, awaiting his picks): the gate rule between store rows (options A/B/C presented), paid Replay price/stock and whether the cap counts free only or combined, grant-at-cap behavior, and a test balance for the preview.
 
    - [ ] 45. "Streak saver" modifier "when you lost" (requested 2026-11-09). Backlog only; exact behavior and cost are not specified yet.
 
@@ -49,6 +51,7 @@ Oded tested the merged main build and reported that everything looks fine. The a
 
 - [ ] 48. Achievement screen mockup with icons, extending item 38. Produce after Oded reviews the list; do not implement the screen yet.
 - [ ] 49. Store mockup as a visual icon progression tree, like skill development. Extends item 44; mockup only, purchase/unlock rules remain undecided. Await backlog review before starting.
+- [ ] 51. Ray and gaze+pinch pad presses during gameplay (requested 2026-11-11 22:04, Oded: "add another PR in which you to the task that a ray and gaze/pinch can also be used to press a tone button during gameplay"). IMPLEMENTED in PR #65 (not merged): play pads are ray-interactable (controller or hand ray hover + pinch), plus a head-forward gaze ray with either-hand pinch commit; fingertip touch unchanged; pinches aimed at the game panel still belong to the panel. Verified: local typecheck, 53 unit tests and build pass; preview loads and plays on desktop; pushed file matches local byte-for-byte. NOT verified: the ray and gaze presses on a real headset (Oded's Quest check); GitHub's full e2e was still queued at 22:45. Not merged; awaits his go-ahead.
 
 ### Remaining MR polish
 
