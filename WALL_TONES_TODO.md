@@ -38,7 +38,8 @@ Oded tested the merged main build and reported that everything looks fine. The a
 - [ ] 17. Rickroll fanfare. Open question: how many buttons does it need, and are 6 enough?
 - [ ] 33. Research: modifiers in incremental/clicker games; and whether a game has transformed Simon-style sequence-memory mechanics the way Balatro transformed poker.
 - [ ] 34. Consider making the repo private again and moving preview/production hosting to a Cloudflare Worker - only if the Devpost competition rules allow it (verify rules first).
-- [ ] 57. Head-gesture input: detect yes/no head nods for Cypher story interactions (requested 2026-11-11 21:13, Oded: "add another item todo list to add a PR to check if we can detect yes / no after we add cypher"). 21:56 (Oded, verbatim): "in the head nod PR/todo item also explore thumbs up / down detection" - explore thumbs up/down detection in the same PR.
+- [ ] 51. Cypher ARG story mode (requested 2026-11-11; implementation in PR #64 by the story worker). Static and radio-squawk sounds break in after a few rounds following a 5-pattern streak; his opening lines (verbatim): "connection.... established..", "Can you hear me? You're doing great. I'll explain In the next communication window", "Yes, Keep playing. they don't' suspect anything.. good", "Get a streak of 10 and above. So i can send a longer message." Act structure (21:54-21:55): Act 1 sticks close to his proposed lines and the narrator CANNOT hear Cypher (Cypher says they circumvented the game AI's security protocols so it can't detect them; the game apologizes for glitches and encourages continuing); Act 2 is a bigger discovery story between narrator and Cypher; Act 3 they all work together with the player to bring the terrorists down and it ends at a streak of 1024. Timing (23:2x): start after a 5 streak, then a few during further patterns, then after milestones like a 10 streak; the game should play out like the act-1 audio drama video with all its sound effects. Story-based hidden achievements too, e.g. for defeating the drones (21:56). Cracks with lights appear on the desktop page (and on MR walls) and disappear when a pattern is finished; in MR a drone can appear from above while looking down and breaks into parts on the floor when disabled. Two Cypher voice sets, male and female, each playing opposite the selected narrator's gender (23:15). Earlier script kept as backup for inspiration.
+- [ ] 52. Player yes/no and gesture input detection PR, after Cypher lands (requested 2026-11-11 21:13, Oded: "add another item todo list to add a PR to check if we can detect yes / no after we add cypher"). Covers voice input (recognize the player saying simple yes/no), head nods and headshakes, and - 21:56 (Oded, verbatim): "in the head nod PR/todo item also explore thumbs up / down detection".
 
 ### MR and menu polish - November 6
 
@@ -115,7 +116,7 @@ Oded tested the merged main build and reported that everything looks fine. The a
 
 ## Notes
 
-- **2026-11-12 (Asia/Jerusalem):** Item IDs 51 and 52 are reserved for the Cypher/story track (story worker's list); new items continue from 57.
+- **2026-11-11 (Asia/Jerusalem):** Reference link filed by Oded: https://sandflow.ai/sand3d/ .
 
 - **2026-11-08 (Asia/Jerusalem):** Owner moved items 31, 32 and 44 into Store and pattern-row ideas, and 33 and 34 into Future ideas (out of MR and menu polish).
 
@@ -168,5 +169,5 @@ Oded tested the merged main build and reported that everything looks fine. The a
 
 - PR #65 merged 23:46 (merge commit 2d50a96) and PR #67 merged 23:50 (merge commit 07430cf), each on Oded's explicit go-ahead (23:45 "ready to merge."; 23:47 conditional approval whose condition was met). PR #67 was the backlog-file edit itself: dated log entries now live in bottom "Review update" sections.
 - PR #63 (Game Over saver) advanced to head 9899b801: one press buys ALL missing saver units and retries (Oded 23:34 "yes. but all"), the stale e2e spec was rewritten to the one-press flow with unaffordable / partial-inventory / multi-unit coverage, and visual proof was captured on the preview. Full CI dispatched (run 43109512240). NOT merged - awaits Oded's go-ahead.
-- Per Oded 00:05/00:06: items 5, 7 and 50 moved to "MR and menu polish" (IDs preserved). Item 57 (head-nod yes/no plus thumbs up/down detection) added. Stale "not merged" qualifiers corrected on items 38, 39, 41 and 53 (PR #61 merged 23:14; PR #65 merged 23:46). Moving finished items to Done waits for the done-audit after PR #63 merges (his conditional 00:05 instruction).
+- Per Oded 00:05/00:06: items 5, 7 and 50 moved to "MR and menu polish" (IDs preserved). Items 51 (Cypher ARG story spec) and 52 (yes/no voice, head nod/shake and thumbs up/down detection) added with the story worker's IDs. Stale "not merged" qualifiers corrected on items 38, 39, 41 and 53 (PR #61 merged 23:14; PR #65 merged 23:46). Moving finished items to Done waits for the done-audit after PR #63 merges (his conditional 00:05 instruction).
 - CloudFlareProd and the Cloudflare configuration remain unchanged.
