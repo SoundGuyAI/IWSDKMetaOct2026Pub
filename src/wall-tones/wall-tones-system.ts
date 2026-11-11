@@ -377,6 +377,8 @@ private panelDragging = false;
 private readonly panelDragSkipHands = new Set<string>();
 /** Hands whose current pinch IS dragging the panel. */
 private readonly panelDragActiveHands = new Set<string>();
+private readonly rayPressLatched = new Set<number>();
+private readonly gazeSelectLatched = new Set<string>();
 /** Last time a drag ended; briefly suppresses the ray dodge at the drop point. */
 private panelDragDoneAt = 0;
 private blinkCuePad: PadRuntime | null = null;
@@ -568,6 +570,7 @@ this.flowPhase === 'playing' &&
 (this.game.phase === 'input' || this.inputNeedsClear)
 ) {
 this.readFingertipTouches();
+this.readRayAndGazeTouches();
 }
 this.tickIdleReplay();
 }
@@ -769,6 +772,8 @@ this.setRepeatUiVisible(false);
 this.panelDragging = false;
 this.panelDragSkipHands.clear();
 this.panelDragActiveHands.clear();
+this.rayPressLatched.clear();
+this.gazeSelectLatched.clear();
 this.setBlinkCuePad(null);
 this.disposeBlinkCueArrow();
 this.skipVoiceVisible = false;
@@ -935,6 +940,8 @@ private layoutPanelForMrPlay(): void {
 this.panelDragging = false;
 this.panelDragSkipHands.clear();
 this.panelDragActiveHands.clear();
+this.rayPressLatched.clear();
+this.gazeSelectLatched.clear();
 this.player.head.getWorldPosition(this.viewer);
 this.player.head.getWorldQuaternion(this.headQuat);
 this.ghostForward.set(0, 0, -1).applyQuaternion(this.headQuat).normalize();
@@ -2497,7 +2504,9 @@ this.setSpatialMeshesVisible(false);
 transforms.forEach((transform, index) => {
 const size = transform.sizeM ?? this.placementPadSizeM();
 const pad = createPadRuntime(this.world, index as WallTonePadId, size, {
-rayInteractable: false,
+// RayInteractable so a controller/hand ray (and the shared Hovered/Pressed
+// state) can press the pad; fingertip volumes stay the primary touch path.
+rayInteractable: true,
 anchor: true,
 });
 pad.root.position.set(...transform.position);
@@ -2809,6 +2818,126 @@ this.handlePadInput(pad.padIndex);
 }
 this.syncPadProximityVisual(pad, now);
 }
+}
+
+// Ray, gaze and pinch presses on the play grid. The desktop grid already
+// presses pads through the shared Hovered/Pressed state, and wall slots are
+// picked with a hand ray plus pinch; play pads get the same far input so a
+// tone can be pressed without walking up to the grid. Fingertip touch stays
+// the primary path and runs first each frame; hover/press visuals merge in
+// after it has reset them.
+private readRayAndGazeTouches(): void {
+const now = performance.now() / 1000;
+// (a) Controller/hand rays: play pads are RayInteractable, so the shared
+// input system already tracks ray hover and pinch press per pad. A private
+// latch keeps this edge-trigger independent of the fingertip re-arm.
+for (const pad of this.pads) {
+const hovered = this.entityInQuery(pad.entity, this.queries.padHovered.entities);
+const pressed =
+hovered &&
+this.entityInQuery(pad.entity, this.queries.padPressed.entities);
+if (hovered && !pad.hoverInside) {
+pad.hoverInside = true;
+this.syncPadProximityVisual(pad, now);
+}
+if (!pressed) {
+this.rayPressLatched.delete(pad.padIndex);
+continue;
+}
+if (this.rayPressLatched.has(pad.padIndex)) {
+continue;
+}
+this.rayPressLatched.add(pad.padIndex);
+if (this.inputNeedsClear) {
+continue;
+}
+const prevFinger = pad.fingerInside;
+pad.fingerInside = true;
+this.syncPadProximityVisual(pad, now);
+pad.fingerInside = prevFinger;
+this.handlePadInput(pad.padIndex);
+}
+// (b) Gaze: a head-forward ray against the pads, committed by a pinch from
+// either hand. A pinch aimed at the panel, or one whose hand ray already
+// rests on a pad, belongs to that target instead.
+const gazePad = this.findGazeHoveredPad();
+if (gazePad != null && !gazePad.hoverInside) {
+gazePad.hoverInside = true;
+this.syncPadProximityVisual(gazePad, now);
+}
+for (const hand of XR_HANDS) {
+const select = this.input.xr.getSelectState(hand);
+if (!select.active && !select.start) {
+this.gazeSelectLatched.delete(hand);
+continue;
+}
+if (this.gazeSelectLatched.has(hand) && !select.start) {
+continue;
+}
+if (
+gazePad == null ||
+this.inputNeedsClear ||
+this.handPointsAtPanel(hand) ||
+this.panelDragActiveHands.has(hand) ||
+this.findRayHoveredPad(hand) != null
+) {
+this.gazeSelectLatched.add(hand);
+continue;
+}
+this.gazeSelectLatched.add(hand);
+const prevFinger = gazePad.fingerInside;
+gazePad.fingerInside = true;
+this.syncPadProximityVisual(gazePad, now);
+gazePad.fingerInside = prevFinger;
+this.handlePadInput(gazePad.padIndex);
+}
+}
+
+// Closest play pad under a hand's controller/hand ray, or null. Mirrors the
+// slot-picking ray test.
+private findRayHoveredPad(hand: 'left' | 'right'): PadRuntime | null {
+const adapter = this.input.xr.visualAdapters[hand].peek();
+if (adapter != null && !adapter.connected) {
+return null;
+}
+if (this.handPointsAtPanel(hand)) {
+return null;
+}
+const raySpace = this.player.raySpaces[hand];
+raySpace.updateWorldMatrix(true, false);
+raySpace.getWorldPosition(this.rayOrigin);
+raySpace.getWorldQuaternion(this.gripQuat);
+// XR target rays point along local -Z.
+this.rayDir.set(0, 0, -1).applyQuaternion(this.gripQuat).normalize();
+return this.findPadAlongRay();
+}
+
+// Closest play pad under the head-forward gaze ray, or null.
+private findGazeHoveredPad(): PadRuntime | null {
+this.player.head.getWorldPosition(this.rayOrigin);
+this.player.head.getWorldQuaternion(this.headQuat);
+this.rayDir.set(0, 0, -1).applyQuaternion(this.headQuat).normalize();
+return this.findPadAlongRay();
+}
+
+private findPadAlongRay(): PadRuntime | null {
+let best: PadRuntime | null = null;
+let bestAlong = Number.POSITIVE_INFINITY;
+for (const pad of this.pads) {
+pad.root.getWorldPosition(this.padWorldPos);
+this.rayToSlot.copy(this.padWorldPos).sub(this.rayOrigin);
+const along = this.rayToSlot.dot(this.rayDir);
+if (along < 0.05 || along > 6) {
+continue;
+}
+this.rayClosest.copy(this.rayOrigin).addScaledVector(this.rayDir, along);
+const lateral = this.rayClosest.distanceTo(this.padWorldPos);
+if (lateral <= pad.sizeM * 0.55 && along < bestAlong) {
+bestAlong = along;
+best = pad;
+}
+}
+return best;
 }
 
 private syncPadProximityVisual(pad: PadRuntime, _now: number): void {
