@@ -5,8 +5,10 @@ import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-// Backlog item 50 (Oded, 2026-11-11): air-placed pads 1/2/3/4 must be
-// green/red/blue/yellow, in the same order as the fanfare notes (G R B Y).
+// Backlog item 50 (Oded, 2026-11-11): air-placed pads 1/2/3/4 must come in
+// the same order as the fanfare notes. Oded confirmed 2026-11-12 00:41
+// (option B): the fanfare order stays green, red, yellow, blue and air
+// placement changes to match it.
 // Transpile the real constants module so the test reads production values.
 const here = dirname(fileURLToPath(import.meta.url));
 const buildDir = join(here, 'build');
@@ -27,16 +29,20 @@ test('pad ids 0-3 are green, red, blue, yellow', () => {
   );
 });
 
-test('fanfare plays pads in placement order: green, red, blue, yellow', () => {
-  assert.deepEqual([...SIMON_FANFARE_PAD_ORDER], [0, 1, 2, 3]);
+test('fanfare order stays green, red, yellow, blue (ascending pitch)', () => {
+  assert.deepEqual([...SIMON_FANFARE_PAD_ORDER], [0, 1, 3, 2]);
   assert.deepEqual(
     SIMON_FANFARE_PAD_ORDER.map((id) => WALL_TONE_PADS[id].name),
-    ['green', 'red', 'blue', 'yellow'],
+    ['green', 'red', 'yellow', 'blue'],
   );
 });
 
-test('air placement assigns pad ids in placement order (step % 4)', () => {
-  // The ghost/pad for placement step N uses pad id N % 4, so placed pads
-  // 1/2/3/4 get ids 0/1/2/3 = green/red/blue/yellow.
-  assert.match(systemSource, /this\.airPlaceStep % 4\) as WallTonePadId/);
+test('air placement assigns pad ids in fanfare order', () => {
+  // The ghost/pad for placement step N uses SIMON_FANFARE_PAD_ORDER[N % 4],
+  // so placed pads 1/2/3/4 get ids 0/1/3/2 = green/red/yellow/blue.
+  assert.match(systemSource, /SIMON_FANFARE_PAD_ORDER\[this\.airPlaceStep % 4\] as WallTonePadId/);
+  assert.deepEqual(
+    [0, 1, 2, 3].map(+step) => WALL_TONE_PADS[SIMON_FANFARE_PAD_ORDER[step % 4]].name),
+    ['green', 'red', 'yellow', 'blue'],
+  );
 });
