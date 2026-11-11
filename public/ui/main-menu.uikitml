@@ -145,6 +145,10 @@
     <Button id="accessibility-button" class="button" style="height: 64px">
       <ButtonLabel class="button-label">Accessibility</ButtonLabel>
     </Button>
+    <Button id="debug-colliders-button" class="button" style="height: 64px">
+      <ButtonIcon><Bug></Bug></ButtonIcon>
+      <ButtonLabel id="debug-colliders-label" class="button-label">Debug colliders: OFF</ButtonLabel>
+    </Button>
     <div id="settings-version" class="version-label">Version unknown</div>
     <Button id="settings-back-button" class="button" style="height: 64px; margin-bottom: 4px">
       <ButtonIcon><ArrowLeft></ArrowLeft></ButtonIcon>
