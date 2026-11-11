@@ -357,6 +357,14 @@ export class WallTonesEconomy {
     writeNumber(BARS_KEY, this.bars);
   }
 
+  /** Test-only: seed saver inventory without a purchase. */
+  debugGrantSavers(units: number): void {
+    if (units > 0) {
+      this.savers += Math.floor(units);
+      writeNumber(SAVERS_KEY, this.savers);
+    }
+  }
+
   /** Backlog 18: the best streak persists across reloads and mode entries. */
   getBestStreak(): number {
     return readNumber(BEST_STREAK_KEY);
@@ -373,4 +381,4 @@ export class WallTonesEconomy {
     writeStringArray(FIRST_FLAGS_KEY, [...this.firstFlags]);
     return true;
   }
-}
+      }
