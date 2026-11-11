@@ -8,7 +8,7 @@ Oded tested the merged main build and reported that everything looks fine. The a
 
 `CloudFlareProd` is the promotion branch from that exact tested main for Oded to configure in Cloudflare himself. Branch creation does not change Cloudflare configuration. New gameplay work waits for his backlog review and selection.
 
-**2026-11-11, 22:50 Asia/Jerusalem:** PR #60 (startup menu and Debug colliders) merged at 22:06 on Oded's explicit go-ahead (22:04: "PR 60 . you can merge."). Main is now a8b7a91; its CI test jobs all passed (build/typecheck, unit tests, e2e shards 1-3, spec coverage). The GitHub Pages deploy job's verify step failed and is being re-checked; CloudFlareProd and the Cloudflare configuration are unchanged. PR #61 and PR #63 remain open and unmerged. PR #65 (ray and gaze+pinch pad presses, item 51) is open and unmerged, awaiting Oded's headset check. Store gate choices for item 44 were asked at 22:18 and await his picks.
+**2026-11-11, 22:50 Asia/Jerusalem:** PR #60 (startup menu and Debug colliders) merged at 22:06 on Oded's explicit go-ahead (22:04: "PR 60 . you can merge."). Main is now a8b7a91; its CI test jobs all passed (build/typecheck, unit tests, e2e shards 1-3, spec coverage). The GitHub Pages deploy job's verify step failed and is being re-checked; CloudFlareProd and the Cloudflare configuration are unchanged. PR #61 and PR #63 remain open and unmerged. PR #65 (ray and gaze+pinch pad presses, item 53) is open and unmerged, awaiting Oded's headset check. Store gate choices for item 44 were asked at 22:18 and await his picks.
 
 ## Not started
 
@@ -51,7 +51,7 @@ Oded tested the merged main build and reported that everything looks fine. The a
 
 - [ ] 48. Achievement screen mockup with icons, extending item 38. Produce after Oded reviews the list; do not implement the screen yet.
 - [ ] 49. Store mockup as a visual icon progression tree, like skill development. Extends item 44; mockup only, purchase/unlock rules remain undecided. Await backlog review before starting.
-- [ ] 51. Ray and gaze+pinch pad presses during gameplay (requested 2026-11-11 22:04, Oded: "add another PR in which you to the task that a ray and gaze/pinch can also be used to press a tone button during gameplay"). IMPLEMENTED in PR #65 (not merged): play pads are ray-interactable (controller or hand ray hover + pinch), plus a head-forward gaze ray with either-hand pinch commit; fingertip touch unchanged; pinches aimed at the game panel still belong to the panel. Verified: local typecheck, 53 unit tests and build pass; preview loads and plays on desktop; pushed file matches local byte-for-byte. NOT verified: the ray and gaze presses on a real headset (Oded's Quest check); GitHub's full e2e was still queued at 22:45. Not merged; awaits his go-ahead.
+- [ ] 53. Ray and gaze+pinch pad presses during gameplay (requested 2026-11-11 22:04, Oded: "add another PR in which you to the task that a ray and gaze/pinch can also be used to press a tone button during gameplay"). IMPLEMENTED in PR #65 (not merged): play pads are ray-interactable (controller or hand ray hover + pinch), plus a head-forward gaze ray with either-hand pinch commit; fingertip touch unchanged; pinches aimed at the game panel still belong to the panel. Verified: local typecheck, 53 unit tests and build pass; preview loads and plays on desktop; pushed file matches local byte-for-byte. NOT verified: the ray and gaze presses on a real headset (Oded's Quest check); GitHub's full e2e was still queued at 22:45. Not merged; awaits his go-ahead.
 
 ### Remaining MR polish
 
