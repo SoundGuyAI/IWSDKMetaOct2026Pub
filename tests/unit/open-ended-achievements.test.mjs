@@ -21,5 +21,7 @@ test('achievements screen is a tile grid with a tooltip for hover, touch and ray
   assert.ok(sys.includes("tile.addEventListener('pointerleave'"));
   assert.ok(sys.includes("positionType: 'absolute'"));
   assert.ok(sys.includes("tile.addEventListener('pointerenter'"));
-  assert.ok(sys.includes('`Lv ${level}`'));
+  assert.ok(sys.includes("streak: 'Streak'"), 'each tile has a one-word name under its icon');
+  assert.ok(sys.includes("tile.addEventListener('pointermove'"), 'the pop-up follows the pointer');
+  assert.ok(sys.includes('stickyCat'), 'a tap pins the details and tapping another tile switches them');
 });
