@@ -129,6 +129,10 @@
     <ButtonIcon><Settings></Settings></ButtonIcon>
     <ButtonLabel id="settings-button-label" class="button-label">Settings</ButtonLabel>
   </Button>
+  <Button id="nod-lab-button" class="button" style="height: 64px; margin-bottom: 10px">
+    <ButtonIcon><FlaskConical></FlaskConical></ButtonIcon>
+    <ButtonLabel id="nod-lab-label" class="button-label">Nod Yes/No Lab</ButtonLabel>
+  </Button>
   <div id="main-menu-credit" class="credit-label">A game by Oded Sharon,  Corbomite Games.</div>
   <div id="settings-dialog" class="settings-dialog" style="display: none">
     <div id="settings-eyebrow" class="eyebrow">SETTINGS</div>
