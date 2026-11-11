@@ -349,8 +349,6 @@ export function generateTablePadCandidates(
     object3D.updateWorldMatrix(true, false);
     const flatQuat = orientPadFlatOnTable(tablePlaneYaw(object3D));
 
-    const flatQuat = orientPadFlatOnTable(tablePlaneYaw(object3D));
-
     const minX = table.localMinX + half + 0.04;
     const maxX = table.localMaxX - half - 0.04;
     const minZ = table.localMinZ + half + 0.04;
@@ -669,4 +667,4 @@ export function generateMixedTablePadCandidates(tables: WallSlot[], sizes: reado
     for (const cell of cells) result.push({ ...cell, wallIndex, candidateIndex: result.length, sizeM: chosenSize });
   });
   return result;
-        }
+     }
