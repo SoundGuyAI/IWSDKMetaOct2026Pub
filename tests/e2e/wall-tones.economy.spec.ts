@@ -433,6 +433,7 @@ test.describe('Wall Tones economy: Bars, store, hints, achievements', () => {
     expect(snap.unlockedAchievements).toContain('streak-5');
     // Bars and Total Score categories both read lifetime Bars earned.
     expect(snap.unlockedAchievements).toContain('bars-25');
-    expect(snap.unlockedAchievements).toContain('score-25');
+    // Score's first level is 50 (user-set 2026-11-11), so 35 must not unlock it.
+    expect(snap.unlockedAchievements).not.toContain('score-50');
   });
 });

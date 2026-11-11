@@ -1,7 +1,7 @@
 import {selectionPanelPose, horizontalLookAway, panelOverlapsPad, rectangleInsidePolygon} from './panel-placement.js';
 import { shouldAnnounceRecord } from './record-feedback.js';
 import { BarFloatPool } from './bar-floats.js';
-import { achievementIconSrc } from './achievement-icons.js';
+import { achievementIconSrc, achievementTileSrc } from './achievement-icons.js';
 import { hearingSubtitlesEnabled, colorNamesEnabled, currentSpokenCaption, voicesOffEnabled } from './accessibility.js';
 import {
 ConeGeometry,
@@ -141,6 +141,7 @@ import {
   ACHIEVEMENT_CATEGORIES,
   TOP_SECRET_COST,
   WallTonesEconomy,
+  nextOpenThreshold,
 } from './economy.js';
 import {
 getActiveWorldKind,
@@ -3613,32 +3614,172 @@ this.achievementKeyPresses = eco.getPresses();
 while (list.children.length > 0) {
 list.remove(list.children[0]!);
 }
-for (const cat of ACHIEVEMENT_CATEGORIES) {
-const { value, level, next } = eco.getCategoryProgress(cat.id, this.game.streak);
+const TILE = 92;
+const TILE_H = TILE + 18;
+const SHORT_NAMES: Record<string, string> = {
+streak: 'Streak',
+bars: 'Bars',
+score: 'Score',
+store: 'Store',
+presses: 'Presses',
+secret: 'Secret',
+};
+// Details are a floating overlay on top of the grid, so the window keeps one
+// fixed height whether or not details are showing. It follows the pointer
+// (PC mouse, MR ray) and pins on a tap (iPhone).
+const GRID_W = 308;
+const COLS = 3;
+const ROW_H = TILE_H + 8;
+const POPUP_W = 190;
+const POPUP_H = 124;
+const VIEW_H = 232;
+const gridLeft = Math.floor((GRID_W - (COLS * TILE + (COLS - 1) * 8)) / 2);
+const popup = new UIKit.Container({
+display: 'none',
+positionType: 'absolute',
+positionLeft: 0,
+positionTop: 0,
+zIndex: 20,
+pointerEvents: 'none',
+width: POPUP_W,
+height: POPUP_H,
+flexDirection: 'column',
+gap: 4,
+padding: 10,
+borderRadius: 12,
+borderWidth: 1,
+borderColor: 0x6b7a90,
+backgroundColor: 0x222c3a,
+});
+const popupTitle = new UIKit.Text({ fontSize: 15, color: 0xfafaf7, text: '' });
+const popupBody = new UIKit.Text({ fontSize: 13, color: 0xaab6c6, text: '' });
+popup.add(popupTitle);
+popup.add(popupBody);
+let activeCat: string | null = null;
+// Only a click makes a tile "sticky". pointerenter (which touch fires just
+// before the click) must not count, otherwise tapping a second tile looks
+// like a second tap on the open one and closes it.
+let stickyCat: string | null = null;
+const place = (col: number, row: number, uvx: number, uvy: number): void => {
+// Pointer position in scroll-content space: tile origin + tile-local uv.
+// Never mixes in screen or button sizes.
+const px = gridLeft + col * (TILE + 8) + uvx * TILE;
+const py = row * ROW_H + (1 - uvy) * TILE_H;
+const sy = list.scrollPosition?.value?.[1] ?? 0;
+// One rule, no flipping: the card sits just right/below the pointer and is
+// clamped into the visible area, so it slides smoothly and never jumps.
+popup.setProperties({
+positionLeft: Math.max(0, Math.min(GRID_W - POPUP_W, px + 14)),
+positionTop: Math.max(sy + 2, Math.min(sy + VIEW_H - POPUP_H - 2, py + 14)),
+});
+};
+const tileSetters = new Map<string, (on: boolean) => void>();
+const hide = (): void => {
+if (stickyCat != null) tileSetters.get(stickyCat)?.(false);
+activeCat = null;
+stickyCat = null;
+popup.setProperties({ display: 'none' });
+};
+// Preview-only sample view (?demoAchievements=1, or =many for extra sample
+// tiles to test scrolling). It changes only what this screen draws: no
+// progress, no stored data and no achievement rules are touched.
+const demoParam = typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('demoAchievements');
+const demoLevels: Record<string, number> = { streak: 3, bars: 4, score: 1, presses: 2 };
+type TileCat = { id: string; label: string; description: string; levels: readonly number[]; hidden?: boolean; glyph?: string };
+const tileCats: TileCat[] = [...ACHIEVEMENT_CATEGORIES];
+if (demoParam === 'many') {
+const glyphs = ['streak', 'bars', 'store', 'presses', 'score', 'secret'];
+for (let i = 0; i < 6; i++) {
+tileCats.push({ id: `sample-${i + 1}`, label: `Sample ${i + 1}`, description: 'Sample tile for testing the scroll area.', levels: [5, 10, 25], glyph: glyphs[i]! });
+demoLevels[`sample-${i + 1}`] = i % 3;
+}
+}
+let tileIndex = 0;
+for (const cat of tileCats) {
+const col = tileIndex % COLS;
+const row = Math.floor(tileIndex / COLS);
+tileIndex += 1;
+let { value, level, next } = demoParam == null || cat.id === 'secret'
+? eco.getCategoryProgress(cat.id, this.game.streak)
+: { value: 0, level: 0, next: cat.levels[0] ?? null };
+if (demoParam != null && cat.id !== 'secret') {
+level = demoLevels[cat.id] ?? 0;
+// Mirror the real rule: levels are open-ended past the listed ones
+// (10/25/50 per decade), so the sample view must never claim a top level
+// for a normal category, and the sample value follows the same pattern.
+const ths: number[] = [...cat.levels];
+while (ths.length < level) ths.push(nextOpenThreshold(ths[ths.length - 1] ?? 0));
+value = level > 0 ? ths[level - 1]! : 0;
+next = cat.hidden === true
+? null
+: (level < ths.length ? ths[level]! : nextOpenThreshold(ths[ths.length - 1] ?? 0));
+}
 const locked = level === 0;
 const secret = cat.hidden === true && locked;
-const text = secret
-? '??? - ???'
-: `${cat.label} - level ${level}/${cat.levels.length}` +
-(next == null ? ' - MAX' : ` - next at ${next} (have ${value})`);
-const row = new UIKit.Container({
-flexDirection: 'row',
+const glyphId = cat.glyph ?? cat.id;
+const title = secret ? '???' : `${cat.label} - Level ${level}`;
+const body = secret
+? 'A secret. It stays secret.'
+: (demoParam != null ? 'TEST VIEW (sample levels, not saved). ' : '') + `${cat.description}` +
+(next == null ? ' Top level reached.' : ` Next level: ${next} (now ${value}).`);
+const tile = new UIKit.Container({
+flexDirection: 'column',
 alignItems: 'center',
-gap: 8,
-opacity: locked ? 0.75 : 1,
+gap: 2,
+width: TILE,
+height: TILE_H,
 });
-row.add(new UIKit.Image({
-src: achievementIconSrc(cat.id),
-width: 28,
-height: 28,
+const tileImg = new UIKit.Image({
+src: achievementTileSrc(glyphId, locked ? 'off' : 'on', level),
+width: TILE,
+height: TILE,
+});
+tile.add(tileImg);
+
+tile.add(new UIKit.Text({
+fontSize: 14,
+color: locked ? 0x9aa4b6 : 0xffffff,
+text: secret ? 'Secret' : (SHORT_NAMES[cat.id] ?? cat.label),
 }));
-row.add(new UIKit.Text({
-fontSize: 13,
-color: locked ? 0xb8bec8 : 0xf5d90a,
-text,
-}));
-list.add(row);
+const setSel = (on: boolean): void => {
+tileImg.setProperties({ src: achievementTileSrc(glyphId, locked ? 'off' : (on ? 'sel' : 'on'), level) });
+};
+tileSetters.set(cat.id, setSel);
+const show = (uv?: { x: number; y: number }): void => {
+activeCat = cat.id;
+popupTitle.setProperties({ text: title });
+popupBody.setProperties({ text: body });
+place(col, row, uv?.x ?? 0.5, uv?.y ?? 0.5);
+popup.setProperties({ display: 'flex' });
+};
+// PC hover and MR gaze/ray arrive as pointerenter/pointerleave; iPhone
+// touch (and a ray click) arrives as click and keeps the details open until
+// the next tap on the same tile; another tile switches the details.
+tile.addEventListener('pointerenter', (e) => show(e.uv));
+// Follow the pointer over the tile (mouse or ray) unless a tap pinned
+// another tile's details.
+tile.addEventListener('pointermove', (e) => {
+if (stickyCat != null && stickyCat !== cat.id) return;
+if (stickyCat === cat.id) return;
+if (e.uv != null) place(col, row, e.uv.x, e.uv.y);
+});
+tile.addEventListener('pointerleave', () => {
+if (stickyCat == null && activeCat === cat.id) hide();
+});
+tile.addEventListener('click', (e) => {
+if (stickyCat === cat.id) {
+hide();
+return;
 }
+if (stickyCat != null) tileSetters.get(stickyCat)?.(false);
+show(e.uv);
+stickyCat = cat.id;
+setSel(true);
+});
+list.add(tile);
+}
+list.add(popup);
+list.setProperties({ overflow: 'scroll', onScroll: () => { hide(); } });
 }
 
 /** Visual-only achievement toast; voice stays milestone-only (user rule). */
@@ -3744,7 +3885,31 @@ if (open) this.storeOpen = false;
 this.syncMenuPopupVisibility();
 const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
 if (open && panel != null) this.reconcileAchievements(panel);
+if (open) this.playAchievementsIntroOnce();
 this.renderPanel();
+}
+
+/** Approved intro (user, Nov 11): spoken once ever, the first time the board
+ * opens, with the instruction for the platform in use. Voices-off and Skip
+ * voice still apply; when voices are off nothing plays and nothing is
+ * marked, so it can still play after voices are turned back on. */
+private playAchievementsIntroOnce(): void {
+const key = 'wall-tones-achievements-intro-played';
+try {
+if (globalThis.localStorage?.getItem(key) === '1') return;
+} catch {
+/* private mode: fall through, session-only */
+}
+if (voicesOffEnabled()) return;
+const immersive = this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
+const phone = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
+const id = immersive ? 'achvIntroMr' : phone ? 'achvIntroIphone' : 'achvIntroPc';
+try {
+globalThis.localStorage?.setItem(key, '1');
+} catch {
+/* private mode */
+}
+this.speech.speak(id);
 }
 
 private syncMenuPopupVisibility(): void {
