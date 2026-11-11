@@ -3807,7 +3807,31 @@ if (open) this.storeOpen = false;
 this.syncMenuPopupVisibility();
 const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
 if (open && panel != null) this.reconcileAchievements(panel);
+if (open) this.playAchievementsIntroOnce();
 this.renderPanel();
+}
+
+/** Approved intro (user, Nov 11): spoken once ever, the first time the board
+ * opens, with the instruction for the platform in use. Voices-off and Skip
+ * voice still apply; when voices are off nothing plays and nothing is
+ * marked, so it can still play after voices are turned back on. */
+private playAchievementsIntroOnce(): void {
+const key = 'wall-tones-achievements-intro-played';
+try {
+if (globalThis.localStorage?.getItem(key) === '1') return;
+} catch {
+/* private mode: fall through, session-only */
+}
+if (voicesOffEnabled()) return;
+const immersive = this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
+const phone = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
+const id = immersive ? 'achvIntroMr' : phone ? 'achvIntroIphone' : 'achvIntroPc';
+try {
+globalThis.localStorage?.setItem(key, '1');
+} catch {
+/* private mode */
+}
+this.speech.speak(id);
 }
 
 private syncMenuPopupVisibility(): void {
