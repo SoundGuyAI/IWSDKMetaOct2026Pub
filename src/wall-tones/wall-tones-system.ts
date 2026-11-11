@@ -142,7 +142,7 @@ import {
   TOP_SECRET_COST,
   WallTonesEconomy,
 } from './economy.js';
-import { SAVER_PRICE_BARS, saverUnitsForStreak } from './consumable-values.js';
+import { SAVER_PRICE_BARS, saverRetryPlan, saverUnitsForStreak } from './consumable-values.js';
 import {
 getActiveWorldKind,
 switchBackToHubMenu,
@@ -3371,27 +3371,29 @@ panel
 text: have >= need ? `Use ${need} saver${need > 1 ? 's' : ''} - retry same pattern` : `Need ${need} saver${need > 1 ? 's' : ''} to retry`,
 color: have >= need ? 0x1c1d20 : 0x8a8f98,
 });
-const affordable = this.economy.getBars() >= SAVER_PRICE_BARS;
+const missing = Math.max(0, need - have);
+const plan = saverRetryPlan(have, need, this.economy.getBars(), SAVER_PRICE_BARS);
 panel
 ?.getElementById<UIKit.Text>('gameover-buy-saver-label')
 ?.setProperties({
-text: `Buy 1 saver & retry - ${SAVER_PRICE_BARS}`,
-color: affordable ? 0x1c1d20 : 0xd43a3a,
+text: `Buy ${missing} saver${missing > 1 ? 's' : ''} & retry - ${plan.costBars}`,
+color: plan.affordable ? 0x1c1d20 : 0xd43a3a,
 });
 }
 
-/** One-press purchase: buys 1 saver immediately and, when enough savers are held to retry, applies them right away (owner request 2026-11-11, no confirm step). */
+/** One-press purchase (owner request 2026-11-11, no confirm step): buys exactly the savers missing for an immediate retry and applies them in the same press. Cost model unchanged: missing units at 18 Bars each. */
 private onGameOverBuySaver(): void {
 if (!this.gameOverOpen) return;
-if (this.economy.getBars() < SAVER_PRICE_BARS) {
+const need = saverUnitsForStreak(this.game.streak);
+const plan = saverRetryPlan(this.economy.getSavers(), need, this.economy.getBars(), SAVER_PRICE_BARS);
+if (!plan.affordable) {
 void playErrorTone();
 this.renderGameOverSummary();
 return;
 }
-this.economy.buySaver(SAVER_PRICE_BARS);
+for (let i = 0; i < plan.buy; i++) this.economy.buySaver(SAVER_PRICE_BARS);
 this.showAchievementToasts();
-const need = saverUnitsForStreak(this.game.streak);
-if (this.economy.getSavers() >= need) {
+if (plan.apply) {
 this.onGameOverUseSaver();
 return;
 }
@@ -4267,4 +4269,4 @@ return new Promise((resolve) => {
 window.setTimeout(resolve, seconds * 1000);
 });
 }
-}
+        }
