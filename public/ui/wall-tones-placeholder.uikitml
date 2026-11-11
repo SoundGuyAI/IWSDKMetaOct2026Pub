@@ -259,6 +259,7 @@
         <ButtonLabel id="gameover-use-saver-label">Use saver</ButtonLabel>
       </Button>
       <Button id="gameover-buy-saver-button" class="button">
+        <img id="gameover-buy-saver-bars-icon" src="ui/bars-icon.png" style="width: 16px; height: 16px" />
         <ButtonLabel id="gameover-buy-saver-label">Buy saver</ButtonLabel>
       </Button>
       <div class="status">Test values, change later.</div>
