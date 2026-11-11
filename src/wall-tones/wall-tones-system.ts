@@ -277,7 +277,7 @@ private storeOpen = false;
 private achievementsOpen = false;
 /** Game Over popup shown after a wrong note; New run starts the next run. */
 private gameOverOpen = false;
-private saverBuyArmed = false;
+// No buy-confirm arming: buying a saver is a single press that applies it when enough are held (owner request 2026-11-11).
 /** Run id whose single automatic replay has been used. */
 private idleReplayUsedRunId = -1;
 /** Until this time the status line shows the caption-only idle nudge. */
@@ -3375,30 +3375,26 @@ const affordable = this.economy.getBars() >= SAVER_PRICE_BARS;
 panel
 ?.getElementById<UIKit.Text>('gameover-buy-saver-label')
 ?.setProperties({
-text: this.saverBuyArmed
-? `Confirm: buy 1 saver for ${SAVER_PRICE_BARS} Bars`
-: `Buy 1 saver - ${SAVER_PRICE_BARS} Bars (have ${this.economy.getBars()})`,
+text: `Buy 1 saver & retry - ${SAVER_PRICE_BARS}`,
 color: affordable ? 0x1c1d20 : 0xd43a3a,
 });
 }
 
-/** Inline purchase with a visible confirm step: first press arms, second buys. */
+/** One-press purchase: buys 1 saver immediately and, when enough savers are held to retry, applies them right away (owner request 2026-11-11, no confirm step). */
 private onGameOverBuySaver(): void {
 if (!this.gameOverOpen) return;
 if (this.economy.getBars() < SAVER_PRICE_BARS) {
-this.saverBuyArmed = false;
 void playErrorTone();
 this.renderGameOverSummary();
 return;
 }
-if (!this.saverBuyArmed) {
-this.saverBuyArmed = true;
-this.renderGameOverSummary();
-return;
-}
-this.saverBuyArmed = false;
 this.economy.buySaver(SAVER_PRICE_BARS);
 this.showAchievementToasts();
+const need = saverUnitsForStreak(this.game.streak);
+if (this.economy.getSavers() >= need) {
+this.onGameOverUseSaver();
+return;
+}
 this.renderGameOverSummary();
 this.renderPanel();
 }
@@ -3411,7 +3407,6 @@ if (!this.economy.useSavers(need)) {
 void playErrorTone();
 return;
 }
-this.saverBuyArmed = false;
 this.gameOverOpen = false;
 this.syncMenuPopupVisibility();
 this.game.inputStep = 0;
@@ -3429,7 +3424,6 @@ if (!this.gameOverOpen || !this.experienceActive || this.flowPhase !== 'playing'
 return;
 }
 this.gameOverOpen = false;
-this.saverBuyArmed = false;
 this.syncMenuPopupVisibility();
 this.game.onWrongInput();
 this.renderPanel();
