@@ -128,6 +128,7 @@ resetSpeechUnlock,
 unlockSpeechFromGesture,
 type WallTonesClipId,
 } from './speech.js';
+import { combinedPickSpeechLines } from './combined-pick-speech.js';
 import {
   ACHIEVEMENT_CATEGORIES,
   TOP_SECRET_COST,
@@ -1825,14 +1826,8 @@ AIR_PLACE_SITTING_PAD_SIZE_M,
 const candidates = [...wallCandidates, ...tableCandidates].map(
 (candidate, index) => ({ ...candidate, candidateIndex: index }),
 );
-// Speak only the found-lines that match what was actually detected.
-const speech: WallTonesClipId[] = [];
-if (walls.length > 0) {
-speech.push('pickWallSlots');
-}
-if (tables.length > 0) {
-speech.push('pickTableSlots');
-}
+// One combined line when both kinds are found; otherwise the matching line.
+const speech = combinedPickSpeechLines(walls.length, tables.length);
 this.beginSurfacePicking({
 surfaces: [...walls, ...tables],
 padSizeM: HEADSET_PAD_SIZE_M,
