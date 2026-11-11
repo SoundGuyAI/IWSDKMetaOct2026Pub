@@ -17,6 +17,8 @@ import {
   TOUCH_HOVER_SCALE,
   TOUCH_PRESS_DEPTH_M,
   TOUCH_PRESS_SCALE,
+  RAY_TARGET_DEPTH_M,
+  RAY_TARGET_SCALE,
   WALL_TONE_PADS,
 } from './constants.js';
 import { WallTonePad } from './wall-tone-pad-component.js';
@@ -120,6 +122,7 @@ function attachTouchVolumes(root: Object3D, sizeM: number): {
   hoverVolume: Mesh;
   debugHoverMesh: Mesh;
   debugPressMesh: Mesh;
+  rayTarget: Mesh;
 } {
   const pressW = sizeM * TOUCH_PRESS_SCALE;
   const hoverW = sizeM * TOUCH_HOVER_SCALE;
@@ -157,12 +160,31 @@ function attachTouchVolumes(root: Object3D, sizeM: number): {
     0x66fff0,
   );
 
+  // The fingertip volumes are hand-only colliders. They must never answer
+  // pointer raycasts, or the controller/hand ray (and desktop pointer) would
+  // hit a huge invisible box around the pad (owner feedback 2026-11-11).
+  // Rays instead hit the pad face or the slightly-larger ray target below.
+  const noRaycast = () => {};
+  touchVolume.raycast = noRaycast;
+  hoverVolume.raycast = noRaycast;
+  debugPressMesh.raycast = noRaycast;
+  debugHoverMesh.raycast = noRaycast;
+
+  const rayTarget = makeVolumeMesh(
+    'ray-target',
+    sizeM * RAY_TARGET_SCALE,
+    sizeM * RAY_TARGET_SCALE,
+    RAY_TARGET_DEPTH_M,
+    RAY_TARGET_DEPTH_M * 0.5,
+  );
+
   root.add(hoverVolume);
   root.add(touchVolume);
   root.add(debugHoverMesh);
   root.add(debugPressMesh);
+  root.add(rayTarget);
 
-  return { touchVolume, hoverVolume, debugHoverMesh, debugPressMesh };
+  return { touchVolume, hoverVolume, debugHoverMesh, debugPressMesh, rayTarget };
 }
 
 function basePadFields(
@@ -466,4 +488,4 @@ export function defaultDesktopPadSize(): number {
 
 export function defaultHeadsetPadSize(): number {
   return HEADSET_PAD_SIZE_M;
-}
+    }
