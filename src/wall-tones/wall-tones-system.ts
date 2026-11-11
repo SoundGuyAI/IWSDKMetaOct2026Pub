@@ -2301,7 +2301,7 @@ private spawnGhostPad(): void {
 this.ghostPad?.entity.dispose({ disposeResources: true });
 this.ghostPad = createGhostPadRuntime(
 this.world,
-(this.airPlaceStep % 4) as WallTonePadId,
+SIMON_FANFARE_PAD_ORDER[this.airPlaceStep % 4] as WallTonePadId,
 this.airPadSizeM,
 );
 this.applyTouchDebugVisibility();
@@ -2568,7 +2568,7 @@ this.ghostPad = null;
 private async playSimonStartupFanfare(): Promise<void> {
 this.statusText = 'Watch the pads...';
 this.renderPanel();
-// Fanfare order is green, red, blue, yellow (pad ids 0, 1, 2, 3).
+// Fanfare order is green, red, yellow, blue (pad ids 0, 1, 3, 2).
 for (const padIndex of SIMON_FANFARE_PAD_ORDER) {
 if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
