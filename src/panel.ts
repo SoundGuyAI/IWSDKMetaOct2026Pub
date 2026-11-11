@@ -304,4 +304,4 @@ export class PanelSystem extends createSystem({}) {
     scale[1] = flatScale;
     scale[2] = flatScale;
   }
-          }
+}
