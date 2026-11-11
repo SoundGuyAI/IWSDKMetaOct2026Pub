@@ -86,8 +86,8 @@ export function reachedThresholds(cat: { levels: readonly number[]; hidden?: boo
 
 export const ACHIEVEMENT_CATEGORIES: readonly AchievementCategory[] = [
   { id: 'streak', label: 'Streak', description: 'Best pattern streak.', levels: [5, 10, 15, 20, 25] },
-  { id: 'bars', label: 'Bars', description: 'Lifetime gold Bars earned.', levels: [5, 10, 25, 50, 100] },
-  { id: 'score', label: 'Total Score', description: 'Lifetime score: one point per Bar earned.', levels: [5, 10, 25, 50, 100, 250] },
+  { id: 'bars', label: 'Bars', description: 'Lifetime gold Bars earned.', levels: [25, 50, 100] },
+  { id: 'score', label: 'Total Score', description: 'Lifetime score: one point per Bar earned.', levels: [50, 100, 250] },
   { id: 'store', label: 'Store', description: 'Store purchases (provisional levels).', levels: [1, 3, 5, 10, 25] },
   { id: 'presses', label: 'Pad presses', description: 'Pad presses in the game, lifetime (provisional levels).', levels: [50, 100, 250, 500, 1000] },
   { id: 'secret', label: 'Secret Revealed', description: 'A secret. It stays secret.', levels: [1], hidden: true },
@@ -367,4 +367,4 @@ export class WallTonesEconomy {
     writeStringArray(FIRST_FLAGS_KEY, [...this.firstFlags]);
     return true;
   }
-}
+                }
