@@ -2568,7 +2568,7 @@ this.ghostPad = null;
 private async playSimonStartupFanfare(): Promise<void> {
 this.statusText = 'Watch the pads...';
 this.renderPanel();
-// Fanfare order is green, red, yellow, blue (pad ids 0, 1, 3, 2).
+// Fanfare order is green, red, blue, yellow (pad ids 0, 1, 2, 3).
 for (const padIndex of SIMON_FANFARE_PAD_ORDER) {
 if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
