@@ -23,5 +23,7 @@ test('achievements screen is a tile grid with a tooltip for hover, touch and ray
   assert.ok(sys.includes("tile.addEventListener('pointerenter'"));
   assert.ok(sys.includes("streak: 'Streak'"), 'each tile has a one-word name under its icon');
   assert.ok(sys.includes("tile.addEventListener('pointermove'"), 'the pop-up follows the pointer');
+  assert.ok(sys.includes("overflow: 'scroll'"), 'more than 6 tiles scroll inside the fixed-height window');
+  assert.ok(sys.includes('demoAchievements'), 'preview-only sample view for mixed locked/unlocked states');
   assert.ok(sys.includes('stickyCat'), 'a tap pins the details and tapping another tile switches them');
 });
