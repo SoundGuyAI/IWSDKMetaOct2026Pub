@@ -83,3 +83,13 @@ Future ideas and polish lists moved to [WALL_TONES_TODO.md](WALL_TONES_TODO.md) 
 - [ ] User review and merge go-ahead.
 
 The merge-ready procedure is an enduring rule for every merge, not work in this PR; it is documented in .github/workflows/ci.yml at the workflow_dispatch block (expected_sha guard, combined-tree merge step, merge-time comparisons).
+
+
+## Cypher story starter - 2026-11-11
+
+1. [x] Draft `CYPHER_DIALOGUE.md` with stable line IDs, source wording appendix, story beats, sound cues and proposed mechanics clearly separated from owner decisions.
+2. [x] Add owner backlog item 51 alongside existing story items 14 and 31.
+3. [x] Prepare the separate documentation-only story PR; keep it unmerged for review.
+4. [ ] Review dialogue, input options, streak gates, repeat/failure rules, unlock, comfort and persistence before any gameplay slice or voice generation.
+5. [ ] After approval, implement and test in focused follow-up PRs. No runtime, economy, audio or deployment change is part of this starter.
+6. [ ] Backlog item 52: only after Cypher gameplay is added, open a separate yes/no input feasibility PR (voice and nod/headshake options remain open).
