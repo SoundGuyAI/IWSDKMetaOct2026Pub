@@ -2,6 +2,8 @@ import { CLIP_TRANSCRIPTS } from './clip-transcripts.js';
 import { startSpokenCaption, endSpokenCaption, hearingSubtitlesEnabled, voicesOffEnabled } from './accessibility.js';
 import { NEW_BEST_MALE } from './new-best-male.js';
 import { NEW_BEST_FEMALE } from './new-best-female.js';
+import { PICK_COMBINED_MALE } from './pick-combined-male.js';
+import { PICK_COMBINED_FEMALE } from './pick-combined-female.js';
 /**
  * Prerecorded voice lines for Wall Tones (English).
  *
@@ -47,6 +49,7 @@ export type WallTonesClipId =
   | 'roomCapture'
   | 'pickWallSlots'
   | 'pickTableSlots'
+  | 'pickCombinedSlots'
   | 'notEnoughWallSpace'
   | 'tableFound'
   | 'padsOnWalls'
@@ -101,6 +104,7 @@ export const WALL_TONES_CLIP_FILES: Record<WallTonesClipId, string> = {
   roomCapture: 'room-capture.mp3',
   pickWallSlots: 'pick-wall-slots.mp3',
   pickTableSlots: 'pick-table-slots.mp3',
+  pickCombinedSlots: 'pick-combined-slots.mp3',
   notEnoughWallSpace: 'not-enough-wall-space.mp3',
   tableFound: 'table-found.mp3',
   padsOnWalls: 'pads-on-walls.mp3',
@@ -188,6 +192,9 @@ export function setVoiceGender(gender: WallTonesVoiceGender): void {
 function clipUrl(id: WallTonesClipId): string {
   if (id === 'newBest1' || id === 'newBest2' || id === 'newBest3') {
     return (currentGender === 'female' ? NEW_BEST_FEMALE : NEW_BEST_MALE)[id];
+  }
+  if (id === 'pickCombinedSlots') {
+    return currentGender === 'female' ? PICK_COMBINED_FEMALE : PICK_COMBINED_MALE;
   }
   const file = WALL_TONES_CLIP_FILES[id];
   // document.baseURI keeps the path correct under Vite's relative base ('./'),

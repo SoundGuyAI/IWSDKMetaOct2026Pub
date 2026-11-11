@@ -54,7 +54,8 @@ async function loadSpeech({ rejectFirst = false, subtitles = false } = {}) {
   source = source.replace(/^import .* from '.\/accessibility.js';/m,
     'const startSpokenCaption = (t) => { globalThis.__captions.push(t); return 1; }; const endSpokenCaption = () => { globalThis.__captions.push(""); }; const hearingSubtitlesEnabled = () => globalThis.__subtitles; const voicesOffEnabled = () => !!globalThis.__voicesOff;');
   source = source.replace(/^import .* from '.\/new-best-(male|female).js';/gm, '');
-  source = 'const NEW_BEST_MALE = {}; const NEW_BEST_FEMALE = {};\n' + source;
+  source = source.replace(/^import .* from '.\/pick-combined-(male|female).js';/gm, '');
+  source = 'const NEW_BEST_MALE = {}; const NEW_BEST_FEMALE = {}; const PICK_COMBINED_MALE = {}; const PICK_COMBINED_FEMALE = {};\n' + source;
   const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
   const speech = await import('data:text/javascript;base64,' + Buffer.from(js + '\n//' + Math.random()).toString('base64'));
   return { speech, instances, elements, gesture(fn) { gesture = true; try { return fn(); } finally { gesture = false; } }, get decodeCalls() { return decodeCalls; }, get primeCalls() { return primeCalls; } };

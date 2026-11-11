@@ -18,6 +18,7 @@ export const CLIP_TRANSCRIPTS: Record<WallTonesClipId, string> = {
   roomCapture: "I couldn't see enough surfaces. Open room capture on your headset, then we'll look again.",
   pickWallSlots: 'I found walls. Cyan shows walls, orange shows other surfaces. You can walk up and touch a green square to select it, or use the ray: point and pinch to place each button. Pick four.',
   pickTableSlots: 'I found table surfaces. Cyan shows flat surfaces, orange shows other items. You can walk up and touch a green square to select it, or use the ray: point and pinch to place four buttons. Pick four.',
+  pickCombinedSlots: 'I found both walls and table surfaces. Touch a green square on either, or point and pinch with the ray, to place each button. Pick four.',
   notEnoughWallSpace: "There isn't enough wall space for automatic placement. Point at the green squares on the walls if you see them, or move the outlined buttons with your hand and pinch to place them in the air.",
   tableFound: 'I found a table. Get ready to play.', padsOnWalls: 'Four buttons on your walls? Get ready to play.',
   noTable: "Ah, couldn't find a table or room mesh. Tilt your placing hand so the outline snaps flat or upright, then pinch to place. You can also rescan the room from the panel.",

@@ -21,8 +21,10 @@ type XRPlaneData = {
 export type PlacedPadTransform = {
   position: [number, number, number];
   quaternion: [number, number, number, number];
-  /** Per-surface pad size, retained through picking and final placement. */
+  /** Pad edge length for this placement; defaults to the mode's pad size. */
   sizeM?: number;
+  /** Surface kind this placement came from (combined mode mixes both). */
+  kind?: 'wall' | 'table';
 };
 
 export type WallSlot = {
@@ -298,6 +300,8 @@ export function generateWallPadCandidates(
           quaternion: quat,
           wallIndex,
           candidateIndex,
+          sizeM,
+          kind: 'wall',
         });
         candidateIndex += 1;
       }
@@ -366,6 +370,8 @@ export function generateTablePadCandidates(
           quaternion: flatQuat,
           wallIndex,
           candidateIndex,
+          sizeM,
+          kind: 'table',
         });
         candidateIndex += 1;
       }
@@ -661,4 +667,4 @@ export function generateMixedTablePadCandidates(tables: WallSlot[], sizes: reado
     for (const cell of cells) result.push({ ...cell, wallIndex, candidateIndex: result.length, sizeM: chosenSize });
   });
   return result;
-        }
+     }

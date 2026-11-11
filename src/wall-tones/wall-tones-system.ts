@@ -87,8 +87,8 @@ type WallTonePadId,
 } from './constants.js';
 import {
 collectTablePlanes,
-collectVerticalWalls,
 detectFloorY,
+collectVerticalWalls,
 generateMixedTablePadCandidates,
 generateTablePadCandidates,
 maxCandidatesOnOneSurface,
@@ -136,6 +136,7 @@ resetSpeechUnlock,
 unlockSpeechFromGesture,
 type WallTonesClipId,
 } from './speech.js';
+import { combinedPickSpeechLines } from './combined-pick-speech.js';
 import {
   ACHIEVEMENT_CATEGORIES,
   TOP_SECRET_COST,
@@ -215,7 +216,7 @@ __wallTonesDebug?: WallTonesDebugBridge;
 }
 }
 
-type SetupMode = 'room-scale' | 'sitting' | 'air';
+type SetupMode = 'room-scale' | 'sitting' | 'air' | 'combined';
 type AirOrientation = 'vertical' | 'horizontal';
 
 type FlowPhase =
@@ -478,7 +479,8 @@ const pendingSetup = sessionStorage.getItem('wall-tones-setup-mode');
 if (
 pendingSetup === 'room-scale' ||
 pendingSetup === 'sitting' ||
-pendingSetup === 'air'
+pendingSetup === 'air' ||
+pendingSetup === 'combined'
 ) {
 sessionStorage.removeItem('wall-tones-setup-mode');
 this.setupMode = pendingSetup;
@@ -609,6 +611,9 @@ panel
 panel
 .getElementById('mode-air-place-button')
 ?.addEventListener('click', () => void this.onChooseSetup('air'));
+panel
+.getElementById('mode-combined-button')
+?.addEventListener('click', () => void this.onChooseSetup('combined'));
 panel
 .getElementById('orient-vertical-button')
 ?.addEventListener('click', () => this.setAirOrientation('vertical'));
@@ -1795,6 +1800,18 @@ this.startTablePicking(tables);
 return;
 }
 
+if (this.setupMode === 'combined') {
+const floorY = detectFloorY(this.planeEntityScratch, this.viewer.y);
+const tables = collectTablePlanes(this.planeEntityScratch, floorY);
+const walls = collectVerticalWalls(this.planeEntityScratch, this.viewer);
+if (walls.length === 0 && tables.length === 0) {
+void this.offerRoomCaptureOrAir();
+return;
+}
+this.startCombinedPicking(walls, tables);
+return;
+}
+
 const walls = collectVerticalWalls(this.planeEntityScratch, this.viewer);
 if (walls.length === 0) {
 void this.offerRoomCaptureOrAir();
@@ -1871,11 +1888,42 @@ this.tablePadSizeM === AIR_PLACE_SITTING_PAD_SIZE_M
 });
 }
 
+/** Combined mode: pick pad spots on walls and tables in one pass. */
+private startCombinedPicking(
+walls: ReturnType<typeof collectVerticalWalls>,
+tables: ReturnType<typeof collectTablePlanes>,
+): void {
+const wallCandidates = generateWallPadCandidates(
+walls,
+this.viewer.y,
+HEADSET_PAD_SIZE_M,
+);
+const tableCandidates = generateTablePadCandidates(
+tables,
+AIR_PLACE_SITTING_PAD_SIZE_M,
+);
+// Reindex so candidate indices stay unique across both surface kinds.
+const candidates = [...wallCandidates, ...tableCandidates].map(
+(candidate, index) => ({ ...candidate, candidateIndex: index }),
+);
+// One combined line when both kinds are found; otherwise the matching line.
+const speech = combinedPickSpeechLines(walls.length, tables.length);
+this.beginSurfacePicking({
+surfaces: [...walls, ...tables],
+padSizeM: HEADSET_PAD_SIZE_M,
+candidates,
+speech,
+emptyFallback: () =>
+this.startAirPlacement('notEnoughWallSpace'),
+statusLabel: 'wall/table slots',
+});
+}
+
 private beginSurfacePicking(options: {
 surfaces: ReturnType<typeof collectVerticalWalls>;
 padSizeM: number;
 candidates: ReturnType<typeof generateWallPadCandidates>;
-speech: WallTonesClipId;
+speech: WallTonesClipId | WallTonesClipId[];
 emptyFallback: () => void;
 statusLabel: string;
 }): void {
@@ -1919,7 +1967,12 @@ options.emptyFallback();
 return;
 }
 
-this.speech.speak(options.speech);
+const speechLines = Array.isArray(options.speech)
+? options.speech
+: [options.speech];
+for (const line of speechLines) {
+this.speech.speak(line);
+}
 this.statusText = `Pick pad 1 of 4 - ${this.slotCandidates.length} ${options.statusLabel}`;
 this.renderPanel();
 }
@@ -2022,7 +2075,6 @@ preferredHand?: 'left' | 'right',
 ): SlotCandidateRuntime | null {
 let best: SlotCandidateRuntime | null = null;
 let bestAlong = Number.POSITIVE_INFINITY;
-
 for (const hand of XR_HANDS) {
 if (preferredHand != null && hand !== preferredHand) {
 continue;
@@ -2050,7 +2102,8 @@ continue;
 }
 this.rayClosest.copy(this.rayOrigin).addScaledVector(this.rayDir, along);
 const lateral = this.rayClosest.distanceTo(this.padWorldPos);
-if (lateral <= (slot.transform.sizeM ?? this.placementPadSizeM()) * 0.55 && along < bestAlong) {
+const hitRadius = (slot.sizeM ?? slot.transform.sizeM ?? this.placementPadSizeM()) * 0.55;
+if (lateral <= hitRadius && along < bestAlong) {
 bestAlong = along;
 best = slot;
 }
@@ -2071,7 +2124,7 @@ continue;
 }
 slot.root.getWorldPosition(this.padWorldPos);
 const dist = this.tipScratch.distanceTo(this.padWorldPos);
-if (dist <= (slot.transform.sizeM ?? this.placementPadSizeM()) * 0.55 && dist < bestDist) {
+if (dist < slot.sizeM * 0.55 && dist < bestDist) {
 bestDist = dist;
 best = slot;
 }
@@ -2084,12 +2137,12 @@ if (slot.selected || this.selectedSlotTransforms.length >= 4) {
 return;
 }
 // Keep picks spread out so pads do not stack.
-const pickedSize = slot.transform.sizeM ?? this.placementPadSizeM();
 const tooClose = this.selectedSlotTransforms.some((prior) => {
+const priorSize = prior.sizeM ?? slot.sizeM;
 const dx = prior.position[0] - slot.transform.position[0];
 const dy = prior.position[1] - slot.transform.position[1];
 const dz = prior.position[2] - slot.transform.position[2];
-return Math.hypot(dx, dy, dz) < ((prior.sizeM ?? this.placementPadSizeM()) + pickedSize) * 0.5 + 0.04;
+return Math.hypot(dx, dy, dz) < (priorSize + slot.sizeM) * 0.5 + 0.04;
 });
 if (tooClose) {
 this.statusText = 'Too close to another pick - choose a farther slot';
@@ -2100,14 +2153,25 @@ setCandidateVisualState(slot, 'selected');
 this.selectedSlotTransforms.push({
 position: slot.transform.position,
 quaternion: slot.transform.quaternion,
-sizeM: pickedSize,
+sizeM: slot.sizeM,
+kind: slot.transform.kind,
 });
 const count = this.selectedSlotTransforms.length;
 if (count >= 4) {
 const transforms = [...this.selectedSlotTransforms];
+// Existing recorded lines only cover all-wall or all-table finishes; a
+// mixed finish gets no lead-in rather than an inaccurate one.
+const allWalls = transforms.every((t) => t.kind !== 'table');
+const allTables = transforms.every((t) => t.kind === 'table');
 const doneLine =
 this.setupMode === 'sitting'
 ? 'tableFound'
+: this.setupMode === 'combined'
+? allTables
+? 'tableFound'
+: allWalls
+? 'padsOnWalls'
+: undefined
 : 'padsOnWalls';
 this.clearRoomSetupVisuals();
 this.finishHeadsetPlacement(transforms, doneLine);
@@ -2417,7 +2481,7 @@ return 'right';
 
 private finishHeadsetPlacement(
 transforms: PlacedPadTransform[],
-line: WallTonesClipId,
+line: WallTonesClipId | undefined,
 ): void {
 this.clearRoomSetupVisuals();
 this.clearPads();
@@ -2427,9 +2491,9 @@ this.setRescanUiVisible(false);
 this.setAirOrientUiVisible(false);
 // Play mode: only the four pads — hide plane/mesh proxies.
 this.setSpatialMeshesVisible(false);
-const size = this.placementPadSizeM();
 transforms.forEach((transform, index) => {
-const pad = createPadRuntime(this.world, index as WallTonePadId, transform.sizeM ?? size, {
+const size = transform.sizeM ?? this.placementPadSizeM();
+const pad = createPadRuntime(this.world, index as WallTonePadId, size, {
 rayInteractable: false,
 anchor: true,
 });

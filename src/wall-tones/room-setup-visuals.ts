@@ -33,8 +33,8 @@ export type SlotCandidateRuntime = {
   candidateIndex: number;
   wallIndex: number;
   transform: WallPadCandidate;
-  selected: boolean;
   sizeM: number;
+  selected: boolean;
   /** Invisible press box (same two-collider scheme as pad buttons). */
   touchVolume: Mesh;
   /** Invisible proximity box for the pre-touch highlight. */
@@ -123,7 +123,7 @@ export function clearRoomSetupTints(): void {
 export function createSlotCandidateRuntime(
   world: World,
   candidate: WallPadCandidate,
-  sizeM = HEADSET_PAD_SIZE_M,
+  sizeM = candidate.sizeM ?? HEADSET_PAD_SIZE_M,
 ): SlotCandidateRuntime {
   const root = new Object3D();
   root.name = `wall-slot-candidate-${candidate.candidateIndex}`;
@@ -175,8 +175,8 @@ export function createSlotCandidateRuntime(
     candidateIndex: candidate.candidateIndex,
     wallIndex: candidate.wallIndex,
     transform: candidate,
-    selected: false,
     sizeM,
+    selected: false,
     touchVolume,
     hoverVolume,
   };
