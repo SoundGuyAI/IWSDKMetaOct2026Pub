@@ -2018,7 +2018,7 @@ continue;
 }
 this.rayClosest.copy(this.rayOrigin).addScaledVector(this.rayDir, along);
 const lateral = this.rayClosest.distanceTo(this.padWorldPos);
-const hitRadius = slot.sizeM * 0.55;
+const hitRadius = (slot.sizeM ?? slot.transform.sizeM ?? this.placementPadSizeM()) * 0.55;
 if (lateral <= hitRadius && along < bestAlong) {
 bestAlong = along;
 best = slot;
