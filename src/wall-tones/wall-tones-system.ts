@@ -2,6 +2,7 @@ import {selectionPanelPose, horizontalLookAway, panelOverlapsPad, rectangleInsid
 import { shouldAnnounceRecord } from './record-feedback.js';
 import { BarFloatPool } from './bar-floats.js';
 import { achievementIconSrc, achievementTileSrc } from './achievement-icons.js';
+import { MovementTracker, formatMeters, readLifetimeMovementMeters } from './movement.js';
 import { hearingSubtitlesEnabled, colorNamesEnabled, currentSpokenCaption, voicesOffEnabled } from './accessibility.js';
 import {
 ConeGeometry,
@@ -202,6 +203,11 @@ probeHeadCaptionText: (text: string) => void;
 barFloatsActive: boolean;
 infoRowVisible: boolean;
 scoreInfoVisible: boolean;
+/** Backlog 30 research bridge: menu line visibility + tracker readings. */
+movementRowVisible: boolean;
+movementSessionHeadMeters: number;
+movementSessionPadMeters: number;
+movementLifetimeMeters: number;
 gameExplanationDisplay: unknown;
 scoringUiDisplays: Record<string, string | null>;
 toggleStore: () => void;
@@ -278,6 +284,15 @@ this.speech.speak('chooseMode');
 
 private readonly game = new WallTonesSequence();
 private readonly economy = new WallTonesEconomy();
+/** Backlog 30 research: MR headset-movement + pad-reach estimates. Session
+ * values show on the menu's movement line (MR only); lifetime totals feed
+ * the provisional Movement achievement. */
+private readonly movement = new MovementTracker();
+private movementRowHeadDm = -1;
+private movementRowPadDm = -1;
+private movementAchvWholeMeters = -1;
+/** Last display state pushed to the menu movement row, exposed for e2e. */
+public lastMovementRowVisible = false;
 private storeOpen = false;
 private achievementsOpen = false;
 /** Game Over popup shown after a wrong note; New run starts the next run. */
@@ -538,6 +553,9 @@ this.speech.speak('lookAround');
 update(delta: number): void {
 this.updateAccessibilityCaptions();
 this.tickHeadCaption();
+// Backlog 30 research sampling runs before the experience-active gate so
+// walking in the MR menus counts in the session estimate too.
+this.tickMovementTracking();
 if (!this.experienceActive) {
 return;
 }
@@ -1628,6 +1646,18 @@ return system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel')
 get scoreInfoVisible() {
 return system.lastScoreInfoVisible;
 },
+get movementRowVisible() {
+return system.lastMovementRowVisible;
+},
+get movementSessionHeadMeters() {
+return system.movement.getSessionHeadMeters();
+},
+get movementSessionPadMeters() {
+return system.movement.getSessionPadMeters();
+},
+get movementLifetimeMeters() {
+return readLifetimeMovementMeters();
+},
 get scoringUiDisplays() {
 const panel = system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
 return Object.fromEntries([
@@ -2618,6 +2648,8 @@ private clearPads(): void {
 disposePadRuntimes(this.pads);
 this.ghostPad?.entity.dispose({ disposeResources: true });
 this.ghostPad = null;
+// Backlog 30 research: a new layout means the old pad-reach anchor is stale.
+this.movement.resetPadAnchor();
 }
 
 /**
@@ -3325,6 +3357,12 @@ return;
 }
 // Any instruction still finishing is obsolete once a correct pad is hit.
 this.speech.cancel();
+// Backlog 30 research: pad-reach estimate between correct presses (MR only;
+// flat pads are a fixed on-screen grid, not a reach).
+if (pad != null) {
+pad.root.getWorldPosition(this.padWorldPos);
+this.movement.noteCorrectPadPress(this.padWorldPos.x, this.padWorldPos.y, this.padWorldPos.z, !this.isFlatView());
+}
 const previousBest = this.game.bestStreak;
 const completed = this.game.onCorrectInput();
 if (this.game.bestStreak > previousBest) {
@@ -3765,6 +3803,49 @@ await this.playSequence();
 });
 }
 
+/** Backlog 30 research: one headset sample per frame into the movement
+ * tracker, plus the change-keyed menu line refresh (per-frame text writes
+ * would re-layout the panel every frame). */
+private tickMovementTracking(): void {
+const immersive = !this.isFlatView();
+this.player.head.getWorldPosition(this.viewer);
+this.movement.noteHeadPosition(this.viewer.x, this.viewer.y, this.viewer.z, immersive, performance.now() / 1000);
+const headDm = Math.round(this.movement.getSessionHeadMeters() * 10);
+const padDm = Math.round(this.movement.getSessionPadMeters() * 10);
+// Owner scoping (Nov 11): the movement line is MR-only and follows the
+// score rows' visibility (hidden during placement setup).
+const rowVisible = immersive && this.experienceActive && this.lastScoreInfoVisible;
+if (
+headDm !== this.movementRowHeadDm ||
+padDm !== this.movementRowPadDm ||
+rowVisible !== this.lastMovementRowVisible
+) {
+this.movementRowHeadDm = headDm;
+this.movementRowPadDm = padDm;
+this.lastMovementRowVisible = rowVisible;
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+panel?.getElementById('wall-tones-movement-row')?.setProperties({
+display: rowVisible ? 'flex' : 'none',
+});
+if (rowVisible) {
+panel?.getElementById<UIKit.Text>('wall-tones-movement-head')?.setProperties({
+text: formatMeters(headDm / 10),
+});
+panel?.getElementById<UIKit.Text>('wall-tones-movement-pad')?.setProperties({
+text: formatMeters(padDm / 10),
+});
+}
+}
+// Movement thresholds can be crossed by walking between presses, so the
+// economy re-checks achievements on each new whole meter.
+const wholeMeters = Math.floor(this.movement.getLifetimeHeadMeters() + this.movement.getLifetimePadMeters());
+if (wholeMeters !== this.movementAchvWholeMeters) {
+this.movementAchvWholeMeters = wholeMeters;
+this.economy.noteExternalProgress(this.game.streak);
+this.showAchievementToasts();
+}
+}
+
 private renderPanel(): void {
 const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
 if (panel == null) {
@@ -3912,6 +3993,7 @@ bars: 'Bars',
 score: 'Score',
 store: 'Store',
 presses: 'Presses',
+movement: 'Movement',
 secret: 'Secret',
 };
 // Details are a floating overlay on top of the grid, so the window keeps one
