@@ -35,7 +35,6 @@ export type SlotCandidateRuntime = {
   transform: WallPadCandidate;
   sizeM: number;
   selected: boolean;
-  sizeM: number;
   /** Invisible press box (same two-collider scheme as pad buttons). */
   touchVolume: Mesh;
   /** Invisible proximity box for the pre-touch highlight. */
@@ -178,7 +177,6 @@ export function createSlotCandidateRuntime(
     transform: candidate,
     sizeM,
     selected: false,
-    sizeM,
     touchVolume,
     hoverVolume,
   };
