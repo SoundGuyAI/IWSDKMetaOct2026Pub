@@ -15,9 +15,11 @@ test('open-ended levels follow the approved 10/25/50/100 per-decade pattern', ()
 });
 
 test('achievements screen is a tile grid with a tooltip for hover, touch and ray', () => {
-  assert.ok(ui.includes('id="achievements-tooltip"'));
+  assert.ok(!ui.includes('achievements-tooltip'), 'details are a pop-up beside the tile, not a permanent line');
   assert.ok(ui.includes('flex-wrap: wrap'));
   assert.ok(sys.includes("tile.addEventListener('click'"));
+  assert.ok(sys.includes("tile.addEventListener('pointerleave'"));
+  assert.ok(sys.includes("positionType: 'absolute'"));
   assert.ok(sys.includes("tile.addEventListener('pointerenter'"));
   assert.ok(sys.includes('`Lv ${level}`'));
 });
