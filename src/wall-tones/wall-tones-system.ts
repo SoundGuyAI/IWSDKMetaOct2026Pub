@@ -1,7 +1,7 @@
 import {selectionPanelPose, horizontalLookAway, panelOverlapsPad, rectangleInsidePolygon} from './panel-placement.js';
 import { shouldAnnounceRecord } from './record-feedback.js';
 import { BarFloatPool } from './bar-floats.js';
-import { achievementIconSrc } from './achievement-icons.js';
+import { achievementIconSrc, achievementTileSrc } from './achievement-icons.js';
 import { hearingSubtitlesEnabled, colorNamesEnabled, currentSpokenCaption, voicesOffEnabled } from './accessibility.js';
 import {
 ConeGeometry,
@@ -3612,7 +3612,16 @@ this.achievementKeyPresses = eco.getPresses();
 while (list.children.length > 0) {
 list.remove(list.children[0]!);
 }
-const TILE = 96;
+const TILE = 92;
+const TILE_H = TILE + 18;
+const BADGE_COLOR: Record<string, number> = {
+streak: 0x4fd39a,
+bars: 0xf0c24a,
+score: 0xf59a4a,
+store: 0x5aa0ee,
+presses: 0xec6258,
+secret: 0xb79af6,
+};
 const SHORT_NAMES: Record<string, string> = {
 streak: 'Streak',
 bars: 'Bars',
@@ -3626,7 +3635,7 @@ secret: 'Secret',
 // (PC mouse, MR ray) and pins on a tap (iPhone).
 const GRID_W = 308;
 const COLS = 3;
-const ROW_H = TILE + 12 + 8;
+const ROW_H = TILE_H + 8;
 const POPUP_W = 190;
 const gridLeft = Math.floor((GRID_W - (COLS * TILE + (COLS - 1) * 8)) / 2);
 const popup = new UIKit.Container({
@@ -3655,53 +3664,91 @@ let activeCat: string | null = null;
 let stickyCat: string | null = null;
 const place = (col: number, row: number, uvx: number, uvy: number): void => {
 const x = gridLeft + col * (TILE + 8) + uvx * TILE + 14;
-const y = row * ROW_H + (1 - uvy) * (TILE + 12) + 14;
+const y = row * ROW_H + (1 - uvy) * TILE_H + 14;
 popup.setProperties({
 positionLeft: Math.max(0, Math.min(GRID_W - POPUP_W, x)),
 positionTop: Math.max(0, y),
 });
 };
+const tileSetters = new Map<string, (on: boolean) => void>();
 const hide = (): void => {
+if (stickyCat != null) tileSetters.get(stickyCat)?.(false);
 activeCat = null;
 stickyCat = null;
 popup.setProperties({ display: 'none' });
 };
+// Preview-only sample view (?demoAchievements=1, or =many for extra sample
+// tiles to test scrolling). It changes only what this screen draws: no
+// progress, no stored data and no achievement rules are touched.
+const demoParam = typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('demoAchievements');
+const demoLevels: Record<string, number> = { streak: 3, bars: 4, score: 1, presses: 2 };
+type TileCat = { id: string; label: string; description: string; levels: readonly number[]; hidden?: boolean; glyph?: string };
+const tileCats: TileCat[] = [...ACHIEVEMENT_CATEGORIES];
+if (demoParam === 'many') {
+const glyphs = ['streak', 'bars', 'store', 'presses', 'score', 'secret'];
+for (let i = 0; i < 6; i++) {
+tileCats.push({ id: `sample-${i + 1}`, label: `Sample ${i + 1}`, description: 'Sample tile for testing the scroll area.', levels: [5, 10, 25], glyph: glyphs[i]! });
+demoLevels[`sample-${i + 1}`] = i % 3;
+}
+}
 let tileIndex = 0;
-for (const cat of ACHIEVEMENT_CATEGORIES) {
+for (const cat of tileCats) {
 const col = tileIndex % COLS;
 const row = Math.floor(tileIndex / COLS);
 tileIndex += 1;
-const { value, level, next } = eco.getCategoryProgress(cat.id, this.game.streak);
+let { value, level, next } = demoParam == null || cat.id === 'secret'
+? eco.getCategoryProgress(cat.id, this.game.streak)
+: { value: 0, level: 0, next: cat.levels[0] ?? null };
+if (demoParam != null && cat.id !== 'secret') {
+level = demoLevels[cat.id] ?? 0;
+value = level > 0 ? (cat.levels[level - 1] ?? 0) : 0;
+next = cat.levels[level] ?? null;
+}
 const locked = level === 0;
 const secret = cat.hidden === true && locked;
+const glyphId = cat.glyph ?? cat.id;
 const title = secret ? '???' : `${cat.label} - Level ${level}`;
 const body = secret
 ? 'A secret. It stays secret.'
-: `${cat.description}` +
+: (demoParam != null ? 'TEST VIEW (sample levels, not saved). ' : '') + `${cat.description}` +
 (next == null ? ' Top level reached.' : ` Next level: ${next} (now ${value}).`);
 const tile = new UIKit.Container({
 flexDirection: 'column',
 alignItems: 'center',
-justifyContent: 'center',
-gap: 6,
+gap: 2,
 width: TILE,
-height: TILE + 12,
-borderRadius: 14,
-borderWidth: 1,
-borderColor: locked ? 0x4a5568 : 0xf5d90a,
-backgroundColor: locked ? 0x2b3342 : 0x34435c,
+height: TILE_H,
 });
-tile.add(new UIKit.Image({
-src: achievementIconSrc(cat.id),
-width: 48,
-height: 48,
-opacity: locked ? 0.7 : 1,
-}));
+const tileImg = new UIKit.Image({
+src: achievementTileSrc(glyphId, locked ? 'off' : 'on'),
+width: TILE,
+height: TILE,
+});
+tile.add(tileImg);
+const badgeNum = new UIKit.Container({
+positionType: 'absolute',
+positionLeft: TILE - 30,
+positionTop: TILE - 30,
+width: 28,
+height: 28,
+borderRadius: 14,
+borderWidth: 2,
+borderColor: locked ? 0x6b7488 : (BADGE_COLOR[glyphId] ?? 0xffffff),
+backgroundColor: 0x15181d,
+alignItems: 'center',
+justifyContent: 'center',
+});
+badgeNum.add(new UIKit.Text({ fontSize: 14, color: locked ? 0xaab2c2 : 0xffffff, text: String(level) }));
+tile.add(badgeNum);
 tile.add(new UIKit.Text({
 fontSize: 14,
-color: locked ? 0xc3cad6 : 0xffffff,
+color: locked ? 0x9aa4b6 : 0xffffff,
 text: secret ? 'Secret' : (SHORT_NAMES[cat.id] ?? cat.label),
 }));
+const setSel = (on: boolean): void => {
+tileImg.setProperties({ src: achievementTileSrc(glyphId, locked ? 'off' : (on ? 'sel' : 'on')) });
+};
+tileSetters.set(cat.id, setSel);
 const show = (uv?: { x: number; y: number }): void => {
 activeCat = cat.id;
 popupTitle.setProperties({ text: title });
@@ -3728,12 +3775,15 @@ if (stickyCat === cat.id) {
 hide();
 return;
 }
+if (stickyCat != null) tileSetters.get(stickyCat)?.(false);
 show(e.uv);
 stickyCat = cat.id;
+setSel(true);
 });
 list.add(tile);
 }
 list.add(popup);
+list.setProperties({ overflow: 'scroll' });
 }
 
 /** Visual-only achievement toast; voice stays milestone-only (user rule). */
@@ -4235,4 +4285,4 @@ return new Promise((resolve) => {
 window.setTimeout(resolve, seconds * 1000);
 });
 }
-  }
+}
