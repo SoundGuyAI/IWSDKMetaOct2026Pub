@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, table-pad-shrink]
+    branches: [main, ray-aware-panel]
   workflow_dispatch:
     # Merge-ready procedure (enduring rule, applies to every merge):
     # 1. Copy the PR head SHA from the PR page.
