@@ -157,3 +157,9 @@ Oded tested the merged main build and reported that everything looks fine. The a
 - [~] 51. Cypher ARG episode: dialogue-heavy radio break-ins after the five-streak opening, ten-streak communication window and proposed longer gates; luminous cracks and optional MR drone rescue. Separate from items 14 and 31, which remain open. Starter is documentation only in `CYPHER_DIALOGUE.md`; dialogue, gate/repeat/failure rules, casting and effects await review. No story gameplay or voice assets are implemented. Public story PR explicitly requested by Oded; no merge approval.
 
 - [ ] 52. After Cypher is implemented, open a separate feasibility PR to test player yes/no input. Investigate nod/headshake and spoken yes/no without choosing a modality yet; include deliberate answer windows, false-positive checks, runtime capability detection, microphone consent where needed and button fallback. Deferred until Cypher gameplay exists, not merely the documentation PR. No input spike or recognizer is implemented now.
+
+
+### Cypher revision - November 11, 21:56
+
+- [~] 51 clarification: current dialogue v0.2 follows the supplied opening closely. Act 1 narrator cannot hear/detect Cypher and talks only to the player about glitches; Act 2 discovery remains to develop; Act 3 narrator, Cypher and player work together against the terrorists and ends at streak 1024. Exact prior draft preserved unchanged in `CYPHER_DIALOGUE_V01_INSPIRATION.md`, inspiration only. Add hidden story achievements in this scope, including actual drone-defeat completion; design captured in the current dialogue document, runtime integration depends on implemented encounter events. No story runtime achievements exist yet.
+- [ ] 52 clarification: after Cypher gameplay is added, the separate yes/no feasibility PR must ALSO explore thumbs-up/down detection, alongside voice and nod/headshake. No modality selected or support promised; retain fallback and false-positive/device checks.
