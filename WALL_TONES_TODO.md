@@ -8,8 +8,6 @@ Oded tested the merged main build and reported that everything looks fine. The a
 
 `CloudFlareProd` is the promotion branch from that exact tested main for Oded to configure in Cloudflare himself. Branch creation does not change Cloudflare configuration. New gameplay work waits for his backlog review and selection.
 
-**2026-11-11, 23:25 Asia/Jerusalem:** PR #60 (startup menu, Debug colliders) merged 22:06 and PR #61 (achievements grid, pop-ups, spoken intro) merged 23:14, each on Oded's explicit go-ahead ("PR 60 . you can merge." 22:04; "61 can merge" 23:13). Main is 47888e9. PR #63 (Game Over popup) and PR #65 (ray/gaze+pinch pads) were updated the same evening from his 23:13 feedback (items 45 and 53) and await his go-ahead; he has not merged them. The GitHub Pages deploy verify step failed on the post-PR60 run and is being re-checked; CloudFlareProd and the Cloudflare configuration are unchanged.
-
 ## Not started
 
 - [ ] 3. Bug: first box in the pattern is not blinking in VR (arrow also not showing)
@@ -157,3 +155,8 @@ Oded tested the merged main build and reported that everything looks fine. The a
 - Final accepted build: b2fa460. Complete main CI: https://github.com/SoundGuyAI/IWSDKMetaOct2026Pub/actions/runs/42935989499 .
 - Owner requested creation of CloudFlareProd from the tested main for his own Cloudflare setup. No Cloudflare settings, credentials or deployment action is part of this update.
 - Ray button interaction (4), achievement icon mockup (48), and store icon progression-tree mockup (49) are captured for his list review. No new gameplay or mockup work has started. Older unresolved economy/score and boundary-specific questions remain open; general main acceptance is not a claim that each separate investigation was explicitly tested.
+
+## Review update - 2026-11-11, 23:25 Asia/Jerusalem
+
+- PR #60 (startup menu, Debug colliders) merged 22:06 and PR #61 (achievements grid, pop-ups, spoken intro) merged 23:14, each on Oded's explicit go-ahead ("PR 60 . you can merge." 22:04; "61 can merge" 23:13). Main is 47888e9. PR #63 (Game Over popup) and PR #65 (ray/gaze+pinch pads) were updated the same evening from his 23:13 feedback (items 45 and 53) and await his go-ahead; he has not merged them. The GitHub Pages deploy verify step failed on the post-PR60 run and is being re-checked; CloudFlareProd and the Cloudflare configuration are unchanged.
+- Update 23:46: the post-PR61 main run 43101309906 verified GitHub Pages live on main 47888e9. PR #65 merged 23:46 (merge commit 2d50a96) on Oded's 23:45 "ready to merge." PR #63 still awaits his go-ahead.
