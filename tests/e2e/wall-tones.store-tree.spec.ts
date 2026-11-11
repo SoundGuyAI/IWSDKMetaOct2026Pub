@@ -266,4 +266,33 @@ test.describe('Wall Tones store skill tree', () => {
     expect(snap.bars).toBe(0);
     expect(snap.ownsListen).toBe(true);
   });
+
+  test('Saver: store tile buys into the shared Game Over inventory at 18 Bars', async ({
+    page,
+  }) => {
+    test.slow();
+    await abortSpeech(page);
+    await bootWallTones(page, true);
+    await grantBars(page, 18);
+    await dbg(page, 'toggleStore');
+    await dbg(page, 'buySaver');
+    const read = (): Promise<{ savers: number; bars: number }> =>
+      page.evaluate(() => {
+        const d = (window as unknown as {
+          __wallTonesDebug: { savers: number; bars: number };
+        }).__wallTonesDebug;
+        return { savers: d.savers, bars: d.bars };
+      });
+    let snap = await read();
+    expect(snap.savers).toBe(1);
+    expect(snap.bars).toBe(0);
+    // No unlock prerequisites, but the wallet still gates the purchase.
+    await dbg(page, 'buySaver');
+    snap = await read();
+    expect(snap.savers).toBe(1);
+    // The store stock is the same inventory the Game Over popup reads.
+    await bootWallTones(page, false);
+    snap = await read();
+    expect(snap.savers).toBe(1);
+  });
 });
