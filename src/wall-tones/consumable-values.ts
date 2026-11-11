@@ -20,3 +20,19 @@ export function saverUnitsForStreak(streak: number): number {
   if (stretch <= last) return SAVER_UNITS_PER_STRETCH[stretch]!;
   return SAVER_UNITS_PER_STRETCH[last]! * 2 ** (stretch - last);
 }
+
+/** One-press Game Over purchase (owner request 2026-11-11): buy exactly the
+ * savers missing for an immediate retry and apply them in the same press.
+ * Cost model unchanged: the press buys `need - have` units at price each. */
+export function saverRetryPlan(
+  haveSavers: number,
+  needSavers: number,
+  bars: number,
+  priceBars: number,
+): { buy: number; costBars: number; affordable: boolean; apply: boolean } {
+  if (needSavers <= 0) return { buy: 0, costBars: 0, affordable: false, apply: false };
+  const missing = Math.max(0, needSavers - haveSavers);
+  const costBars = missing * priceBars;
+  const affordable = bars >= costBars;
+  return { buy: affordable ? missing : 0, costBars, affordable, apply: affordable };
+}
