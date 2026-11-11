@@ -139,10 +139,15 @@ type WallTonesClipId,
 import { combinedPickSpeechLines } from './combined-pick-speech.js';
 import {
   ACHIEVEMENT_CATEGORIES,
+  AUTOPLAY_UNLOCK_HINT_LEVEL,
+  LISTEN_COST,
+  REPLAY_FREE_CAP,
+  REPLAY_PRICE_BARS,
   TOP_SECRET_COST,
   WallTonesEconomy,
   nextOpenThreshold,
 } from './economy.js';
+import { storeTileSrc, type TileState as StoreTileState } from './store-icons.js';
 import {
 getActiveWorldKind,
 switchBackToHubMenu,
@@ -150,6 +155,23 @@ switchToWallTonesArWorld,
 } from './world-host.js';
 import { WallSlotCandidate } from './wall-slot-candidate-component.js';
 import { WallTonePad } from './wall-tone-pad-component.js';
+
+/** Preview/test aid (owner-approved 2026-11-11): ?demoBars=100 grants
+ * spendable test Bars in memory only - never saved, same preview-only idea
+ * as the ?demoAchievements sample view. */
+function withDemoBarsFlag(eco: WallTonesEconomy): WallTonesEconomy {
+const demoBars =
+typeof location === 'undefined'
+? null
+: new URLSearchParams(location.search).get('demoBars');
+if (demoBars != null) {
+const amount = Number(demoBars);
+if (Number.isFinite(amount) && amount > 0) {
+eco.applyDemoBoost(amount);
+}
+}
+return eco;
+}
 
 /** Stable hand order — never allocate per XR frame. */
 const XR_HANDS = ['right', 'left'] as const;
@@ -194,9 +216,27 @@ scoringUiDisplays: Record<string, string | null>;
 toggleStore: () => void;
 toggleAchievements: () => void;
 buyHint: () => void;
+buyListen: () => void;
+buyAutoplay: () => void;
+buyReplay: () => void;
 buyTopSecret: () => void;
+/** Test-only: spends one Replay through the Repeat button path. */
+repeatPattern: () => void;
+/** Test-only: selects a store tile like a tap on its tile. */
+selectStoreTile: (id: string) => void;
+storeSelected: string | null;
 /** Whether the one-time Top Secret item is owned (test-only). */
 ownsTopSecret: boolean;
+/** Skill-tree store state (test-only reads). */
+ownsListen: boolean;
+hintUnlocked: boolean;
+autoplayLevel: number;
+autoplayUnlocked: boolean;
+replaysFree: number;
+replaysPaid: number;
+replaysTotal: number;
+/** In-memory ?demoBars grant (never saved). */
+demoBoost: number;
 /** Test-only wallet funding for e2e. */
 grantBars: (amount: number) => void;
 flatAwaitingStart: boolean;
@@ -260,7 +300,7 @@ this.speech.speak('chooseMode');
 }
 
 private readonly game = new WallTonesSequence();
-private readonly economy = new WallTonesEconomy();
+private readonly economy = withDemoBarsFlag(new WallTonesEconomy());
 private storeOpen = false;
 private achievementsOpen = false;
 private readonly viewer = new Vector3();
@@ -649,11 +689,8 @@ panel
 ?.addEventListener('click', () => this.setAchievementsOpen(false));
 
 panel
-.getElementById('buy-hint-button')
-?.addEventListener('click', () => this.onBuyHint());
-panel
-.getElementById('buy-secret-button')
-?.addEventListener('click', () => this.onBuySecret());
+.getElementById('store-buy-button')
+?.addEventListener('click', () => this.onBuySelected());
 panel
 .getElementById('skip-voice-button')
 ?.addEventListener('click', () => this.onSkipVoice());
@@ -1596,14 +1633,63 @@ system.onToggleStore();
 toggleAchievements: () => {
 system.setAchievementsOpen(!system.achievementsOpen);
 },
+// Store purchases go through the same selection + buy path as the panel,
+// so tests exercise the real gates and denial feedback.
 buyHint: () => {
-system.onBuyHint();
+system.selectStoreTile('hint');
+system.onBuySelected();
+},
+buyListen: () => {
+system.selectStoreTile('listen');
+system.onBuySelected();
+},
+buyAutoplay: () => {
+system.selectStoreTile('autoplay');
+system.onBuySelected();
+},
+buyReplay: () => {
+system.selectStoreTile('replay');
+system.onBuySelected();
 },
 buyTopSecret: () => {
-system.onBuySecret();
+system.selectStoreTile('secret');
+system.onBuySelected();
+},
+repeatPattern: () => {
+void system.onRepeatPattern();
 },
 get ownsTopSecret() {
 return system.economy.ownsTopSecret();
+},
+get ownsListen() {
+return system.economy.ownsListen();
+},
+get hintUnlocked() {
+return system.economy.hintUnlocked();
+},
+get autoplayLevel() {
+return system.economy.getAutoplayLevel();
+},
+get autoplayUnlocked() {
+return system.economy.autoplayUnlocked();
+},
+get replaysFree() {
+return system.economy.getReplaysFree();
+},
+get replaysPaid() {
+return system.economy.getReplaysPaid();
+},
+get replaysTotal() {
+return system.economy.getReplaysTotal();
+},
+get demoBoost() {
+return system.economy.getDemoBoost();
+},
+get storeSelected() {
+return system.storeSelected;
+},
+selectStoreTile: (id: string) => {
+system.selectStoreTile(id);
 },
 // Test-only: fund the wallet without grinding rounds.
 grantBars: (amount: number) => {
@@ -2667,8 +2753,39 @@ this.setBlinkCuePad(null);
 }
 await this.wait(NOTE_GAP_S);
 }
+// Autoplay store modifier (owner-approved test values 2026-11-11): after
+// the Listen playback, the game plays the first level*5 notes for the
+// player, capped one short of the full pattern so at least the last note
+// stays manual. Auto-played notes pay no per-press Bars (no player press).
+const autoCount = Math.min(
+this.economy.getAutoplayNoteCount(),
+this.game.sequence.length - 1,
+);
+if (autoCount > 0) {
+this.statusText = `Auto play: first ${autoCount}`;
+this.renderPanel();
+for (let index = 0; index < autoCount; index += 1) {
+if (!this.experienceActive || this.flowPhase !== 'playing') {
+return;
+}
+const padId = this.game.sequence[index]!;
+const pad = this.pads[padId];
+if (pad != null) {
+this.setBlinkCuePad(pad);
+flashPad(pad, true);
+await playPadTone(padId);
+await this.wait(NOTE_GAP_S + BLINK_HOLD_S + 0.2);
+flashPad(pad, false);
+this.setBlinkCuePad(null);
+}
+await this.wait(NOTE_GAP_S);
+}
+if (!this.experienceActive || this.flowPhase !== 'playing') {
+return;
+}
+}
 this.game.phase = 'input';
-this.game.inputStep = 0;
+this.game.inputStep = autoCount;
 this.inputNeedsClear = true;
 this.lastInputAt = performance.now() / 1000;
 this.idleReplayQueued = false;
@@ -3289,7 +3406,16 @@ if (completed) {
 // Lock input immediately so a held finger/click cannot eat the next round.
 this.game.phase = 'playback';
 this.inputNeedsClear = true;
-this.statusText = `Nice - streak ${this.game.streak}. Next pattern...`;
+// Free Replay earn milestones (owner rule 2026-11-11): one at every 5-note
+// milestone past the current Hint coverage; a grant at the full cap of 2
+// free Replays is lost.
+let replayNote = '';
+if (this.economy.isReplayMilestone(this.game.streak)) {
+replayNote = this.economy.grantFreeReplay()
+? ' Free Replay earned!'
+: ' Free Replay grant lost - cap full.';
+}
+this.statusText = `Nice - streak ${this.game.streak}.${replayNote} Next pattern...`;
 this.renderPanel();
 const streak = this.game.streak;
 const increasedRecord = shouldAnnounceRecord(streak, previousBest, this.firstRun);
@@ -3555,6 +3681,16 @@ return;
 if (this.game.phase === 'playback' || this.game.phase === 'resetting') {
 return;
 }
+// Replay is a consumable (owner-approved 2026-11-11): the Repeat button
+// spends one; free Replays are earned past the Hint coverage and paid ones
+// come from the Store.
+if (!this.economy.useReplay()) {
+this.statusText =
+'No Replay left. Earn one 5 notes past your Hint coverage, or buy one in the Store.';
+this.renderPanel();
+void playErrorTone();
+return;
+}
 this.lastInputAt = performance.now() / 1000;
 this.idleReplayQueued = false;
 this.speech.speak('repeatPattern');
@@ -3642,6 +3778,11 @@ private economyRenderLevel = -1;
 private economyRenderStoreOpen = false;
 private economyRenderPresses = -1;
 private economyRenderSecretOwned = false;
+private economyRenderListenOwned = false;
+private economyRenderAutoplayLevel = -1;
+private economyRenderReplaysTotal = -1;
+private economyRenderDemoBoost = -1;
+private economyRenderStoreSelected: string | null = null;
 private renderEconomy(panel: UIKitMLAsset): void {
 const bars = this.economy.getBars();
 const level = this.economy.getHintLevel();
@@ -3651,14 +3792,29 @@ const open = this.storeOpen;
 // popup (bars, hint level and store state are unchanged on that path).
 const presses = this.economy.getPresses();
 const secretOwned = this.economy.ownsTopSecret();
+const listenOwned = this.economy.ownsListen();
+const autoplayLevel = this.economy.getAutoplayLevel();
+const replaysTotal = this.economy.getReplaysTotal();
+const demoBoost = this.economy.getDemoBoost();
+const storeSelected = this.storeSelected;
 if (bars === this.economyRenderBars && level === this.economyRenderLevel &&
 open === this.economyRenderStoreOpen && presses === this.economyRenderPresses &&
-secretOwned === this.economyRenderSecretOwned) return;
+secretOwned === this.economyRenderSecretOwned &&
+listenOwned === this.economyRenderListenOwned &&
+autoplayLevel === this.economyRenderAutoplayLevel &&
+replaysTotal === this.economyRenderReplaysTotal &&
+demoBoost === this.economyRenderDemoBoost &&
+storeSelected === this.economyRenderStoreSelected) return;
 this.economyRenderBars = bars;
 this.economyRenderLevel = level;
 this.economyRenderStoreOpen = open;
 this.economyRenderPresses = presses;
 this.economyRenderSecretOwned = secretOwned;
+this.economyRenderListenOwned = listenOwned;
+this.economyRenderAutoplayLevel = autoplayLevel;
+this.economyRenderReplaysTotal = replaysTotal;
+this.economyRenderDemoBoost = demoBoost;
+this.economyRenderStoreSelected = storeSelected;
 panel
 .getElementById<UIKit.Text>('wall-tones-bars')
 ?.setProperties({ text: String(this.economy.getBars()) });
@@ -3671,36 +3827,211 @@ panel
 panel
 .getElementById<UIKit.Container>('store-popup')
 ?.setProperties({ display: this.storeOpen ? 'flex' : 'none' });
-const nextCost = this.economy.hintCost(level + 1);
-const buyLabel = `Your Turn hint lv ${level + 1} - ${nextCost} Bars`;
-const affordable = this.economy.getBars() >= nextCost;
 panel
-.getElementById<UIKit.Text>('buy-hint-label')
-?.setProperties({ text: buyLabel, color: affordable ? 0x1c1d20 : 0xd43a3a });
-panel
-.getElementById<UIKit.Text>('store-hint-status')
+.getElementById<UIKit.Text>('store-heading')
 ?.setProperties({
-text: level === 0
-? 'No hint owned. The pattern stays hidden during Your Turn.'
-: `Hint level ${level}: first ${this.economy.getHintRevealCount()} colors shown during Your Turn.`,
+text: this.economy.getDemoBoost() > 0 ? 'Store (TEST Bars)' : 'Store',
 });
 panel
-.getElementById<UIKit.Text>('buy-secret-label')
+.getElementById<UIKit.Text>('repeat-pattern-label')
 ?.setProperties({
-text: secretOwned
-? 'Top Secret - owned'
-: `Top Secret - ${TOP_SECRET_COST} Bars`,
-color:
-!secretOwned && this.economy.getBars() >= TOP_SECRET_COST
-? 0x1c1d20
-: 0x8a8f98,
+text: `Repeat pattern (${this.economy.getReplaysTotal()})`,
 });
-panel
-.getElementById<UIKit.Text>('store-secret-status')
-?.setProperties({
-text: secretOwned ? 'Secret Revealed.' : 'A secret. It stays secret.',
-});
+this.reconcileStore(panel);
 this.reconcileAchievements(panel);
+}
+
+/** Store skill tree (item 44): one square line-glyph tile per category,
+ * level/count badges, and reach-level-X gates on the chain connections.
+ * Rebuilt on the economy change key only (same codex P2 rule as the
+ * achievements grid). */
+private reconcileStore(panel: UIKitMLAsset): void {
+const list = panel.getElementById<UIKit.Container>('store-tree-list');
+if (list == null) return;
+while (list.children.length > 0) {
+list.remove(list.children[0]!);
+}
+const eco = this.economy;
+const TILE = 92;
+const TILE_H = TILE + 18;
+interface StoreTile {
+id: string;
+name: string;
+badge: string;
+state: StoreTileState;
+}
+const hintLevel = eco.getHintLevel();
+const autoplayLevel = eco.getAutoplayLevel();
+const tiles: StoreTile[] = [
+{
+id: 'listen',
+name: 'Listen',
+badge: eco.ownsListen() ? '\u2713' : '1',
+state: 'on',
+},
+{
+id: 'hint',
+name: 'Hint',
+badge: String(hintLevel),
+state: eco.hintUnlocked() ? 'on' : 'off',
+},
+{
+id: 'autoplay',
+name: 'Autoplay',
+badge: String(autoplayLevel),
+state: eco.autoplayUnlocked() ? 'on' : 'off',
+},
+{
+id: 'replay',
+name: 'Replay',
+badge: String(eco.getReplaysTotal()),
+state: 'on',
+},
+// Saver inventory arrives with the Game Over update (PR #63); the tile is
+// visible in the tree now, without a purchase action yet.
+{ id: 'saver', name: 'Saver', badge: '-', state: 'off' },
+{
+id: 'secret',
+name: 'Secret',
+badge: eco.ownsTopSecret() ? '\u2713' : '?',
+state: 'on',
+},
+// Room for the modifiers the owner listed (2026-11-11): 5th/6th pads, the
+// Act 3 narrator hack, double-score multiplier and the speed modifier.
+{ id: 'multiplier', name: 'x2', badge: '?', state: 'off' },
+{ id: 'speed', name: 'Speed', badge: '?', state: 'off' },
+{ id: 'pads56', name: 'Pads 5-6', badge: '?', state: 'off' },
+{ id: 'narrator', name: 'Act 3', badge: '?', state: 'off' },
+];
+// Same wrap layout as the achievements grid: tiles flow directly into the
+// list (row + flex-wrap in the uikitml), which keeps rows from overlapping.
+for (const t of tiles) {
+if (t.id === 'multiplier') {
+// Start the clearly-marked future row.
+list.add(
+new UIKit.Text({ fontSize: 13, color: 0x9aa4b6, width: 308, textAlign: 'center', text: 'Future (room in the tree, not implemented):' }),
+);
+}
+const selected = this.storeSelected === t.id;
+const tile = new UIKit.Container({
+flexDirection: 'column',
+alignItems: 'center',
+gap: 2,
+width: TILE,
+height: TILE_H,
+});
+const img = new UIKit.Image({
+src: storeTileSrc(t.id, selected && t.state === 'on' ? 'sel' : t.state, t.badge),
+width: TILE,
+height: TILE,
+});
+tile.add(img);
+tile.add(
+new UIKit.Text({
+fontSize: 14,
+color: t.state === 'off' ? 0x9aa4b6 : 0xffffff,
+text: t.name,
+}),
+);
+tile.addEventListener('click', () => this.selectStoreTile(t.id));
+list.add(tile);
+}
+list.setProperties({ overflow: 'scroll' });
+// Details + Buy for the selection.
+const title = panel.getElementById<UIKit.Text>('store-detail-title');
+const body = panel.getElementById<UIKit.Text>('store-detail-body');
+const buyLabel = panel.getElementById<UIKit.Text>('store-buy-label');
+const buyButton = panel.getElementById<UIKit.Container>('store-buy-button');
+if (this.storeSelected == null) {
+title?.setProperties({ text: 'Pick a modifier' });
+body?.setProperties({ text: 'Tap a tile to see what it does.' });
+buyButton?.setProperties({ display: 'none' });
+return;
+}
+const bars = eco.getBars();
+let titleText = '';
+let bodyText = '';
+let buyText: string | null = null;
+let cost: number | null = null;
+switch (this.storeSelected) {
+case 'listen':
+titleText = 'Listen';
+if (eco.ownsListen()) {
+bodyText = 'Owned. The pattern boxes show during Listen playback.';
+} else {
+bodyText =
+'Shows the pattern boxes one by one during Listen playback. Without it the row stays hidden. Adds no Your Turn hints.';
+buyText = `Listen - ${LISTEN_COST} Bars`;
+cost = LISTEN_COST;
+}
+break;
+case 'hint':
+titleText = `Hint - Level ${hintLevel}`;
+bodyText = !eco.hintUnlocked()
+? 'Locked: buy Listen first.'
+: hintLevel === 0
+? 'Shows the first 5 colors of the pattern during Your Turn. Each level adds 5.'
+: `First ${eco.getHintRevealCount()} colors shown during Your Turn. Next level adds 5.`;
+if (eco.hintUnlocked()) {
+cost = eco.hintCost(hintLevel + 1);
+buyText = `Hint L${hintLevel + 1} - ${cost} Bars`;
+}
+break;
+case 'autoplay':
+titleText = `Autoplay - Level ${autoplayLevel}`;
+bodyText = !eco.autoplayUnlocked()
+? `Locked: reach Hint level ${AUTOPLAY_UNLOCK_HINT_LEVEL} (now level ${hintLevel}).`
+: autoplayLevel === 0
+? 'Plays the first 5 notes of each pattern for you. Each level adds 5.'
+: `Plays the first ${eco.getAutoplayNoteCount()} notes of each pattern for you. Next level adds 5.`;
+if (eco.autoplayUnlocked()) {
+cost = eco.autoplayCost(autoplayLevel + 1);
+buyText = `Autoplay L${autoplayLevel + 1} - ${cost} Bars`;
+}
+break;
+case 'replay':
+titleText = 'Replay';
+bodyText =
+`Re-hear the current pattern (the Repeat button spends one). Held: ${eco.getReplaysFree()} free + ${eco.getReplaysPaid()} paid. ` +
+`Free ones are earned every 5 notes past your Hint coverage (cap ${REPLAY_FREE_CAP}; a grant at the full cap is lost).`;
+buyText = `Replay - ${REPLAY_PRICE_BARS} Bars`;
+cost = REPLAY_PRICE_BARS;
+break;
+case 'saver':
+titleText = 'Streak saver';
+bodyText =
+'Use when you miss to retry the same pattern. No unlock prerequisites. Arrives with the Game Over update (PR #63).';
+break;
+case 'secret':
+titleText = 'Top Secret';
+if (eco.ownsTopSecret()) {
+bodyText = 'Secret Revealed.';
+} else {
+bodyText = 'A secret. It stays secret.';
+buyText = `Top Secret - ${TOP_SECRET_COST} Bars`;
+cost = TOP_SECRET_COST;
+}
+break;
+default:
+titleText =
+this.storeSelected === 'multiplier' ? 'Multiplier x2'
+: this.storeSelected === 'speed' ? 'Speed'
+: this.storeSelected === 'pads56' ? 'Pads 5-6'
+: 'Act 3 narrator hack';
+bodyText = 'Room in the tree for a future modifier. Not implemented yet.';
+break;
+}
+title?.setProperties({ text: titleText });
+body?.setProperties({ text: bodyText });
+if (buyText == null) {
+buyButton?.setProperties({ display: 'none' });
+} else {
+buyButton?.setProperties({ display: 'flex' });
+buyLabel?.setProperties({
+text: buyText,
+color: cost != null && bars >= cost ? 0x1c1d20 : 0xd43a3a,
+});
+}
 }
 
 /** Last values pushed to the pattern row, exposed for e2e assertions. */
@@ -4083,36 +4414,49 @@ card.setProperties({ transformTranslateX: x });
 });
 }
 
-private onBuySecret(): void {
-if (this.economy.ownsTopSecret()) return;
-if (!this.economy.buyTopSecret()) {
-const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
-panel
-?.getElementById<UIKit.Text>('store-secret-status')
-?.setProperties({
-text: 'Not enough Bars yet. Complete more patterns!',
-});
-void playErrorTone();
-this.shakeStorePopup();
-return;
-}
-this.showAchievementToasts();
+/** Store skill-tree selection (sticky tile the details + Buy button act on). */
+private storeSelected: string | null = null;
+
+/** Select a store tile (tap, ray click, or the debug bridge). */
+private selectStoreTile(id: string): void {
+this.storeSelected = id;
 this.renderPanel();
 }
 
-private onBuyHint(): void {
-const before = this.economy.getBars();
-if (!this.economy.buyNextHintLevel()) {
+/** Buy the selected store tile. Gates and denial feedback live here so the
+ * economy methods stay single-purpose. */
+private onBuySelected(): void {
+const id = this.storeSelected;
+if (id == null) return;
 const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
-panel
-?.getElementById<UIKit.Text>('store-hint-status')
-?.setProperties({
-text: 'Not enough Bars yet. Complete more patterns!',
-});
+const status = panel?.getElementById<UIKit.Text>('store-detail-status');
+const deny = (text: string): void => {
+status?.setProperties({ text });
 void playErrorTone();
 this.shakeStorePopup();
+};
+if (id === 'hint' && !this.economy.hintUnlocked()) {
+deny('Locked: buy Listen first.');
 return;
 }
+if (id === 'autoplay' && !this.economy.autoplayUnlocked()) {
+deny(
+`Locked: reach Hint level ${AUTOPLAY_UNLOCK_HINT_LEVEL} (now level ${this.economy.getHintLevel()}).`,
+);
+return;
+}
+const ok =
+id === 'listen' ? this.economy.buyListen()
+: id === 'hint' ? this.economy.buyNextHintLevel()
+: id === 'autoplay' ? this.economy.buyNextAutoplayLevel()
+: id === 'replay' ? this.economy.buyReplay()
+: id === 'secret' ? this.economy.buyTopSecret()
+: false;
+if (!ok) {
+deny('Not enough Bars yet. Complete more patterns!');
+return;
+}
+status?.setProperties({ text: 'Bought. Prices are test values.' });
 this.showAchievementToasts();
 this.renderPanel();
 }
@@ -4131,11 +4475,14 @@ const row = panel.getElementById<UIKit.Container>('wall-tones-sequence-icons');
 if (row == null) return;
 // Backlog 12a: during Your Turn the pattern row only appears when a hint
 // level is owned, revealing the first 5 boxes per level; subtitles alone no
-// longer show it. Listen playback keeps the full row.
+// longer show it. The Listen-phase row needs the Listen store item (owner
+// rule 2026-11-11: no Listen item, no listen line).
 const listening = this.statusText === 'Listen:';
 const reveal = this.economy.getHintRevealCount();
 const yourTurn = this.game.phase === 'input' && !listening;
-const visible = listening || (this.game.phase === 'input' && reveal > 0);
+const visible =
+(listening && this.economy.ownsListen()) ||
+(this.game.phase === 'input' && reveal > 0);
 const names = colorNamesEnabled();
 // yourTurn must key the cache: after Listen of a longer-than-owned pattern the
 // row stays visible while the beyond-hint boxes must hide on the phase flip.
@@ -4366,12 +4713,14 @@ this.flatCaptions.style.top = `${bottom + 14}px`;
 this.flatCaptionsRectDirty = true;
 }
 // Backlog 12a applies here too (codex P2): during Your Turn the subtitle
-// sequence only reveals the owned hint prefix; no hint, no sequence.
+// sequence only reveals the owned hint prefix; no hint, no sequence. The
+// Listen-phase strip needs the Listen store item (owner rule 2026-11-11).
 const captionListening = this.statusText === 'Listen:';
 const captionReveal = this.economy.getHintRevealCount();
 const captionYourTurn = this.game.phase === 'input' && !captionListening;
 const seqVisible = this.experienceActive &&
-(captionListening || (this.game.phase === 'input' && captionReveal > 0));
+((captionListening && this.economy.ownsListen()) ||
+(this.game.phase === 'input' && captionReveal > 0));
 const info = !this.experienceActive
 ? ''
 : this.game.phase === 'input'
