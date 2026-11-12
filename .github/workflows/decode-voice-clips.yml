@@ -16,6 +16,12 @@ jobs:
         run: |
           set -e
           mkdir -p public/audio/speech
+          for first in public/audio/*voice-clips-*.tar.gz.b64.part000; do
+            [ -e "$first" ] || continue
+            archive="${first%.part000}"
+            cat "$archive".part* > "$archive"
+            rm "$archive".part*
+          done
           for f in public/audio/*voice-clips-*.tar.gz.b64; do
             [ -e "$f" ] || continue
             base64 -d "$f" > /tmp/clips.tar.gz
