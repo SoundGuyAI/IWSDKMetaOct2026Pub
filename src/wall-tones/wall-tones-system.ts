@@ -1,3 +1,6 @@
+import { getVoiceGender } from './speech.js';
+import { CypherProgress, type CypherWindow } from './cypher-progress.js';
+import { captureCypherCast } from './cypher-voice.js';
 import {selectionPanelPose, horizontalLookAway, panelOverlapsPad, rectangleInsidePolygon} from './panel-placement.js';
 import { shouldAnnounceRecord } from './record-feedback.js';
 import { BarFloatPool } from './bar-floats.js';
@@ -166,6 +169,9 @@ const FLAT_BACKDROP_NODE_IDS = [
 ] as const;
 
 type WallTonesDebugBridge = {
+cypherWindowsStarted: number;
+cypherSeamVisible: boolean;
+previewCypherSeam: (visible: boolean) => void;
 phase: string;
 flowPhase: string;
 sequence: readonly number[];
@@ -328,6 +334,10 @@ private flowPhase: FlowPhase = 'inactive';
 private setupMode: SetupMode | null = null;
 private pads: PadRuntime[] = [];
 private playbackQueue: Promise<void> = Promise.resolve();
+private readonly cypherProgress = new CypherProgress();
+private cypherSeam: Object3D | null = null;
+private cypherSeamEntity: Entity | null = null;
+private cypherFlatSeam: HTMLElement | null = null;
 private scanStartedAt = -1;
 /** One-shot room capture while scanning; blocks repeat initiateRoomCapture calls. */
 private roomCaptureInFlight = false;
@@ -760,6 +770,7 @@ return;
 }
 this.experienceActive = false;
 this.flowPhase = 'inactive';
+this.setCypherSeam(false);
 this.barFloats.clear();
 this.achievementsOpen = false;
 this.storeOpen = false;
@@ -1492,6 +1503,9 @@ button.style.bottom = `max(${rounded}px, env(safe-area-inset-bottom))`;
 private publishDebugBridge(): void {
 const system = this;
 window.__wallTonesDebug = {
+get cypherWindowsStarted() { return system.cypherProgress.completedWindows; },
+get cypherSeamVisible() { return system.cypherSeam != null; },
+previewCypherSeam: (visible) => { system.setCypherSeam(visible); },
 get phase() {
 return system.game.phase;
 },
@@ -3352,6 +3366,7 @@ this.barsFirstEarnedPending = true;
 }
 this.renderPanel();
 if (completed) {
+if (this.cypherSeam) this.setCypherSeam(false);
 // Lock input immediately so a held finger/click cannot eat the next round.
 this.game.phase = 'playback';
 this.inputNeedsClear = true;
@@ -3427,9 +3442,74 @@ await this.speech.speakAsync('barsFirstEarn');
 if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
 }
+if (narrIntact()) {
+const window = this.cypherProgress.beginWindow(streak);
+if (window) await this.playCypherWindow(window, narrIntact);
+}
+if (!this.experienceActive || this.flowPhase !== 'playing') return;
 await this.playSequence();
 });
 }
+}
+
+/** Between patterns only: all voices and effects share the existing Skip lifecycle. */
+private async playCypherWindow(window: CypherWindow, intact: () => boolean): Promise<void> {
+const cast = captureCypherCast(getVoiceGender());
+if (window.seam === 'closed') this.setCypherSeam(false);
+if (window.fault) {
+this.statusText = 'Diagnostic: timing fault. Checking...';
+this.renderPanel();
+await this.speech.speakStoryEffect('glitch');
+} else if (window.seam === 'closed') {
+await this.speech.speakStoryEffect('shimmer');
+} else if (window.speaker === 'cypher') {
+await this.speech.speakStoryEffect(['next-window', 'your-machine', 'next-lock', 'longer-window'].includes(window.id) ? 'squawk' : 'open');
+}
+if (window.seam === 'open' && intact()) this.setCypherSeam(true);
+for (const id of window.lines) {
+if (!intact()) break;
+await this.speech.speakStoryLine(id, cast);
+if (intact()) this.cypherProgress.lineCompleted();
+}
+if (window.speaker === 'cypher' && intact()) await this.speech.speakStoryEffect('close');
+if (!intact()) this.setCypherSeam(false);
+}
+
+/** A small fictional light seam beside the play field, never a flash or pad overlay. */
+private setCypherSeam(visible: boolean): void {
+this.cypherFlatSeam?.remove();
+this.cypherFlatSeam = null;
+if (visible && this.isFlatView()) {
+const seam = document.createElement('div');
+seam.id = 'wall-tones-story-seam';
+seam.setAttribute('aria-hidden', 'true');
+Object.assign(seam.style, {position: 'fixed', left: '12%', top: '36%', width: '12px', height: '90px', background: '#c5faff', boxShadow: '0 0 8px 2px #49c9e3', clipPath: 'polygon(25% 0, 100% 35%, 35% 55%, 90% 100%, 0 55%, 65% 35%)', pointerEvents: 'none', zIndex: '100000'});
+document.body.appendChild(seam);
+this.cypherFlatSeam = seam;
+}
+this.cypherSeamEntity?.dispose({ disposeResources: true });
+this.cypherSeamEntity = null;
+this.cypherSeam = null;
+if (!visible) return;
+const root = new Object3D();
+root.name = 'CypherLightSeam';
+const camera = this.world.camera;
+const points = [new Vector3(0, 0.2, 0), new Vector3(0.025, 0.07, 0), new Vector3(-0.018, -0.04, 0), new Vector3(0.015, -0.2, 0)];
+for (let i = 1; i < points.length; i++) {
+const a = points[i - 1]!, b = points[i]!;
+const mesh = new Mesh(new CylinderGeometry(0.003, 0.003, a.distanceTo(b), 6), new MeshBasicMaterial({color: 0x77dfff, depthTest: false, depthWrite: false}));
+mesh.position.copy(a).add(b).multiplyScalar(0.5);
+mesh.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), b.clone().sub(a).normalize());
+mesh.updateMatrix();
+root.add(mesh);
+}
+this.cypherSeamEntity = this.world.createTransformEntity(root);
+camera.getWorldPosition(root.position);
+camera.getWorldQuaternion(root.quaternion);
+root.position.add(new Vector3(0, 0.9, -2).applyQuaternion(root.quaternion));
+root.updateMatrix();
+root.updateMatrixWorld(true);
+this.cypherSeam = root;
 }
 
 private async startFlatPlayFromPad(padIndex: number): Promise<void> {
@@ -3465,6 +3545,7 @@ return this.game.runImprovedBest;
 }
 
 private async onWrongInput(): Promise<void> {
+this.setCypherSeam(false);
 this.firstRun = false;
 this.roundBarsEarned = 0;
 this.roundBonusEarned = 0;
