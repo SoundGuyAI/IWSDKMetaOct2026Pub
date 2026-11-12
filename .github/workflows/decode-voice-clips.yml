@@ -19,7 +19,11 @@ jobs:
           for f in public/audio/voice-clips-*.tar.gz.b64; do
             [ -e "$f" ] || continue
             base64 -d "$f" > /tmp/clips.tar.gz
-            tar -xzf /tmp/clips.tar.gz -C public/audio/speech/
+            case "$(basename "$f")" in
+              # Story asset tarballs carry story/... paths and extract at the audio root.
+              voice-clips-story-*) tar -xzf /tmp/clips.tar.gz -C public/audio/ ;;
+              *) tar -xzf /tmp/clips.tar.gz -C public/audio/speech/ ;;
+            esac
             rm "$f"
           done
       - name: Commit decoded clips
@@ -27,5 +31,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "Decode prerecorded voice clips into public/audio/speech" || echo "nothing to commit"
+          git commit -m "Decode staged clip archives" || echo "nothing to commit"
           git push

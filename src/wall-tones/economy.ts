@@ -5,6 +5,8 @@
  * accessibility settings.
  */
 
+import { CYPHER_PROGRESS_KEY } from './cypher-progress.js';
+
 const BARS_KEY = 'wall-tones-bars';
 const BARS_TOTAL_KEY = 'wall-tones-bars-total';
 const HINT_LEVEL_KEY = 'wall-tones-hint-level';
@@ -161,7 +163,7 @@ function writeStringArray(key: string, value: string[]): void {
 }
 
 /** Debug stat reset (Settings > Accessibility): clears every persisted stat
- * the economy and progression own. Settings/accessibility prefs survive.
+ * the economy and progression own, plus the Cypher storyline. Settings/accessibility prefs survive.
  * Callers reload the page afterwards so in-memory state re-reads cleanly. */
 export function resetWallTonesStats(): void {
 for (const key of [
@@ -179,6 +181,7 @@ AUTOPLAY_LEVEL_KEY,
 REPLAY_FREE_KEY,
 REPLAY_PAID_KEY,
 SAVERS_KEY,
+CYPHER_PROGRESS_KEY,
 ]) {
 try { globalThis.localStorage?.removeItem(key); } catch { /* private mode */ }
 }
