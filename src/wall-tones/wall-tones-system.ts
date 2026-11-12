@@ -4376,11 +4376,9 @@ eco.autoplayUnlocked(),
 h: ROW_CONN_H,
 },
 { ids: ['autoplay'], node: chainRow(byId.get('autoplay')!, autoplayLevel, 0x4cc38a), h: ROW_CHAIN_H },
-{
-ids: [],
-node: new UIKit.Text({ fontSize: 13, color: 0x9aa4b6, width: TREE_W, textAlign: 'center', text: 'Locked' }),
-h: 18,
-},
+// No standalone 'Locked' caption between Autoplay and the modifiers row:
+// each future tile already says 'Locked' under its name, and a floating
+// label here reads as Autoplay's own state even after purchase.
 { ids: ['multiplier', 'speed', 'pads56', 'narrator'], node: bottomRow, h: ROW_TILE_H },
 { ids: ['secret'], node: soloRow(byId.get('secret')!), h: ROW_TILE_H },
 ];
