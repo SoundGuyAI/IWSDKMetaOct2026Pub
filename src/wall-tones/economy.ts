@@ -5,6 +5,7 @@
  * accessibility settings.
  */
 
+import { BACKGROUND_PROGRESS_KEY } from './cypher-background.js';
 import { CYPHER_PROGRESS_KEY } from './cypher-progress.js';
 
 const BARS_KEY = 'wall-tones-bars';
@@ -149,6 +150,7 @@ PRESSES_KEY,
 TOP_SECRET_KEY,
 SAVERS_KEY,
 CYPHER_PROGRESS_KEY,
+BACKGROUND_PROGRESS_KEY,
 ]) {
 try { globalThis.localStorage?.removeItem(key); } catch { /* private mode */ }
 }
@@ -407,4 +409,4 @@ export class WallTonesEconomy {
     writeStringArray(FIRST_FLAGS_KEY, [...this.firstFlags]);
     return true;
   }
-}
+                                  }
