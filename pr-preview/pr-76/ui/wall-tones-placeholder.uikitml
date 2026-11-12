@@ -204,7 +204,7 @@
   </Button>
   <Button id="repeat-pattern-button" class="button" style="display: none">
     <ButtonIcon><RefreshCw></RefreshCw></ButtonIcon>
-    <ButtonLabel>Repeat pattern</ButtonLabel>
+    <ButtonLabel id="repeat-pattern-label">Repeat pattern</ButtonLabel>
   </Button>
   <Button id="skip-voice-button" class="button" style="display: none">
     <ButtonIcon><SkipForward></SkipForward></ButtonIcon>
@@ -215,22 +215,12 @@
     <ButtonLabel>Back to main menu</ButtonLabel>
   </Button>
   </div>
-  <div id="store-popup" class="popup-overlay" style="display: none">
-    <div class="popup-card">
-      <div class="heading" style="font-size: 22px">Store</div>
-      <div class="stat-label">Your Turn hint</div>
-      <div id="store-hint-status" class="status">No hint owned. The pattern stays hidden during Your Turn.</div>
-      <Button id="buy-hint-button" class="button">
-        <ButtonIcon><Lightbulb></Lightbulb></ButtonIcon>
-        <ButtonLabel id="buy-hint-label">Your Turn hint lv 1 - 10 Bars</ButtonLabel>
-      </Button>
-      <div class="stat-label">Top Secret</div>
-      <div id="store-secret-status" class="status">A secret. It stays secret.</div>
-      <Button id="buy-secret-button" class="button">
-        <ButtonIcon><Sparkles></Sparkles></ButtonIcon>
-        <ButtonLabel id="buy-secret-label">Top Secret - 1000 Bars</ButtonLabel>
-      </Button>
-      <Button id="store-close-button" class="button" style="margin-top: 6px">
+  <div id="store-popup" class="popup-overlay" style="display: none; padding: 12px">
+    <div id="store-popup-card" class="popup-card" style="gap: 6px; padding: 12px">
+      <div id="store-heading" class="heading" style="font-size: 22px; line-height: 26px">Store</div>
+      <div id="store-tree-list" style="flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 8px; width: 308px; height: 296px"></div>
+      <div id="store-detail-status" class="status">Prices are test values.</div>
+      <Button id="store-close-button" class="button">
         <ButtonIcon><X></X></ButtonIcon>
         <ButtonLabel>Close</ButtonLabel>
       </Button>
