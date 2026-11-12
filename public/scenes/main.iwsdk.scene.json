@@ -368,7 +368,24 @@
       },
       "components": {
         "RayInteractable": {}
-      }
+      },
+      "children": [
+        {
+          "id": "nod-lab-entry-panel",
+          "name": "Nod Lab Entry",
+          "content": {
+            "type": "asset",
+            "asset": "nod-lab-entry-panel"
+          },
+          "transform": {
+            "position": [4.15, 0, 0.05],
+            "scale": 0.7
+          },
+          "components": {
+            "RayInteractable": {}
+          }
+        }
+      ]
     },
     {
       "id": "nod-lab-panel",
