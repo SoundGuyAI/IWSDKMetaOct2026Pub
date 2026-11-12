@@ -40,3 +40,16 @@ test('invalid/restricted saves fall back safely', () => {
  assert.doesNotThrow(()=>p.successfulPattern(true,true));
  assert.equal(p.successfulPattern(true,true).id,'R01');
 });
+test('skip is not heard: next stays and same line replays at the next eligible boundary', () => {
+ const s=store();const p=new BackgroundProgress(s);
+ p.successfulPattern(true,true);
+ assert.equal(p.successfulPattern(true,true).id,'R01');
+ assert.equal(p.completedLines,0);
+ assert.equal(p.successfulPattern(true,true).id,'R01');
+ assert.equal(p.successfulPattern(true,false),undefined);
+ assert.equal(p.completedLines,0);
+ assert.equal(p.successfulPattern(true,true).id,'R01');
+ assert.equal(new BackgroundProgress(s).successfulPattern(true,true).id,'R01');
+ p.lineCompleted();
+ assert.equal(p.completedLines,1);
+});
