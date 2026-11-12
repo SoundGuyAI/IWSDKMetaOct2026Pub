@@ -11,7 +11,6 @@ Oded tested the merged main build and reported that everything looks fine. The a
 ## Not started
 
 - [ ] 3. Bug: first box in the pattern is not blinking in VR (arrow also not showing)
-- [ ] 58. Bug: going from a game to the main menu drops out of XR back to the browser for a few seconds, and when you go back to the game all the scene data is lost and rescanning does not reload it (reported by Oded 2026-11-12 00:30, verbatim: "there's a bug that when you go from game to main menu - the XR leaves the XR and goes back to bworswer for a few seconds and aftewards when you go back o the game it loses all the scene data and rescanning doesn't reload it."). **In progress 2026-11-12 (Package A / CODE_REVIEW_NOV12):** keep the live world on Back to menu (`returnToMenuInPlace`) instead of `switchBackToHubMenu`/`destroyActiveWorld`; choose-mode rescan now resets capture flags and re-prompts look-around. Desktop typecheck/units/full local e2e green on the focused PR; headset verification still required separately.
 - [ ] 4. Ray interaction on the startup main menu (owner answered Nov 11 that the startup menu is the one failing). PR A: hidden panels no longer stay ray-targetable, which is a hypothesis for the cause, and the menu now follows the player closer (see 47). Needs a headset test to confirm; not confirmed as the root cause.
 - [ ] 6. Animation and juice
 - [ ] 8. Incremental features (park smaller follow-ups here as they come up)
@@ -78,6 +77,8 @@ Oded tested the merged main build and reported that everything looks fine. The a
 - [~] 12. Store where players buy modifiers (economy PR: gold Bars, hint store). Update 2026-11-12: being reworked as the skill tree (item 44) in PR #69, open and not merged.
    - [~] 12a. Your Turn hint modifier: each level gives 5 boxes of hints; buy upgrades for longer hints (economy PR: 10/15/22 Bars then ~1.3x growth, open-ended, tunable; persistent unlocks; Your Turn row hidden without a hint, per user November 7).
 ## Done
+
+- [x] 58. Bug: game → main menu dropped out of XR and wiped scan/plane data on re-enter (reported by Oded 2026-11-12 00:30). Shipped in PR #78 (merged 2026-11-12, merge commit 2139c1c): in-session Back to menu uses `returnToMenuInPlace` and no longer destroys the live AR world; choose-mode rescan resets capture + look-around. Local typecheck/units/full e2e green before merge; CI green on the PR head. NOT verified: Quest headset confirmation that immersive Back stays in XR and planes/meshes survive.
 
 - [x] 45. "Streak saver" modifier "when you lost" (requested 2026-11-09). Backlog only; exact behavior and cost are not specified yet. Update 2026-11-11: PR #63 implements the Game Over saver flow (unmerged); 23:13 (Oded): pressing 3 times to save a streak was too cumbersome - now one button buys the saver and applies it immediately, no confirm, with the Bars icon on the button so the cost is obvious. 23:34 (Oded, verbatim): "yes. but all" - one press buys ALL missing saver units for the current streak (higher streaks can need more than one unit) and retries immediately. Shipped in PR #63 (merged 2026-11-12 00:44, merge commit 00d83b7, on Oded's 00:43:51 "i think we can merge 63"); the complete CI run 43111648211 passed on the exact merged code (build, typecheck, all three e2e shards; 53 unit tests). iPhone/headset feel and audio remain his to judge when he next plays.
 
@@ -220,3 +221,6 @@ Oded tested the merged main build and reported that everything looks fine. The a
 ## Review update - 2026-11-12, 02:24 Asia/Jerusalem
 
 - New item 65 (his 02:22 idea, verbatim in the item): maybe reset the pattern after first reaching a Cypher streak milestone, narrator blaming a glitch, for balance and story access. He explicitly wants the value evaluated first - idea only.
+
+## Review update - 2026-11-12 (PR #78 merge)
+- Item 58 moved to Done after PR #78 merged (`2139c1c`). Headset confirmation of immersive Back-to-menu / scan retention remains separate.
