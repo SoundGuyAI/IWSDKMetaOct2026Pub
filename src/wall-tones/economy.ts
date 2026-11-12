@@ -22,6 +22,8 @@ const AUTOPLAY_LEVEL_KEY = 'wall-tones-autoplay-level';
 const REPLAY_FREE_KEY = 'wall-tones-replays-free';
 const REPLAY_PAID_KEY = 'wall-tones-replays-paid';
 const SAVERS_KEY = 'wall-tones-savers';
+const PLAY_LEVEL_KEY = 'wall-tones-play-level';
+const INDEX_OWNED_KEY = 'wall-tones-index-owned';
 
 // Skill-tree store prices (owner-approved 2026-11-11 as starting balance for
 // testing, not final). Hint: 25/50/100 Bars then doubling. Open-ended by
@@ -46,6 +48,31 @@ export const AUTOPLAY_BASE_COSTS: readonly number[] = [250];
 export const AUTOPLAY_COST_GROWTH = 2;
 export const AUTOPLAY_NOTES_PER_LEVEL = 5;
 export const AUTOPLAY_UNLOCK_HINT_LEVEL = 4;
+
+/** Play (owner request 2026-11-12, backlog 66, verbatim): "another modifier
+ * called "Play" and then after 4 levels it will enable autoplay. Each level
+ * of play will play 5 tones for you when you press a button in the game
+ * menu." Four levels, five tones per level. Whether level 4 REPLACES the
+ * Hint L4 Autoplay gate or joins it as a second path is the owner's pending
+ * decision (asked 2026-11-12 11:42, unanswered; re-asked 2026-11-13), so
+ * autoplayUnlocked() stays unchanged until then.
+ * PRICES UNSET: Play pricing is deferred to the owner's economy balance
+ * pass (2026-11-12: "we'll balance it later"). PLAY_PRICING_SET stays false
+ * until he sets real numbers; while false the store tile shows no Buy row
+ * and buyNextPlayLevel() refuses, so no invented number is ever sold as a
+ * price. PLAY_COSTS is a structural placeholder, not a proposal. */
+export const PLAY_MAX_LEVEL = 4;
+export const PLAY_TONES_PER_LEVEL = 5;
+export const PLAY_PRICING_SET = false;
+export const PLAY_COSTS: readonly number[] = [0, 0, 0, 0];
+
+/** Index pointer (owner 2026-11-12: "same row as play, unlocking after hint
+ * level 3"; added to this PR by his 2026-11-13 ask). An indicator for where
+ * the player is in the pattern; its exact display/behavior is still to
+ * confirm with him, so this PR ships the gated tile only. Prices unset,
+ * same balance-pass rule as Play. */
+export const INDEX_UNLOCK_HINT_LEVEL = 3;
+export const INDEX_PRICING_SET = false;
 
 /** Replay (owner-approved 2026-11-11): a consumable re-hear of the current
  * pattern. Paid Replays cost 20 Bars, no purchase limit for now. Free Replays
@@ -182,6 +209,8 @@ AUTOPLAY_LEVEL_KEY,
 REPLAY_FREE_KEY,
 REPLAY_PAID_KEY,
 SAVERS_KEY,
+PLAY_LEVEL_KEY,
+INDEX_OWNED_KEY,
 CYPHER_PROGRESS_KEY,
 BACKGROUND_PROGRESS_KEY,
 ]) {
@@ -203,6 +232,8 @@ export class WallTonesEconomy {
   private replaysFree = readNumber(REPLAY_FREE_KEY);
   private replaysPaid = readNumber(REPLAY_PAID_KEY);
   private savers = readNumber(SAVERS_KEY);
+  private playLevel = readNumber(PLAY_LEVEL_KEY);
+  private indexOwned = readNumber(INDEX_OWNED_KEY) === 1;
   /** In-memory test Bars from the ?demoBars URL flag. Never persisted, never
    * counted in lifetime totals, and always spent before real Bars so the
    * saved balance stays untouched (owner-approved preview aid 2026-11-11). */
@@ -468,6 +499,65 @@ export class WallTonesEconomy {
     return true;
   }
 
+  /** Owned Play level (0 = not owned). */
+  getPlayLevel(): number {
+    return this.playLevel;
+  }
+
+  /** Tones Play plays for the player at the owned level (5 per level). */
+  getPlayNoteCount(): number {
+    return this.playLevel * PLAY_TONES_PER_LEVEL;
+  }
+
+  /** Cost of Play level `level` (1-based), once prices are set. */
+  playCost(level: number): number {
+    return PLAY_COSTS[Math.min(Math.max(level, 1), PLAY_MAX_LEVEL) - 1]!;
+  }
+
+  /** Buy the next Play level. REFUSES while PLAY_PRICING_SET is false
+   * (owner deferred pricing to the balance pass); four levels max. */
+  buyNextPlayLevel(): boolean {
+    if (!PLAY_PRICING_SET) return false;
+    if (this.playLevel >= PLAY_MAX_LEVEL) return false;
+    const cost = this.playCost(this.playLevel + 1);
+    if (!this.spend(cost)) return false;
+    this.playLevel += 1;
+    writeNumber(PLAY_LEVEL_KEY, this.playLevel);
+    this.countPurchase();
+    return true;
+  }
+
+  /** Test-only: seed the Play level without a purchase (prices unset). */
+  debugGrantPlayLevel(level: number): void {
+    this.playLevel = Math.min(Math.max(Math.floor(level), 0), PLAY_MAX_LEVEL);
+    writeNumber(PLAY_LEVEL_KEY, this.playLevel);
+  }
+
+  /** Test-only: grant the Index pointer while its price is unset. */
+  debugGrantIndex(): void {
+    this.indexOwned = true;
+    writeNumber(INDEX_OWNED_KEY, 1);
+  }
+
+  /** Index pointer owned (one-time item; prices unset). */
+  ownsIndex(): boolean {
+    return this.indexOwned;
+  }
+
+  /** Skill-tree gate: Index unlocks at Hint level 3 (owner 2026-11-12).
+   * Listen ownership required too, same legacy-save lesson as Autoplay. */
+  indexUnlocked(): boolean {
+    return this.listenOwned && this.hintLevel >= INDEX_UNLOCK_HINT_LEVEL;
+  }
+
+  /** Buy the Index pointer. REFUSES while INDEX_PRICING_SET is false. */
+  buyIndex(): boolean {
+    if (!INDEX_PRICING_SET || !this.indexUnlocked() || this.indexOwned) {
+      return false;
+    }
+    return false; // No price exists yet; unreachable until the balance pass.
+  }
+
   /** Free Replays held (cap REPLAY_FREE_CAP; paid ones sit on top). */
   getReplaysFree(): number {
     return this.replaysFree;
@@ -585,4 +675,4 @@ export class WallTonesEconomy {
     writeStringArray(FIRST_FLAGS_KEY, [...this.firstFlags]);
     return true;
   }
-}
+  }
