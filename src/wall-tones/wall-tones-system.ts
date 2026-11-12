@@ -1,3 +1,4 @@
+import { BackgroundProgress } from './cypher-background.js';
 import { getVoiceGender } from './speech.js';
 import { CypherProgress, type CypherWindow } from './cypher-progress.js';
 import { captureCypherCast } from './cypher-voice.js';
@@ -192,6 +193,7 @@ const FLAT_BACKDROP_NODE_IDS = [
 
 type WallTonesDebugBridge = {
 cypherWindowsStarted: number;
+backgroundLinesCompleted: number;
 cypherSeamVisible: boolean;
 previewCypherSeam: (visible: boolean) => void;
 phase: string;
@@ -377,6 +379,7 @@ private setupMode: SetupMode | null = null;
 private pads: PadRuntime[] = [];
 private playbackQueue: Promise<void> = Promise.resolve();
 private readonly cypherProgress = new CypherProgress();
+private readonly backgroundProgress = new BackgroundProgress();
 private cypherSeam: Object3D | null = null;
 private cypherSeamEntity: Entity | null = null;
 private cypherFlatSeam: HTMLElement | null = null;
@@ -1542,6 +1545,7 @@ button.style.bottom = `max(${rounded}px, env(safe-area-inset-bottom))`;
 private publishDebugBridge(): void {
 const system = this;
 window.__wallTonesDebug = {
+get backgroundLinesCompleted() { return system.backgroundProgress.completedLines; },
 get cypherWindowsStarted() { return system.cypherProgress.completedWindows; },
 get cypherSeamVisible() { return system.cypherSeam != null; },
 previewCypherSeam: (visible) => { system.setCypherSeam(visible); },
@@ -3582,6 +3586,17 @@ return;
 if (narrIntact()) {
 const window = this.cypherProgress.beginWindow(streak);
 if (window) await this.playCypherWindow(window, narrIntact);
+else {
+// Skip/interrupt leaves the line unheard (lineCompleted is not reached), so it retries at the next quiet pattern boundary.
+const line = this.backgroundProgress.successfulPattern(this.cypherProgress.finished, !this.speech.isBusy());
+if (line && narrIntact()) {
+const cast = captureCypherCast(getVoiceGender());
+await this.speech.speakBackgroundEffect(this.backgroundProgress.completedLines % 3 === 2 ? 'squawk' : 'open');
+if (narrIntact()) await this.speech.speakBackgroundLine(line.id, cast);
+if (narrIntact()) this.backgroundProgress.lineCompleted();
+if (narrIntact()) await this.speech.speakBackgroundEffect('close');
+}
+}
 }
 if (!this.experienceActive || this.flowPhase !== 'playing') return;
 await this.playSequence();

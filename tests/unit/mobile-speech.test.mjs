@@ -46,7 +46,7 @@ async function loadSpeech({ rejectFirst = false, subtitles = false } = {}) {
   globalThis.__captions = [];
   let source = readFileSync(new URL('../../src/wall-tones/speech.ts', import.meta.url), 'utf8');
   // Inline real, dependency-free story modules in this data-URL test harness.
-  for (const name of ['cypher-voice', 'cypher-script']) {
+  for (const name of ['cypher-voice', 'cypher-script', 'cypher-background']) {
     const dependency = readFileSync(new URL(`../../src/wall-tones/${name}.ts`, import.meta.url), 'utf8');
     source = source.replace(new RegExp(`^import .* from './${name}\\.js';`, 'm'), '');
     source = dependency + '\n' + source;
@@ -192,4 +192,19 @@ test('story muted with subtitles shares caption pacing and skip cancellation', a
   voice.cancel();
   await line;
   assert.equal(voice.isBusy(), false);
+});
+
+test('background lines use captured opposite cast and shared caption/Skip routing', async () => {
+  const h = await loadSpeech({subtitles: true});
+  await h.gesture(() => h.speech.startMobileWelcomeFromGesture());
+  h.speech.unlockSpeechFromGesture(); h.instances[0].end();
+  const voice = new h.speech.WallTonesSpeech();
+  const cast = Object.freeze({narrator:'female',cypher:'male'});
+  const line = voice.speakBackgroundLine('R25',cast);
+  h.speech.setVoiceGender('male'); await Promise.resolve();
+  assert.match(h.instances[0].src,/audio\/story\/background\/male\/r25.mp3$/);
+  h.instances[0].onplaying();
+  assert.match(globalThis.__captions.at(-1),/His name was Houston/);
+  voice.cancel(); await line; assert.equal(voice.isBusy(),false);
+  assert.equal(h.instances.length,1);
 });

@@ -3,7 +3,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'public/audio/voice-clips-*.tar.gz.b64'
+      - 'public/audio/*voice-clips-*.tar.gz.b64'
   workflow_dispatch:
 permissions:
   contents: write
@@ -16,12 +16,18 @@ jobs:
         run: |
           set -e
           mkdir -p public/audio/speech
-          for f in public/audio/voice-clips-*.tar.gz.b64; do
+          for first in public/audio/*voice-clips-*.tar.gz.b64.part000; do
+            [ -e "$first" ] || continue
+            archive="${first%.part000}"
+            cat "$archive".part* > "$archive"
+            rm "$archive".part*
+          done
+          for f in public/audio/*voice-clips-*.tar.gz.b64; do
             [ -e "$f" ] || continue
             base64 -d "$f" > /tmp/clips.tar.gz
             case "$(basename "$f")" in
               # Story asset tarballs carry story/... paths and extract at the audio root.
-              voice-clips-story-*) tar -xzf /tmp/clips.tar.gz -C public/audio/ ;;
+              *voice-clips-story-*) tar -xzf /tmp/clips.tar.gz -C public/audio/ ;;
               *) tar -xzf /tmp/clips.tar.gz -C public/audio/speech/ ;;
             esac
             rm "$f"

@@ -1,3 +1,4 @@
+import { CYPHER_BACKGROUND, type BackgroundLineId } from './cypher-background.js';
 import { captureCypherCast, type CypherCast } from './cypher-voice.js';
 import { findCypherLine, type CypherLineId } from './cypher-script.js';
 import { CLIP_TRANSCRIPTS } from './clip-transcripts.js';
@@ -463,6 +464,16 @@ export class WallTonesSpeech {
     return this.enqueueClip({ url, text: `${line.speaker === 'cypher' ? 'Cypher' : 'Narrator'}: ${line.text}` });
   }
 
+  speakBackgroundLine(id: BackgroundLineId, cast: Readonly<CypherCast>): Promise<void> {
+    const line = CYPHER_BACKGROUND.find(line => line.id === id);
+    if (!line) return Promise.resolve();
+    return this.enqueueClip({ url: new URL(`audio/story/background/${cast.cypher}/${id.toLowerCase()}.mp3`, document.baseURI).href, text: `Cypher: ${line.text}` });
+  }
+
+  speakBackgroundEffect(id: 'open' | 'squawk' | 'close'): Promise<void> {
+    return this.enqueueClip({ url: new URL(`audio/story/background/effects/${id}.mp3`, document.baseURI).href, text: { open: '[radio squawk opens]', squawk: '[radio squawk]', close: '[radio squawk closes]' }[id] });
+  }
+
   speakStoryEffect(id: 'open' | 'squawk' | 'close' | 'glitch' | 'shimmer'): Promise<void> {
     const captions = { open: '[radio static]', squawk: '[radio squawk]', close: '[radio closes]', glitch: '[game diagnostic glitch]', shimmer: '[light seam closes]' };
     return this.enqueueClip({ url: new URL(`audio/story/effects/${id}.mp3`, document.baseURI).href, text: captions[id] });
@@ -706,4 +717,4 @@ export function warmSpeechFromGesture(): void {
 export function randomNewBestClip(firstRecord = false): WallTonesClipId {
   if (firstRecord) return 'newBest1';
   return (['newBest1', 'newBest2', 'newBest3'] as const)[Math.floor(Math.random() * 3)]!;
-                             }
+}
