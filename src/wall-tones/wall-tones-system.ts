@@ -239,6 +239,7 @@ buyTopSecret: () => void;
 repeatPattern: () => void;
 /** Test-only: selects a store tile like a tap on its tile. */
 selectStoreTile: (id: string) => void;
+storePointerTargets: Record<string, { x: number; y: number }>;
 storeSelected: string | null;
 /** Whether the one-time Top Secret item is owned (test-only). */
 ownsTopSecret: boolean;
@@ -704,6 +705,9 @@ this.world
 panel
 .getElementById('store-button')
 ?.addEventListener('click', () => this.onToggleStore());
+panel.getElementById('store-popup')?.addEventListener('click', () => {
+this.clearStoreSelection();
+});
 panel
 .getElementById('achievements-button')
 ?.addEventListener('click', () => this.setAchievementsOpen(true));
@@ -1741,6 +1745,20 @@ return system.economy.getReplaysTotal();
 },
 get demoBoost() {
 return system.economy.getDemoBoost();
+},
+get storePointerTargets() {
+const panel = system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+const list = panel?.getElementById<UIKit.Container>('store-tree-list');
+const host = panel?.getElementById<UIKit.Container>('store-popup-card');
+const targets: Record<string, { x: number; y: number }> = {};
+const capture = (node: Object3D) => {
+if (!node.name.startsWith('store-tile-') && node.name !== 'store-buy') return;
+const p = node.getWorldPosition(new Vector3()).project(system.world.camera);
+targets[node.name] = { x: (p.x + 1) * window.innerWidth / 2, y: (1 - p.y) * window.innerHeight / 2 };
+};
+list?.traverse(capture);
+host?.traverse(capture);
+return targets;
 },
 get storeSelected() {
 return system.storeSelected;
@@ -4190,7 +4208,11 @@ text: t.price,
 }),
 );
 }
-tile.addEventListener('click', () => this.selectStoreTile(t.id));
+tile.name = `store-tile-${t.id}`;
+tile.addEventListener('click', (event) => {
+event.stopPropagation();
+this.selectStoreTile(t.id);
+});
 return tile;
 };
 // Connection column (owner-approved mockup variant A, 2026-11-12): spine,
@@ -4511,9 +4533,15 @@ color: affordable ? 0x1c1d20 : 0x9aa4b6,
 text: buyText,
 }),
 );
-buyRow.addEventListener('click', () => this.onBuySelected());
+buyRow.name = 'store-buy';
+buyRow.addEventListener('click', (event) => {
+event.stopPropagation();
+this.onBuySelected();
+});
 card.add(buyRow);
 }
+// Details and Buy are not empty space. Keep the selection when used.
+card.addEventListener('click', (event) => event.stopPropagation());
 popupLine = card;
 }
 let selTop = 0;
@@ -4962,6 +4990,12 @@ this.world
 .getSceneObject<UIKitMLAsset>('wall-tones-panel')
 ?.getElementById<UIKit.Text>('store-detail-status')
 ?.setProperties({ text: 'Prices are test values.' });
+}
+
+private clearStoreSelection(): void {
+if (this.storeSelected == null) return;
+this.storeSelected = null;
+this.renderPanel();
 }
 
 /** Bridge-only select that never toggles off (repeat buy* calls must buy). */
