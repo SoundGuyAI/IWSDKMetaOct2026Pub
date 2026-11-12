@@ -42,7 +42,21 @@ test('skill tree wiring: store popup ids, glyphs, gates and repeat label exist',
 });
 
 const src = readFileSync(new URL('../../src/wall-tones/economy.ts', import.meta.url), 'utf8');
-const js = ts.transpileModule(src, { compilerOptions: { module: 'esnext', target: 'es2022' } }).outputText;
+// economy.ts imports CYPHER_PROGRESS_KEY from ./cypher-progress.js (PR70); a data:
+// URL module cannot resolve relative imports, so inline the constant from source.
+const cypherProgressSrc = readFileSync(
+  new URL('../../src/wall-tones/cypher-progress.ts', import.meta.url),
+  'utf8',
+);
+const cypherKey = cypherProgressSrc.match(/export const CYPHER_PROGRESS_KEY = '([^']+)'/);
+assert.ok(cypherKey, 'cypher-progress.ts missing CYPHER_PROGRESS_KEY export');
+const js = ts
+  .transpileModule(src, { compilerOptions: { module: 'esnext', target: 'es2022' } })
+  .outputText.replace(
+    /^import \{ CYPHER_PROGRESS_KEY \} from '\.\/cypher-progress\.js';$/m,
+    `const CYPHER_PROGRESS_KEY = '${cypherKey[1]}';`,
+  );
+assert.ok(!js.includes('cypher-progress.js'), 'unresolved relative import left in transpiled economy');
 const {
   WallTonesEconomy,
   LISTEN_COST,
