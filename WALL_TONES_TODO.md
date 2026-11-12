@@ -191,3 +191,6 @@ Oded tested the merged main build and reported that everything looks fine. The a
 
 - New item 60 (his 01:23 request, verbatim in the item): failing a pattern must not play congratulatory narrator lines; comforting lines instead, plus a later full review of all spoken lines where he flags the misfits. His follow-up example 'like it can say "Clean"' is recorded as a line to inspect, not a settled replacement.
 - PR #68 failed his 01:19 headset test (blue before yellow in the MR fanfare with a wrong sound, ray presses on the vertical air pads not registering, yellow press blinking blue) and is being reviewed and redone; not merged. Item 50 stays resolved to option B - the fanfare and flat layout unchanged, air placement matching them.
+
+### PR #69 review follow-up, 2026-11-12
+Item 44 remains in progress and unmerged. Empty-space presses in the Store now deselect the item and hide its details without closing the Store or spending Bars. Tile selection, pinned details and Buy remain usable. Real-pointer regression and all six store-tree tests pass locally; typecheck, production build and 67 unit tests pass. Preview/CI checks follow the new head. Headset acceptance and owner merge approval remain outstanding.
