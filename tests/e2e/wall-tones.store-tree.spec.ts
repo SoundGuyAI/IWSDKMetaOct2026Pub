@@ -296,3 +296,43 @@ test.describe('Wall Tones store skill tree', () => {
     expect(snap.savers).toBe(1);
   });
 });
+
+
+test('store empty space clears selection without buying or closing; tiles and Buy stay usable', async ({ page }, testInfo) => {
+  await abortSpeech(page);
+  await bootWallTones(page, true, '?demoBars=800');
+  await dbg(page, 'toggleStore');
+  const selected = () => page.evaluate(() => (window as any).__wallTonesDebug.storeSelected);
+  const targets = () => page.evaluate(() => (window as any).__wallTonesDebug.storePointerTargets);
+  const click = async (x: number, y: number) => {
+    await page.mouse.move(x, y, { steps: 8 });
+    await page.waitForTimeout(800);
+    await page.mouse.down();
+    await page.waitForTimeout(150);
+    await page.mouse.up();
+    await page.waitForTimeout(600); // allow rebuilt UIKit layout/world matrices to settle
+  };
+  await expect.poll(async () => (await targets())['store-tile-replay']?.x).toBeGreaterThan(0);
+  const replay = (await targets())['store-tile-replay'];
+  await click(replay.x, replay.y);
+  await expect.poll(selected).toBe('replay');
+  await testInfo.attach('selected', { body: await page.screenshot(), contentType: 'image/png' });
+  const before = await readState(page);
+  // Empty margin beside the centered top row, inside the fixed Store popup.
+  await click(replay.x - 90, replay.y);
+  await expect.poll(selected).toBe(null);
+  expect((await readState(page)).storeOpen).toBe(true);
+  expect((await readState(page)).bars).toBe(before.bars);
+  expect((await readState(page)).replaysTotal).toBe(before.replaysTotal);
+  await testInfo.attach('deselected', { body: await page.screenshot(), contentType: 'image/png' });
+  await click(replay.x, replay.y);
+  await expect.poll(selected).toBe('replay');
+  const buy = (await targets())['store-buy'];
+  await click(buy.x, buy.y);
+  await expect.poll(async () => (await readState(page)).replaysPaid).toBe(1);
+  expect(await selected()).toBe('replay');
+  expect((await readState(page)).bars).toBe(before.bars - 20);
+  // Existing tap-the-selected-tile toggle remains intact.
+  await click(replay.x, replay.y);
+  await expect.poll(selected).toBe(null);
+});
