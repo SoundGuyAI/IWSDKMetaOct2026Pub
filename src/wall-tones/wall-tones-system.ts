@@ -4012,6 +4012,9 @@ this.reconcileStore(panel);
 this.reconcileAchievements(panel);
 }
 
+/** Detail card currently shown on the store popup chrome (removed on rebuild). */
+private storeDetailCard: UIKit.Container | null = null;
+
 /** Store skill tree (item 44): one square line-glyph tile per category,
  * level/count badges, and reach-level-X gates on the chain connections.
  * Rebuilt on the economy change key only (same codex P2 rule as the
@@ -4021,6 +4024,13 @@ const list = panel.getElementById<UIKit.Container>('store-tree-list');
 if (list == null) return;
 while (list.children.length > 0) {
 list.remove(list.children[0]!);
+}
+// The detail card lives on the fixed popup chrome (store-popup-card), not
+// in the scroll list, so scrolling the tree can never move or hide it.
+const cardHost = panel.getElementById<UIKit.Container>('store-popup-card');
+if (this.storeDetailCard != null) {
+cardHost?.remove(this.storeDetailCard);
+this.storeDetailCard = null;
 }
 const eco = this.economy;
 interface StoreTile {
@@ -4231,13 +4241,14 @@ width: TREE_W,
 row.add(makeTile(t));
 return row;
 };
-// Detail-card copy is computed before the rows so the card can sit
-// in-flow right after the selected row (review 2026-11-12: the overlay
-// version clipped the selected tile at the viewport edge and covered
-// neighbouring rows; in-flow nothing is ever hidden behind the card and
-// the window keeps one fixed size). Persistent card with the Buy row
-// inside (owner ask 2026-11-12, same details pattern as achievements);
-// the Buy row carries the Bars icon and greys out while unaffordable.
+// Detail-card copy is computed before the rows. The card is a persistent
+// overlay pinned to the bottom of the tree viewport on the fixed popup
+// chrome (owner ask 2026-11-12: "the pop up stayed", same details pattern
+// as the achievements), so it never scrolls away while the tree scrolls
+// behind it. The selected row always scrolls fully into the clear band
+// above the card (review 2026-11-12: tile + name + price + pips fully
+// visible, the card never covers the selected row). The Buy row inside
+// carries the Bars icon and greys out while unaffordable.
 const sel = this.storeSelected;
 let titleText = '';
 let bodyText = '';
@@ -4315,14 +4326,14 @@ bodyText = 'Locked.';
 break;
 }
 }
-// Height follows the body length so the card fits the viewport: title
-// (~20) + gaps + padding (52), one 18px line per ~30 body chars, plus the
+// Height follows the body length so the card leaves the clear band: title
+// (~20) + gaps + padding (44), one 18px line per ~30 body chars, plus the
 // Buy row when present.
 const bodyLines = Math.max(1, Math.ceil(bodyText.length / 30));
 const POPUP_W = 248;
-const POPUP_H = 52 + 18 * bodyLines + (buyText != null ? 40 : 0);
+const POPUP_H = 44 + 18 * bodyLines + (buyText != null ? 40 : 0);
 // Must match the store-tree-list viewport height in the uikitml.
-const VIEW_H = 290;
+const VIEW_H = 296;
 const ROW_TILE_H = TILE_H;
 const ROW_CONN_H = 16;
 const ROW_CHAIN_H = TILE_H + 4 + 16;
@@ -4347,9 +4358,8 @@ width: TREE_W,
 for (const id of ['multiplier', 'speed', 'pads56', 'narrator']) {
 bottomRow.add(makeTile(byId.get(id)!));
 }
-// Rows in display order; the detail card takes its own line right after
-// the selected row, pushing the rows below it down instead of covering
-// them, so the selected tile and its context are never obscured.
+// Rows in display order; the detail card overlays the viewport bottom
+// and is added after them.
 const rows: { ids: string[]; node: UIKit.Container | UIKit.Text; h: number }[] = [
 { ids: ['replay', 'saver'], node: topRow, h: ROW_TILE_H },
 { ids: ['listen'], node: soloRow(byId.get('listen')!), h: ROW_TILE_H },
@@ -4374,15 +4384,22 @@ h: 18,
 { ids: ['multiplier', 'speed', 'pads56', 'narrator'], node: bottomRow, h: ROW_TILE_H },
 { ids: ['secret'], node: soloRow(byId.get('secret')!), h: ROW_TILE_H },
 ];
-// The detail card itself: centered on its own line.
+// The detail card itself. popup-card geometry (uikitml px): 12 padding +
+// 26 heading + 6 gap put the list top at 44; the viewport bottom is
+// 44 + VIEW_H. The card pins 4px above it; horizontally it centers on
+// the list (12 padding + half the list/card width difference).
 let popupLine: UIKit.Container | null = null;
 if (sel != null) {
 const card = new UIKit.Container({
+positionType: 'absolute',
+positionLeft: 12 + Math.max(0, Math.floor((TREE_W - POPUP_W) / 2)),
+positionTop: 44 + VIEW_H - POPUP_H - 4,
+zIndex: 20,
 width: POPUP_W,
 height: POPUP_H,
 flexDirection: 'column',
-gap: 6,
-padding: 10,
+gap: 4,
+padding: 8,
 borderRadius: 12,
 borderWidth: 1,
 borderColor: 0x6b7a90,
@@ -4418,12 +4435,7 @@ text: buyText,
 buyRow.addEventListener('click', () => this.onBuySelected());
 card.add(buyRow);
 }
-popupLine = new UIKit.Container({
-flexDirection: 'column',
-alignItems: 'center',
-width: TREE_W,
-});
-popupLine.add(card);
+popupLine = card;
 }
 let selTop = 0;
 let cursorY = 0;
@@ -4432,18 +4444,18 @@ const hit = sel != null && row.ids.includes(sel);
 if (hit) selTop = cursorY;
 list.add(row.node);
 cursorY += row.h + ROW_GAP;
-if (hit && popupLine != null) {
-list.add(popupLine);
-cursorY += POPUP_H + ROW_GAP;
-}
 }
 list.setProperties({ overflow: 'scroll' });
+if (popupLine != null && cardHost != null) {
+cardHost.add(popupLine);
+this.storeDetailCard = popupLine;
+}
 if (sel != null) {
 // Scroll so the selected row (tile + name + price + pips) sits fully in
-// view with an 8px top margin and the whole detail card below it. The
-// card is sized so the pair always fits the viewport, so the row never
-// slides out of view and the rows above scroll fully out of the way
-// (clamped at the content end so the last row cannot overscroll).
+// the clear band above the pinned card with an 8px top margin. The card
+// is sized so the band always holds the row, so the row never slides out
+// of view and the rows above scroll fully out of the way (clamped at the
+// content end so the last row cannot overscroll).
 const maxScroll = Math.max(0, cursorY - ROW_GAP - VIEW_H);
 const scrollTarget = Math.max(0, Math.min(selTop - 8, maxScroll));
 list.scrollPosition.value = [0, scrollTarget];
