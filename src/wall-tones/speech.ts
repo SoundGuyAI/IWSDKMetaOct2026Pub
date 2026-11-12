@@ -471,7 +471,7 @@ export class WallTonesSpeech {
   }
 
   speakBackgroundEffect(id: 'open' | 'squawk' | 'close'): Promise<void> {
-    return this.enqueueClip({ url: new URL(`audio/story/background/effects/${id}.mp3`, document.baseURI).href, text: id === 'close' ? '[radio squawk closes]' : '[radio squawk opens]' });
+    return this.enqueueClip({ url: new URL(`audio/story/background/effects/${id}.mp3`, document.baseURI).href, text: { open: '[radio squawk opens]', squawk: '[radio squawk]', close: '[radio squawk closes]' }[id] });
   }
 
   speakStoryEffect(id: 'open' | 'squawk' | 'close' | 'glitch' | 'shimmer'): Promise<void> {
@@ -717,4 +717,4 @@ export function warmSpeechFromGesture(): void {
 export function randomNewBestClip(firstRecord = false): WallTonesClipId {
   if (firstRecord) return 'newBest1';
   return (['newBest1', 'newBest2', 'newBest3'] as const)[Math.floor(Math.random() * 3)]!;
-}
+        }
