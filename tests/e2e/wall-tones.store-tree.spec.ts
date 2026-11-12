@@ -168,8 +168,8 @@ test.describe('Wall Tones store skill tree', () => {
     test.slow();
     await abortSpeech(page);
     await bootWallTones(page, true);
-    // Listen 30 + Hint 25+50+100+200 + Autoplay L1 12 = 417.
-    await grantBars(page, 420);
+    // Listen 30 + Hint 25+50+100+200 + Autoplay L1 250 = 655.
+    await grantBars(page, 660);
     await dbg(page, 'toggleStore');
     await dbg(page, 'buyListen');
     await dbg(page, 'buyAutoplay');
@@ -181,7 +181,7 @@ test.describe('Wall Tones store skill tree', () => {
     let snap = await readState(page);
     expect(snap.hintLevel).toBe(4);
     expect(snap.autoplayLevel).toBe(1);
-    expect(snap.bars).toBe(3);
+    expect(snap.bars).toBe(5);
 
     await submitPad(page, 0); // start tap
     await playToStreak(page, 5);
