@@ -368,7 +368,24 @@
       },
       "components": {
         "RayInteractable": {}
-      }
+      },
+      "children": [
+        {
+          "id": "thumbs-lab-entry-panel",
+          "name": "Thumbs Lab Entry",
+          "content": {
+            "type": "asset",
+            "asset": "thumbs-lab-entry-panel"
+          },
+          "transform": {
+            "position": [4.15, 0, 0.05],
+            "scale": 0.7
+          },
+          "components": {
+            "RayInteractable": {}
+          }
+        }
+      ]
     },
     {
       "id": "thumbs-lab-panel",
@@ -577,4 +594,4 @@
       }
     }
   ]
-        }
+}
