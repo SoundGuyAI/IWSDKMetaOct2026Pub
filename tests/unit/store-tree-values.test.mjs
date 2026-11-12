@@ -59,6 +59,20 @@ if (js.includes("'./cypher-progress.js'")) {
   );
   assert.ok(!js.includes('cypher-progress.js'), 'unresolved relative import left in transpiled economy');
 }
+// Same for the background story's save key once PR76's economy.ts import is present.
+if (js.includes("'./cypher-background.js'")) {
+  const backgroundSrc = readFileSync(
+    new URL('../../src/wall-tones/cypher-background.ts', import.meta.url),
+    'utf8',
+  );
+  const backgroundKey = backgroundSrc.match(/export const BACKGROUND_PROGRESS_KEY = '([^']+)'/);
+  assert.ok(backgroundKey, 'cypher-background.ts missing BACKGROUND_PROGRESS_KEY export');
+  js = js.replace(
+    /^import \{ BACKGROUND_PROGRESS_KEY \} from '\.\/cypher-background\.js';$/m,
+    `const BACKGROUND_PROGRESS_KEY = '${backgroundKey[1]}';`,
+  );
+  assert.ok(!js.includes('cypher-background.js'), 'unresolved relative import left in transpiled economy');
+}
 const {
   WallTonesEconomy,
   LISTEN_COST,
