@@ -150,7 +150,7 @@ import {
 import { SAVER_PRICE_BARS, saverRetryPlan, saverUnitsForStreak } from './consumable-values.js';
 import {
 getActiveWorldKind,
-switchBackToHubMenu,
+returnToMenuInPlace,
 switchToWallTonesArWorld,
 } from './world-host.js';
 import { WallSlotCandidate } from './wall-slot-candidate-component.js';
@@ -787,8 +787,8 @@ this.inputNeedsClear = false;
 this.mediaUnlockApplied = false;
 this.airOrientationLocked = null;
 this.dominantHand = null;
-// Keep wall-tones-dominant-hand across world swaps so AR restore can read it.
-// Cleared only when returning to the hub menu (switchBackToHubMenu).
+// Keep wall-tones-dominant-hand across in-session menu returns and any
+// full hub reboot so AR restore can read it. Cleared only by switchBackToHubMenu.
 sessionStorage.removeItem('wall-tones-awaiting-mode');
 this.lackingSpatialData = false;
 this.roomCaptureInFlight = false;
@@ -1774,21 +1774,11 @@ this.renderPanel();
 
 private async onBackToMenu(): Promise<void> {
 this.speech.speak('backToMenu');
-const wasImmersive = !this.useDesktopPath();
-const fromArWorld = getActiveWorldKind() === 'walltones-ar';
 await this.leaveWallTonesMode();
-// Always return to the hub main menu. Immersive AR rebuilds the hub world
-// and re-enters XR so Back does not dump the player to a flat browser view.
-if (fromArWorld) {
-await switchBackToHubMenu({ reenterXr: wasImmersive });
-return;
-}
-window.dispatchEvent(
-new CustomEvent('experience-mode-changed', {
-detail: { mode: 'menu' satisfies ExperienceMode },
-}),
-);
-sessionStorage.setItem('iwsdk-experience-mode', 'menu');
+// #58: never destroy the live world just to show the menu. AppMode also
+// binds setMode('menu') on this button so panels swap in-place; XRPlane /
+// XRMesh and the immersive session stay alive in walltones-ar.
+returnToMenuInPlace();
 }
 
 private async onChooseSetup(mode: SetupMode): Promise<void> {
@@ -3719,15 +3709,20 @@ if (!this.experienceActive) {
 return;
 }
 if (this.flowPhase === 'choose-mode') {
-// Rescan before play-mode selection: refresh room data, keep choosing.
+// Rescan before play-mode selection: run the same capture + look-around
+// path used mid-setup so empty plane queries can recover (#58).
 this.speech.speak('rescanRoom');
 this.statusText = 'Rescanning room...';
 this.renderPanel();
+this.roomCaptureInFlight = false;
+this.roomCaptureAttempted = false;
+this.lackingSpatialData = false;
 const session = this.xrManager.getSession() as XRSession & {
 initiateRoomCapture?: () => Promise<undefined>;
 };
 if (typeof session?.initiateRoomCapture === 'function') {
 this.roomCaptureInFlight = true;
+this.roomCaptureAttempted = true;
 try {
 await session.initiateRoomCapture();
 } catch (error) {
@@ -3736,6 +3731,11 @@ console.warn('[wall-tones] rescan room capture failed', error);
 this.roomCaptureInFlight = false;
 }
 }
+this.setSpatialMeshesVisible(true);
+this.scanStartedAt = performance.now() / 1000;
+this.setRescanUiVisible(true);
+this.speech.speak('lookAround');
+this.renderPanel();
 return;
 }
 if (
