@@ -717,4 +717,4 @@ export function warmSpeechFromGesture(): void {
 export function randomNewBestClip(firstRecord = false): WallTonesClipId {
   if (firstRecord) return 'newBest1';
   return (['newBest1', 'newBest2', 'newBest3'] as const)[Math.floor(Math.random() * 3)]!;
-        }
+}
