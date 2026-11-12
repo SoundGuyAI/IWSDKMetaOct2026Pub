@@ -129,13 +129,23 @@ test('wiring: menu button, mode, panel asset, scene nodes and registration', () 
   const arScene = readFileSync(new URL('../../public/scenes/wall-tones-ar.iwsdk.scene.json', import.meta.url), 'utf8');
   const host = readFileSync(new URL('../../src/wall-tones/world-host.ts', import.meta.url), 'utf8');
   const panel = readFileSync(new URL('../../public/ui/thumbs-lab.uikitml', import.meta.url), 'utf8');
-  assert.ok(menu.includes('id="thumbs-lab-button"'));
+  const entry = readFileSync(new URL('../../public/ui/thumbs-lab-entry.uikitml', import.meta.url), 'utf8');
+  // The lab entry is a separate compact panel floating under the menu, NOT a
+  // button inside main-menu.uikitml: the desktop e2e specs click the three
+  // menu buttons at calibrated pixel coordinates and an extra in-flow button
+  // on the centre-anchored panel shifts those targets (broke CI twice).
+  assert.ok(!menu.includes('thumbs-lab-button'), 'menu stays free of lab buttons');
+  assert.ok(entry.includes('id="thumbs-lab-button"'));
   assert.ok(appMode.includes("'thumbslab'"));
   assert.ok(appMode.includes("setNodeVisible('thumbs-lab-panel'"));
+  assert.ok(appMode.includes("setNodeVisible('thumbs-lab-entry-panel'"));
   assert.ok(appMode.includes("getElementById('thumbs-lab-back-button')"));
   assert.ok(assets.includes("'thumbs-lab-panel': uikitml('thumbs-lab.uikitml'"));
+  assert.ok(assets.includes("'thumbs-lab-entry-panel': uikitml('thumbs-lab-entry.uikitml'"));
   assert.ok(mainScene.includes('"id": "thumbs-lab-panel"'));
+  assert.ok(mainScene.includes('"id": "thumbs-lab-entry-panel"'));
   assert.ok(arScene.includes('"id": "thumbs-lab-panel"'));
+  assert.ok(arScene.includes('"id": "thumbs-lab-entry-panel"'));
   assert.ok(host.includes('ThumbsLabSystem'));
   for (const id of ['thumbs-lab-status', 'thumbs-lab-line', 'thumbs-lab-telemetry', 'thumbs-lab-voice',
     'thumbs-lab-start-button', 'thumbs-lab-yes-button', 'thumbs-lab-no-button',
