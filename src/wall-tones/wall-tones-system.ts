@@ -102,6 +102,7 @@ import {
 applyPadVisualState,
 createGhostPadRuntime,
 createPadRuntime,
+findPadById,
 defaultDesktopPadSize,
 defaultHeadsetPadSize,
 disposePadRuntimes,
@@ -2449,7 +2450,7 @@ private spawnGhostPad(): void {
 this.ghostPad?.entity.dispose({ disposeResources: true });
 this.ghostPad = createGhostPadRuntime(
 this.world,
-(this.airPlaceStep % 4) as WallTonePadId,
+SIMON_FANFARE_PAD_ORDER[this.airPlaceStep % 4] as WallTonePadId,
 this.airPadSizeM,
 );
 this.applyTouchDebugVisibility();
@@ -2733,8 +2734,14 @@ await this.blinkPadNote(0);
 await this.wait(SIMON_FANFARE_END_PAUSE_S);
 }
 
+/** Pads are placed in fanfare order in MR air placement, so array position
+* is NOT the pad id there. Always resolve a note/press id to its pad. */
+private padById(padIndex: number): PadRuntime | undefined {
+return findPadById(this.pads, padIndex);
+}
+
 private async blinkPadNote(padIndex: number): Promise<void> {
-const pad = this.pads[padIndex];
+const pad = this.padById(padIndex);
 if (pad != null) {
 this.setBlinkCuePad(pad);
 flashPad(pad, true);
@@ -2802,7 +2809,7 @@ this.playbackShownCount = 0;
 this.renderPanel();
 for (let index = 0; index < this.game.sequence.length; index += 1) {
 const padId = this.game.sequence[index]!;
-const pad = this.pads[padId];
+const pad = this.padById(padId);
 if (pad != null) {
 this.setBlinkCuePad(pad);
 flashPad(pad, true);
@@ -2815,7 +2822,7 @@ this.setBlinkCuePad(null);
 }
 await this.wait(NOTE_GAP_S);
 }
-// Autoplay store modifier (owner-approved test values 2026-11-11): after
+// Autoplay store modifier (store test values, balance TBD): after
 // the Listen playback, the game plays the first level*5 notes for the
 // player, capped one short of the full pattern so at least the last note
 // stays manual. Auto-played notes pay no per-press Bars (no player press).
@@ -2831,7 +2838,7 @@ if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
 }
 const padId = this.game.sequence[index]!;
-const pad = this.pads[padId];
+const pad = this.padById(padId);
 if (pad != null) {
 this.setBlinkCuePad(pad);
 flashPad(pad, true);
@@ -3426,7 +3433,7 @@ return;
 // counts, correct or wrong. Host playback, menu and setup input never get
 // past the phase gate above (user-settled: presses "in the game").
 this.economy.countGameplayPress(this.game.streak);
-const pad = this.pads[padIndex];
+const pad = this.padById(padIndex);
 if (pad != null) {
 flashPad(pad, true);
 // A wrong pad gets only the failure buzzer, not its musical pad note.
@@ -3565,7 +3572,7 @@ this.speech.cancel();
 this.startPromptSpoken = true;
 primeWallTonesAudioFromGesture();
 // Confirm the tap briefly, then run the spoken intro before the first sequence tone.
-const pad = this.pads[padIndex];
+const pad = this.padById(padIndex);
 if (pad != null) {
 flashPad(pad, true);
 playPadToneFromUserAction(padIndex);
