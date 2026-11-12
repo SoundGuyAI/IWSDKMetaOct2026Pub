@@ -12,6 +12,8 @@ import { PanelSystem } from '../panel.js';
 import { RobotSystem } from '../robot.js';
 import { WallTonesSystem } from './wall-tones-system.js';
 
+export { backToMenuDestroysWorld } from './back-to-menu-policy.js';
+
 const MODE_STORAGE_KEY = 'iwsdk-experience-mode';
 
 const publicAssetUrl = (filePath: string): string =>
@@ -158,6 +160,11 @@ export async function switchToWallTonesArWorld(entry: 'menu' | 'setup' = 'setup'
   return run;
 }
 
+/**
+ * Full hub reboot (destroys the active world). Do not use for in-session
+ * Wall Tones "Back to menu" — that must keep the live AR world so XRPlane /
+ * XRMesh scan data and the immersive session survive (backlog #58).
+ */
 export async function switchBackToHubMenu(options?: {
   reenterXr?: boolean;
 }): Promise<World> {
@@ -188,10 +195,26 @@ export async function switchBackToHubMenu(options?: {
   return run;
 }
 
+/**
+ * In-session return to the main menu without tearing down the active world.
+ * Keeps XR + scan ECS when already in `walltones-ar` (backlog #58).
+ */
+export function returnToMenuInPlace(): void {
+  sessionStorage.setItem(MODE_STORAGE_KEY, 'menu');
+  sessionStorage.removeItem('wall-tones-awaiting-mode');
+  sessionStorage.removeItem('wall-tones-setup-mode');
+  // Keep wall-tones-dominant-hand so a later Start can restore handedness.
+  window.dispatchEvent(
+    new CustomEvent('experience-mode-changed', {
+      detail: { mode: 'menu' satisfies ExperienceMode },
+    }),
+  );
+}
+
 export function startInitialWorld(container: HTMLElement): Promise<World> {
   if (bootPromise != null) {
     return bootPromise;
   }
   bootPromise = bootHubWorld(container);
   return bootPromise;
-  }
+}
