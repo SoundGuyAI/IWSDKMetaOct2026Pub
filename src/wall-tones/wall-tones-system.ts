@@ -4100,8 +4100,8 @@ price: eco.ownsTopSecret() ? 'Owned' : `${TOP_SECRET_COST} Bars`,
 // caption: "each category has its own levels, with level gates on the
 // connections"). Owner layout 2026-11-12: Replay + Saver on top, Listen on
 // its own row, then the gated chain Hint -> Autoplay as labeled centered
-// connections (single-dependency rows sit in the middle), Secret moved to
-// the bottom row next to the future placeholders.
+// connections (single-dependency rows sit in the middle), Secret on its
+// own centered bottom row below the future placeholders.
 const TREE_W = 308;
 const TILE_S = 70;
 // Tile + name + price lines.
@@ -4231,89 +4231,20 @@ width: TREE_W,
 row.add(makeTile(t));
 return row;
 };
-// Top row: the no-prerequisite consumables (owner layout 2026-11-12).
-const topRow = new UIKit.Container({
-flexDirection: 'row',
-gap: 8,
-width: TREE_W,
-});
-for (const id of ['replay', 'saver']) {
-topRow.add(makeTile(byId.get(id)!));
-}
-list.add(topRow);
-// Listen on its own centered row, then the gated chain Hint -> Autoplay.
-list.add(soloRow(byId.get('listen')!));
-list.add(connection('unlocks Hint L1', eco.hintUnlocked()));
-list.add(chainRow(byId.get('hint')!, hintLevel, 0xf2c14e));
-list.add(
-connection(
-eco.autoplayUnlocked()
-? 'Autoplay unlocked'
-: `reach Hint L${AUTOPLAY_UNLOCK_HINT_LEVEL} to unlock Autoplay (now L${hintLevel})`,
-eco.autoplayUnlocked(),
-),
-);
-list.add(chainRow(byId.get('autoplay')!, autoplayLevel, 0x4cc38a));
-// Bottom row: the future placeholders, phrased just "Locked" (owner ask
-// 2026-11-12), with Secret moved down next to them.
-list.add(
-new UIKit.Text({ fontSize: 13, color: 0x9aa4b6, width: TREE_W, textAlign: 'center', text: 'Locked' }),
-);
-const bottomRow = new UIKit.Container({
-flexDirection: 'row',
-flexWrap: 'wrap',
-gap: 8,
-width: TREE_W,
-});
-for (const id of ['multiplier', 'speed', 'pads56', 'narrator', 'secret']) {
-bottomRow.add(makeTile(byId.get(id)!));
-}
-list.add(bottomRow);
-list.setProperties({ overflow: 'scroll' });
-// Details are a floating overlay on top of the tree (owner ask 2026-11-12,
-// same pattern as the achievements details), pinned by the tap so the
-// window keeps one fixed size and the Buy button stays reachable. The Buy
-// row carries the Bars icon and greys out while the cost is unaffordable.
-const ROW_TILE_H = TILE_H;
-const ROW_CONN_H = 16;
-const ROW_CHAIN_H = TILE_H + 4 + 16;
-const ROW_GAP = 8;
-const rowTop = new Map<string, number>();
-const rowHeight = new Map<string, number>();
-let cursorY = 0;
-for (const id of ['replay', 'saver']) {
-rowTop.set(id, cursorY);
-rowHeight.set(id, ROW_TILE_H);
-}
-cursorY += ROW_TILE_H + ROW_GAP;
-rowTop.set('listen', cursorY);
-rowHeight.set('listen', ROW_TILE_H);
-cursorY += ROW_TILE_H + ROW_GAP + ROW_CONN_H + ROW_GAP;
-rowTop.set('hint', cursorY);
-rowHeight.set('hint', ROW_CHAIN_H);
-cursorY += ROW_CHAIN_H + ROW_GAP + ROW_CONN_H + ROW_GAP;
-rowTop.set('autoplay', cursorY);
-rowHeight.set('autoplay', ROW_CHAIN_H);
-// Locked header (~18px) then the wrapping bottom row: four future tiles on
-// the first line, Secret wrapping onto the second.
-cursorY += ROW_CHAIN_H + ROW_GAP + 18 + ROW_GAP;
-for (const id of ['multiplier', 'speed', 'pads56', 'narrator']) {
-rowTop.set(id, cursorY);
-rowHeight.set(id, ROW_TILE_H);
-}
-rowTop.set('secret', cursorY + ROW_TILE_H + ROW_GAP);
-rowHeight.set('secret', ROW_TILE_H);
-const POPUP_W = 248;
-// Must match the store-tree-list viewport height in the uikitml.
-const VIEW_H = 270;
-if (this.storeSelected != null) {
-const selTop = rowTop.get(this.storeSelected) ?? 0;
-const selH = rowHeight.get(this.storeSelected) ?? ROW_TILE_H;
+// Detail-card copy is computed before the rows so the card can sit
+// in-flow right after the selected row (review 2026-11-12: the overlay
+// version clipped the selected tile at the viewport edge and covered
+// neighbouring rows; in-flow nothing is ever hidden behind the card and
+// the window keeps one fixed size). Persistent card with the Buy row
+// inside (owner ask 2026-11-12, same details pattern as achievements);
+// the Buy row carries the Bars icon and greys out while unaffordable.
+const sel = this.storeSelected;
 let titleText = '';
 let bodyText = '';
 let buyText: string | null = null;
 let cost: number | null = null;
-switch (this.storeSelected) {
+if (sel != null) {
+switch (sel) {
 case 'listen':
 titleText = 'Listen';
 if (eco.ownsListen()) {
@@ -4352,15 +4283,15 @@ break;
 case 'replay':
 titleText = 'Replay';
 bodyText =
-`Re-hear the current pattern (the Repeat button spends one). Held: ${eco.getReplaysFree()} free + ${eco.getReplaysPaid()} paid. ` +
-`Earn a free one every 5 notes past your Hint coverage (cap ${REPLAY_FREE_CAP}).`;
+`Re-hear the pattern (the Repeat button spends one). Held: ${eco.getReplaysFree()} free + ${eco.getReplaysPaid()} paid. ` +
+`Earn a free one per 5 notes past Hint coverage (cap ${REPLAY_FREE_CAP}).`;
 buyText = `Replay - ${REPLAY_PRICE_BARS} Bars`;
 cost = REPLAY_PRICE_BARS;
 break;
 case 'saver':
 titleText = 'Streak saver';
 bodyText =
-'Retry the same pattern when you miss (Game Over popup). A retry costs 1 saver per 10-streak stretch, doubling after. Held: ' + eco.getSavers() + '.';
+'Retry the pattern when you miss (Game Over popup). Costs 1 saver per 10-streak stretch, doubling after. Held: ' + eco.getSavers() + '.';
 buyText = 'Saver - ' + SAVER_PRICE_BARS + ' Bars';
 cost = SAVER_PRICE_BARS;
 break;
@@ -4376,34 +4307,77 @@ cost = TOP_SECRET_COST;
 break;
 default:
 titleText =
-this.storeSelected === 'multiplier' ? 'Multiplier x2'
-: this.storeSelected === 'speed' ? 'Speed'
-: this.storeSelected === 'pads56' ? 'Pads 5-6'
+sel === 'multiplier' ? 'Multiplier x2'
+: sel === 'speed' ? 'Speed'
+: sel === 'pads56' ? 'Pads 5-6'
 : 'Hack';
 bodyText = 'Locked.';
 break;
 }
-// Height follows the body length so the row AND the whole popup (Buy row
-// included) fit the viewport whenever the viewport allows it.
-// Title (~20) + gaps + padding (52), one 18px line per ~30 body chars,
-// plus the Buy row when present.
+}
+// Height follows the body length so the card fits the viewport: title
+// (~20) + gaps + padding (52), one 18px line per ~30 body chars, plus the
+// Buy row when present.
 const bodyLines = Math.max(1, Math.ceil(bodyText.length / 30));
+const POPUP_W = 248;
 const POPUP_H = 52 + 18 * bodyLines + (buyText != null ? 40 : 0);
-// Scroll so the selected row AND its detail popup both fit the viewport
-// when possible (review 2026-11-12: the Buy button must be reachable
-// without a second scroll).
-// Prefer showing the whole row AND popup; the row may slide up to 30px
-// out of view when the pair is taller than the viewport.
-const scrollTarget = Math.max(
-0,
-Math.min(selTop + 30, selTop + selH + 6 + POPUP_H - VIEW_H),
-);
-list.scrollPosition.value = [0, scrollTarget];
-const popup = new UIKit.Container({
-positionType: 'absolute',
-positionLeft: Math.max(0, Math.floor((TREE_W - POPUP_W) / 2)),
-positionTop: selTop + selH + 6,
-zIndex: 20,
+// Must match the store-tree-list viewport height in the uikitml.
+const VIEW_H = 290;
+const ROW_TILE_H = TILE_H;
+const ROW_CONN_H = 16;
+const ROW_CHAIN_H = TILE_H + 4 + 16;
+const ROW_GAP = 8;
+// Top row: the no-prerequisite consumables (owner layout 2026-11-12).
+const topRow = new UIKit.Container({
+flexDirection: 'row',
+gap: 8,
+width: TREE_W,
+});
+for (const id of ['replay', 'saver']) {
+topRow.add(makeTile(byId.get(id)!));
+}
+// Bottom row: the future placeholders, phrased just "Locked" (owner ask
+// 2026-11-12). Secret sits on its own centered row below them.
+const bottomRow = new UIKit.Container({
+flexDirection: 'row',
+flexWrap: 'wrap',
+gap: 8,
+width: TREE_W,
+});
+for (const id of ['multiplier', 'speed', 'pads56', 'narrator']) {
+bottomRow.add(makeTile(byId.get(id)!));
+}
+// Rows in display order; the detail card takes its own line right after
+// the selected row, pushing the rows below it down instead of covering
+// them, so the selected tile and its context are never obscured.
+const rows: { ids: string[]; node: UIKit.Container | UIKit.Text; h: number }[] = [
+{ ids: ['replay', 'saver'], node: topRow, h: ROW_TILE_H },
+{ ids: ['listen'], node: soloRow(byId.get('listen')!), h: ROW_TILE_H },
+{ ids: [], node: connection('unlocks Hint L1', eco.hintUnlocked()), h: ROW_CONN_H },
+{ ids: ['hint'], node: chainRow(byId.get('hint')!, hintLevel, 0xf2c14e), h: ROW_CHAIN_H },
+{
+ids: [],
+node: connection(
+eco.autoplayUnlocked()
+? 'Autoplay unlocked'
+: `reach Hint L${AUTOPLAY_UNLOCK_HINT_LEVEL} to unlock Autoplay (now L${hintLevel})`,
+eco.autoplayUnlocked(),
+),
+h: ROW_CONN_H,
+},
+{ ids: ['autoplay'], node: chainRow(byId.get('autoplay')!, autoplayLevel, 0x4cc38a), h: ROW_CHAIN_H },
+{
+ids: [],
+node: new UIKit.Text({ fontSize: 13, color: 0x9aa4b6, width: TREE_W, textAlign: 'center', text: 'Locked' }),
+h: 18,
+},
+{ ids: ['multiplier', 'speed', 'pads56', 'narrator'], node: bottomRow, h: ROW_TILE_H },
+{ ids: ['secret'], node: soloRow(byId.get('secret')!), h: ROW_TILE_H },
+];
+// The detail card itself: centered on its own line.
+let popupLine: UIKit.Container | null = null;
+if (sel != null) {
+const card = new UIKit.Container({
 width: POPUP_W,
 height: POPUP_H,
 flexDirection: 'column',
@@ -4414,8 +4388,8 @@ borderWidth: 1,
 borderColor: 0x6b7a90,
 backgroundColor: 0x222c3a,
 });
-popup.add(new UIKit.Text({ fontSize: 15, color: 0xfafaf7, text: titleText }));
-popup.add(new UIKit.Text({ fontSize: 13, color: 0xaab6c6, text: bodyText }));
+card.add(new UIKit.Text({ fontSize: 15, color: 0xfafaf7, text: titleText }));
+card.add(new UIKit.Text({ fontSize: 13, color: 0xaab6c6, text: bodyText }));
 if (buyText != null) {
 const affordable = cost != null && bars >= cost;
 const buyRow = new UIKit.Container({
@@ -4442,9 +4416,37 @@ text: buyText,
 }),
 );
 buyRow.addEventListener('click', () => this.onBuySelected());
-popup.add(buyRow);
+card.add(buyRow);
 }
-list.add(popup);
+popupLine = new UIKit.Container({
+flexDirection: 'column',
+alignItems: 'center',
+width: TREE_W,
+});
+popupLine.add(card);
+}
+let selTop = 0;
+let cursorY = 0;
+for (const row of rows) {
+const hit = sel != null && row.ids.includes(sel);
+if (hit) selTop = cursorY;
+list.add(row.node);
+cursorY += row.h + ROW_GAP;
+if (hit && popupLine != null) {
+list.add(popupLine);
+cursorY += POPUP_H + ROW_GAP;
+}
+}
+list.setProperties({ overflow: 'scroll' });
+if (sel != null) {
+// Scroll so the selected row (tile + name + price + pips) sits fully in
+// view with an 8px top margin and the whole detail card below it. The
+// card is sized so the pair always fits the viewport, so the row never
+// slides out of view and the rows above scroll fully out of the way
+// (clamped at the content end so the last row cannot overscroll).
+const maxScroll = Math.max(0, cursorY - ROW_GAP - VIEW_H);
+const scrollTarget = Math.max(0, Math.min(selTop - 8, maxScroll));
+list.scrollPosition.value = [0, scrollTarget];
 } else {
 list.scrollPosition.value = [0, 0];
 }
