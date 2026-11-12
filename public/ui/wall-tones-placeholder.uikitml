@@ -215,10 +215,10 @@
     <ButtonLabel>Back to main menu</ButtonLabel>
   </Button>
   </div>
-  <div id="store-popup" class="popup-overlay" style="display: none">
-    <div class="popup-card" style="gap: 8px; padding: 12px">
-      <div id="store-heading" class="heading" style="font-size: 22px">Store</div>
-      <div id="store-tree-list" style="flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 8px; width: 308px; height: 270px"></div>
+  <div id="store-popup" class="popup-overlay" style="display: none; padding: 12px">
+    <div class="popup-card" style="gap: 6px; padding: 12px">
+      <div id="store-heading" class="heading" style="font-size: 22px; line-height: 26px">Store</div>
+      <div id="store-tree-list" style="flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 8px; width: 308px; height: 290px"></div>
       <div id="store-detail-status" class="status">Prices are test values.</div>
       <Button id="store-close-button" class="button">
         <ButtonIcon><X></X></ButtonIcon>
