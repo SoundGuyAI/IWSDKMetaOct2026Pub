@@ -173,5 +173,5 @@ test('background review proposal: afterAct1, every second completed pattern, cap
   await expect.poll(()=>page.evaluate(()=> (window as any).__wallTonesDebug.backgroundLinesCompleted)).toBe(1);
   expect(requests.some(url=>url.endsWith('/effects/close.mp3'))).toBe(true);
   expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('wall-tones-cypher-background-progress-v1')!).next)).toBe(1);
-  await page.screenshot({path:'/downloads/background-female-gameplay.png'});
+  await page.screenshot({path:test.info().outputPath('background-female-gameplay.png')});
 });
