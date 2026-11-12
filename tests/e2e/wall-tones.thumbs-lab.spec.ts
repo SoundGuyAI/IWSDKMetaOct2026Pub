@@ -76,9 +76,11 @@ test.beforeEach(async ({ page }) => {
 test('main menu carries a working Thumbs Yes/No Lab button (real canvas click)', async ({
   page,
 }) => {
-  // Fourth stacked button on the centred menu panel; positions verified
-  // against a local screenshot (1280x800 viewport).
-  await page.mouse.click(640, 535);
+  // Lab entry is a compact panel floating to the right of the menu (a
+  // child node of main-menu-panel, so in-flow menu geometry and its
+  // calibrated click targets stay untouched); position verified against a
+  // local screenshot (1280x800 viewport).
+  await page.mouse.click(1100, 320);
   await page.waitForFunction(
     () =>
       (window as unknown as { __thumbsLabDebug?: unknown }).__thumbsLabDebug != null &&
@@ -96,7 +98,7 @@ test('main menu carries a working Thumbs Yes/No Lab button (real canvas click)',
 test('full dialogue: yes path walks intro -> q2 -> q3 -> done with echoes', async ({
   page,
 }) => {
-  await page.mouse.click(640, 535);
+  await page.mouse.click(1100, 320);
   await waitPhase(page, 'idle');
   await page.evaluate(() =>
     (window as unknown as { __thumbsLabDebug: { start: () => void } }).__thumbsLabDebug.start(),
@@ -116,7 +118,7 @@ test('full dialogue: yes path walks intro -> q2 -> q3 -> done with echoes', asyn
 });
 
 test('intro no loops through the retry line until a yes', async ({ page }) => {
-  await page.mouse.click(640, 535);
+  await page.mouse.click(1100, 320);
   await waitPhase(page, 'idle');
   await page.evaluate(() =>
     (window as unknown as { __thumbsLabDebug: { start: () => void } }).__thumbsLabDebug.start(),
@@ -133,7 +135,7 @@ test('intro no loops through the retry line until a yes', async ({ page }) => {
 test('keyboard fallback answers work in flat mode (Y/N keys)', async ({
   page,
 }) => {
-  await page.mouse.click(640, 535);
+  await page.mouse.click(1100, 320);
   await waitPhase(page, 'idle');
   await page.evaluate(() =>
     (window as unknown as { __thumbsLabDebug: { start: () => void } }).__thumbsLabDebug.start(),
