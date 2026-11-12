@@ -3767,7 +3767,17 @@ void playErrorTone();
 this.renderGameOverSummary();
 return;
 }
-for (let i = 0; i < plan.buy; i++) this.economy.buySaver(SAVER_PRICE_BARS);
+// Abort on the first failed buy so a mid-loop refusal cannot leave a
+// partial stock and still call useSavers with the full need.
+for (let i = 0; i < plan.buy; i++) {
+if (!this.economy.buySaver(SAVER_PRICE_BARS)) {
+void playErrorTone();
+this.showAchievementToasts();
+this.renderGameOverSummary();
+this.renderPanel();
+return;
+}
+}
 this.showAchievementToasts();
 if (plan.apply) {
 this.onGameOverUseSaver();
@@ -4462,7 +4472,9 @@ buyText = `Hint L${hintLevel + 1} - ${cost}`;
 break;
 case 'autoplay':
 titleText = `Autoplay - Level ${autoplayLevel}`;
-bodyText = !eco.autoplayUnlocked()
+bodyText = !eco.ownsListen()
+? 'Locked: buy Listen first.'
+: !eco.autoplayUnlocked()
 ? `Locked: reach Hint level ${AUTOPLAY_UNLOCK_HINT_LEVEL} (now level ${hintLevel}).`
 : autoplayLevel === 0
 ? 'Plays the first 5 notes of each pattern for you. Each level adds 5.'
@@ -4550,7 +4562,11 @@ const rows: { ids: string[]; node: UIKit.Container | UIKit.Text; h: number }[] =
 { ids: ['hint'], node: chainRow(byId.get('hint')!, hintLevel, 0xf2c14e), h: ROW_CHAIN_H },
 {
 ids: [],
-node: connection(
+// Listen ownership is part of autoplayUnlocked(); without it a legacy
+// Hint L4 save would otherwise show "4/4" on a still-locked gate.
+node: !eco.ownsListen()
+? connection('Buy Listen first', false, null)
+: connection(
 eco.autoplayUnlocked() ? 'Autoplay unlocked' : `Reach Hint Lv ${AUTOPLAY_UNLOCK_HINT_LEVEL}`,
 eco.autoplayUnlocked(),
 eco.autoplayUnlocked()
@@ -5104,7 +5120,9 @@ return;
 }
 if (id === 'autoplay' && !this.economy.autoplayUnlocked()) {
 deny(
-`Locked: reach Hint level ${AUTOPLAY_UNLOCK_HINT_LEVEL} (now level ${this.economy.getHintLevel()}).`,
+!this.economy.ownsListen()
+? 'Locked: buy Listen first.'
+: `Locked: reach Hint level ${AUTOPLAY_UNLOCK_HINT_LEVEL} (now level ${this.economy.getHintLevel()}).`,
 );
 return;
 }

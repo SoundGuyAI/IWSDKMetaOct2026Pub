@@ -276,12 +276,12 @@ test.describe('Wall Tones store skill tree', () => {
     await grantBars(page, 18);
     await dbg(page, 'toggleStore');
     await dbg(page, 'buySaver');
-    const read = (): Promise<{ savers: number; bars: number }> =>
+    const read = (): Promise<{ savers: number; bars: number; demoBoost: number }> =>
       page.evaluate(() => {
         const d = (window as unknown as {
-          __wallTonesDebug: { savers: number; bars: number };
+          __wallTonesDebug: { savers: number; bars: number; demoBoost: number };
         }).__wallTonesDebug;
-        return { savers: d.savers, bars: d.bars };
+        return { savers: d.savers, bars: d.bars, demoBoost: d.demoBoost };
       });
     let snap = await read();
     expect(snap.savers).toBe(1);
@@ -294,6 +294,26 @@ test.describe('Wall Tones store skill tree', () => {
     await bootWallTones(page, false);
     snap = await read();
     expect(snap.savers).toBe(1);
+  });
+
+  test('Saver: ?demoBars covers the Store Buy the same way as Listen/Replay', async ({
+    page,
+  }) => {
+    test.slow();
+    await abortSpeech(page);
+    // 18 demo Bars exactly covers one Saver; persisted balance stays 0.
+    await bootWallTones(page, true, '?demoBars=18');
+    await dbg(page, 'toggleStore');
+    await dbg(page, 'buySaver');
+    const snap = await page.evaluate(() => {
+      const d = (window as unknown as {
+        __wallTonesDebug: { savers: number; bars: number; demoBoost: number };
+      }).__wallTonesDebug;
+      return { savers: d.savers, bars: d.bars, demoBoost: d.demoBoost };
+    });
+    expect(snap.savers).toBe(1);
+    expect(snap.demoBoost).toBe(0);
+    expect(snap.bars).toBe(0);
   });
 });
 

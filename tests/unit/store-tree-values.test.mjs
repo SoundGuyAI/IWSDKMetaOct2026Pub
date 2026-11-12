@@ -193,3 +193,26 @@ test('demoBars boost: spendable, spent first, never touches the real balance', (
   assert.equal(eco2.getBars(), 40);
   assert.equal(eco2.getDemoBoost(), 0);
 });
+
+test('demoBars boost: Saver buys through spend() like every other store item', () => {
+  // Regression for PR #69: buySaver used to check/deduct this.bars only, so
+  // Store Buy (affordable via getBars) and Game Over saverRetryPlan could
+  // promise a Saver that then refused when only demo funds covered the cost.
+  const saverPrice = 18;
+  const eco = ecoWith(0);
+  eco.applyDemoBoost(saverPrice);
+  assert.equal(eco.getBars(), saverPrice);
+  assert.equal(eco.buySaver(saverPrice), true);
+  assert.equal(eco.getSavers(), 1);
+  assert.equal(eco.getDemoBoost(), 0, 'boost covers the Saver fully');
+  assert.equal(eco.getBars(), 0);
+  // Mixed wallet: boost first, then persisted Bars.
+  const eco2 = ecoWith(10);
+  eco2.applyDemoBoost(10);
+  assert.equal(eco2.buySaver(saverPrice), true); // 18: 10 boost + 8 real
+  assert.equal(eco2.getSavers(), 1);
+  assert.equal(eco2.getDemoBoost(), 0);
+  assert.equal(eco2.getBars(), 2);
+  assert.equal(eco2.buySaver(saverPrice), false, 'refuses when total wallet is short');
+  assert.equal(eco2.getSavers(), 1);
+});

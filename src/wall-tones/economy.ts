@@ -251,16 +251,15 @@ export class WallTonesEconomy {
     return this.savers;
   }
 
-  /** Buy one saver for `price` Bars. Never partial. */
+  /** Buy one saver for `price` Bars. Never partial. Uses spend() so
+   * ?demoBars test funds deduct before the persisted balance, matching
+   * every other store purchase and the Store/Game Over affordance that
+   * reads getBars(). */
   buySaver(price: number): boolean {
-    if (this.bars < price) return false;
-    this.bars -= price;
+    if (!this.spend(price)) return false;
     this.savers += 1;
-    writeNumber(BARS_KEY, this.bars);
     writeNumber(SAVERS_KEY, this.savers);
-    this.purchases += 1;
-    writeNumber(PURCHASES_KEY, this.purchases);
-    this.checkAchievements(0);
+    this.countPurchase();
     return true;
   }
 

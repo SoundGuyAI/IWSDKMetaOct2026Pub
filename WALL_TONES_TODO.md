@@ -204,6 +204,9 @@ Oded tested the merged main build and reported that everything looks fine. The a
 
 ### PR #69 review follow-up, 2026-11-12
 Item 44 remains in progress and unmerged. Empty-space presses in the Store now deselect the item and hide its details without closing the Store or spending Bars. Tile selection, pinned details and Buy remain usable. Real-pointer regression and all six store-tree tests pass locally; typecheck, production build and 67 unit tests pass. Preview/CI checks follow the new head. Headset acceptance and owner merge approval remain outstanding.
+
+### PR #69 bugfix review, 2026-11-12 (~17:55 Asia/Jerusalem)
+Review found and fixed: (1) `buySaver` ignored `?demoBars` / `spend()` while Store Buy and Game Over `saverRetryPlan` used `getBars()`, so demo-funded Saver buys could refuse or leave a partial Game Over purchase; (2) Game Over multi-buy now aborts on the first failed `buySaver` instead of calling `useSavers` after a partial stock; (3) Autoplay locked copy and the Hint→Autoplay connector no longer claim "reach Hint L4" / "4/4" when Listen is not owned (legacy-save path). Unit regression added; item 44 stays in progress.
 ## Review update - 2026-11-12, 01:40 Asia/Jerusalem
 
 - New item 61 (his 01:38 request, corrected 01:39 to backlog-only: "add this addition to a todo"): Cypher Act 1 light patches - one patch per completed pattern after the streak-15 dialogue, persisting through failures, capped at 20, all vanishing in a shader-lit effect at streak 20; MR wall placement desired (today's MR seam is camera-relative, not wall-anchored; vertical wall planes exist for a future version, wall fallback needs design). C16/N04/N05 closure timing conflicts with persist-until-20 - unresolved, no automatic line or timing changes. Not implemented; not part of the current PR #70 preview.
