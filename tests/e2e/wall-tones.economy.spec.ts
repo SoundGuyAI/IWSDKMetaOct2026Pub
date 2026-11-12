@@ -347,11 +347,17 @@ test.describe('Wall Tones economy: Bars, store, hints, achievements', () => {
       .poll(async () => (await readState(page)).phase, { timeout: 90_000 })
       .toBe('input');
 
-    // No hint owned: subtitles show the label but leak no sequence squares.
-    await expect(page.locator('#wall-tones-flat-subtitles')).toContainText(
+    // No hint owned: the strip leaks no sequence squares, and the "Hint:"
+    // title itself stays hidden until the hint is bought (owner ask
+    // 2026-11-12) - a blank line reserves the space so nothing shrinks.
+    await expect(page.locator('#wall-tones-flat-subtitles')).not.toContainText(
       'Hint:',
     );
     await expect(squares).toHaveCount(0);
+    const stripBox = await page
+      .locator('#wall-tones-flat-subtitles')
+      .boundingBox();
+    expect(stripBox!.height).toBeGreaterThan(10);
 
     // Own Listen and a level-1 hint, then reach a 6-note round.
     await grantBars(page, 60);
