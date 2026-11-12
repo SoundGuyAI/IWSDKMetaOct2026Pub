@@ -36,7 +36,10 @@ export const LISTEN_COST = 30;
 /** Autoplay (owner-approved test values): each level auto-plays the first
  * level*5 notes of the pattern during Your Turn. Prices 12/30/65/130 Bars,
  * then doubling. Unlocks once Hint reaches level 4 (owner gate 2026-11-11). */
-export const AUTOPLAY_BASE_COSTS: readonly number[] = [12, 30, 65, 130];
+// Provisional test value (Oded 2026-11-12 11:49: "or maybe no. like 250. we'll
+// balance it later." - supersedes his 500 a minute earlier; balancing comes after
+// testing, so later levels keep the existing doubling for now).
+export const AUTOPLAY_BASE_COSTS: readonly number[] = [250];
 export const AUTOPLAY_COST_GROWTH = 2;
 export const AUTOPLAY_NOTES_PER_LEVEL = 5;
 export const AUTOPLAY_UNLOCK_HINT_LEVEL = 4;
@@ -303,9 +306,12 @@ export class WallTonesEconomy {
     return { value, level, next };
   }
 
-  /** Pattern boxes revealed during Your Turn at the owned hint level. */
+  /** Pattern boxes revealed during Your Turn at the owned hint level. Gated on
+   * Listen ownership (bug report 2026-11-12): legacy saves from the pre-Listen
+   * store carry hint levels onto this origin; without the gate they keep
+   * revealing hints. Non-destructive - the levels stay, they just do not act. */
   getHintRevealCount(): number {
-    return this.hintLevel * HINT_BOXES_PER_LEVEL;
+    return this.listenOwned ? this.hintLevel * HINT_BOXES_PER_LEVEL : 0;
   }
 
   /** Cost of buying hint level `level` (1-based). Open-ended progression. */
@@ -409,9 +415,11 @@ export class WallTonesEconomy {
     return this.listenOwned;
   }
 
-  /** Skill-tree gate: Autoplay unlocks at Hint level 4 (owner 2026-11-11). */
+  /** Skill-tree gate: Autoplay unlocks at Hint level 4 (owner 2026-11-11).
+   * Listen ownership required too (bug report 2026-11-12): legacy saves could
+   * carry Hint L4+ without Listen and unlock Autoplay out of the box. */
   autoplayUnlocked(): boolean {
-    return this.hintLevel >= AUTOPLAY_UNLOCK_HINT_LEVEL;
+    return this.listenOwned && this.hintLevel >= AUTOPLAY_UNLOCK_HINT_LEVEL;
   }
 
   /** Buy the next hint level. Returns true when the purchase landed. */
