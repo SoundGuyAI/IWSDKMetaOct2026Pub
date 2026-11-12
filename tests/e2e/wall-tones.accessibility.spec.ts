@@ -24,10 +24,13 @@ test('subtitles are off by default, enabled phone info sits below pads with colo
   await expect(page.locator('#wall-tones-flat-subtitles')).toBeVisible();
   // The Listen-phase sequence strip (and its color names) needs the Listen
   // store item (owner rule 2026-11-11: no Listen item, no listen line).
+  // The "Hint:" title and the Your Turn boxes need the owned hint (owner
+  // ask 2026-11-12: titles hidden until bought), so buy Listen AND Hint L1.
   await page.evaluate(() => {
     const d = (window as any).__wallTonesDebug;
-    d.grantBars(30);
+    d.grantBars(60);
     d.buyListen();
+    d.buyHint();
   });
   await page.evaluate(() => (window as any).__wallTonesDebug.submitPad(0));
   await page.waitForFunction(() => (window as any).__wallTonesDebug.phase === 'input', undefined, { timeout: 90000 });
