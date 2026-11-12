@@ -16,15 +16,44 @@ const BEST_STREAK_KEY = 'wall-tones-best-streak';
 const PURCHASES_KEY = 'wall-tones-purchases';
 const PRESSES_KEY = 'wall-tones-presses';
 const TOP_SECRET_KEY = 'wall-tones-top-secret';
+const LISTEN_KEY = 'wall-tones-listen-owned';
+const AUTOPLAY_LEVEL_KEY = 'wall-tones-autoplay-level';
+const REPLAY_FREE_KEY = 'wall-tones-replays-free';
+const REPLAY_PAID_KEY = 'wall-tones-replays-paid';
 const SAVERS_KEY = 'wall-tones-savers';
 
-// Tunable store prices. The user's examples are 10/15/22 Bars for the first
-// three levels; each further level keeps growing at about 1.3x ("each next 5
-// costs more", tunable later). Open-ended by design: no level cap.
-export const HINT_BASE_COSTS: readonly number[] = [10, 15, 22];
-export const HINT_COST_GROWTH = 1.3;
+// Skill-tree store prices (owner-approved 2026-11-11 as starting balance for
+// testing, not final). Hint: 25/50/100 Bars then doubling. Open-ended by
+// design: no level cap.
+export const HINT_BASE_COSTS: readonly number[] = [25, 50, 100];
+export const HINT_COST_GROWTH = 2;
 /** Your Turn hint reveals this many pattern boxes per owned level. */
 export const HINT_BOXES_PER_LEVEL = 5;
+
+/** Listen (owner rule): without it there is no Listen-phase reveal row; with
+ * it the row shows during Listen playback but adds no Your Turn hint help.
+ * One-time purchase. */
+export const LISTEN_COST = 30;
+
+/** Autoplay (owner-approved test values): each level auto-plays the first
+ * level*5 notes of the pattern during Your Turn. Prices 12/30/65/130 Bars,
+ * then doubling. Unlocks once Hint reaches level 4 (owner gate 2026-11-11). */
+// Provisional test value (Oded 2026-11-12 11:49: "or maybe no. like 250. we'll
+// balance it later." - supersedes his 500 a minute earlier; balancing comes after
+// testing, so later levels keep the existing doubling for now).
+export const AUTOPLAY_BASE_COSTS: readonly number[] = [250];
+export const AUTOPLAY_COST_GROWTH = 2;
+export const AUTOPLAY_NOTES_PER_LEVEL = 5;
+export const AUTOPLAY_UNLOCK_HINT_LEVEL = 4;
+
+/** Replay (owner-approved 2026-11-11): a consumable re-hear of the current
+ * pattern. Paid Replays cost 20 Bars, no purchase limit for now. Free Replays
+ * are earned at every 5-note milestone beyond the current Hint coverage, are
+ * kept in inventory after failure, and at most 2 free ones are held; a free
+ * grant at the full cap is lost. Paid ones sit on top of the cap. */
+export const REPLAY_PRICE_BARS = 20;
+export const REPLAY_FREE_CAP = 2;
+export const REPLAY_EARN_STEP = 5;
 
 /** One-time Top Secret store item price (user-settled Nov 7): grants the
  * hidden Secret Revealed achievement and nothing else. */
@@ -147,6 +176,10 @@ BEST_STREAK_KEY,
 PURCHASES_KEY,
 PRESSES_KEY,
 TOP_SECRET_KEY,
+LISTEN_KEY,
+AUTOPLAY_LEVEL_KEY,
+REPLAY_FREE_KEY,
+REPLAY_PAID_KEY,
 SAVERS_KEY,
 CYPHER_PROGRESS_KEY,
 ]) {
@@ -163,12 +196,50 @@ export class WallTonesEconomy {
   private purchases = readNumber(PURCHASES_KEY);
   private presses = readNumber(PRESSES_KEY);
   private topSecretOwned = readNumber(TOP_SECRET_KEY) === 1;
+  private listenOwned = readNumber(LISTEN_KEY) === 1;
+  private autoplayLevel = readNumber(AUTOPLAY_LEVEL_KEY);
+  private replaysFree = readNumber(REPLAY_FREE_KEY);
+  private replaysPaid = readNumber(REPLAY_PAID_KEY);
   private savers = readNumber(SAVERS_KEY);
+  /** In-memory test Bars from the ?demoBars URL flag. Never persisted, never
+   * counted in lifetime totals, and always spent before real Bars so the
+   * saved balance stays untouched (owner-approved preview aid 2026-11-11). */
+  private demoBoost = 0;
   /** Latest unlocks since the last drain, for a visual panel toast. */
   private pendingToasts: AchievementDef[] = [];
 
   getBars(): number {
-    return this.bars;
+    return this.bars + this.demoBoost;
+  }
+
+  /** Test-only Bars currently granted by the ?demoBars flag (not saved). */
+  getDemoBoost(): number {
+    return this.demoBoost;
+  }
+
+  /** Preview/test aid: grant spendable Bars in memory only. */
+  applyDemoBoost(amount: number): void {
+    if (amount > 0) this.demoBoost += Math.floor(amount);
+  }
+
+  /** Deduct a purchase: demo boost first, then the persisted balance. */
+  private spend(cost: number): boolean {
+    if (this.getBars() < cost) return false;
+    let remaining = cost;
+    const fromBoost = Math.min(this.demoBoost, remaining);
+    this.demoBoost -= fromBoost;
+    remaining -= fromBoost;
+    if (remaining > 0) {
+      this.bars -= remaining;
+      writeNumber(BARS_KEY, this.bars);
+    }
+    return true;
+  }
+
+  private countPurchase(): void {
+    this.purchases += 1;
+    writeNumber(PURCHASES_KEY, this.purchases);
+    this.checkAchievements(0);
   }
 
   getBarsTotal(): number {
@@ -180,16 +251,15 @@ export class WallTonesEconomy {
     return this.savers;
   }
 
-  /** Buy one saver for `price` Bars. Never partial. */
+  /** Buy one saver for `price` Bars. Never partial. Uses spend() so
+   * ?demoBars test funds deduct before the persisted balance, matching
+   * every other store purchase and the Store/Game Over affordance that
+   * reads getBars(). */
   buySaver(price: number): boolean {
-    if (this.bars < price) return false;
-    this.bars -= price;
+    if (!this.spend(price)) return false;
     this.savers += 1;
-    writeNumber(BARS_KEY, this.bars);
     writeNumber(SAVERS_KEY, this.savers);
-    this.purchases += 1;
-    writeNumber(PURCHASES_KEY, this.purchases);
-    this.checkAchievements(0);
+    this.countPurchase();
     return true;
   }
 
@@ -238,9 +308,12 @@ export class WallTonesEconomy {
     return { value, level, next };
   }
 
-  /** Pattern boxes revealed during Your Turn at the owned hint level. */
+  /** Pattern boxes revealed during Your Turn at the owned hint level. Gated on
+   * Listen ownership (bug report 2026-11-12): legacy saves from the pre-Listen
+   * store carry hint levels onto this origin; without the gate they keep
+   * revealing hints. Non-destructive - the levels stay, they just do not act. */
   getHintRevealCount(): number {
-    return this.hintLevel * HINT_BOXES_PER_LEVEL;
+    return this.listenOwned ? this.hintLevel * HINT_BOXES_PER_LEVEL : 0;
   }
 
   /** Cost of buying hint level `level` (1-based). Open-ended progression. */
@@ -325,32 +398,135 @@ export class WallTonesEconomy {
     }
   }
 
+  /** Listen store item (owner gate: Listen unlocks Hint level 1). */
+  ownsListen(): boolean {
+    return this.listenOwned;
+  }
+
+  /** Buy the one-time Listen item. Returns true when the purchase landed. */
+  buyListen(): boolean {
+    if (this.listenOwned || !this.spend(LISTEN_COST)) return false;
+    this.listenOwned = true;
+    writeNumber(LISTEN_KEY, 1);
+    this.countPurchase();
+    return true;
+  }
+
+  /** Skill-tree gate: Hint level 1 requires owning Listen (owner 2026-11-11). */
+  hintUnlocked(): boolean {
+    return this.listenOwned;
+  }
+
+  /** Skill-tree gate: Autoplay unlocks at Hint level 4 (owner 2026-11-11).
+   * Listen ownership required too (bug report 2026-11-12): legacy saves could
+   * carry Hint L4+ without Listen and unlock Autoplay out of the box. */
+  autoplayUnlocked(): boolean {
+    return this.listenOwned && this.hintLevel >= AUTOPLAY_UNLOCK_HINT_LEVEL;
+  }
+
   /** Buy the next hint level. Returns true when the purchase landed. */
   buyNextHintLevel(): boolean {
+    if (!this.hintUnlocked()) return false;
     const cost = this.hintCost(this.hintLevel + 1);
-    if (this.bars < cost) return false;
-    this.bars -= cost;
+    if (!this.spend(cost)) return false;
     this.hintLevel += 1;
-    writeNumber(BARS_KEY, this.bars);
     writeNumber(HINT_LEVEL_KEY, this.hintLevel);
-    this.purchases += 1;
-    writeNumber(PURCHASES_KEY, this.purchases);
-    this.checkAchievements(0);
+    this.countPurchase();
     return true;
+  }
+
+  /** Owned Autoplay level (0 = not owned). */
+  getAutoplayLevel(): number {
+    return this.autoplayLevel;
+  }
+
+  /** Notes Autoplay plays for the player at the owned level. */
+  getAutoplayNoteCount(): number {
+    return this.autoplayLevel * AUTOPLAY_NOTES_PER_LEVEL;
+  }
+
+  /** Cost of buying Autoplay level `level` (1-based). Open-ended doubling. */
+  autoplayCost(level: number): number {
+    if (level <= AUTOPLAY_BASE_COSTS.length) return AUTOPLAY_BASE_COSTS[Math.max(level, 1) - 1]!;
+    let cost = AUTOPLAY_BASE_COSTS[AUTOPLAY_BASE_COSTS.length - 1]!;
+    for (let i = AUTOPLAY_BASE_COSTS.length; i < level; i++) {
+      cost = cost * AUTOPLAY_COST_GROWTH;
+    }
+    return cost;
+  }
+
+  /** Buy the next Autoplay level. Returns true when the purchase landed. */
+  buyNextAutoplayLevel(): boolean {
+    if (!this.autoplayUnlocked()) return false;
+    const cost = this.autoplayCost(this.autoplayLevel + 1);
+    if (!this.spend(cost)) return false;
+    this.autoplayLevel += 1;
+    writeNumber(AUTOPLAY_LEVEL_KEY, this.autoplayLevel);
+    this.countPurchase();
+    return true;
+  }
+
+  /** Free Replays held (cap REPLAY_FREE_CAP; paid ones sit on top). */
+  getReplaysFree(): number {
+    return this.replaysFree;
+  }
+
+  getReplaysPaid(): number {
+    return this.replaysPaid;
+  }
+
+  getReplaysTotal(): number {
+    return this.replaysFree + this.replaysPaid;
+  }
+
+  /** Buy a paid Replay (20 Bars, no purchase limit for now). */
+  buyReplay(): boolean {
+    if (!this.spend(REPLAY_PRICE_BARS)) return false;
+    this.replaysPaid += 1;
+    writeNumber(REPLAY_PAID_KEY, this.replaysPaid);
+    this.countPurchase();
+    return true;
+  }
+
+  /** Grant a free Replay; at the full free cap the grant is lost (owner
+   * rule) and this returns false. */
+  grantFreeReplay(): boolean {
+    if (this.replaysFree >= REPLAY_FREE_CAP) return false;
+    this.replaysFree += 1;
+    writeNumber(REPLAY_FREE_KEY, this.replaysFree);
+    return true;
+  }
+
+  /** True when completing a pattern of `length` notes hits an earn milestone:
+   * every 5 notes beyond the current Hint coverage (owner rule 2026-11-11). */
+  isReplayMilestone(length: number): boolean {
+    const beyond = length - this.getHintRevealCount();
+    return beyond >= REPLAY_EARN_STEP && beyond % REPLAY_EARN_STEP === 0;
+  }
+
+  /** Consume one Replay (free ones first). Returns false when none are held. */
+  useReplay(): boolean {
+    if (this.replaysFree > 0) {
+      this.replaysFree -= 1;
+      writeNumber(REPLAY_FREE_KEY, this.replaysFree);
+      return true;
+    }
+    if (this.replaysPaid > 0) {
+      this.replaysPaid -= 1;
+      writeNumber(REPLAY_PAID_KEY, this.replaysPaid);
+      return true;
+    }
+    return false;
   }
 
   /** Buy the one-time Top Secret item (user-settled Nov 7): 1000 Bars,
    * grants the hidden Secret Revealed achievement, no other reward. */
   buyTopSecret(): boolean {
-    if (this.topSecretOwned || this.bars < TOP_SECRET_COST) return false;
-    this.bars -= TOP_SECRET_COST;
+    if (this.topSecretOwned || !this.spend(TOP_SECRET_COST)) return false;
     this.topSecretOwned = true;
-    writeNumber(BARS_KEY, this.bars);
     writeNumber(TOP_SECRET_KEY, 1);
-    this.purchases += 1;
-    writeNumber(PURCHASES_KEY, this.purchases);
+    this.countPurchase();
     this.unlock('secret-1', 'Secret Revealed', 'A secret. It stays secret.');
-    this.checkAchievements(0);
     return true;
   }
 
