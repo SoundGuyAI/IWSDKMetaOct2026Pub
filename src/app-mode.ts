@@ -17,6 +17,7 @@ const RAY_TOGGLED_PANEL_IDS: ReadonlySet<string> = new Set([
   'main-menu-panel',
   'wall-tones-panel',
   'thumbs-lab-panel',
+  'thumbs-lab-entry-panel',
 ]);
 import { primeWallTonesAudioFromGesture } from './wall-tones/audio.js';
 import { resetWallTonesStats } from './wall-tones/economy.js';
@@ -183,6 +184,8 @@ export class AppModeSystem extends createSystem({}) {
     this.setNodeVisible('main-menu-panel', showMenu);
     this.setNodeVisible('wall-tones-panel', showWallTones);
     this.setNodeVisible('thumbs-lab-panel', showThumbsLab);
+    // Lab entry floats under the menu: visible exactly when the menu is.
+    this.setNodeVisible('thumbs-lab-entry-panel', showMenu);
 
     for (const nodeId of DEMO_NODE_IDS) {
       this.setNodeVisible(nodeId, showDemo);
@@ -242,14 +245,9 @@ export class AppModeSystem extends createSystem({}) {
     }
     const wallTonesButton = panel.getElementById('mode-walltones-button');
     const xrButton = panel.getElementById('xr-button');
-    const thumbsLabButton = panel.getElementById('thumbs-lab-button');
     wallTonesButton?.addEventListener('click', () => this.startWallTonesFlat());
     xrButton?.addEventListener('click', () => this.enterXrIntoWallTones());
-    thumbsLabButton?.addEventListener('click', () => {
-      primeWallTonesAudioFromGesture();
-      unlockSpeechFromGesture();
-      this.setMode('thumbslab');
-    });
+    this.bindThumbsLabEntry();
     this.bindThumbsLabBack();
     this.bindSettingsMenu(panel);
     if (wallTonesButton != null) {
@@ -258,10 +256,24 @@ export class AppModeSystem extends createSystem({}) {
     if (xrButton != null) {
       xrButton.name = 'Btn_EnterXrWallTones';
     }
+    return panel;
+  }
+
+  // The lab entry is its own compact panel under the main menu, NOT a button
+  // inside main-menu.uikitml: the desktop e2e specs click the menu buttons at
+  // calibrated pixel coordinates and the centre-anchored panel would shift
+  // them if another in-flow button were added.
+  private bindThumbsLabEntry(): void {
+    const panel = this.world.getSceneObject<UIKitMLAsset>('thumbs-lab-entry-panel');
+    const thumbsLabButton = panel?.getElementById('thumbs-lab-button');
+    thumbsLabButton?.addEventListener('click', () => {
+      primeWallTonesAudioFromGesture();
+      unlockSpeechFromGesture();
+      this.setMode('thumbslab');
+    });
     if (thumbsLabButton != null) {
       thumbsLabButton.name = 'Btn_ThumbsLab';
     }
-    return panel;
   }
 
   private bindThumbsLabBack(): void {
@@ -434,4 +446,4 @@ export class AppModeSystem extends createSystem({}) {
       display: mode === 'meditation' ? 'flex' : 'none',
     });
   }
-                 }
+}
