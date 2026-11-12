@@ -1,0 +1,36 @@
+<!--
+  Nod Yes/No lab menu entry (backlog item 52). A separate compact panel that
+  floats under the main menu instead of living inside main-menu.uikitml: the
+  desktop e2e specs click the three main-menu buttons at calibrated pixel
+  coordinates, and the menu panel is centre-anchored, so any extra in-flow
+  button shifts those targets and breaks them. Kept out of flow on purpose.
+-->
+<style>
+  .nod-lab-entry-root {
+    flex-direction: column;
+    width: 340px;
+  }
+
+  .nod-lab-entry-button {
+    justify-content: center;
+    height: 56px;
+    margin-left: 16px;
+    margin-right: 16px;
+    margin-top: 12px;
+    margin-bottom: 12px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+
+  .nod-lab-entry-label {
+    font-size: 22px;
+    font-weight: 700;
+    transform-translate-y: 1px;
+  }
+</style>
+<Panel id="nod-lab-entry-root" class="nod-lab-entry-root">
+  <Button id="nod-lab-button" class="nod-lab-entry-button">
+    <ButtonIcon><FlaskConical></FlaskConical></ButtonIcon>
+    <ButtonLabel id="nod-lab-entry-label" class="nod-lab-entry-label">Nod Yes/No Lab</ButtonLabel>
+  </Button>
+</Panel>
