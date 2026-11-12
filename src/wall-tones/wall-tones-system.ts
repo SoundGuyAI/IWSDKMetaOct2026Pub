@@ -148,7 +148,7 @@ import {
   WallTonesEconomy,
   nextOpenThreshold,
 } from './economy.js';
-import { storeTileSrc, type TileState as StoreTileState } from './store-icons.js';
+import { storeChipGlyphSrc, storeTileSrc, type TileState as StoreTileState } from './store-icons.js';
 import { SAVER_PRICE_BARS, saverRetryPlan, saverUnitsForStreak } from './consumable-values.js';
 import {
 getActiveWorldKind,
@@ -430,7 +430,7 @@ const panel = this.sequenceIconPendingPanel;
 if (panel) this.reconcileSequenceIcons(panel);
 };
 private accessibilityPanel: UIKitMLAsset | undefined;
-private accessibilityState: { show: boolean; flat: boolean; active: boolean; caption: string; phase: string; flow: string; status: string; names: boolean; sequence: number[]; reveal: number; shown: number } | undefined;
+private accessibilityState: { show: boolean; flat: boolean; active: boolean; caption: string; phase: string; flow: string; status: string; names: boolean; sequence: number[]; reveal: number; shown: number; listen: boolean } | undefined;
 private sequenceIconRow: UIKit.Container | null = null;
 /** Setup HUD is world-anchored; look-away past a threshold re-snaps it. */
 private panelWorldAnchored = false;
@@ -3926,11 +3926,20 @@ panel
 .getElementById<UIKit.Text>('wall-tones-best-streak')
 ?.setProperties({ text: String(this.game.bestStreak) });
 this.renderSequenceIcons(panel);
+// Owner ask 2026-11-12 11:40: the Listen/Hint titles stay hidden until the
+// matching store item is owned; a non-breaking space reserves the line so
+// the panel never shrinks.
 panel
 .getElementById<UIKit.Text>('wall-tones-status')
 ?.setProperties({
 text: this.game.phase === 'input'
-? (performance.now() < this.idleNudgeUntil ? 'Still there?' : 'Hint:')
+? (performance.now() < this.idleNudgeUntil
+? 'Still there?'
+: this.economy.getHintRevealCount() > 0
+? 'Hint:'
+: '\u00a0')
+: this.statusText === 'Listen:' && !this.economy.ownsListen()
+? '\u00a0'
 : this.statusText || 'Ready',
 });
 panel
@@ -4039,6 +4048,8 @@ name: string;
 badge: string;
 state: StoreTileState;
 price: string;
+/** True when the price line leads with the Bars icon (owner ask 2026-11-12). */
+icon: boolean;
 }
 const hintLevel = eco.getHintLevel();
 const autoplayLevel = eco.getAutoplayLevel();
@@ -4055,7 +4066,8 @@ id: 'listen',
 name: 'Listen',
 badge: eco.ownsListen() ? '\u2713' : '',
 state: eco.ownsListen() ? 'on' : 'off',
-price: eco.ownsListen() ? 'Owned' : `${LISTEN_COST} Bars`,
+price: eco.ownsListen() ? 'Owned' : `${LISTEN_COST}`,
+icon: !eco.ownsListen(),
 },
 {
 id: 'hint',
@@ -4063,8 +4075,9 @@ name: 'Hint',
 badge: hintLevel > 0 ? String(hintLevel) : '',
 state: hintLevel > 0 ? 'on' : 'off',
 price: eco.hintUnlocked()
-? `L${hintLevel + 1}: ${eco.hintCost(hintLevel + 1)} Bars`
+? `L${hintLevel + 1} - ${eco.hintCost(hintLevel + 1)}`
 : 'Locked',
+icon: eco.hintUnlocked(),
 },
 {
 id: 'autoplay',
@@ -4072,15 +4085,17 @@ name: 'Autoplay',
 badge: autoplayLevel > 0 ? String(autoplayLevel) : '',
 state: autoplayLevel > 0 ? 'on' : 'off',
 price: eco.autoplayUnlocked()
-? `L${autoplayLevel + 1}: ${eco.autoplayCost(autoplayLevel + 1)} Bars`
+? `L${autoplayLevel + 1} - ${eco.autoplayCost(autoplayLevel + 1)}`
 : 'Locked',
+icon: eco.autoplayUnlocked(),
 },
 {
 id: 'replay',
 name: 'Replay',
 badge: replaysTotal > 0 ? String(replaysTotal) : '',
 state: replaysTotal > 0 ? 'on' : 'off',
-price: `${REPLAY_PRICE_BARS} Bars`,
+price: `${REPLAY_PRICE_BARS}`,
+icon: true,
 },
 // Streak saver: no unlock prerequisites (owner rule 2026-11-11), stock is
 // the shared PR #63 inventory the Game Over popup spends from.
@@ -4089,22 +4104,24 @@ id: 'saver',
 name: 'Saver',
 badge: savers > 0 ? String(savers) : '',
 state: savers > 0 ? 'on' : 'off',
-price: `${SAVER_PRICE_BARS} Bars`,
+price: `${SAVER_PRICE_BARS}`,
+icon: true,
 },
 {
 id: 'secret',
 name: 'Secret',
 badge: eco.ownsTopSecret() ? '\u2713' : '?',
 state: eco.ownsTopSecret() ? 'on' : 'off',
-price: eco.ownsTopSecret() ? 'Owned' : `${TOP_SECRET_COST} Bars`,
+price: eco.ownsTopSecret() ? 'Owned' : `${TOP_SECRET_COST}`,
+icon: !eco.ownsTopSecret(),
 },
 // Room for the modifiers the owner listed (2026-11-11): 5th/6th pads, the
 // story hack, double-score multiplier and the speed modifier. Their
 // phrasing is just "Locked" (owner ask 2026-11-12).
-{ id: 'multiplier', name: 'x2', badge: '?', state: 'off', price: 'Locked' },
-{ id: 'speed', name: 'Speed', badge: '?', state: 'off', price: 'Locked' },
-{ id: 'pads56', name: 'Pads 5-6', badge: '?', state: 'off', price: 'Locked' },
-{ id: 'narrator', name: 'Hack', badge: '?', state: 'off', price: 'Locked' },
+{ id: 'multiplier', name: 'x2', badge: '?', state: 'off', price: 'Locked', icon: false },
+{ id: 'speed', name: 'Speed', badge: '?', state: 'off', price: 'Locked', icon: false },
+{ id: 'pads56', name: 'Pads 5-6', badge: '?', state: 'off', price: 'Locked', icon: false },
+{ id: 'narrator', name: 'Hack', badge: '?', state: 'off', price: 'Locked', icon: false },
 ];
 // Skill-tree layout (owner-approved concept 2026-11-11; the lost mockup's
 // caption: "each category has its own levels, with level gates on the
@@ -4143,6 +4160,26 @@ color: t.state === 'off' ? 0x9aa4b6 : 0xffffff,
 text: t.name,
 }),
 );
+// Price line (owner ask 2026-11-12): the Bars icon in front of the number
+// instead of the word "Bars"; plain text only for Owned/Locked.
+if (t.icon) {
+const priceRow = new UIKit.Container({
+flexDirection: 'row',
+alignItems: 'center',
+justifyContent: 'center',
+gap: 3,
+width: TILE_S,
+});
+priceRow.add(
+new UIKit.Image({
+src: `${import.meta.env.BASE_URL}ui/bars-icon.png`,
+width: 12,
+height: 12,
+}),
+);
+priceRow.add(new UIKit.Text({ fontSize: 11, color: 0x9aa4b6, text: t.price }));
+tile.add(priceRow);
+} else {
 tile.add(
 new UIKit.Text({
 fontSize: 11,
@@ -4152,34 +4189,75 @@ textAlign: 'center',
 text: t.price,
 }),
 );
+}
 tile.addEventListener('click', () => this.selectStoreTile(t.id));
 return tile;
 };
-// Connection row: a vertical line segment centered over the chain column,
-// carrying the gate label; green once the gate is satisfied.
-const connection = (label: string, open: boolean): UIKit.Container => {
-const row = new UIKit.Container({
-flexDirection: 'row',
+// Connection column (owner-approved mockup variant A, 2026-11-12): spine,
+// a gate chip naming the requirement (padlock + progress badge while locked,
+// check once open), then a short spine and arrow into the gated tile.
+const connection = (label: string, open: boolean, frac: string | null): UIKit.Container => {
+const col = new UIKit.Container({
+flexDirection: 'column',
 alignItems: 'center',
-justifyContent: 'center',
-gap: 8,
 width: TREE_W,
 });
-row.add(
+col.add(
 new UIKit.Container({
-width: 2,
-height: 16,
+width: 3,
+height: 10,
 backgroundColor: open ? LINE_OK : LINE_COLOR,
 }),
 );
-row.add(
+const chip = new UIKit.Container({
+flexDirection: 'row',
+alignItems: 'center',
+gap: 6,
+backgroundColor: open ? 0x1e3a2c : 0x3a4150,
+borderWidth: 1,
+borderColor: open ? LINE_OK : 0x6b7a90,
+borderRadius: 12,
+padding: 5,
+});
+chip.add(
+new UIKit.Image({
+src: storeChipGlyphSrc(open ? 'check' : 'lock', open ? '#4cc38a' : '#9aa4b6'),
+width: open ? 12 : 11,
+height: open ? 12 : 13,
+}),
+);
+chip.add(
 new UIKit.Text({
 fontSize: 12,
-color: open ? LINE_OK : LINE_COLOR,
+color: open ? LINE_OK : 0xc6cedb,
 text: label,
 }),
 );
-return row;
+if (frac != null) {
+const badge = new UIKit.Container({
+backgroundColor: 0x24262b,
+borderRadius: 8,
+padding: 2,
+});
+badge.add(new UIKit.Text({ fontSize: 11, color: 0x9aa4b6, text: frac }));
+chip.add(badge);
+}
+col.add(chip);
+col.add(
+new UIKit.Container({
+width: 3,
+height: 6,
+backgroundColor: open ? LINE_OK : LINE_COLOR,
+}),
+);
+col.add(
+new UIKit.Image({
+src: storeChipGlyphSrc('arrow', open ? '#4cc38a' : '#9aa4b6'),
+width: 10,
+height: 6,
+}),
+);
+return col;
 };
 // Level track: one filled pip per owned level (category colour), then the
 // next level outlined (the one the Buy button sells). Uncapped by design;
@@ -4335,12 +4413,14 @@ const POPUP_H = 44 + 18 * bodyLines + (buyText != null ? 40 : 0);
 // Must match the store-tree-list viewport height in the uikitml.
 const VIEW_H = 296;
 const ROW_TILE_H = TILE_H;
-const ROW_CONN_H = 16;
+// spine 10 + chip ~24 + short spine 6 + arrow 6.
+const ROW_CONN_H = 46;
 const ROW_CHAIN_H = TILE_H + 4 + 16;
 const ROW_GAP = 8;
 // Top row: the no-prerequisite consumables (owner layout 2026-11-12).
 const topRow = new UIKit.Container({
 flexDirection: 'row',
+justifyContent: 'center',
 gap: 8,
 width: TREE_W,
 });
@@ -4363,15 +4443,16 @@ bottomRow.add(makeTile(byId.get(id)!));
 const rows: { ids: string[]; node: UIKit.Container | UIKit.Text; h: number }[] = [
 { ids: ['replay', 'saver'], node: topRow, h: ROW_TILE_H },
 { ids: ['listen'], node: soloRow(byId.get('listen')!), h: ROW_TILE_H },
-{ ids: [], node: connection('unlocks Hint L1', eco.hintUnlocked()), h: ROW_CONN_H },
+{ ids: [], node: connection('unlocks Hint L1', eco.hintUnlocked(), null), h: ROW_CONN_H },
 { ids: ['hint'], node: chainRow(byId.get('hint')!, hintLevel, 0xf2c14e), h: ROW_CHAIN_H },
 {
 ids: [],
 node: connection(
-eco.autoplayUnlocked()
-? 'Autoplay unlocked'
-: `reach Hint L${AUTOPLAY_UNLOCK_HINT_LEVEL} to unlock Autoplay (now L${hintLevel})`,
+eco.autoplayUnlocked() ? 'Autoplay unlocked' : `Reach Hint Lv ${AUTOPLAY_UNLOCK_HINT_LEVEL}`,
 eco.autoplayUnlocked(),
+eco.autoplayUnlocked()
+? null
+: `${Math.min(hintLevel, AUTOPLAY_UNLOCK_HINT_LEVEL)}/${AUTOPLAY_UNLOCK_HINT_LEVEL}`,
 ),
 h: ROW_CONN_H,
 },
@@ -5094,12 +5175,12 @@ previous.show !== show || previous.flat !== flat ||
 previous.active !== this.experienceActive || previous.caption !== caption ||
 previous.phase !== this.game.phase || previous.flow !== this.flowPhase || previous.status !== this.statusText ||
 previous.names !== names || previous.reveal !== this.economy.getHintRevealCount() ||
-previous.shown !== this.playbackShownCount || sequenceChanged;
+previous.shown !== this.playbackShownCount || previous.listen !== this.economy.ownsListen() || sequenceChanged;
 if (accessibilityChanged) {
 this.accessibilityPanel = panel;
 this.accessibilityState = { show, flat, active: this.experienceActive, caption,
 phase: this.game.phase, flow: this.flowPhase, status: this.statusText, names, sequence: [...this.game.sequence],
-reveal: this.economy.getHintRevealCount(), shown: this.playbackShownCount };
+reveal: this.economy.getHintRevealCount(), shown: this.playbackShownCount, listen: this.economy.ownsListen() };
 if (panel && this.experienceActive) this.renderSequenceIcons(panel);
 // Bug fix (user report): the info row holds the Your Turn hint boxes; it
 // used to be hidden unless subtitles were on AND the session was immersive,
@@ -5189,10 +5270,14 @@ const captionYourTurn = this.game.phase === 'input' && !captionListening;
 const seqVisible = this.experienceActive &&
 ((captionListening && this.economy.ownsListen()) ||
 (this.game.phase === 'input' && captionReveal > 0));
+// Same owner ask as the panel status: no Listen/Hint title before purchase;
+// the blank line keeps the strip height unchanged.
 const info = !this.experienceActive
 ? ''
 : this.game.phase === 'input'
-? 'Hint:'
+? (captionReveal > 0 ? 'Hint:' : '\u00a0')
+: this.statusText === 'Listen:' && !this.economy.ownsListen()
+? '\u00a0'
 : this.statusText;
 if (!accessibilityChanged && this.flatCaptions.childElementCount > 0) return;
 this.flatCaptions.replaceChildren();
