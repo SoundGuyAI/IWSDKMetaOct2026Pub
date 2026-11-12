@@ -86,6 +86,30 @@
     margin-bottom: 24px;
   }
 
+  .control-row {
+    flex-direction: row;
+    justify-content: center;
+    gap: 4px;
+    margin-left: 12px;
+    margin-right: 12px;
+  }
+
+  .control-button {
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    flex-grow: 1;
+    gap: 2px;
+    min-width: 0px;
+    height: 52px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+    padding-left: 2px;
+    padding-right: 2px;
+    margin-left: 0px;
+    margin-right: 0px;
+  }
+
   .popup-overlay {
     flex-direction: column;
     align-items: center;
@@ -202,10 +226,31 @@
     <ButtonIcon><Search></Search></ButtonIcon>
     <ButtonLabel>Rescan room</ButtonLabel>
   </Button>
-  <Button id="repeat-pattern-button" class="button" style="display: none">
-    <ButtonIcon><RefreshCw></RefreshCw></ButtonIcon>
-    <ButtonLabel id="repeat-pattern-label">Repeat pattern</ButtonLabel>
-  </Button>
+  <!-- Seeded initial text: an empty element compiles no Text child and the
+       setter silently no-ops (same pattern as the spoken caption). -->
+  <div id="index-indicator" class="status" style="display: none">...</div>
+  <div id="control-row" class="control-row" style="display: none">
+    <Button id="repeat-pattern-button" class="button control-button" size="sm">
+      <ButtonIcon><RefreshCw></RefreshCw></ButtonIcon>
+      <ButtonLabel id="repeat-pattern-label">Repeat</ButtonLabel>
+    </Button>
+    <Button id="control-play-button" class="button control-button" size="sm">
+      <ButtonIcon><Play></Play></ButtonIcon>
+      <ButtonLabel>Play</ButtonLabel>
+    </Button>
+    <Button id="control-autoplay-button" class="button control-button" size="sm">
+      <ButtonIcon><FastForward></FastForward></ButtonIcon>
+      <ButtonLabel>Auto</ButtonLabel>
+    </Button>
+    <Button id="control-speed-button" class="button control-button" size="sm">
+      <ButtonIcon><Gauge></Gauge></ButtonIcon>
+      <ButtonLabel>Speed</ButtonLabel>
+    </Button>
+    <Button id="control-multiplier-button" class="button control-button" size="sm">
+      <ButtonIcon><Zap></Zap></ButtonIcon>
+      <ButtonLabel>Multi</ButtonLabel>
+    </Button>
+  </div>
   <Button id="skip-voice-button" class="button" style="display: none">
     <ButtonIcon><SkipForward></SkipForward></ButtonIcon>
     <ButtonLabel>Skip voice</ButtonLabel>
