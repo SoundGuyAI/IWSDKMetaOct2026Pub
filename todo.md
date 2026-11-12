@@ -104,3 +104,11 @@ The merge-ready procedure is an enduring rule for every merge, not work in this 
 3. [ ] Implement hidden story achievements, including drone defeat, only when real story encounter completion events exist; current PR records design and checks, not runtime completion.
 4. [ ] After Cypher gameplay, item 52 separate yes/no feasibility PR also explores thumbs-up/down, alongside nod/headshake and voice.
 5. [ ] Oded rereads the current draft; no voice generation, gameplay deployment or merge is approved by this revision.
+
+## Backlog #58 menu / XR / scan loss - in progress 2026-11-12
+- [x] Keep live world on Back to menu (`returnToMenuInPlace`); do not `switchBackToHubMenu`/`destroyActiveWorld`.
+- [x] Strengthen choose-mode rescan capture/look-around recovery.
+- [x] Unit policy test `tests/unit/back-to-menu-world.test.mjs`.
+- [x] Full local `npm run test:e2e` green before PR push (51 passed; pointer first-press retry hardened).
+- [ ] Headset verification called out separately (not claimed by desktop suite).
+
