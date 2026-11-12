@@ -16,9 +16,6 @@ test('skill tree wiring: store popup ids, glyphs, gates and repeat label exist',
   for (const id of [
     'id="store-heading"',
     'id="store-tree-list"',
-    'id="store-detail-title"',
-    'id="store-detail-body"',
-    'id="store-buy-button"',
     'id="store-detail-status"',
     'id="repeat-pattern-label"',
   ]) {
@@ -36,6 +33,9 @@ test('skill tree wiring: store popup ids, glyphs, gates and repeat label exist',
     'replaysFree',
     'isReplayMilestone',
     'useReplay',
+    'ui/bars-icon.png',
+    "name: 'Hack'",
+    "bodyText = 'Locked.'",
   ]) {
     assert.ok(sys.includes(snippet), `system missing ${snippet}`);
   }
