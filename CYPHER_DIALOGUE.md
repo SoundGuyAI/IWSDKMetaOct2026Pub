@@ -1,3 +1,5 @@
+> Historical planning document preserved by PR #64. This describes the earlier documentation stage. Later PR #70 work and `src/wall-tones/cypher-script.ts` determine implemented Act 1 behavior; the v0.1 inspiration backup remains unchanged. Statements below about unimplemented voices, gates, saving, review or merge approval are historical, not current task authority.
+
 # Cypher: first contact
 
 Wall Tones · Current script draft v0.2 · 11 November 2026
