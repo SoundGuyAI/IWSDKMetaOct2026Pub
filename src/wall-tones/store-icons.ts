@@ -204,3 +204,59 @@ export function storeTileSrc(id: string, state: TileState, badge: string): strin
   cache.set(key, url);
   return url;
 }
+
+/**
+ * Small gate-chip glyphs for the store skill-tree connections (owner-approved
+ * mockup variant A, 2026-11-12): a padlock while the gate is closed, a check
+ * once it opens, and the downward arrow under the chip. Canvas-drawn like the
+ * tiles - text glyphs render as boxes in some UIKit fonts.
+ */
+export type ChipGlyph = 'lock' | 'check' | 'arrow';
+
+export function storeChipGlyphSrc(kind: ChipGlyph, color: string): string {
+  const key = `store-chip:${kind}:${color}`;
+  const hit = cache.get(key);
+  if (hit !== undefined) return hit;
+  const w = kind === 'arrow' ? 10 : 12;
+  const h = kind === 'lock' ? 14 : kind === 'arrow' ? 6 : 12;
+  const c = document.createElement('canvas');
+  c.width = w * ART_PX;
+  c.height = h * ART_PX;
+  const ctx = c.getContext('2d');
+  if (ctx == null) return '';
+  ctx.scale(ART_PX, ART_PX);
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 1.6;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  if (kind === 'lock') {
+    ctx.beginPath();
+    ctx.roundRect(1, 6, 10, 7, 1.5);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(3, 6);
+    ctx.lineTo(3, 4.5);
+    ctx.arc(6, 4.5, 3, Math.PI, 0);
+    ctx.lineTo(9, 6);
+    ctx.stroke();
+  } else if (kind === 'check') {
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(1.5, 6.5);
+    ctx.lineTo(4.5, 10);
+    ctx.lineTo(10.5, 2);
+    ctx.stroke();
+  } else {
+    // Downward triangle.
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(10, 0);
+    ctx.lineTo(5, 6);
+    ctx.closePath();
+    ctx.fill();
+  }
+  const url = c.toDataURL('image/png');
+  cache.set(key, url);
+  return url;
+}
