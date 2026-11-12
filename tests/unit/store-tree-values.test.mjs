@@ -74,12 +74,12 @@ function ecoWith(bars) {
   return eco;
 }
 
-test('approved test prices: Listen 30, Hint 25/50/100 then doubling, Autoplay 12/30/65/130 then doubling, Replay 20', () => {
+test('approved test prices: Listen 30, Hint 25/50/100 then doubling, Autoplay 250 then doubling (provisional, Oded 2026-11-12), Replay 20', () => {
   assert.equal(LISTEN_COST, 30);
   assert.equal(REPLAY_PRICE_BARS, 20);
   const eco = ecoWith(0);
   assert.deepEqual([1, 2, 3, 4, 5].map((l) => eco.hintCost(l)), [25, 50, 100, 200, 400]);
-  assert.deepEqual([1, 2, 3, 4, 5].map((l) => eco.autoplayCost(l)), [12, 30, 65, 130, 260]);
+  assert.deepEqual([1, 2, 3, 4, 5].map((l) => eco.autoplayCost(l)), [250, 500, 1000, 2000, 4000]);
 });
 
 test('gates: Hint L1 needs Listen, Autoplay needs Hint L4 (owner 2026-11-11)', () => {
@@ -101,8 +101,37 @@ test('gates: Hint L1 needs Listen, Autoplay needs Hint L4 (owner 2026-11-11)', (
   assert.equal(eco.buyNextAutoplayLevel(), true);
   assert.equal(eco.getAutoplayLevel(), 1);
   assert.equal(eco.getAutoplayNoteCount(), 5);
-  // 1000 - 30 - 25 - 50 - 100 - 200 - 12 = 583
-  assert.equal(eco.getBars(), 583);
+  // 1000 - 30 - 25 - 50 - 100 - 200 - 250 = 345
+  assert.equal(eco.getBars(), 345);
+});
+
+test('legacy saves: hint levels without Listen reveal nothing and unlock no Autoplay (bug report 2026-11-12)', () => {
+  // Pre-Listen stores on this origin wrote hint levels with no Listen
+  // requirement; those saves must not act until Listen is owned, and the
+  // bought levels themselves stay untouched (no clamping, no reset).
+  const store = new Map([['wall-tones-hint-level', '4']]);
+  const shim = {
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => void store.set(k, String(v)),
+    removeItem: (k) => void store.delete(k),
+  };
+  const prev = globalThis.localStorage;
+  globalThis.localStorage = shim;
+  try {
+    const eco = new WallTonesEconomy();
+    assert.equal(eco.getHintLevel(), 4, 'legacy levels load untouched');
+    assert.equal(eco.ownsListen(), false);
+    assert.equal(eco.getHintRevealCount(), 0, 'no reveal without Listen');
+    assert.equal(eco.autoplayUnlocked(), false, 'no Autoplay without Listen');
+    eco.debugGrant(30);
+    assert.equal(eco.buyListen(), true);
+    assert.equal(eco.getHintRevealCount(), 20, 'owned levels act again');
+    assert.equal(eco.autoplayUnlocked(), true);
+    assert.equal(eco.getHintLevel(), 4, 'levels never clamped');
+  } finally {
+    if (prev === undefined) delete globalThis.localStorage;
+    else globalThis.localStorage = prev;
+  }
 });
 
 test('Replay inventory: 2 free cap, paid on top, grant at cap lost, free spent first', () => {
