@@ -83,5 +83,6 @@ export class CypherProgress {
   }
   /** Explicit story reset only. Starting a run or leaving the game never calls it. */
   reset(): void { this.next = 0; this.active = undefined; this.save(); }
+  get finished(): boolean { return this.next >= CYPHER_WINDOWS.length && !this.active; }
   get completedWindows(): number { return this.next; }
 }
