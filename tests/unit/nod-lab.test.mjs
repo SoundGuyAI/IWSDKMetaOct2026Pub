@@ -178,13 +178,23 @@ test('wiring: menu button, mode, panel asset, scene nodes and registration', () 
   const arScene = readFileSync(new URL('../../public/scenes/wall-tones-ar.iwsdk.scene.json', import.meta.url), 'utf8');
   const host = readFileSync(new URL('../../src/wall-tones/world-host.ts', import.meta.url), 'utf8');
   const panel = readFileSync(new URL('../../public/ui/nod-lab.uikitml', import.meta.url), 'utf8');
-  assert.ok(menu.includes('id="nod-lab-button"'));
+  const entry = readFileSync(new URL('../../public/ui/nod-lab-entry.uikitml', import.meta.url), 'utf8');
+  // The lab entry is a separate compact panel floating under the menu, NOT a
+  // button inside main-menu.uikitml: the desktop e2e specs click the three
+  // menu buttons at calibrated pixel coordinates and an extra in-flow button
+  // on the centre-anchored panel shifts those targets (broke CI twice).
+  assert.ok(!menu.includes('nod-lab-button'), 'menu stays free of lab buttons');
+  assert.ok(entry.includes('id="nod-lab-button"'));
   assert.ok(appMode.includes("'nodlab'"));
   assert.ok(appMode.includes("setNodeVisible('nod-lab-panel'"));
+  assert.ok(appMode.includes("setNodeVisible('nod-lab-entry-panel'"));
   assert.ok(appMode.includes("getElementById('nod-lab-back-button')"));
   assert.ok(assets.includes("'nod-lab-panel': uikitml('nod-lab.uikitml'"));
+  assert.ok(assets.includes("'nod-lab-entry-panel': uikitml('nod-lab-entry.uikitml'"));
   assert.ok(mainScene.includes('"id": "nod-lab-panel"'));
+  assert.ok(mainScene.includes('"id": "nod-lab-entry-panel"'));
   assert.ok(arScene.includes('"id": "nod-lab-panel"'));
+  assert.ok(arScene.includes('"id": "nod-lab-entry-panel"'));
   assert.ok(host.includes('NodLabSystem'));
   for (const id of ['nod-lab-status', 'nod-lab-line', 'nod-lab-telemetry', 'nod-lab-voice',
     'nod-lab-start-button', 'nod-lab-yes-button', 'nod-lab-no-button',
