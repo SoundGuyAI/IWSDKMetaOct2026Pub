@@ -4642,3 +4642,53 @@ const width = phone ? window.innerWidth - 24 : Math.min(window.innerWidth - 24, 
 this.flatCaptions.style.fontSize = phone ? '13px' : '16px';
 this.flatCaptions.style.lineHeight = phone ? '1.25' : '1.4';
 this.flatCaptions.style.width = `${width}px`;
+this.flatCaptions.style.left = `${Math.max(width / 2 + 12, Math.min(window.innerWidth - width / 2 - 12, (minX + maxX) / 2))}px`;
+this.flatCaptions.style.top = `${bottom + 14}px`;
+this.flatCaptionsRectDirty = true;
+}
+// Backlog 12a applies here too (codex P2): during Your Turn the subtitle
+// sequence only reveals the owned hint prefix; no hint, no sequence.
+const captionListening = this.statusText === 'Listen:';
+const captionReveal = this.economy.getHintRevealCount();
+const captionYourTurn = this.game.phase === 'input' && !captionListening;
+const seqVisible = this.experienceActive &&
+(captionListening || (this.game.phase === 'input' && captionReveal > 0));
+const info = !this.experienceActive
+? ''
+: this.game.phase === 'input'
+? 'Hint:'
+: this.statusText;
+if (!accessibilityChanged && this.flatCaptions.childElementCount > 0) return;
+this.flatCaptions.replaceChildren();
+const line = document.createElement('div');
+Object.assign(line.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexWrap: 'wrap' });
+const label = document.createElement('span'); label.textContent = info; line.append(label);
+if (seqVisible) for (let i = 0; i < this.game.sequence.length; i++) {
+if (captionListening && i >= this.playbackShownCount) break;
+const unknown = captionYourTurn && i >= captionReveal;
+if (unknown && i - captionReveal >= 5) break; // cap the grey "?" tail at 5
+const id = this.game.sequence[i]!;
+const square = document.createElement('span');
+Object.assign(square.style, { width: '16px', height: '16px', borderRadius: '2px', background: unknown ? '#8a8f98' : `#${WALL_TONE_PADS[id].color.toString(16).padStart(6, '0')}`, display: 'inline-block', flexShrink: '0' });
+if (unknown) {
+square.textContent = '?';
+square.setAttribute('data-unknown', '1');
+square.setAttribute('aria-label', 'Unknown note');
+Object.assign(square.style, { color: '#fff', fontSize: '11px', lineHeight: '16px', textAlign: 'center' });
+} else {
+square.setAttribute('aria-label', WALL_TONE_PADS[id].name);
+}
+line.append(square);
+if (!unknown && colorNamesEnabled()) { const word = document.createElement('span'); word.textContent = WALL_TONE_PADS[id].name; line.append(word); }
+}
+this.flatCaptions.append(line);
+if (caption) { const text = document.createElement('div'); text.textContent = caption; text.style.marginTop = '5px'; this.flatCaptions.append(text); }
+this.flatCaptionsRectDirty = true;
+}
+
+private wait(seconds: number): Promise<void> {
+return new Promise((resolve) => {
+window.setTimeout(resolve, seconds * 1000);
+});
+}
+  }
