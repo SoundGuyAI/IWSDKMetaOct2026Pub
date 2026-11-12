@@ -4341,7 +4341,7 @@ bodyText = 'Owned. The pattern boxes show during Listen playback.';
 } else {
 bodyText =
 'Shows the pattern boxes one by one during Listen playback. Without it the row stays hidden. Adds no Your Turn hints.';
-buyText = `Listen - ${LISTEN_COST} Bars`;
+buyText = `Listen - ${LISTEN_COST}`;
 cost = LISTEN_COST;
 }
 break;
@@ -4354,7 +4354,7 @@ bodyText = !eco.hintUnlocked()
 : `First ${eco.getHintRevealCount()} colors shown during Your Turn. Next level adds 5.`;
 if (eco.hintUnlocked()) {
 cost = eco.hintCost(hintLevel + 1);
-buyText = `Hint L${hintLevel + 1} - ${cost} Bars`;
+buyText = `Hint L${hintLevel + 1} - ${cost}`;
 }
 break;
 case 'autoplay':
@@ -4366,7 +4366,7 @@ bodyText = !eco.autoplayUnlocked()
 : `Plays the first ${eco.getAutoplayNoteCount()} notes of each pattern for you. Next level adds 5.`;
 if (eco.autoplayUnlocked()) {
 cost = eco.autoplayCost(autoplayLevel + 1);
-buyText = `Autoplay L${autoplayLevel + 1} - ${cost} Bars`;
+buyText = `Autoplay L${autoplayLevel + 1} - ${cost}`;
 }
 break;
 case 'replay':
@@ -4374,14 +4374,14 @@ titleText = 'Replay';
 bodyText =
 `Re-hear the pattern (the Repeat button spends one). Held: ${eco.getReplaysFree()} free + ${eco.getReplaysPaid()} paid. ` +
 `Earn a free one per 5 notes past Hint coverage (cap ${REPLAY_FREE_CAP}).`;
-buyText = `Replay - ${REPLAY_PRICE_BARS} Bars`;
+buyText = `Replay - ${REPLAY_PRICE_BARS}`;
 cost = REPLAY_PRICE_BARS;
 break;
 case 'saver':
 titleText = 'Streak saver';
 bodyText =
 'Retry the pattern when you miss (Game Over popup). Costs 1 saver per 10-streak stretch, doubling after. Held: ' + eco.getSavers() + '.';
-buyText = 'Saver - ' + SAVER_PRICE_BARS + ' Bars';
+buyText = 'Saver - ' + SAVER_PRICE_BARS;
 cost = SAVER_PRICE_BARS;
 break;
 case 'secret':
@@ -4390,7 +4390,7 @@ if (eco.ownsTopSecret()) {
 bodyText = 'Secret Revealed.';
 } else {
 bodyText = 'A secret. It stays secret.';
-buyText = `Top Secret - ${TOP_SECRET_COST} Bars`;
+buyText = `Top Secret - ${TOP_SECRET_COST}`;
 cost = TOP_SECRET_COST;
 }
 break;
