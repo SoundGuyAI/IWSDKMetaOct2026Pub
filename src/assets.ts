@@ -58,6 +58,7 @@ export default defineAssets({
   },
   'main-menu-panel': uikitml('main-menu.uikitml', 'Main Menu'),
   'nod-lab-panel': uikitml('nod-lab.uikitml', 'Nod Lab Panel'),
+  'nod-lab-entry-panel': uikitml('nod-lab-entry.uikitml', 'Nod Lab Entry'),
   'welcome-panel': uikitml('welcome.uikitml', 'Welcome Panel'),
   'gaze-debug-panel': uikitml('gaze-debug.uikitml', 'Gaze Debug Panel'),
   'wall-tones-panel': uikitml(
