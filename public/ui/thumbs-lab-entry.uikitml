@@ -1,0 +1,36 @@
+<!--
+  Thumbs Yes/No lab menu entry (backlog item 52). A separate compact panel that
+  floats under the main menu instead of living inside main-menu.uikitml: the
+  desktop e2e specs click the three main-menu buttons at calibrated pixel
+  coordinates, and the menu panel is centre-anchored, so any extra in-flow
+  button shifts those targets and breaks them. Kept out of flow on purpose.
+-->
+<style>
+  .thumbs-lab-entry-root {
+    flex-direction: column;
+    width: 340px;
+  }
+
+  .thumbs-lab-entry-button {
+    justify-content: center;
+    height: 56px;
+    margin-left: 16px;
+    margin-right: 16px;
+    margin-top: 12px;
+    margin-bottom: 12px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+
+  .thumbs-lab-entry-label {
+    font-size: 22px;
+    font-weight: 700;
+    transform-translate-y: 1px;
+  }
+</style>
+<Panel id="thumbs-lab-entry-root" class="thumbs-lab-entry-root">
+  <Button id="thumbs-lab-button" class="thumbs-lab-entry-button">
+    <ButtonIcon><FlaskConical></FlaskConical></ButtonIcon>
+    <ButtonLabel id="thumbs-lab-entry-label" class="thumbs-lab-entry-label">Thumbs Yes/No Lab</ButtonLabel>
+  </Button>
+</Panel>
