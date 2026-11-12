@@ -723,9 +723,6 @@ panel
 ?.addEventListener('click', () => this.onGameOverNewRun());
 
 panel
-.getElementById('store-buy-button')
-?.addEventListener('click', () => this.onBuySelected());
-panel
 .getElementById('skip-voice-button')
 ?.addEventListener('click', () => this.onSkipVoice());
 this.syncSkipVoiceButton();
@@ -1688,29 +1685,30 @@ toggleAchievements: () => {
 system.setAchievementsOpen(!system.achievementsOpen);
 },
 // Store purchases go through the same selection + buy path as the panel,
-// so tests exercise the real gates and denial feedback.
+// so tests exercise the real gates and denial feedback. forceSelectStoreTile
+// never toggles the tile off: a repeated buy* call must still buy.
 buyHint: () => {
-system.selectStoreTile('hint');
+system.forceSelectStoreTile('hint');
 system.onBuySelected();
 },
 buyListen: () => {
-system.selectStoreTile('listen');
+system.forceSelectStoreTile('listen');
 system.onBuySelected();
 },
 buyAutoplay: () => {
-system.selectStoreTile('autoplay');
+system.forceSelectStoreTile('autoplay');
 system.onBuySelected();
 },
 buyReplay: () => {
-system.selectStoreTile('replay');
+system.forceSelectStoreTile('replay');
 system.onBuySelected();
 },
 buySaver: () => {
-system.selectStoreTile('saver');
+system.forceSelectStoreTile('saver');
 system.onBuySelected();
 },
 buyTopSecret: () => {
-system.selectStoreTile('secret');
+system.forceSelectStoreTile('secret');
 system.onBuySelected();
 },
 repeatPattern: () => {
@@ -4023,58 +4021,84 @@ id: string;
 name: string;
 badge: string;
 state: StoreTileState;
+price: string;
 }
 const hintLevel = eco.getHintLevel();
 const autoplayLevel = eco.getAutoplayLevel();
+const replaysTotal = eco.getReplaysTotal();
+const savers = eco.getSavers();
+const bars = eco.getBars();
+// Unpurchased items render in the greyed "off" language (owner ask
+// 2026-11-12: like the achievements, an item you do not own yet must look
+// different); owned/leveled items are colored. The price line under the
+// name repeats the next buy's cost (owner ask 2026-11-12).
 const tiles: StoreTile[] = [
 {
 id: 'listen',
 name: 'Listen',
-// One-time item: no level number; a check once owned, no badge before.
 badge: eco.ownsListen() ? '\u2713' : '',
-state: 'on',
+state: eco.ownsListen() ? 'on' : 'off',
+price: eco.ownsListen() ? 'Owned' : `${LISTEN_COST} Bars`,
 },
 {
 id: 'hint',
 name: 'Hint',
-badge: String(hintLevel),
-state: eco.hintUnlocked() ? 'on' : 'off',
+badge: hintLevel > 0 ? String(hintLevel) : '',
+state: hintLevel > 0 ? 'on' : 'off',
+price: eco.hintUnlocked()
+? `L${hintLevel + 1}: ${eco.hintCost(hintLevel + 1)} Bars`
+: 'Locked',
 },
 {
 id: 'autoplay',
 name: 'Autoplay',
-badge: String(autoplayLevel),
-state: eco.autoplayUnlocked() ? 'on' : 'off',
+badge: autoplayLevel > 0 ? String(autoplayLevel) : '',
+state: autoplayLevel > 0 ? 'on' : 'off',
+price: eco.autoplayUnlocked()
+? `L${autoplayLevel + 1}: ${eco.autoplayCost(autoplayLevel + 1)} Bars`
+: 'Locked',
 },
 {
 id: 'replay',
 name: 'Replay',
-badge: String(eco.getReplaysTotal()),
-state: 'on',
+badge: replaysTotal > 0 ? String(replaysTotal) : '',
+state: replaysTotal > 0 ? 'on' : 'off',
+price: `${REPLAY_PRICE_BARS} Bars`,
 },
 // Streak saver: no unlock prerequisites (owner rule 2026-11-11), stock is
 // the shared PR #63 inventory the Game Over popup spends from.
-{ id: 'saver', name: 'Saver', badge: String(eco.getSavers()), state: 'on' },
+{
+id: 'saver',
+name: 'Saver',
+badge: savers > 0 ? String(savers) : '',
+state: savers > 0 ? 'on' : 'off',
+price: `${SAVER_PRICE_BARS} Bars`,
+},
 {
 id: 'secret',
 name: 'Secret',
 badge: eco.ownsTopSecret() ? '\u2713' : '?',
-state: 'on',
+state: eco.ownsTopSecret() ? 'on' : 'off',
+price: eco.ownsTopSecret() ? 'Owned' : `${TOP_SECRET_COST} Bars`,
 },
 // Room for the modifiers the owner listed (2026-11-11): 5th/6th pads, the
-// Act 3 narrator hack, double-score multiplier and the speed modifier.
-{ id: 'multiplier', name: 'x2', badge: '?', state: 'off' },
-{ id: 'speed', name: 'Speed', badge: '?', state: 'off' },
-{ id: 'pads56', name: 'Pads 5-6', badge: '?', state: 'off' },
-{ id: 'narrator', name: 'Act 3', badge: '?', state: 'off' },
+// story hack, double-score multiplier and the speed modifier. Their
+// phrasing is just "Locked" (owner ask 2026-11-12).
+{ id: 'multiplier', name: 'x2', badge: '?', state: 'off', price: 'Locked' },
+{ id: 'speed', name: 'Speed', badge: '?', state: 'off', price: 'Locked' },
+{ id: 'pads56', name: 'Pads 5-6', badge: '?', state: 'off', price: 'Locked' },
+{ id: 'narrator', name: 'Hack', badge: '?', state: 'off', price: 'Locked' },
 ];
 // Skill-tree layout (owner-approved concept 2026-11-11; the lost mockup's
 // caption: "each category has its own levels, with level gates on the
-// connections"). A root row of no-prerequisite categories, then the gated
-// chain Listen -> Hint -> Autoplay as labeled vertical connections, each
-// gated category with its own level track.
+// connections"). Owner layout 2026-11-12: Replay + Saver on top, Listen on
+// its own row, then the gated chain Hint -> Autoplay as labeled centered
+// connections (single-dependency rows sit in the middle), Secret moved to
+// the bottom row next to the future placeholders.
 const TREE_W = 308;
 const TILE_S = 70;
+// Tile + name + price lines.
+const TILE_H = TILE_S + 34;
 const LINE_COLOR = 0x9aa4b6;
 const LINE_OK = 0x4cc38a;
 const byId = new Map(tiles.map((t) => [t.id, t]));
@@ -4085,7 +4109,7 @@ flexDirection: 'column',
 alignItems: 'center',
 gap: 2,
 width: TILE_S,
-height: TILE_S + 18,
+height: TILE_H,
 flexShrink: 0,
 });
 tile.add(
@@ -4102,19 +4126,28 @@ color: t.state === 'off' ? 0x9aa4b6 : 0xffffff,
 text: t.name,
 }),
 );
+tile.add(
+new UIKit.Text({
+fontSize: 11,
+color: 0x9aa4b6,
+width: TILE_S,
+textAlign: 'center',
+text: t.price,
+}),
+);
 tile.addEventListener('click', () => this.selectStoreTile(t.id));
 return tile;
 };
-// Connection row: a vertical line segment under the chain column's tile
-// center, carrying the gate label; green once the gate is satisfied.
+// Connection row: a vertical line segment centered over the chain column,
+// carrying the gate label; green once the gate is satisfied.
 const connection = (label: string, open: boolean): UIKit.Container => {
 const row = new UIKit.Container({
 flexDirection: 'row',
 alignItems: 'center',
+justifyContent: 'center',
 gap: 8,
 width: TREE_W,
 });
-row.add(new UIKit.Container({ width: TILE_S / 2 - 1, height: 1 }));
 row.add(
 new UIKit.Container({
 width: 2,
@@ -4138,6 +4171,7 @@ const levelTrack = (level: number, color: number): UIKit.Container => {
 const track = new UIKit.Container({
 flexDirection: 'row',
 alignItems: 'center',
+justifyContent: 'center',
 gap: 4,
 width: 240,
 });
@@ -4166,14 +4200,14 @@ borderColor: color,
 );
 return track;
 };
-// Tile above, level track below: images keep their size inside pure
-// columns (mixed image+container rows mis-size the image in uikit).
+// Tile above, level track below, both centered (owner ask 2026-11-12:
+// rows holding a single gated button sit in the middle). Row+wrap like
+// the list itself (tile images mis-size inside plain columns).
 const chainRow = (t: StoreTile, level: number, color: number): UIKit.Container => {
-// Row+wrap like the list itself (tile images mis-size inside plain
-// columns): the 240-wide track wraps under the 70px tile.
 const col = new UIKit.Container({
 flexDirection: 'row',
 flexWrap: 'wrap',
+justifyContent: 'center',
 gap: 4,
 width: TREE_W,
 });
@@ -4181,18 +4215,27 @@ col.add(makeTile(t));
 col.add(levelTrack(level, color));
 return col;
 };
-// Root row: Listen is the chain root; Replay and Saver have no
-// prerequisites (owner rule 2026-11-11); Secret stands alone.
-const rootRow = new UIKit.Container({
+const soloRow = (t: StoreTile): UIKit.Container => {
+const row = new UIKit.Container({
+flexDirection: 'row',
+justifyContent: 'center',
+width: TREE_W,
+});
+row.add(makeTile(t));
+return row;
+};
+// Top row: the no-prerequisite consumables (owner layout 2026-11-12).
+const topRow = new UIKit.Container({
 flexDirection: 'row',
 gap: 8,
 width: TREE_W,
 });
-for (const id of ['listen', 'replay', 'saver', 'secret']) {
-rootRow.add(makeTile(byId.get(id)!));
+for (const id of ['replay', 'saver']) {
+topRow.add(makeTile(byId.get(id)!));
 }
-list.add(rootRow);
-// Gated chain: Listen -> Hint L1 -> (reach Hint L4) -> Autoplay.
+list.add(topRow);
+// Listen on its own centered row, then the gated chain Hint -> Autoplay.
+list.add(soloRow(byId.get('listen')!));
 list.add(connection('unlocks Hint L1', eco.hintUnlocked()));
 list.add(chainRow(byId.get('hint')!, hintLevel, 0xf2c14e));
 list.add(
@@ -4204,54 +4247,61 @@ eco.autoplayUnlocked(),
 ),
 );
 list.add(chainRow(byId.get('autoplay')!, autoplayLevel, 0x4cc38a));
-// Room for the future modifiers the owner listed (2026-11-11).
+// Bottom row: the future placeholders, phrased just "Locked" (owner ask
+// 2026-11-12), with Secret moved down next to them.
 list.add(
-new UIKit.Text({ fontSize: 13, color: 0x9aa4b6, width: TREE_W, textAlign: 'center', text: 'Future (room in the tree, not implemented):' }),
+new UIKit.Text({ fontSize: 13, color: 0x9aa4b6, width: TREE_W, textAlign: 'center', text: 'Locked' }),
 );
-const futureRow = new UIKit.Container({
+const bottomRow = new UIKit.Container({
 flexDirection: 'row',
+flexWrap: 'wrap',
 gap: 8,
 width: TREE_W,
 });
-for (const id of ['multiplier', 'speed', 'pads56', 'narrator']) {
-futureRow.add(makeTile(byId.get(id)!));
+for (const id of ['multiplier', 'speed', 'pads56', 'narrator', 'secret']) {
+bottomRow.add(makeTile(byId.get(id)!));
 }
-list.add(futureRow);
+list.add(bottomRow);
 list.setProperties({ overflow: 'scroll' });
-// Keep the selected tile's tree row inside the 260px scroll viewport
-// (review 2026-11-12: a selected chain tile sat below the fold while only
-// its detail panel showed). Row tops derived from the fixed row heights
-// above; verified visually.
-const ROW_TILE_H = TILE_S + 18;
+// Details are a floating overlay on top of the tree (owner ask 2026-11-12,
+// same pattern as the achievements details), pinned by the tap so the
+// window keeps one fixed size and the Buy button stays reachable. The Buy
+// row carries the Bars icon and greys out while the cost is unaffordable.
+const ROW_TILE_H = TILE_H;
 const ROW_CONN_H = 16;
-const ROW_CHAIN_H = ROW_TILE_H + 4 + 16;
+const ROW_CHAIN_H = TILE_H + 4 + 16;
 const ROW_GAP = 8;
 const rowTop = new Map<string, number>();
+const rowHeight = new Map<string, number>();
 let cursorY = 0;
-for (const id of ['listen', 'replay', 'saver', 'secret']) rowTop.set(id, 0);
+for (const id of ['replay', 'saver']) {
+rowTop.set(id, cursorY);
+rowHeight.set(id, ROW_TILE_H);
+}
+cursorY += ROW_TILE_H + ROW_GAP;
+rowTop.set('listen', cursorY);
+rowHeight.set('listen', ROW_TILE_H);
 cursorY += ROW_TILE_H + ROW_GAP + ROW_CONN_H + ROW_GAP;
 rowTop.set('hint', cursorY);
+rowHeight.set('hint', ROW_CHAIN_H);
 cursorY += ROW_CHAIN_H + ROW_GAP + ROW_CONN_H + ROW_GAP;
 rowTop.set('autoplay', cursorY);
+rowHeight.set('autoplay', ROW_CHAIN_H);
+// Locked header (~18px) then the wrapping bottom row: four future tiles on
+// the first line, Secret wrapping onto the second.
 cursorY += ROW_CHAIN_H + ROW_GAP + 18 + ROW_GAP;
 for (const id of ['multiplier', 'speed', 'pads56', 'narrator']) {
 rowTop.set(id, cursorY);
+rowHeight.set(id, ROW_TILE_H);
 }
-const selectedTop =
-this.storeSelected == null ? 0 : rowTop.get(this.storeSelected) ?? 0;
-list.scrollPosition.value = [0, selectedTop];
-// Details + Buy for the selection.
-const title = panel.getElementById<UIKit.Text>('store-detail-title');
-const body = panel.getElementById<UIKit.Text>('store-detail-body');
-const buyLabel = panel.getElementById<UIKit.Text>('store-buy-label');
-const buyButton = panel.getElementById<UIKit.Container>('store-buy-button');
-if (this.storeSelected == null) {
-title?.setProperties({ text: 'Pick a modifier' });
-body?.setProperties({ text: 'Tap a tile to see what it does.' });
-buyButton?.setProperties({ display: 'none' });
-return;
-}
-const bars = eco.getBars();
+rowTop.set('secret', cursorY + ROW_TILE_H + ROW_GAP);
+rowHeight.set('secret', ROW_TILE_H);
+const POPUP_W = 248;
+// Must match the store-tree-list viewport height in the uikitml.
+const VIEW_H = 270;
+if (this.storeSelected != null) {
+const selTop = rowTop.get(this.storeSelected) ?? 0;
+const selH = rowHeight.get(this.storeSelected) ?? ROW_TILE_H;
 let titleText = '';
 let bodyText = '';
 let buyText: string | null = null;
@@ -4296,14 +4346,14 @@ case 'replay':
 titleText = 'Replay';
 bodyText =
 `Re-hear the current pattern (the Repeat button spends one). Held: ${eco.getReplaysFree()} free + ${eco.getReplaysPaid()} paid. ` +
-`Free ones are earned every 5 notes past your Hint coverage (cap ${REPLAY_FREE_CAP}; a grant at the full cap is lost).`;
+`Earn a free one every 5 notes past your Hint coverage (cap ${REPLAY_FREE_CAP}).`;
 buyText = `Replay - ${REPLAY_PRICE_BARS} Bars`;
 cost = REPLAY_PRICE_BARS;
 break;
 case 'saver':
 titleText = 'Streak saver';
 bodyText =
-'Use when you miss to retry the same pattern (Game Over popup). A retry costs 1 saver per 10-streak stretch, doubling after (streak 1-10: 1, 11-20: 2, ...). Held: ' + eco.getSavers() + '.';
+'Retry the same pattern when you miss (Game Over popup). A retry costs 1 saver per 10-streak stretch, doubling after. Held: ' + eco.getSavers() + '.';
 buyText = 'Saver - ' + SAVER_PRICE_BARS + ' Bars';
 cost = SAVER_PRICE_BARS;
 break;
@@ -4322,20 +4372,74 @@ titleText =
 this.storeSelected === 'multiplier' ? 'Multiplier x2'
 : this.storeSelected === 'speed' ? 'Speed'
 : this.storeSelected === 'pads56' ? 'Pads 5-6'
-: 'Act 3 narrator hack';
-bodyText = 'Room in the tree for a future modifier. Not implemented yet.';
+: 'Hack';
+bodyText = 'Locked.';
 break;
 }
-title?.setProperties({ text: titleText });
-body?.setProperties({ text: bodyText });
-if (buyText == null) {
-buyButton?.setProperties({ display: 'none' });
-} else {
-buyButton?.setProperties({ display: 'flex' });
-buyLabel?.setProperties({
-text: buyText,
-color: cost != null && bars >= cost ? 0x1c1d20 : 0xd43a3a,
+// Height follows the body length so the row AND the whole popup (Buy row
+// included) fit the viewport whenever the viewport allows it.
+// Title (~20) + gaps + padding (52), one 18px line per ~30 body chars,
+// plus the Buy row when present.
+const bodyLines = Math.max(1, Math.ceil(bodyText.length / 30));
+const POPUP_H = 52 + 18 * bodyLines + (buyText != null ? 40 : 0);
+// Scroll so the selected row AND its detail popup both fit the viewport
+// when possible (review 2026-11-12: the Buy button must be reachable
+// without a second scroll).
+// Prefer showing the whole row AND popup; the row may slide up to 30px
+// out of view when the pair is taller than the viewport.
+const scrollTarget = Math.max(
+0,
+Math.min(selTop + 30, selTop + selH + 6 + POPUP_H - VIEW_H),
+);
+list.scrollPosition.value = [0, scrollTarget];
+const popup = new UIKit.Container({
+positionType: 'absolute',
+positionLeft: Math.max(0, Math.floor((TREE_W - POPUP_W) / 2)),
+positionTop: selTop + selH + 6,
+zIndex: 20,
+width: POPUP_W,
+height: POPUP_H,
+flexDirection: 'column',
+gap: 6,
+padding: 10,
+borderRadius: 12,
+borderWidth: 1,
+borderColor: 0x6b7a90,
+backgroundColor: 0x222c3a,
 });
+popup.add(new UIKit.Text({ fontSize: 15, color: 0xfafaf7, text: titleText }));
+popup.add(new UIKit.Text({ fontSize: 13, color: 0xaab6c6, text: bodyText }));
+if (buyText != null) {
+const affordable = cost != null && bars >= cost;
+const buyRow = new UIKit.Container({
+flexDirection: 'row',
+alignItems: 'center',
+justifyContent: 'center',
+gap: 6,
+padding: 8,
+borderRadius: 10,
+backgroundColor: affordable ? 0xf5d90a : 0x3a4150,
+});
+buyRow.add(
+new UIKit.Image({
+src: `${import.meta.env.BASE_URL}ui/bars-icon.png`,
+width: 16,
+height: 16,
+}),
+);
+buyRow.add(
+new UIKit.Text({
+fontSize: 14,
+color: affordable ? 0x1c1d20 : 0x9aa4b6,
+text: buyText,
+}),
+);
+buyRow.addEventListener('click', () => this.onBuySelected());
+popup.add(buyRow);
+}
+list.add(popup);
+} else {
+list.scrollPosition.value = [0, 0];
 }
 }
 
@@ -4739,9 +4843,11 @@ card.setProperties({ transformTranslateX: x });
 /** Store skill-tree selection (sticky tile the details + Buy button act on). */
 private storeSelected: string | null = null;
 
-/** Select a store tile (tap, ray click, or the debug bridge). */
+/** Select a store tile (tap, ray click, or the debug bridge). Tapping the
+ * open tile again closes its details (same pin/unpin rule as the
+ * achievements popup). */
 private selectStoreTile(id: string): void {
-this.storeSelected = id;
+this.storeSelected = this.storeSelected === id ? null : id;
 this.renderPanel();
 // A new selection resets the status line, so a previous tile's "Bought."
 // or denial never lingers over another item's details.
@@ -4749,6 +4855,13 @@ this.world
 .getSceneObject<UIKitMLAsset>('wall-tones-panel')
 ?.getElementById<UIKit.Text>('store-detail-status')
 ?.setProperties({ text: 'Prices are test values.' });
+}
+
+/** Bridge-only select that never toggles off (repeat buy* calls must buy). */
+private forceSelectStoreTile(id: string): void {
+if (this.storeSelected !== id) {
+this.selectStoreTile(id);
+}
 }
 
 /** Buy the selected store tile. Gates and denial feedback live here so the
