@@ -4449,6 +4449,13 @@ list.setProperties({ overflow: 'scroll' });
 if (popupLine != null && cardHost != null) {
 cardHost.add(popupLine);
 this.storeDetailCard = popupLine;
+// Bottom spacer sized to the pinned card: the scroll clamp
+// cursorY - ROW_GAP - VIEW_H then still lets the LAST rows (bottom row,
+// secret) rise fully into the clear band above the card instead of
+// stopping with the selected row hidden behind it.
+const spacer = new UIKit.Container({ width: TREE_W, height: POPUP_H + 8 });
+list.add(spacer);
+cursorY += POPUP_H + 8 + ROW_GAP;
 }
 if (sel != null) {
 // Scroll so the selected row (tile + name + price + pips) sits fully in
