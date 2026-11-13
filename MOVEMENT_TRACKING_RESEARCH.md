@@ -21,9 +21,12 @@ scope here).
    Vertical motion is ignored on purpose: it is sway, nodding or crouching,
    not locomotion.
 2. **Pad reach ("Pad reach")**: the 3D distance between consecutive
-   correctly pressed pads. This is a reach estimate across the placed
-   layout, not walking distance. The first correct press after a (re)placement
-   only anchors; flat-mode pads are a fixed on-screen grid and never count.
+   correctly pressed pads, counted for physical fingertip touches only.
+   Ray, gaze and pinch presses are far input: the hand never travelled to
+   the pad, so they add no reach (Quest feedback Nov 14). This is a reach
+   estimate across the placed layout, not walking distance. The first
+   correct press after a (re)placement only anchors; flat-mode pads are a
+   fixed on-screen grid and never count.
 
 Both are estimates. This is not a step counter, not a fitness measurement,
 and makes no health or calorie claims.
@@ -74,6 +77,8 @@ values to react to, locked only after headset validation.
 5. Exit to the browser and come back: no jump in the reading.
 6. Play a wall layout and a table layout: compare Pad reach against the
    known pad spacing; check the first press after re-placement adds nothing.
+   Hit pads with the hand ray and with gaze+pinch: Pad reach must not move;
+   touch the same pads physically: it does.
 7. Reload the page: lifetime totals and the Movement achievement level
    persist; the session line restarts at 0.0 m.
 8. Confirm the movement line never appears in the phone/desktop flat mode.
