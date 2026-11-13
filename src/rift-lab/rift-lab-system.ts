@@ -116,6 +116,7 @@ export interface RiftLabDebugSnapshot {
   status: string;
   palms: Record<'left' | 'right', PalmPose | null>;
   targets: { id: number; position: number[]; ndc: number[] }[];
+  noteOriginNdc: number[];
 }
 
 declare global {
@@ -150,6 +151,9 @@ export class RiftLabSystem extends createSystem({}) {
   private readonly noteMeshes = new Map<number, Mesh>();
   private readonly riftViews = new Map<number, RiftView>();
   private dragging = false;
+  private flatTouchInput = false;
+  private readonly pointerNotePlane = new Plane(new Vector3(0, 0, 1), 1.4);
+  private readonly pointerNoteAnchor = new Vector3();
   private dragStart = { x: 0, y: 0 };
   private aimNdc = { x: 0, y: 0 };
   private lastUiUpdate = 0;
@@ -199,6 +203,12 @@ export class RiftLabSystem extends createSystem({}) {
     const canvas = this.world.renderer.domElement;
     const onPointerDown = (event: PointerEvent) => {
       if (!this.active || !this.running) return;
+      this.flatTouchInput = event.pointerType === 'touch';
+      const bounds = canvas.getBoundingClientRect();
+      this.aimNdc = {
+        x: ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
+        y: -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
+      };
       const fracX = event.clientX / window.innerWidth;
       const fracY = event.clientY / window.innerHeight;
       const nearChargeSpot =
@@ -246,9 +256,11 @@ export class RiftLabSystem extends createSystem({}) {
       }
     };
     const onPointerMove = (event: PointerEvent) => {
+      this.flatTouchInput = event.pointerType === 'touch';
+      const bounds = canvas.getBoundingClientRect();
       this.aimNdc = {
-        x: (event.clientX / window.innerWidth) * 2 - 1,
-        y: -((event.clientY / window.innerHeight) * 2 - 1),
+        x: ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
+        y: -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
       };
     };
     const onPointerUp = () => {
@@ -474,6 +486,16 @@ export class RiftLabSystem extends createSystem({}) {
         hand === 'right' ? this.palmAnchorRight : this.palmAnchorLeft;
       return scratch.set(palm.center[0], palm.center[1], palm.center[2]);
     }
+    if (!this.isImmersive() && !this.flatTouchInput && !this.dragging) {
+      // Desktop notes orbit the actual cursor and depart from it, while
+      // touch keeps the fixed charge origin and XR keeps the live palms.
+      this.desktopNdc.set(this.aimNdc.x, this.aimNdc.y);
+      this.world.camera.updateMatrixWorld();
+      this.desktopRay.setFromCamera(this.desktopNdc, this.world.camera);
+      if (this.desktopRay.ray.intersectPlane(this.pointerNotePlane, this.pointerNoteAnchor)) {
+        return this.pointerNoteAnchor;
+      }
+    }
     return hand === 'right' ? FLAT_RIGHT_HAND : FLAT_LEFT_HAND;
   }
 
@@ -678,6 +700,7 @@ export class RiftLabSystem extends createSystem({}) {
       modifierActive: this.game.openRiftModifierActive(),
       beamActive: this.game.isBeamActive(),
       status: this.statusMessage,
+      noteOriginNdc: this.handAnchor('right').clone().project(this.world.camera).toArray(),
       palms: this.palms,
       targets: [...this.riftViews.values()].map((v) => ({
         id: v.rift.id,
