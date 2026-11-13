@@ -47,7 +47,7 @@ import {
   readPalmPose,
   type PalmPose,
 } from './rift-hands.js';
-import { riftTargetPositions } from './rift-targets.js';
+import { riftAimRays, riftTargetPositions } from './rift-targets.js';
 import {
   AdditiveBlending,
   BufferGeometry,
@@ -63,6 +63,9 @@ import {
   Points,
   PointsMaterial,
   ShaderMaterial,
+  Sprite,
+  SpriteMaterial,
+  CircleGeometry,
   Float32BufferAttribute,
   Raycaster,
   SRGBColorSpace,
@@ -96,7 +99,7 @@ const RIFT_POSITIONS = [
   new Vector3(-1.1, 1.6, -2.4),
   new Vector3(0, 2.7, -2.4), // above the panel, outside the click guard
 ];
-const RIFT_RING_RADIUS_M = 0.22;
+const RIFT_PLANE_M = 1.8;
 const RIFT_SPAWN_INTERVAL_MS = 6000;
 const MAX_OPEN_RIFTS = 3;
 /** Beam hit test: ray-to-rift distance under this counts as contact. */
@@ -107,7 +110,7 @@ const NOTE_SIZE_M = 0.034;
 const WALL_RIFT_BAND_BELOW_M = 0.55;
 const WALL_RIFT_BAND_ABOVE_M = 0.5;
 const WALL_RIFT_INSET_M = 0.3;
-const WALL_RIFT_SPACING_M = 0.6;
+const WALL_RIFT_SPACING_M = 1.2;
 const WALL_RIFT_OFFSET_M = 0.03;
 
 const noteGlyphTextureCache = new Map<string, Texture>();
@@ -166,6 +169,15 @@ declare global {
       playNote: (color: PadColorName, hand?: 'left' | 'right') => void;
       spawnRift: () => void;
       sealFirstRift: () => void;
+      /** Visual QA: pin the seal flight at progress 0..1 (null releases). */
+      freezeSealProgress: (p: number | null) => void;
+      /** Desktop-only visual QA: feed a synthetic hand (25 joint matrices,
+       * grip world matrix) so the hand-shape orbit can be rendered. */
+      setSyntheticHand: (
+        hand: 'left' | 'right',
+        joints: number[],
+        grip: number[],
+      ) => void;
     };
   }
 }
@@ -178,6 +190,8 @@ interface RiftView {
   fracture: ShaderMaterial;
   sparks: Points;
   sparkSeeds: Float32Array;
+  trail: { sprite: Sprite; spine: number; offset: number; speed: number; wig: number }[];
+  debris: { mesh: Mesh; ang: number; spin: number; speed: number }[];
 }
 
 const SPARK_COUNT = 56;
@@ -213,35 +227,70 @@ float noise1(float x) {
   f = f * f * (3.0 - 2.0 * f);
   return mix(hash(i), hash(i + 1.0), f);
 }
+vec3 quadColor(float a) {
+  // Green top-left, red top-right, yellow bottom-right, blue bottom-left
+  // (the order in his style D concept), blended around the rim.
+  float q = (a + 3.14159) / 6.28318 * 4.0;
+  vec3 c = mix(uC0, uC1, smoothstep(0.7, 1.3, q));
+  c = mix(c, uC2, smoothstep(1.7, 2.3, q));
+  c = mix(c, uC3, smoothstep(2.7, 3.3, q));
+  return mix(c, uC0, smoothstep(3.7, 4.0, q));
+}
 void main() {
-  // Tall crack: squeeze x so the tear reads as a fracture, not a disc.
-  vec2 p = vec2(vUv.x * 1.55, vUv.y);
+  vec2 p = vec2(vUv.x * 1.1, vUv.y);
   float r = length(p);
   float a = atan(p.y, p.x);
-  float jag = 0.62 + 0.30 * noise1(a * 3.0 + 7.0)
-                   + 0.12 * noise1(a * 9.0 + uTime * 1.6)
-                   + 0.06 * noise1(a * 23.0 - uTime * 3.1);
-  float size = mix(0.12, 0.72, smoothstep(0.0, 1.0, uOpen)) * (1.0 - 0.9 * uSeal);
-  float edge = jag * size;
-  float d = r - edge;
-  // Quadrant colors blend around the rim.
-  float q = (a + 3.14159) / 6.28318 * 4.0;
-  vec3 rim = mix(uC0, uC1, smoothstep(0.7, 1.3, q));
-  rim = mix(rim, uC2, smoothstep(1.7, 2.3, q));
-  rim = mix(rim, uC3, smoothstep(2.7, 3.3, q));
-  rim = mix(rim, uC0, smoothstep(3.7, 4.0, q));
-  // Sealing stages: edges whiten and knit shut.
-  rim = mix(rim, vec3(1.0), 0.55 * uSeal);
-  float flicker = 0.75 + 0.25 * noise1(a * 5.0 + uTime * 6.0);
-  float line = exp(-abs(d) * 34.0) * flicker;
-  float halo = exp(-max(d, 0.0) * 7.0) * 0.45 * (1.0 - uSeal * 0.6);
-  float inside = 1.0 - smoothstep(-0.02, 0.02, d);
-  // Void: near-black with faint drifting light specks.
-  float speck = step(0.985, hash(floor(vUv.x * 18.0) + floor(vUv.y * 18.0) * 37.0 + floor(uTime * 2.0)));
-  vec3 voidCol = vec3(0.02, 0.02, 0.05) + speck * rim * 0.9;
-  vec3 col = voidCol * inside + rim * line * 1.5 + rim * halo;
-  float alpha = clamp(inside * 0.9 + line + halo, 0.0, 1.0);
-  float vig = 1.0 - smoothstep(0.85, 1.0, length(vUv));
+  float open = smoothstep(0.0, 1.0, uOpen);
+  float keep = 1.0 - 0.92 * uSeal;
+  // Torn hole: big, taller than wide, with a ragged outline.
+  float jag = 0.64 + 0.26 * noise1(a * 3.0 + 7.0)
+                   + 0.10 * noise1(a * 9.0 + uTime * 1.2)
+                   + 0.06 * noise1(a * 23.0 - uTime * 2.4);
+  vec2 hp = vec2(p.x * 1.18, p.y * 0.86);
+  float hr = length(hp);
+  float edge = 0.52 * jag * open * keep;
+  float d = hr - edge;
+  vec3 rim = quadColor(a);
+  rim = mix(rim, vec3(1.0), 0.6 * uSeal);
+
+  // Radial cracks in the wall: thin jagged lines fanning out of the hole,
+  // fading with distance, glowing in the quadrant color.
+  float crack = 0.0;
+  for (int i = 0; i < 3; i++) {
+    float fi = float(i);
+    float n = 7.0 + fi * 5.0;
+    float warp = (noise1(hr * (9.0 + fi * 4.0) + fi * 11.0) - 0.5) * (0.55 - fi * 0.12);
+    float cell = fract((a + warp) / 6.28318 * n + hash(fi) );
+    float dist = abs(cell - 0.5) * 6.28318 / n * hr;
+    float width = 0.006 + 0.004 * (1.0 - fi * 0.3);
+    float reach = (0.95 - fi * 0.15) * open;
+    float fade = step(edge, hr) * (1.0 - smoothstep(reach * 0.55, reach, hr)) * smoothstep(0.0, 0.05, hr - edge);
+    float gate = step(0.5 + fi * 0.12, hash(floor((a + warp) / 6.28318 * n + hash(fi)) + fi * 5.0));
+    crack += (exp(-dist / width) * 0.9 + exp(-dist / (width * 5.0)) * 0.25) * fade * gate;
+  }
+  crack *= keep;
+  float flicker = 0.78 + 0.22 * noise1(a * 5.0 + uTime * 6.0);
+  float line = exp(-abs(d) * 75.0) * flicker;
+  float halo = exp(-max(d, 0.0) * 9.0) * 0.5 * keep;
+  float inside = 1.0 - smoothstep(-0.015, 0.015, d);
+
+  // Void: night sky with a drifting city/tower skyline inside the hole.
+  vec2 vp = hp / max(edge, 0.001);
+  float sky = clamp(0.5 + vp.y * 0.5, 0.0, 1.0);
+  vec3 voidCol = mix(vec3(0.02, 0.02, 0.06), vec3(0.10, 0.07, 0.22), sky);
+  float col_i = floor((vp.x + uTime * 0.02) * 9.0);
+  float towerH = -0.25 + 0.55 * hash(col_i) * hash(col_i * 1.7 + 3.0);
+  if (vp.y < towerH && vp.y > -1.0) voidCol = vec3(0.015, 0.015, 0.04);
+  float star = step(0.992, hash(floor(vp.x * 40.0) + floor(vp.y * 40.0) * 57.0 + floor(uTime * 1.5)));
+  voidCol += star * rim * 0.9;
+
+  // Wall damage around the hole darkens the plaster.
+  float scorch = exp(-max(d, 0.0) * 9.0) * 0.38 * keep * open;
+  vec3 col = voidCol * inside + rim * (line * 1.3 + crack * 1.2) + rim * halo * 0.6;
+  col = mix(col, vec3(0.02, 0.02, 0.03), (1.0 - inside) * scorch);
+  col *= 1.0;
+  float alpha = clamp(inside * 0.96 + line + halo * 0.8 + crack + scorch, 0.0, 1.0);
+  float vig = 1.0 - smoothstep(0.82, 1.0, length(vUv));
   gl_FragColor = vec4(col, alpha * vig);
 }`;
 
@@ -301,6 +350,11 @@ export class RiftLabSystem extends createSystem({
   private readonly palmAnchorLeft = new Vector3();
   private readonly palmAnchorRight = new Vector3();
   private readonly headPos = new Vector3();
+  private debugSealP: number | null = null;
+  private readonly debugHands: Record<'left' | 'right', PalmPose | null> = {
+    left: null,
+    right: null,
+  };
   private readonly shapePoint: [number, number, number] = [0, 0, 0];
   private readonly shapeDir: [number, number, number] = [0, 0, 0];
   private readonly desktopRay = new Raycaster();
@@ -443,6 +497,15 @@ export class RiftLabSystem extends createSystem({
       playNote: (color, hand) => this.playNote(color, hand),
       spawnRift: () => this.spawnRift(),
       sealFirstRift: () => this.debugSealFirstRift(),
+      freezeSealProgress: (p) => {
+        this.debugSealP = p;
+      },
+      setSyntheticHand: (hand, joints, grip) => {
+        this.debugHands[hand] = readPalmPose(
+          new Float32Array(joints),
+          grip,
+        );
+      },
     };
     this.renderPanel('Press Start. Successful notes charge your hands.');
   }
@@ -633,7 +696,7 @@ export class RiftLabSystem extends createSystem({
     const group = new Group();
     // Living four-color fracture: shader void/edge plus drifting note sparks.
     const fracture = buildFracture(rift);
-    const quad = new Mesh(new PlaneGeometry(RIFT_RING_RADIUS_M * 4.2, RIFT_RING_RADIUS_M * 5.2), fracture);
+    const quad = new Mesh(new PlaneGeometry(RIFT_PLANE_M, RIFT_PLANE_M), fracture);
     group.add(quad);
     const sparkSeeds = new Float32Array(SPARK_COUNT * 3);
     const sparkColors: number[] = [];
@@ -660,6 +723,46 @@ export class RiftLabSystem extends createSystem({
     sparks.frustumCulled = false;
     sparks.position.z = 0.01;
     group.add(sparks);
+    // Note trails along four crack spines (his concept: glowing colored
+    // notes streaming along the cracks), plus drifting rock debris.
+    const trail: RiftView['trail'] = [];
+    for (let spine = 0; spine < 4; spine++) {
+      for (let k = 0; k < 7; k++) {
+        const sprite = new Sprite(
+          new SpriteMaterial({
+            map: noteGlyphTexture(rift.edgeColors[spine]),
+            transparent: true,
+            depthWrite: false,
+            toneMapped: false,
+          }),
+        );
+        sprite.scale.setScalar(0.085);
+        sprite.position.z = 0.02;
+        group.add(sprite);
+        trail.push({
+          sprite,
+          spine,
+          offset: k / 7 + spine * 0.07,
+          speed: 0.16 + ((rift.id * 13 + spine * 7 + k * 5) % 10) / 80,
+          wig: ((rift.id + k * 3 + spine) % 7) / 7,
+        });
+      }
+    }
+    const debris: RiftView['debris'] = [];
+    for (let i = 0; i < 7; i++) {
+      const mesh = new Mesh(
+        new CircleGeometry(0.012 + ((i * 7 + rift.id) % 5) * 0.006, 5),
+        new MeshBasicMaterial({ color: 0x4a4650, transparent: true, depthWrite: false }),
+      );
+      mesh.position.z = 0.015;
+      group.add(mesh);
+      debris.push({
+        mesh,
+        ang: (i / 9) * Math.PI * 2 + rift.id,
+        spin: (i % 2 === 0 ? 1 : -1) * (0.4 + (i % 3) * 0.3),
+        speed: 0.02 + (i % 4) * 0.01,
+      });
+    }
     group.position.copy(position);
     if (lookTarget != null) {
       group.lookAt(lookTarget);
@@ -673,6 +776,8 @@ export class RiftLabSystem extends createSystem({
       fracture,
       sparks,
       sparkSeeds,
+      trail,
+      debris,
     });
     this.renderPanel();
   }
@@ -692,8 +797,8 @@ export class RiftLabSystem extends createSystem({
    * nulls when flat or untracked, so flat input paths are untouched. */
   private updateXrHands(): void {
     if (!this.isImmersive()) {
-      this.palms.left = null;
-      this.palms.right = null;
+      this.palms.left = this.debugHands.left;
+      this.palms.right = this.debugHands.right;
       return;
     }
     for (const hand of ['right', 'left'] as const) {
@@ -821,6 +926,7 @@ export class RiftLabSystem extends createSystem({
   update(delta: number): void {
     if (!this.active) {
       riftTargetPositions.length = 0;
+      riftAimRays.length = 0;
       return;
     }
     this.updateXrHands();
@@ -892,7 +998,8 @@ export class RiftLabSystem extends createSystem({
         const flightMs = this.game.isBeamActive()
           ? SEAL_HOLD_MS
           : DESKTOP_NOTES_FLIGHT_MS;
-        const p = Math.min(1, sealingView.rift.sealProgressMs / flightMs);
+        const p =
+          this.debugSealP ?? Math.min(1, sealingView.rift.sealProgressMs / flightMs);
         const delay = ((note.id * 0.6180339) % 1) * 0.45;
         const u = Math.min(1, Math.max(0, (p - delay) / 0.55));
         const e = u * u * (3 - 2 * u);
@@ -923,6 +1030,18 @@ export class RiftLabSystem extends createSystem({
 
     // Animate the fractures and publish target positions for the panel dodge.
     const nowMs = performance.now();
+    riftAimRays.length = 0;
+    for (const hand of ['right', 'left'] as const) {
+      const palm = this.palms[hand];
+      // Looser than the fire gate: lift the menu as soon as a hand is open
+      // enough to be aimed, before the beam can actually start.
+      if (palm != null && palm.extendedFingers >= 3) {
+        riftAimRays.push({
+          ox: palm.center[0], oy: palm.center[1], oz: palm.center[2],
+          dx: palm.direction[0], dy: palm.direction[1], dz: palm.direction[2],
+        });
+      }
+    }
     riftTargetPositions.length = 0;
     for (const view of this.riftViews.values()) {
       riftTargetPositions.push({
@@ -937,7 +1056,7 @@ export class RiftLabSystem extends createSystem({
       const flightMs = this.game.isBeamActive() ? SEAL_HOLD_MS : DESKTOP_NOTES_FLIGHT_MS;
       u.uSeal.value =
         view.rift.state === 'sealing' || view.rift.state === 'sealed'
-          ? Math.min(1, view.rift.sealProgressMs / flightMs)
+          ? this.debugSealP ?? Math.min(1, view.rift.sealProgressMs / flightMs)
           : 0;
       const pos = view.sparks.geometry.getAttribute('position');
       const sealing = view.rift.state === 'sealing';
@@ -952,6 +1071,24 @@ export class RiftLabSystem extends createSystem({
         pos.setXYZ(i, Math.cos(ang) * rr * 0.65, Math.sin(ang) * rr * 1.1, 0);
       }
       pos.needsUpdate = true;
+      const sealU = u.uSeal.value as number;
+      const spineAng = [Math.PI * 0.72, Math.PI * 0.28, -Math.PI * 0.28, -Math.PI * 0.72];
+      for (const t of view.trail) {
+        let f = (age * t.speed * (sealing ? 3 : 1) + t.offset) % 1;
+        if (sealing) f = 1 - f;
+        const rr = (0.3 + f * 0.58) * (0.35 + 0.65 * u.uOpen.value);
+        const base = spineAng[t.spine] + Math.sin(rr * 9 + t.wig * 6 + age * 1.3) * 0.12;
+        t.sprite.position.set(Math.cos(base) * rr * 0.95, Math.sin(base) * rr * 1.1, 0.02);
+        const m = t.sprite.material as SpriteMaterial;
+        m.opacity = Math.min(1, f * 6, (1 - f) * 4) * (1 - 0.7 * sealU);
+        t.sprite.scale.setScalar(0.085 * (0.7 + 0.5 * Math.sin(age * 4 + t.wig * 9)));
+      }
+      for (const dbr of view.debris) {
+        const dd = 0.3 + ((age * dbr.speed + dbr.ang) % 0.6) * 0.5;
+        dbr.mesh.position.set(Math.cos(dbr.ang) * dd * 0.9, Math.sin(dbr.ang) * dd * 1.05, 0.015);
+        dbr.mesh.rotation.z = age * dbr.spin;
+        (dbr.mesh.material as MeshBasicMaterial).opacity = 1 - sealU;
+      }
     }
 
     if (this.running) {
@@ -1010,6 +1147,7 @@ export class RiftLabSystem extends createSystem({
 
       // Desktop notes-flight seals advance without the beam.
       for (const view of this.riftViews.values()) {
+        if (this.debugSealP != null) break;
         this.game.updateDesktopSeal(view.rift.id, delta * 1000);
       }
 
