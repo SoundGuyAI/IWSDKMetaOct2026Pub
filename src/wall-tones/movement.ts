@@ -54,9 +54,16 @@ export function readLifetimeMovementMeters(): number {
   return Math.round((readMeters(HEAD_METERS_KEY) + readMeters(PAD_METERS_KEY)) * 10) / 10;
 }
 
-/** One-decimal meter labels shared by the menu line and the research notes. */
+/** One-decimal meter labels shared by the research notes. */
 export function formatMeters(meters: number): string {
   return `${(Math.round(meters * 10) / 10).toFixed(1)} m`;
+}
+
+/** Menu number field: the digits only. The "m" unit lives in its own
+ * uikitml element so a tight panel can never wrap it away from the number
+ * (Quest feedback Nov 14). */
+export function formatMetersNumber(meters: number): string {
+  return (Math.round(meters * 10) / 10).toFixed(1);
 }
 
 export class MovementTracker {
@@ -130,7 +137,9 @@ export class MovementTracker {
    * from the previously correctly pressed pad (wall pads differ in height,
    * so unlike head movement this keeps Y). The first press only anchors.
    * Flat-mode pads are a fixed on-screen grid, not a reach, so only
-   * immersive presses count.
+   * immersive presses count. The caller passes physical fingertip touches
+   * only: ray, gaze and pinch presses are far input and never add reach
+   * (Quest feedback Nov 14).
    */
   noteCorrectPadPress(x: number, y: number, z: number, immersive: boolean): void {
     if (!immersive || !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
