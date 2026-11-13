@@ -7,6 +7,7 @@ import {
 import projectOptions from 'virtual:iwsdk-project';
 import { showXrEntryGate } from './xr-entry.js';
 import { recordXrEvent } from './xr-diagnostics.js';
+import { removeDestroyedWorldCanvas } from './world-canvas.js';
 import { AppModeSystem, type ExperienceMode } from '../app-mode.js';
 import { GuidedSensingSystem } from '../guided-sensing.js';
 import { PanelSystem } from '../panel.js';
@@ -115,12 +116,9 @@ async function destroyActiveWorld(): Promise<void> {
   const staleCanvas = activeWorld.renderer?.domElement;
   activeWorld.destroy();
   activeWorld = null;
-  // world.destroy() leaves its canvas in the container. A stale canvas keeps
-  // catching the pointer after the next world is built (menu looks alive but
-  // never reacts once an XR session has ended), so drop it with the world.
-  if (staleCanvas != null && staleCanvas.isConnected) {
+  // See world-canvas.ts: a stale canvas would swallow the next world's clicks.
+  if (removeDestroyedWorldCanvas(staleCanvas)) {
     recordXrEvent('stale-canvas-removed');
-    staleCanvas.remove();
   }
 }
 
