@@ -92,7 +92,14 @@ export const NOTE_ORBIT_SPEED_RAD_PER_SEC = 2.4;
 /** Share of new notes that orbit the firing hand; the rest go to the other. */
 export const FIRING_HAND_NOTE_SHARE = 0.7;
 /** Cap so long runs do not grow the orbit cloud without bound. */
-export const MAX_ORBIT_NOTES = 48;
+export const MAX_ORBIT_NOTES = 240;
+/** Notes spawned per successful note: a dense cloud, not a thin ring
+ * (his 22:06 device test: "much denser"). */
+export const NOTES_PER_SUCCESS = 6;
+/** Cloud shell: notes sit between these radii around the palm, spread over
+ * a sphere (not a flat circle). */
+export const CLOUD_MIN_RADIUS_M = 0.05;
+export const CLOUD_MAX_RADIUS_M = 0.14;
 
 /**
  * Open-rift negative modifier, settled by Oded 13:38 (verbatim): "less
@@ -112,6 +119,9 @@ export interface OrbitNote {
   angle: number;
   readonly radius: number;
   readonly speed: number;
+  /** Polar angle from the cloud's up axis (0..PI); with angle (azimuth) and
+   * radius this places the note on a sphere around the hand. */
+  readonly phi: number;
 }
 
 export type RiftState = 'opening' | 'open' | 'sealing' | 'sealed';
@@ -175,21 +185,39 @@ export class RiftLabGame {
       this.firingHand = hand;
     }
     this.energy = Math.min(MAX_ENERGY, this.energy + ENERGY_PER_NOTE);
-    if (this.notes.length < MAX_ORBIT_NOTES) {
+    for (let k = 0; k < NOTES_PER_SUCCESS; k++) {
+      if (this.notes.length >= MAX_ORBIT_NOTES) break;
       const toFiring = this.rand() < FIRING_HAND_NOTE_SHARE;
       const noteHand: HandSide = toFiring
         ? this.firingHand
         : this.firingHand === 'right'
           ? 'left'
           : 'right';
+      const id = this.nextNoteId++;
+      // Deterministic golden-ratio spread: even coverage of the sphere and of
+      // the radius shell without extra random draws.
+      const u = (id * 0.6180339887) % 1;
+      const v = (id * 0.7548776662) % 1;
       this.notes.push({
-        id: this.nextNoteId++,
+        id,
         color,
         hand: noteHand,
         angle: this.rand() * Math.PI * 2,
-        radius: NOTE_ORBIT_RADIUS_M,
-        speed: NOTE_ORBIT_SPEED_RAD_PER_SEC,
+        radius: CLOUD_MIN_RADIUS_M + (CLOUD_MAX_RADIUS_M - CLOUD_MIN_RADIUS_M) * v,
+        speed: NOTE_ORBIT_SPEED_RAD_PER_SEC * (0.6 + 0.8 * u),
+        phi: Math.acos(1 - 2 * u),
       });
+    }
+  }
+
+  /**
+   * Spent energy leaves the hand: drop the oldest notes until the cloud is no
+   * larger than the remaining charge accounts for.
+   */
+  pruneNotesToEnergy(): void {
+    const keep = Math.ceil(this.energy / ENERGY_PER_NOTE) * NOTES_PER_SUCCESS;
+    if (this.notes.length > keep) {
+      this.notes.splice(0, this.notes.length - keep);
     }
   }
 
