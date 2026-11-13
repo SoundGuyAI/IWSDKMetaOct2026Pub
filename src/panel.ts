@@ -65,6 +65,7 @@ function isCompactFlatViewport(): boolean {
 export class PanelSystem extends createSystem({}) {
   private readonly savedMainMenuPosition = new Float32Array(3);
   private readonly savedMainMenuScale = new Float32Array(3);
+  private readonly savedMainMenuOrientation = new Float32Array(4);
   private mainMenuLayoutSaved = false;
   /** When true, flat (non-immersive) layout should be applied. */
   private flatLayoutActive = false;
@@ -269,11 +270,18 @@ export class PanelSystem extends createSystem({}) {
     }
     const position = entity.getVectorView(Transform, 'position');
     const scale = entity.getVectorView(Transform, 'scale');
+    const orientation = entity.getVectorView(Transform, 'orientation');
     if (!this.mainMenuLayoutSaved) {
       this.savedMainMenuPosition.set(position);
       this.savedMainMenuScale.set(scale);
+      this.savedMainMenuOrientation.set(orientation);
       this.mainMenuLayoutSaved = true;
     }
+    // The immersive follow (update) rotates the menu to face the headset.
+    // Coming back to the flat page must restore the authored facing too, or
+    // the menu stays turned toward wherever the player stood in XR and is
+    // only visible from some angles (Quest report 2026-11-14).
+    orientation.set(this.savedMainMenuOrientation);
     if (!this.flatLayoutActive) {
       position[0] = this.savedMainMenuPosition[0]!;
       position[1] = this.savedMainMenuPosition[1]!;
