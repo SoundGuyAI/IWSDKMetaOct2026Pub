@@ -49,6 +49,14 @@ test('Rift Sealing Lab opens from the Lab menu and runs the charge-seal loop', a
   expect(snap.energy).toBe(120); // settled 14:46: 12 notes = one closure
   expect(snap.noteCount).toBe(12);
 
+  // Desktop note anchor follows the cursor in the rendered camera, not
+  // either fixed flat-hand fallback. The source remains XR/touch-specific.
+  await page.mouse.move(1050, 130);
+  await page.waitForTimeout(100);
+  const origin = (await snapshot(page)).noteOriginNdc;
+  expect(origin[0]).toBeCloseTo((1050 / 1280) * 2 - 1, 3);
+  expect(origin[1]).toBeCloseTo(1 - (130 / 800) * 2, 3);
+
   // Panel click must not close any rift.
   await page.mouse.click(640, 300);
   expect((await snapshot(page)).energy).toBe(120);
@@ -58,15 +66,20 @@ test('Rift Sealing Lab opens from the Lab menu and runs the charge-seal loop', a
 
   // Click the ACTUAL visible target, using its camera projection rather
   // than the old linear pixel-to-world approximation.
-  const [nx, ny] = snap.targets[0].ndc;
+  const beforeClick = await snapshot(page);
+  const [nx, ny] = beforeClick.targets[0].ndc;
   const canvas = await page.locator('canvas').first().boundingBox();
   expect(canvas).not.toBeNull();
   const x = canvas!.x + ((nx + 1) / 2) * canvas!.width;
   const y = canvas!.y + ((1 - ny) / 2) * canvas!.height;
   await page.mouse.click(x, y);
-  await expect.poll(async () => (await snapshot(page)).openRifts).toBe(0);
+  const targetId = beforeClick.targets[0].id;
+  await expect.poll(async () =>
+    (await snapshot(page)).targets.some((target) => target.id === targetId),
+  ).toBe(false);
   snap = await snapshot(page);
   expect(snap.energy).toBe(0);
-  expect(snap.openRifts).toBe(0);
-  expect(snap.modifierActive).toBe(false);
+  // A slow renderer can cross the six-second automatic spawn boundary.
+  // New targets are independent of the clicked target's verified removal.
+  expect(snap.modifierActive).toBe(snap.openRifts > 0);
 });
