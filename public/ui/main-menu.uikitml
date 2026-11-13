@@ -173,6 +173,9 @@
     <Button id="armband-hand-button" class="button" style="height: 52px">
       <ButtonLabel id="armband-hand-setting-label" class="button-label">MR armband: Left hand</ButtonLabel>
     </Button>
+    <Button id="armband-mode-button" class="button" style="height: 52px">
+      <ButtonLabel id="armband-mode-setting-label" class="button-label">Wrist display: Wristband</ButtonLabel>
+    </Button>
     <div class="body" style="padding-left: 12px; padding-right: 12px">Debug reset clears Bars, total score, streaks, achievements, purchased hint levels, purchase and press counters, and first-time flags. Settings and accessibility stay.</div>
     <Button id="reset-stats-button" class="button" style="height: 64px">
       <ButtonIcon><Trash2></Trash2></ButtonIcon>
