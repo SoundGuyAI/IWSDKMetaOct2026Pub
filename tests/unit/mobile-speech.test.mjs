@@ -45,6 +45,12 @@ async function loadSpeech({ rejectFirst = false, subtitles = false } = {}) {
   globalThis.__voicesOff = false;
   globalThis.__captions = [];
   let source = readFileSync(new URL('../../src/wall-tones/speech.ts', import.meta.url), 'utf8');
+  // Inline real, dependency-free story modules in this data-URL test harness.
+  for (const name of ['cypher-voice', 'cypher-script', 'cypher-background']) {
+    const dependency = readFileSync(new URL(`../../src/wall-tones/${name}.ts`, import.meta.url), 'utf8');
+    source = source.replace(new RegExp(`^import .* from './${name}\\.js';`, 'm'), '');
+    source = dependency + '\n' + source;
+  }
   source = source.replace(/^import .* from '.\/audio.js';/m,
     'const {ensureAudioRunning, primeWallTonesAudioFromGesture, needsExplicitMobileSoundUnlock} = globalThis.__audioStub;');
   // Only non-routing dependencies are replaced. The production mobile element
@@ -145,4 +151,60 @@ test('voices off + subtitles off stays fully silent', async () => {
   await voice.speakAsync('welcome', false);
   assert.deepEqual(globalThis.__captions, []);
   assert.equal(h.instances.length, 0);
+});
+
+
+test('story lines keep their captured cast, share mobile element, caption verbatim and cancel cleanly', async () => {
+  const h = await loadSpeech({subtitles: true});
+  await h.gesture(() => h.speech.startMobileWelcomeFromGesture());
+  h.speech.unlockSpeechFromGesture();
+  h.instances[0].end();
+  h.speech.setVoiceGender('male');
+  const voice = new h.speech.WallTonesSpeech();
+  const cast = Object.freeze({narrator: 'male', cypher: 'female'});
+  const first = voice.speakStoryLine('C01', cast);
+  const narrator = voice.speakStoryLine('N01', cast);
+  h.speech.setVoiceGender('female');
+  await Promise.resolve();
+  assert.match(h.instances[0].src, /audio\/story\/cypher\/female\/c01.mp3$/);
+  h.instances[0].onplaying();
+  assert.equal(globalThis.__captions.at(-1), 'Cypher: Connection... established.');
+  h.instances[0].end();
+  await first;
+  await Promise.resolve(); await Promise.resolve();
+  assert.match(h.instances[0].src, /audio\/story\/narrator\/male\/n01.mp3$/);
+  voice.cancel();
+  await narrator;
+  assert.equal(voice.isBusy(), false);
+  assert.equal(h.instances.length, 1);
+  assert.equal(h.decodeCalls, 0);
+});
+
+test('story muted with subtitles shares caption pacing and skip cancellation', async () => {
+  const h = await loadSpeech({subtitles: true});
+  globalThis.__voicesOff = true;
+  const voice = new h.speech.WallTonesSpeech();
+  const line = voice.speakStoryLine('C01');
+  await Promise.resolve(); await Promise.resolve();
+  assert.equal(globalThis.__captions.at(-1), 'Cypher: Connection... established.');
+  assert.equal(voice.isBusy(), true);
+  assert.equal(h.instances.length, 0);
+  voice.cancel();
+  await line;
+  assert.equal(voice.isBusy(), false);
+});
+
+test('background lines use captured opposite cast and shared caption/Skip routing', async () => {
+  const h = await loadSpeech({subtitles: true});
+  await h.gesture(() => h.speech.startMobileWelcomeFromGesture());
+  h.speech.unlockSpeechFromGesture(); h.instances[0].end();
+  const voice = new h.speech.WallTonesSpeech();
+  const cast = Object.freeze({narrator:'female',cypher:'male'});
+  const line = voice.speakBackgroundLine('R25',cast);
+  h.speech.setVoiceGender('male'); await Promise.resolve();
+  assert.match(h.instances[0].src,/audio\/story\/background\/male\/r25.mp3$/);
+  h.instances[0].onplaying();
+  assert.match(globalThis.__captions.at(-1),/His name was Houston/);
+  voice.cancel(); await line; assert.equal(voice.isBusy(),false);
+  assert.equal(h.instances.length,1);
 });
