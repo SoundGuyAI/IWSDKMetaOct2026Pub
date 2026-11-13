@@ -1,27 +1,52 @@
 <style>
-  .armband { width: 300px; height: 286px; padding: 10px; gap: 4px; flex-direction: column; background-color: #101d20; border-color: #826144; border-width: 3px; border-radius: 10px; }
-  .title { color: #86dfb4; font-size: 16px; line-height: 1.1; font-weight: 700; }
-  .readout { color: #e7fff0; font-size: 16px; line-height: 1.1; }
+  .armband { width: 346px; height: 300px; padding: 12px; gap: 6px; flex-direction: column; background-color: #101d20; border-color: #826144; border-width: 3px; border-radius: 12px; }
+  .title { color: #86dfb4; font-size: 18px; line-height: 1.1; font-weight: 700; }
+  .bars { color: #f5c542; font-size: 16px; line-height: 1.1; font-weight: 700; }
+  .divider { height: 2px; background-color: #2a4a3e; }
+  .stat-label { color: #e7fff0; font-size: 15px; line-height: 1.1; }
+  .stat-num { color: #86dfb4; font-size: 24px; line-height: 1.1; font-weight: 700; }
+  .readout { color: #e7fff0; font-size: 14px; line-height: 1.15; }
   .small { color: #b1d1c0; font-size: 12px; line-height: 1.1; }
   .row { flex-direction: row; gap: 6px; }
-  .key { width: 132px; height: 40px; padding: 0px; background-color: #234637; border-radius: 8px; justify-content: center; }
-  .key-label { font-size: 14px; line-height: 1.1; color: #e7fff0; }
+  .turnbox { width: 78px; background-color: #17332b; border-color: #2a4a3e; border-width: 1px; border-radius: 8px; padding: 6px; justify-content: center; align-items: center; }
+  .key { width: 155px; height: 56px; padding: 2px; flex-direction: column; gap: 2px; background-color: #2fbf71; border-radius: 10px; justify-content: center; align-items: center; }
+  .key2 { width: 155px; height: 56px; padding: 2px; flex-direction: column; gap: 2px; background-color: #234637; border-radius: 10px; justify-content: center; align-items: center; }
+  .key-label { font-size: 14px; line-height: 1.1; color: #10261c; }
+  .key2-label { font-size: 14px; line-height: 1.1; color: #e7fff0; }
 </style>
 <div id="armband-root" class="armband">
-  <div class="row" style="justify-content: space-between">
-    <div class="title">WALL TONES</div><div id="armband-hand-label" class="small">LEFT ARM</div>
+  <div class="row" style="justify-content: space-between; align-items: center">
+    <div class="title">WALL TONES</div>
+    <div class="row" style="align-items: center; gap: 5px">
+      <img id="armband-bars-icon" src="ui/bars-icon.png" style="width: 16px; height: 16px" />
+      <div id="armband-bars" class="bars">0</div>
+      <div id="armband-hand-label" class="small">LEFT ARM</div>
+    </div>
   </div>
-  <div id="armband-streak" class="readout">Streak: 0 | Best: 0</div>
-  <div id="armband-phase" class="small">Ready</div>
-  <div id="armband-hint" class="readout">Hint not owned</div>
-  <div id="armband-sequence" class="row" style="flex-wrap: wrap; height: 46px"></div>
-  <div class="row">
-    <Button id="armband-repeat" class="key"><ButtonLabel id="armband-repeat-label" class="key-label">Repeat (0)</ButtonLabel></Button>
-    <Button id="armband-modifiers" class="key"><ButtonLabel class="key-label">Modifiers</ButtonLabel></Button>
+  <div class="divider"></div>
+  <div class="row" style="align-items: baseline; gap: 8px">
+    <div class="stat-label">Streak</div>
+    <div id="armband-streak" class="stat-num">0</div>
+    <div class="stat-label">|</div>
+    <div class="stat-label">Best</div>
+    <div id="armband-best" class="stat-num">0</div>
+  </div>
+  <div class="row" style="gap: 8px">
+    <div style="flex-direction: column; gap: 4px">
+      <div id="armband-hint" class="readout">Hint not owned</div>
+      <div id="armband-sequence" class="row" style="flex-wrap: wrap; gap: 2px; width: 238px; height: 46px"></div>
+    </div>
+    <div class="turnbox">
+      <div id="armband-phase" class="readout">Ready</div>
+    </div>
   </div>
   <div class="row">
-    <Button id="armband-hint-button" class="key"><ButtonLabel class="key-label">Hint upgrade</ButtonLabel></Button>
-    <Button id="armband-autoplay" class="key"><ButtonLabel id="armband-autoplay-label" class="key-label">Autoplay</ButtonLabel></Button>
+    <Button id="armband-repeat" class="key"><ButtonIcon><RotateCcw></RotateCcw></ButtonIcon><ButtonLabel id="armband-repeat-label" class="key-label">Repeat (0)</ButtonLabel></Button>
+    <Button id="armband-modifiers" class="key2"><ButtonIcon><SlidersHorizontal></SlidersHorizontal></ButtonIcon><ButtonLabel class="key2-label">Modifiers</ButtonLabel></Button>
+  </div>
+  <div class="row">
+    <Button id="armband-hint-button" class="key2"><ButtonIcon><Lightbulb></Lightbulb></ButtonIcon><ButtonLabel class="key2-label">Hint upgrade</ButtonLabel></Button>
+    <Button id="armband-autoplay" class="key2"><ButtonIcon><Bot></Bot></ButtonIcon><ButtonLabel id="armband-autoplay-label" class="key2-label">Autoplay</ButtonLabel></Button>
   </div>
   <div id="armband-instructions" class="small">Use your other hand to press</div>
 </div>
