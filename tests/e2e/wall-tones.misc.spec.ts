@@ -140,3 +140,38 @@ test('MR placement path hides scoring, Store and Achievements, then shows them d
   expect(intro.phase).toBe('idle'); // Intro is before startNewRun/playback.
   expect(Object.values(intro.displays)).toEqual(['flex', 'flex', 'flex', 'flex', 'flex']);
 });
+
+test('background review proposal: afterAct1, every second completed pattern, captured cast and saved completion', async ({page}) => {
+  test.setTimeout(180_000);
+  await page.addInitScript(() => {
+    sessionStorage.setItem('iwsdk-experience-mode','walltones');
+    localStorage.setItem('wall-tones-cypher-act1-progress-v1', JSON.stringify({version:1,next:14}));
+    localStorage.removeItem('wall-tones-cypher-background-progress-v1');
+    localStorage.setItem('wall-tones-voice-gender','male');
+    localStorage.setItem('wall-tones-hearing-subtitles','true');
+    localStorage.setItem('wall-tones-best-streak','1000');
+  });
+  const requests:string[]=[];
+  page.on('request',r=>{ if(r.url().includes('/audio/story/background/'))requests.push(r.url()); });
+  await page.goto('/');
+  await page.waitForFunction(()=> (window as any).__wallTonesDebug?.flatAwaitingStart);
+  await page.evaluate(()=> (window as any).__wallTonesDebug.skipSpeech());
+  await page.evaluate(()=> (window as any).__wallTonesDebug.submitPad(0));
+  for(let round=0;round<2;round++) {
+    await page.waitForFunction(()=> (window as any).__wallTonesDebug?.phase==='input');
+    const sequence=await page.evaluate(()=> [...(window as any).__wallTonesDebug.sequence]);
+    for(const index of sequence) {
+      await page.waitForFunction(()=> (window as any).__wallTonesDebug?.phase==='input');
+      await page.evaluate(index=>(window as any).__wallTonesDebug.submitPad(index),index);
+    }
+    if(round===0) {
+      await page.waitForFunction(()=> (window as any).__wallTonesDebug?.phase==='input');
+      expect(requests).toHaveLength(0);
+    }
+  }
+  await expect.poll(()=>requests.some(url=>url.endsWith('/female/r01.mp3'))).toBe(true);
+  await expect.poll(()=>page.evaluate(()=> (window as any).__wallTonesDebug.backgroundLinesCompleted)).toBe(1);
+  expect(requests.some(url=>url.endsWith('/effects/close.mp3'))).toBe(true);
+  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('wall-tones-cypher-background-progress-v1')!).next)).toBe(1);
+  await page.screenshot({path:test.info().outputPath('background-female-gameplay.png')});
+});
