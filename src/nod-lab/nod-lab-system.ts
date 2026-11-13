@@ -4,8 +4,9 @@
  * An isolated Cypher dialogue scene reached from the main menu's
  * "Nod Yes/No Lab" button. Cypher's channel is one-way (Act 1 canon: he can
  * see the player through the link but cannot hear them), so answers are head
- * gestures: nod for yes, shake for no. The detected answer is echoed back in
- * Cypher's voice ("Yes." / "No."), then the dialogue branches.
+ * gestures: nod for yes, shake for no. The detected answer is acknowledged
+ * with a distinct gentle sound cue (one for yes, one for no, lab only), then
+ * the dialogue branches (owner, Nov 14: no spoken "Yes."/"No." echo).
  *
  * Detection: baseline-relative head pitch/yaw oscillation, see head-gesture.ts.
  * Runs only while immersive; flat mode uses the panel's Yes/No buttons (and
@@ -27,12 +28,15 @@ import {
   HeadNodShakeDetector,
   type YesNoAnswer,
 } from './head-gesture.js';
+import { playLabAnswerCue } from './lab-cues.js';
 import {
   buildGestureLabScript,
   labAnswerFollowUp,
+  labBranchIsNextPromptLine,
   labPromptById,
   type GestureLabScript,
   type LabPrompt,
+  type LabScriptLine,
 } from './lab-script.js';
 import {
   CypherLabVoice,
@@ -70,6 +74,8 @@ export interface NodLabDebugSnapshot {
   immersive: boolean;
   voiceStatus: string;
   answerCount: number;
+  cueCount: number;
+  clipPlays: Record<string, number>;
 }
 
 declare global {
@@ -91,10 +97,14 @@ export class NodLabSystem extends createSystem({}) {
   private panel: UIKitMLAsset | null = null;
   private phase: LabPhase = 'inactive';
   private currentPrompt: LabPrompt | null = null;
+  private currentLine: LabScriptLine | null = null;
+  private retryLoopCount = 0;
   private lastAnswer: YesNoAnswer | null = null;
   private lastAmplitudeDeg: number | null = null;
   private answerCount = 0;
   private voiceStatus: LabVoiceStatus | null = null;
+  private cueCount = 0;
+  private readonly clipPlays: Record<string, number> = {};
   private readonly baselineQuat = new Quaternion();
   private readonly headQuat = new Quaternion();
   private readonly relativeQuat = new Quaternion();
@@ -234,17 +244,34 @@ export class NodLabSystem extends createSystem({}) {
     this.answerCount = 0;
     this.lastAnswer = null;
     this.lastAmplitudeDeg = null;
+    this.cueCount = 0;
+    this.retryLoopCount = 0;
+    for (const key of Object.keys(this.clipPlays)) {
+      delete this.clipPlays[key];
+    }
     await this.playPrompt('intro');
   }
 
-  private async playPrompt(promptId: string): Promise<void> {
+  private async playPrompt(
+    promptId: string,
+    advanceLoop = true,
+  ): Promise<void> {
     const seq = ++this.sequence;
     const prompt = labPromptById(this.script, promptId);
+    let line: LabScriptLine = prompt.line;
+    if (prompt.loopVariations != null && prompt.loopVariations.length > 0) {
+      // Approved Nov 14: each retry loop speaks the next variation.
+      const index = advanceLoop
+        ? this.retryLoopCount++
+        : Math.max(0, this.retryLoopCount - 1);
+      line = prompt.loopVariations[index % prompt.loopVariations.length];
+    }
     this.currentPrompt = prompt;
+    this.currentLine = line;
     this.detector.setEnabled(false);
     this.phase = 'speaking';
     this.renderPanel();
-    await this.voice.speak(cypherLabVoiceSet(), prompt.line);
+    await this.speakLine(line);
     if (seq !== this.sequence || !this.active) {
       return;
     }
@@ -266,7 +293,7 @@ export class NodLabSystem extends createSystem({}) {
     if (this.phase === 'speaking' || this.phase === 'responding') {
       return;
     }
-    await this.playPrompt(this.currentPrompt.id);
+    await this.playPrompt(this.currentPrompt.id, false);
   }
 
   private submitAnswer(
@@ -286,28 +313,34 @@ export class NodLabSystem extends createSystem({}) {
     this.renderPanel();
     const { branch, nextPromptId } = labAnswerFollowUp(prompt, answer);
     void (async () => {
-      // Echo the detected answer first, then the branch line (owner request:
-      // the voice repeats what you did - yes/no).
-      await this.voice.speak(cypherLabVoiceSet(), this.script.feedback[answer]);
+      // Acknowledge the detected answer with a distinct SFX cue (owner,
+      // Nov 14: a gentle sound per answer, not Cypher saying "Yes."/"No.").
+      this.cueCount += 1;
+      await playLabAnswerCue(answer);
       if (seq !== this.sequence || !this.active) {
         return;
       }
-      this.renderPanel(branch.text);
-      await this.voice.speak(cypherLabVoiceSet(), branch);
-      if (seq !== this.sequence || !this.active) {
-        return;
+      // When the branch IS the next prompt's own line (intro -yes-> q2),
+      // playPrompt speaks it once; speaking it here repeated it on hardware.
+      if (!labBranchIsNextPromptLine(this.script, branch, nextPromptId)) {
+        this.renderPanel(branch.text);
+        await this.speakLine(branch);
+        if (seq !== this.sequence || !this.active) {
+          return;
+        }
       }
       if (nextPromptId == null || nextPromptId === 'end') {
         if (nextPromptId === 'end') {
           const endPrompt = labPromptById(this.script, 'end');
           this.renderPanel(endPrompt.line.text);
-          await this.voice.speak(cypherLabVoiceSet(), endPrompt.line);
+          await this.speakLine(endPrompt.line);
           if (seq !== this.sequence || !this.active) {
             return;
           }
         }
         this.phase = 'done';
         this.currentPrompt = null;
+        this.currentLine = null;
         this.renderPanel('Link check complete. Cypher out.');
         return;
       }
@@ -379,7 +412,7 @@ export class NodLabSystem extends createSystem({}) {
       text: overrideLine ?? statusByPhase[this.phase],
     });
     this.lineText?.setProperties({
-      text: this.currentPrompt?.line.text ?? '',
+      text: this.currentLine?.text ?? '',
     });
     const amp =
       this.lastAmplitudeDeg == null
@@ -399,6 +432,11 @@ export class NodLabSystem extends createSystem({}) {
     });
   }
 
+  private speakLine(line: LabScriptLine): Promise<void> {
+    this.clipPlays[line.clipId] = (this.clipPlays[line.clipId] ?? 0) + 1;
+    return this.voice.speak(cypherLabVoiceSet(), line);
+  }
+
   private debugSnapshot(): NodLabDebugSnapshot {
     return {
       phase: this.phase,
@@ -411,6 +449,8 @@ export class NodLabSystem extends createSystem({}) {
       immersive: this.isImmersive(),
       voiceStatus: this.voiceStatusLine(),
       answerCount: this.answerCount,
+      cueCount: this.cueCount,
+      clipPlays: { ...this.clipPlays },
     };
   }
 }
