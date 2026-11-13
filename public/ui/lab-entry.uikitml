@@ -1,0 +1,35 @@
+<!--
+  Lab menu entry. A separate compact panel that floats beside the main menu
+  instead of living inside main-menu.uikitml: the desktop e2e specs click the
+  main-menu buttons at calibrated pixel coordinates and the menu panel is
+  centre-anchored, so an extra in-flow button would shift those targets.
+-->
+<style>
+  .lab-entry-root {
+    flex-direction: column;
+    width: 340px;
+  }
+
+  .lab-entry-button {
+    justify-content: center;
+    height: 56px;
+    margin-left: 16px;
+    margin-right: 16px;
+    margin-top: 12px;
+    margin-bottom: 12px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+
+  .lab-entry-label {
+    font-size: 22px;
+    font-weight: 700;
+    transform-translate-y: 1px;
+  }
+</style>
+<Panel id="lab-entry-root" class="lab-entry-root">
+  <Button id="lab-entry-button" class="lab-entry-button">
+    <ButtonIcon><FlaskConical></FlaskConical></ButtonIcon>
+    <ButtonLabel id="lab-entry-label" class="lab-entry-label">Lab</ButtonLabel>
+  </Button>
+</Panel>
