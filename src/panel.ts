@@ -303,5 +303,20 @@ export class PanelSystem extends createSystem({}) {
     scale[0] = flatScale;
     scale[1] = flatScale;
     scale[2] = flatScale;
+
+    // Lab entry placement per flat layout: desktop has free space to the
+    // right of the hub; compact phone viewports width-fill the hub, so the
+    // entry moves above it to stay on-screen. XR keeps the scene default.
+    const entry = this.world.getSceneEntity('thumbs-lab-entry-panel');
+    if (entry != null) {
+      const ePos = entry.getVectorView(Transform, 'position');
+      if (isCompactFlatViewport()) {
+        ePos[0] = 0;
+        ePos[1] = 3.55;
+      } else {
+        ePos[0] = 4.15;
+        ePos[1] = 0;
+      }
+    }
   }
 }

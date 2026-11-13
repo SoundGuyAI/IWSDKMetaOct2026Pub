@@ -11,6 +11,7 @@ import { GuidedSensingSystem } from '../guided-sensing.js';
 import { PanelSystem } from '../panel.js';
 import { RobotSystem } from '../robot.js';
 import { WallTonesSystem } from './wall-tones-system.js';
+import { ThumbsLabSystem } from '../thumbs-lab/thumbs-lab-system.js';
 
 export { backToMenuDestroysWorld } from './back-to-menu-policy.js';
 
@@ -34,12 +35,14 @@ function registerHubSystems(world: World): void {
   world.registerSystem(RobotSystem);
   world.registerSystem(PanelSystem);
   world.registerSystem(WallTonesSystem);
+  world.registerSystem(ThumbsLabSystem);
 }
 
 function registerArSystems(world: World): void {
   world.registerSystem(AppModeSystem);
   world.registerSystem(PanelSystem);
   world.registerSystem(WallTonesSystem);
+  world.registerSystem(ThumbsLabSystem);
 }
 
 function buildArWorldOptions(): WorldOptions {
