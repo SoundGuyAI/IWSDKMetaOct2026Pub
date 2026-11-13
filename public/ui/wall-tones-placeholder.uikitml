@@ -90,8 +90,10 @@
     flex-direction: row;
     justify-content: center;
     gap: 4px;
-    margin-left: 12px;
-    margin-right: 12px;
+    margin-left: 24px;
+    margin-right: 24px;
+    margin-top: 4px;
+    margin-bottom: 4px;
   }
 
   .control-button {
@@ -180,7 +182,7 @@
     <div style="flex-direction: row; gap: 8px">
       <Button id="store-button" class="button" style="flex-grow: 1">
         <ButtonIcon><ShoppingBag></ShoppingBag></ButtonIcon>
-        <ButtonLabel id="store-button-label">Store</ButtonLabel>
+        <ButtonLabel id="store-button-label">Modifiers</ButtonLabel>
       </Button>
       <Button id="achievements-button" class="button" style="flex-grow: 1">
         <ButtonIcon><Trophy></Trophy></ButtonIcon>
@@ -229,7 +231,7 @@
   <!-- Seeded initial text: an empty element compiles no Text child and the
        setter silently no-ops (same pattern as the spoken caption). -->
   <div id="index-indicator" class="status" style="display: none; margin-left: 24px; margin-right: 24px">...</div>
-  <div id="control-row" class="control-row" style="display: none">
+  <div id="control-row" class="control-row">
     <Button id="repeat-pattern-button" class="button control-button" size="sm">
       <ButtonIcon><RefreshCw></RefreshCw></ButtonIcon>
       <ButtonLabel id="repeat-pattern-label">Repeat</ButtonLabel>
@@ -262,7 +264,7 @@
   </div>
   <div id="store-popup" class="popup-overlay" style="display: none; padding: 12px">
     <div id="store-popup-card" class="popup-card" style="gap: 6px; padding: 12px">
-      <div id="store-heading" class="heading" style="font-size: 22px; line-height: 26px">Store</div>
+      <div id="store-heading" class="heading" style="font-size: 22px; line-height: 26px">Modifiers</div>
       <div id="store-tree-list" style="flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 8px; width: 308px; height: 296px"></div>
       <div id="store-detail-status" class="status">Prices are test values.</div>
       <Button id="store-close-button" class="button">
