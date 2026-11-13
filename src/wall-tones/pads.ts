@@ -17,6 +17,8 @@ import {
   TOUCH_HOVER_SCALE,
   TOUCH_PRESS_DEPTH_M,
   TOUCH_PRESS_SCALE,
+  RAY_TARGET_DEPTH_M,
+  RAY_TARGET_SCALE,
   WALL_TONE_PADS,
 } from './constants.js';
 import { WallTonePad } from './wall-tone-pad-component.js';
@@ -120,6 +122,7 @@ function attachTouchVolumes(root: Object3D, sizeM: number): {
   hoverVolume: Mesh;
   debugHoverMesh: Mesh;
   debugPressMesh: Mesh;
+  rayTarget: Mesh;
 } {
   const pressW = sizeM * TOUCH_PRESS_SCALE;
   const hoverW = sizeM * TOUCH_HOVER_SCALE;
@@ -157,12 +160,31 @@ function attachTouchVolumes(root: Object3D, sizeM: number): {
     0x66fff0,
   );
 
+  // The fingertip volumes are hand-only colliders. They must never answer
+  // pointer raycasts, or the controller/hand ray (and desktop pointer) would
+  // hit a huge invisible box around the pad (owner feedback 2026-11-11).
+  // Rays instead hit the pad face or the slightly-larger ray target below.
+  const noRaycast = () => {};
+  touchVolume.raycast = noRaycast;
+  hoverVolume.raycast = noRaycast;
+  debugPressMesh.raycast = noRaycast;
+  debugHoverMesh.raycast = noRaycast;
+
+  const rayTarget = makeVolumeMesh(
+    'ray-target',
+    sizeM * RAY_TARGET_SCALE,
+    sizeM * RAY_TARGET_SCALE,
+    RAY_TARGET_DEPTH_M,
+    RAY_TARGET_DEPTH_M * 0.5,
+  );
+
   root.add(hoverVolume);
   root.add(touchVolume);
   root.add(debugHoverMesh);
   root.add(debugPressMesh);
+  root.add(rayTarget);
 
-  return { touchVolume, hoverVolume, debugHoverMesh, debugPressMesh };
+  return { touchVolume, hoverVolume, debugHoverMesh, debugPressMesh, rayTarget };
 }
 
 function basePadFields(
@@ -185,6 +207,16 @@ function basePadFields(
     visualState: 'idle',
     isGhost,
   };
+}
+
+/** Pads placed in fanfare order in MR air placement are NOT in id order in
+ * the pads array, so every note/press id resolves through here, never by
+ * array position. */
+export function findPadById<T extends { padIndex: number }>(
+  pads: readonly T[],
+  padIndex: number,
+): T | undefined {
+  return pads.find((p) => p.padIndex === padIndex);
 }
 
 export function createPadRuntime(
@@ -320,6 +352,11 @@ export function createGhostPadRuntime(
 export function solidifyGhostPad(pad: PadRuntime, sizeM: number): void {
   if (!pad.isGhost) {
     return;
+  }
+  // Play pads must answer controller/hand rays like the flat grid ones
+  // (createPadRuntime adds this for them); ghosts skip it while placing.
+  if (!pad.entity.hasComponent(RayInteractable)) {
+    pad.entity.addComponent(RayInteractable);
   }
   pad.sizeM = sizeM;
   const toRemove: Object3D[] = [];

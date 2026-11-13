@@ -26,6 +26,10 @@ export const TOUCH_PRESS_SCALE = 1.02;
 export const TOUCH_HOVER_SCALE = 1.42;
 /** @deprecated Prefer TOUCH_PRESS_SCALE. */
 export const TOUCH_SLOP_SCALE = TOUCH_PRESS_SCALE;
+/** Ray/pinch collider face inflate: only a little bigger than the pad itself (owner request 2026-11-11) - not the big fingertip boxes. */
+export const RAY_TARGET_SCALE = 1.1;
+/** Ray/pinch collider depth (meters). */
+export const RAY_TARGET_DEPTH_M = 0.08;
 /** Consecutive frames inside the press volume before a press counts. */
 export const TOUCH_ENTER_FRAMES = 2;
 /** Frames outside the press volume before the pad re-arms. */
@@ -84,7 +88,7 @@ export const SIMON_FANFARE_END_PAUSE_S = 0.65;
 /** Times the first pad repeats in the startup fanfare. */
 export const SIMON_FANFARE_FIRST_PAD_REPEATS = 4;
 
-/** Startup fanfare pad order: green, red, yellow, blue. */
+/** Startup fanfare pad order: green, red, yellow, blue. Air placement reuses this order (backlog item 50). */
 export const SIMON_FANFARE_PAD_ORDER: readonly number[] = [0, 1, 3, 2];
 /** If a blinking pad is outside this view cone (degrees from look), show a cue arrow. */
 export const BLINK_CUE_OFFSCREEN_DEG = 28;

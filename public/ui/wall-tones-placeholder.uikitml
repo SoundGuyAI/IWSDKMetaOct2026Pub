@@ -163,10 +163,6 @@
         <ButtonLabel>Achievements</ButtonLabel>
       </Button>
     </div>
-    <Button id="debug-colliders-button" class="button">
-      <ButtonIcon><Bug></Bug></ButtonIcon>
-      <ButtonLabel id="debug-colliders-label">Debug colliders: OFF</ButtonLabel>
-    </Button>
     <div id="setup-mode-row" class="setup-row">
       <Button id="mode-room-scale-button" class="button">
         <ButtonIcon><LayoutGrid></LayoutGrid></ButtonIcon>
@@ -208,7 +204,7 @@
   </Button>
   <Button id="repeat-pattern-button" class="button" style="display: none">
     <ButtonIcon><RefreshCw></RefreshCw></ButtonIcon>
-    <ButtonLabel>Repeat pattern</ButtonLabel>
+    <ButtonLabel id="repeat-pattern-label">Repeat pattern</ButtonLabel>
   </Button>
   <Button id="skip-voice-button" class="button" style="display: none">
     <ButtonIcon><SkipForward></SkipForward></ButtonIcon>
@@ -219,22 +215,12 @@
     <ButtonLabel>Back to main menu</ButtonLabel>
   </Button>
   </div>
-  <div id="store-popup" class="popup-overlay" style="display: none">
-    <div class="popup-card">
-      <div class="heading" style="font-size: 22px">Store</div>
-      <div class="stat-label">Your Turn hint</div>
-      <div id="store-hint-status" class="status">No hint owned. The pattern stays hidden during Your Turn.</div>
-      <Button id="buy-hint-button" class="button">
-        <ButtonIcon><Lightbulb></Lightbulb></ButtonIcon>
-        <ButtonLabel id="buy-hint-label">Your Turn hint lv 1 - 10 Bars</ButtonLabel>
-      </Button>
-      <div class="stat-label">Top Secret</div>
-      <div id="store-secret-status" class="status">A secret. It stays secret.</div>
-      <Button id="buy-secret-button" class="button">
-        <ButtonIcon><Sparkles></Sparkles></ButtonIcon>
-        <ButtonLabel id="buy-secret-label">Top Secret - 1000 Bars</ButtonLabel>
-      </Button>
-      <Button id="store-close-button" class="button" style="margin-top: 6px">
+  <div id="store-popup" class="popup-overlay" style="display: none; padding: 12px">
+    <div id="store-popup-card" class="popup-card" style="gap: 6px; padding: 12px">
+      <div id="store-heading" class="heading" style="font-size: 22px; line-height: 26px">Store</div>
+      <div id="store-tree-list" style="flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 8px; width: 308px; height: 296px"></div>
+      <div id="store-detail-status" class="status">Prices are test values.</div>
+      <Button id="store-close-button" class="button">
         <ButtonIcon><X></X></ButtonIcon>
         <ButtonLabel>Close</ButtonLabel>
       </Button>
@@ -243,10 +229,29 @@
   <div id="achievements-popup" class="popup-overlay" style="display: none">
     <div class="popup-card">
       <div class="heading" style="font-size: 22px">Achievements</div>
-      <div id="achievements-screen-list" style="flex-direction: column; gap: 8px"></div>
+      <div id="achievements-screen-list" style="flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 8px; width: 308px; height: 232px"></div>
       <Button id="achievements-close-button" class="button" style="margin-top: 6px">
         <ButtonIcon><X></X></ButtonIcon>
         <ButtonLabel>Close</ButtonLabel>
+      </Button>
+    </div>
+  </div>
+  <div id="gameover-popup" class="popup-overlay" style="display: none">
+    <div class="popup-card">
+      <div class="heading" style="font-size: 22px">Game Over</div>
+      <div id="gameover-summary" class="status">You reached 0. Best 0.</div>
+      <div id="gameover-saver-status" class="status">Streak savers: 0</div>
+      <Button id="gameover-use-saver-button" class="button">
+        <ButtonLabel id="gameover-use-saver-label">Use saver</ButtonLabel>
+      </Button>
+      <Button id="gameover-buy-saver-button" class="button">
+        <img id="gameover-buy-saver-bars-icon" src="ui/bars-icon.png" style="width: 16px; height: 16px" />
+        <ButtonLabel id="gameover-buy-saver-label">Buy saver</ButtonLabel>
+      </Button>
+      <div class="status">Test values, change later.</div>
+      <Button id="gameover-newrun-button" class="button">
+        <ButtonIcon><RefreshCw></RefreshCw></ButtonIcon>
+        <ButtonLabel>New run</ButtonLabel>
       </Button>
     </div>
   </div>

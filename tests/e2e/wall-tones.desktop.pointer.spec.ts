@@ -125,8 +125,25 @@ test.describe('Wall Tones desktop POINTER path (real mouse)', () => {
     test.setTimeout(300_000);
     await bootStored(page);
 
-    // Start: first real press on any pad.
-    await pointerClick(page, ...PAD_XY[0]!);
+    // Start: first real press on any pad. Headless ray hover can miss the
+    // first edge-triggered press (also observed on clean main); retry with a
+    // longer dwell before failing the suite on flatAwaitingStart.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await pointerClick(page, ...PAD_XY[0]!, attempt === 0 ? 150 : 400);
+      const started = await page
+        .waitForFunction(
+          () =>
+            (window as unknown as { __wallTonesDebug?: { flatAwaitingStart: boolean } })
+              .__wallTonesDebug?.flatAwaitingStart === false,
+          undefined,
+          { timeout: 8_000 },
+        )
+        .then(() => true)
+        .catch(() => false);
+      if (started) {
+        break;
+      }
+    }
     await expect
       .poll(async () => (await readDebug(page)).flatAwaitingStart, { timeout: 30_000 })
       .toBe(false);
@@ -162,6 +179,12 @@ test.describe('Wall Tones desktop POINTER path (real mouse)', () => {
     const wrong = (snap.sequence[snap.inputStep]! + 1) % 4;
     await pointerClick(page, ...PAD_XY[wrong]!);
     await waitForPhase(page, 'resetting');
+    // Game Over popup opens; New run (debug bridge, the panel button's action)
+    // starts the next run.
+    await expect
+      .poll(() => page.evaluate(() => (window as any).__wallTonesDebug.gameOverOpen), { timeout: 60_000 })
+      .toBe(true);
+    await page.evaluate(() => (window as any).__wallTonesDebug.gameOverNewRun());
     await expect
       .poll(async () => {
         const s = await readDebug(page);
