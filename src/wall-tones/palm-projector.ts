@@ -50,3 +50,17 @@ export function palmPanelPose(j: PalmJoints, hand: 'left' | 'right'): PalmPanelP
   const center = { x: mid.x + normal.x * PALM_PANEL_LIFT, y: mid.y + normal.y * PALM_PANEL_LIFT, z: mid.z + normal.z * PALM_PANEL_LIFT };
   return { openFlat, center, normal, along };
 }
+
+/**
+ * Band-mode joint frame as a constant rotation on top of the anatomical frame
+ * A = [wrist->middle-MCP, palm normal, their cross]. Measured Nov 2026 from the
+ * emulator's synthetic hand, where the band's look was tuned and approved:
+ * anatomy * this rotation reproduces that pose exactly (pos < 1e-6 m, rot < 1e-4
+ * across left/right hands and two poses), while staying independent of each
+ * platform's wrist-joint frame twist (the Quest clipping symptom).
+ */
+export const BAND_JOINT_ROTATION: readonly (readonly number[])[] = [
+  [0.1019, -0.2168, -0.9709],
+  [0.0098, -0.9757, 0.2189],
+  [-0.9947, -0.0318, -0.0973],
+];
