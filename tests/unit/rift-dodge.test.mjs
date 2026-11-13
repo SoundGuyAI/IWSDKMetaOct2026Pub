@@ -10,7 +10,7 @@ const js = ts.transpileModule(
   readFileSync(join(root, 'src/rift-lab/rift-dodge.ts'), 'utf8'),
   { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } },
 ).outputText;
-const { riftPanelBlocked } = await import(
+const { riftPanelBlocked, riftBlockingLineY } = await import(
   `data:text/javascript;base64,${Buffer.from(js).toString('base64')}`
 );
 
@@ -68,4 +68,21 @@ test('UI pointer ray at a rift behind the panel also triggers', () => {
     riftPanelBlocked({ ...base, eye: [5, 1.6, 0], targets: [[0.1, 1.45, -3]], uiRays: [ui] }),
     true,
   );
+});
+
+test('blocking line height is where the eye line to the rift top crosses the panel', () => {
+  // Eye 1.6, rift center 1.7 at 3 m, top +0.45 -> 2.15. Panel at 1 m (1/3 way).
+  const y = riftBlockingLineY({ ...base, targets: [[0, 1.7, -3]], riftTopM: 0.45 });
+  assert.ok(Math.abs(y - (1.6 + (2.15 - 1.6) / 3)) < 1e-6, String(y));
+});
+
+test('no blocking line when nothing is in the way', () => {
+  assert.equal(riftBlockingLineY({ ...base, targets: [[3, 1.7, -3]] }), null);
+  assert.equal(riftBlockingLineY({ ...base, targets: [] }), null);
+});
+
+test('a downward aim ray gives a lower line than the eye line', () => {
+  const aimed = { origin: [0, 1.0, 0], dir: [0, 0, -1] };
+  const y = riftBlockingLineY({ ...base, targets: [[0, 1.0, -3]], aimRays: [aimed], riftTopM: 0 });
+  assert.ok(y >= 1.0 && y <= 1.6 + 1e-6, String(y));
 });
