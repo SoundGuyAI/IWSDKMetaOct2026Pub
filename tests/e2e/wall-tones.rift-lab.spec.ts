@@ -47,7 +47,7 @@ test('Rift Sealing Lab opens from the Lab menu and runs the charge-seal loop', a
   expect(snap.status).toMatch(/^Ready\./);
   expect(snap.status).not.toContain('Not enough');
   expect(snap.energy).toBe(120); // settled 14:46: 12 notes = one closure
-  expect(snap.noteCount).toBe(12);
+  expect(snap.noteCount).toBe(72); // 6 cloud notes per success
 
   // Desktop note anchor follows the cursor in the rendered camera, not
   // either fixed flat-hand fallback. The source remains XR/touch-specific.
@@ -82,4 +82,19 @@ test('Rift Sealing Lab opens from the Lab menu and runs the charge-seal loop', a
   // A slow renderer can cross the six-second automatic spawn boundary.
   // New targets are independent of the clicked target's verified removal.
   expect(snap.modifierActive).toBe(snap.openRifts > 0);
+});
+
+test('Rift Lab Back returns to the Lab menu', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#wt-loading').waitFor({ state: 'detached', timeout: 60000 });
+  await page.mouse.click(1100, 320);
+  await expect.poll(() => mode(page)).toBe('lab');
+  await page.waitForTimeout(2000);
+  await page.mouse.move(640, 457);
+  await page.mouse.click(640, 457);
+  await expect.poll(() => mode(page)).toBe('riftlab');
+  await page.waitForTimeout(1000);
+  // Back is the last button on the Rift Lab panel.
+  await page.mouse.click(640, 357);
+  await expect.poll(() => mode(page)).toBe('lab');
 });
