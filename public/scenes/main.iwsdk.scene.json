@@ -25,6 +25,13 @@
   },
   "resources": {},
   "nodes": [
+    {"id": "wall-tones-armband-housing", "name": "Wall Tones Armband Housing",
+     "content": {"type": "asset", "asset": "wall-tones-armband-housing"},
+     "transform": {"position": [0, -10, 0]}},
+    {"id": "wall-tones-armband", "name": "Wall Tones Armband",
+     "content": {"type": "asset", "asset": "wall-tones-armband"},
+     "transform": {"position": [0, -10, 0], "scale": 0.073},
+     "components": {"RayInteractable": {}, "PokeInteractable": {}}},
     {
       "id": "studio-floor",
       "name": "Studio Floor",
