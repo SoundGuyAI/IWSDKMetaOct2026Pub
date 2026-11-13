@@ -86,6 +86,23 @@ test.describe('Wall Tones achievement unlock celebration (item 54)', () => {
     await abortSpeech(page);
     await bootWallTones(page);
     await grantBars(page, 1000);
+
+    // Capture the Achievements button's home position with no popup open:
+    // the fly-in must land there even after the store popup hides
+    // menu-view (owner call 2026-11-13: the celebration stays in front of
+    // the popup; the popup is NOT dismissed).
+    const home = await page.evaluate(
+      () =>
+        (
+          window as unknown as {
+            __wallTonesDebug: {
+              achievementsButtonScreen: { x: number; y: number } | null;
+            };
+          }
+        ).__wallTonesDebug.achievementsButtonScreen,
+    );
+    expect(home).not.toBeNull();
+
     await dbg(page, 'toggleStore');
     await dbg(page, 'buyTopSecret');
 
@@ -105,25 +122,22 @@ test.describe('Wall Tones achievement unlock celebration (item 54)', () => {
     await expect(overlay.locator('.wt-achv-name')).toHaveText('Store 1');
     await expect(overlay.locator('.wt-achv-badge-disc img')).toBeAttached();
 
-    // The fly-in targets the real Achievements button even while the store
-    // popup covers it (the button keeps its layout position behind the
-    // overlay): the target pulse lands on the button's screen position.
-    const btn = await page.evaluate(
+    // Foreground layering: the store popup stays OPEN through the show.
+    const storeStillOpen = await page.evaluate(
       () =>
-        (
-          window as unknown as {
-            __wallTonesDebug: {
-              achievementsButtonScreen: { x: number; y: number } | null;
-            };
-          }
-        ).__wallTonesDebug.achievementsButtonScreen,
+        (window as unknown as { __wallTonesDebug: { storeOpen: boolean } })
+          .__wallTonesDebug.storeOpen,
     );
-    expect(btn).not.toBeNull();
+    expect(storeStillOpen).toBe(true);
+
+    // With menu-view hidden the button's live layout collapses to the panel
+    // corner, so the fly-in targets its pre-popup home position: the target
+    // pulse lands where the button lives in the menu layout.
     const pulse = page.locator('.wt-achv-target-pulse');
     await pulse.waitFor({ state: 'attached', timeout: 8_000 });
     const box = (await pulse.boundingBox())!;
-    expect(Math.abs(box.x + box.width / 2 - btn!.x)).toBeLessThan(8);
-    expect(Math.abs(box.y + box.height / 2 - btn!.y)).toBeLessThan(8);
+    expect(Math.abs(box.x + box.width / 2 - home!.x)).toBeLessThan(8);
+    expect(Math.abs(box.y + box.height / 2 - home!.y)).toBeLessThan(8);
 
     // Second queued show after the first finishes (3.1s each).
     await expect
@@ -140,6 +154,17 @@ test.describe('Wall Tones achievement unlock celebration (item 54)', () => {
       })
       .toBe(false);
     await expect(page.locator('.wt-achv-celebration')).toHaveCount(0);
+
+    // The popup survived both queued shows untouched.
+    await expect
+      .poll(async () =>
+        page.evaluate(
+          () =>
+            (window as unknown as { __wallTonesDebug: { storeOpen: boolean } })
+              .__wallTonesDebug.storeOpen,
+        ),
+      )
+      .toBe(true);
 
     const snap = await readCelebration(page);
     expect(snap.ownsTopSecret).toBe(true);
