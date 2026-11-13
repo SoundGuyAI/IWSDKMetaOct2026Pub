@@ -74,10 +74,15 @@ function riftVisibleForFollow(world: {
 
 /** Gap kept between the lifted panel's bottom edge and the blocking sightline. */
 const RIFT_DODGE_CLEAR_M = 0.12;
-/** Estimated half height of the (center-anchored) Rift Lab panel, meters. */
-const RIFT_PANEL_HALF_HEIGHT_M = 0.65;
+/**
+ * Rift Lab panel half height per unit of entity scale, meters. Measured from
+ * the real render (desktop scale 0.34 at 3.75 m, 70 deg vertical fov: panel
+ * 1.90 m tall, so 2.79 per unit scale). UIKit sizes the panel, so this is a
+ * measurement, not a layout read; the panel is center-anchored.
+ */
+const RIFT_PANEL_HALF_HEIGHT_PER_SCALE_M = 2.79;
 /** Largest lift so the panel never flies out of reach. */
-const RIFT_DODGE_MAX_LIFT_M = 1.2;
+const RIFT_DODGE_MAX_LIFT_M = 1.5;
 
 export class PanelSystem extends createSystem({}) {
   private readonly savedMainMenuPosition = new Float32Array(3);
@@ -151,7 +156,9 @@ export class PanelSystem extends createSystem({}) {
     // leaves, then eased back down.
     let targetLift = 0;
     if (now < this.riftDodgeUntil) {
-      const bottomOffset = RIFT_PANEL_HALF_HEIGHT_M;
+      const bottomOffset =
+        RIFT_PANEL_HALF_HEIGHT_PER_SCALE_M *
+        riftEntity.getVectorView(Transform, 'scale')[1]!;
       targetLift = Math.min(
         RIFT_DODGE_MAX_LIFT_M,
         Math.max(
