@@ -1,3 +1,4 @@
+import { armbandHand, setArmbandHand } from './wall-tones/armband.js';
 import { hearingSubtitlesEnabled, colorNamesEnabled, setHearingSubtitles, setColorNames, voicesOffEnabled, setVoicesOff } from './wall-tones/accessibility.js';
 /**
  * Switches between the main menu and experience modes by toggling authored
@@ -338,6 +339,17 @@ export class AppModeSystem extends createSystem({}) {
       checked: voicesOffEnabled(),
       onCheckedChange: setVoicesOff,
     } as never);
+    const syncArmbandHand = () => panel.getElementById('armband-hand-setting-label')?.setProperties({
+      text: `MR armband: ${armbandHand() === 'left' ? 'Left' : 'Right'} hand`,
+    });
+    const handButton = panel.getElementById('armband-hand-button');
+    const toggleArmbandHand = () => {
+      setArmbandHand(armbandHand() === 'left' ? 'right' : 'left');
+      syncArmbandHand();
+    };
+    handButton?.addEventListener('click', toggleArmbandHand);
+    this.cleanupFuncs.push(() => handButton?.removeEventListener('click', toggleArmbandHand));
+    syncArmbandHand();
     // Debug stat reset: two-step confirm, clears progression stats only.
     let resetArmed = false;
     let resetDisarm: number | undefined;
@@ -357,6 +369,7 @@ export class AppModeSystem extends createSystem({}) {
       window.location.reload();
     });
     const syncAccessibility = () => {
+      syncArmbandHand();
       if (voicesOffEnabled()) this.voicePreview.cancel();
       panel.getElementById('hearing-subtitles-checkbox')?.setProperties({ checked: hearingSubtitlesEnabled() } as never);
       panel.getElementById('color-names-checkbox')?.setProperties({ checked: colorNamesEnabled() } as never);
