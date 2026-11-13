@@ -1,6 +1,6 @@
 import { hintWindowStart, HINT_WINDOW_SIZE } from './hint-window.js';
 import { armbandHand, armbandDisplayMode, ArmbandDisplay, ARMBAND_SCALE } from './armband.js';
-import { PALM_PANEL_LIFT, palmPanelPose, type PalmJoints, type PalmVec } from './palm-projector.js';
+import { BAND_JOINT_ROTATION, PALM_PANEL_LIFT, palmPanelPose, type PalmJoints, type PalmVec } from './palm-projector.js';
 import { BackgroundProgress } from './cypher-background.js';
 import { getVoiceGender } from './speech.js';
 import { CypherProgress, type CypherWindow } from './cypher-progress.js';
@@ -563,6 +563,39 @@ if (session) for (const candidate of session.inputSources) {
           this.armbandProjectorOpen = 0;
         }
       } else {
+        // Band mode: derive the pose from hand anatomy instead of the raw wrist
+        // joint frame, whose twist convention is platform-specific (the Quest
+        // clipping report). BAND_JOINT_ROTATION reproduces the tuned emulator
+        // pose exactly from anatomical directions, so hardware gets the same look.
+        const joints = frame && reference ? this.readPalmJoints(source.hand, frame, reference) : null;
+        if (joints) {
+          const mirror = hand === 'right' ? -1 : 1;
+          const a = this.armbandBasisA.set(
+            (joints.middleMcp.x - joints.wrist.x) * mirror,
+            joints.middleMcp.y - joints.wrist.y,
+            joints.middleMcp.z - joints.wrist.z).normalize();
+          const px = (joints.indexMcp.x - joints.pinkyMcp.x) * mirror;
+          const py = joints.indexMcp.y - joints.pinkyMcp.y;
+          const pz = joints.indexMcp.z - joints.pinkyMcp.z;
+          const cx = a.y * pz - a.z * py;
+          const cy = a.z * px - a.x * pz;
+          const cz = a.x * py - a.y * px;
+          const d = a.x * cx + a.y * cy + a.z * cz;
+          const n = this.armbandBasisN.set(cx - a.x * d, cy - a.y * d, cz - a.z * d).normalize();
+          const x = this.armbandBasisX.crossVectors(a, n);
+          const e = this.armbandJointMatrix.elements;
+          for (let c = 0; c < 3; c++) {
+            const r0 = BAND_JOINT_ROTATION[0]![c]!, r1 = BAND_JOINT_ROTATION[1]![c]!, r2 = BAND_JOINT_ROTATION[2]![c]!;
+            e[c * 4] = a.x * r0 + n.x * r1 + x.x * r2;
+            e[c * 4 + 1] = a.y * r0 + n.y * r1 + x.y * r2;
+            e[c * 4 + 2] = a.z * r0 + n.z * r1 + x.z * r2;
+            e[c * 4 + 3] = 0;
+          }
+          e[3] = e[7] = e[11] = 0; e[12] = e[13] = e[14] = 0; e[15] = 1;
+          this.armbandJointQuat.setFromRotationMatrix(this.armbandJointMatrix);
+          if (hand === 'right') { this.armbandJointQuat.y *= -1; this.armbandJointQuat.z *= -1; }
+          this.armband.applyPose(joints.wrist, this.armbandJointQuat);
+        }
         this.armbandProjectorOpen = 0;
       }
     }
@@ -659,6 +692,10 @@ private readonly armbandPanelPos = new Vector3();
 private readonly armbandPanelQuat = new Quaternion();
 private readonly armbandSmoothPos = new Vector3();
 private readonly armbandSmoothQuat = new Quaternion();
+private readonly armbandBasisA = new Vector3();
+private readonly armbandBasisN = new Vector3();
+private readonly armbandBasisX = new Vector3();
+private readonly armbandJointQuat = new Quaternion();
 private readonly armbandBeamBase = new Vector3();
 private readonly armbandBeamDir = new Vector3();
 private armbandBeam: Mesh | undefined;
