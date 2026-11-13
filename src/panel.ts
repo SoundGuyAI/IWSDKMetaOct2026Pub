@@ -69,6 +69,7 @@ export class PanelSystem extends createSystem({}) {
   /** When true, flat (non-immersive) layout should be applied. */
   private flatLayoutActive = false;
   private menuAnchored = false;
+  private followedMenuId = 'main-menu-panel';
   private menuSnapping = false;
   private readonly menuViewer = new Vector3();
   private readonly menuForward = new Vector3();
@@ -86,7 +87,17 @@ export class PanelSystem extends createSystem({}) {
    * look-away threshold, eased snap). Flat layouts are untouched.
    */
   update(delta: number): void {
-    const entity = this.world.getSceneEntity('main-menu-panel');
+    // The Lab menu replaces the main menu in place, so it follows the player
+    // with the same rules. Switching menus re-anchors it in front of the viewer.
+    const labVisible =
+      this.world.getSceneEntity('lab-menu-panel')?.getValue(Visibility, 'isVisible') === true;
+    const followId = labVisible ? 'lab-menu-panel' : 'main-menu-panel';
+    if (followId !== this.followedMenuId) {
+      this.followedMenuId = followId;
+      this.menuAnchored = false;
+      this.menuSnapping = false;
+    }
+    const entity = this.world.getSceneEntity(followId);
     const immersive =
       this.world.xrEnabled &&
       this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
