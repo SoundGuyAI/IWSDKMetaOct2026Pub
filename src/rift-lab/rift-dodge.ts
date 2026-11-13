@@ -18,7 +18,7 @@ const norm = (a: V3): V3 => {
   return [a[0] / l, a[1] / l, a[2] / l];
 };
 
-export function riftPanelBlocked(opts: {
+interface ScanOpts {
   eye: V3;
   panel: V3;
   targets: readonly V3[];
@@ -26,13 +26,27 @@ export function riftPanelBlocked(opts: {
   uiRays: readonly Ray[];
   blockDeg: number;
   lateralM: number;
-}): boolean {
-  if (opts.targets.length === 0) return false;
-  const rays: Ray[] = [...opts.aimRays, ...opts.uiRays];
+  /** How far above a rift's center the eye line must stay visible. */
+  riftTopM?: number;
+}
+
+/**
+ * Highest height, at the panel's depth, of any blocking ray (eye line to a
+ * rift's upper part, open-hand aim ray, or UI ray). null when nothing blocks.
+ * The panel's bottom edge must sit above this to clear the line of sight.
+ */
+export function riftBlockingLineY(opts: ScanOpts): number | null {
+  if (opts.targets.length === 0) return null;
+  const top = opts.riftTopM ?? 0;
+  const rays: { ray: Ray; eyeLine: boolean }[] = [
+    ...opts.aimRays.map((ray) => ({ ray, eyeLine: false })),
+    ...opts.uiRays.map((ray) => ({ ray, eyeLine: false })),
+  ];
   for (const t of opts.targets) {
-    rays.push({ origin: opts.eye, dir: sub(t, opts.eye) });
+    rays.push({ ray: { origin: opts.eye, dir: sub(t, opts.eye) }, eyeLine: true });
   }
-  for (const ray of rays) {
+  let best: number | null = null;
+  for (const { ray, eyeLine } of rays) {
     const d = norm(ray.dir);
     const toPanel = sub(opts.panel, ray.origin);
     const flatP: V3 = [toPanel[0], 0, toPanel[2]];
@@ -52,8 +66,21 @@ export function riftPanelBlocked(opts: {
         ray.origin[1] + d[1] * along,
         ray.origin[2] + d[2] * along,
       ];
-      if (len(sub(closest, t)) <= opts.lateralM) return true;
+      if (len(sub(closest, t)) > opts.lateralM) continue;
+      // Height of this line where it passes the panel (horizontal depth).
+      let dir = d;
+      if (eyeLine) dir = norm(sub([t[0], t[1] + top, t[2]], ray.origin));
+      const fd: V3 = [dir[0], 0, dir[2]];
+      const fl = len(fd);
+      if (fl < 1e-3) continue;
+      const flatAlong = dot(flatP, norm(fd));
+      const y = ray.origin[1] + (dir[1] / fl) * flatAlong;
+      if (best == null || y > best) best = y;
     }
   }
-  return false;
+  return best;
+}
+
+export function riftPanelBlocked(opts: ScanOpts): boolean {
+  return riftBlockingLineY(opts) !== null;
 }
