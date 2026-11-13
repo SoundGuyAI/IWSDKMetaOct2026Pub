@@ -1,3 +1,5 @@
+import { hintWindowStart, HINT_WINDOW_SIZE } from './hint-window.js';
+import { armbandHand, ArmbandDisplay, ARMBAND_SCALE } from './armband.js';
 import { BackgroundProgress } from './cypher-background.js';
 import { getVoiceGender } from './speech.js';
 import { CypherProgress, type CypherWindow } from './cypher-progress.js';
@@ -444,7 +446,7 @@ const panel = this.sequenceIconPendingPanel;
 if (panel) this.reconcileSequenceIcons(panel);
 };
 private accessibilityPanel: UIKitMLAsset | undefined;
-private accessibilityState: { show: boolean; flat: boolean; active: boolean; caption: string; phase: string; flow: string; status: string; names: boolean; sequence: number[]; reveal: number; shown: number; listen: boolean } | undefined;
+private accessibilityState: { show: boolean; flat: boolean; active: boolean; caption: string; phase: string; flow: string; status: string; inputStep: number; names: boolean; sequence: number[]; reveal: number; shown: number; listen: boolean } | undefined;
 private sequenceIconRow: UIKit.Container | null = null;
 /** Setup HUD is world-anchored; look-away past a threshold re-snaps it. */
 private panelWorldAnchored = false;
@@ -494,6 +496,94 @@ primeWallTonesAudioFromGesture();
 private readonly savedPanelPosition = new Float32Array(3);
 private readonly savedPanelScale = new Float32Array(3);
 private panelPositionSaved = false;
+private armband: ArmbandDisplay | undefined;
+private armbandNextReadoutAt = 0;
+private readonly armbandGripPosition = new Vector3();
+private readonly armbandGripOrientation = new Quaternion();
+
+private tickArmband(): void {
+const entity = this.world.getSceneEntity('wall-tones-armband');
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-armband');
+if (!entity?.object3D || !panel) return;
+const housing = this.world.getSceneEntity('wall-tones-armband-housing');
+if (!this.armband) {
+  this.armband = new ArmbandDisplay(panel);
+  const bind = (id: string, action: () => void) => {
+    const button = panel.getElementById(id);
+    if (!button) return;
+    button.name = id;
+    button.addEventListener('click', action);
+    this.cleanupFuncs.push(() => button.removeEventListener('click', action));
+  };
+  bind('armband-repeat', () => {
+    if (this.armbandUsable() && this.game.phase === 'input' && this.economy.getReplaysTotal() > 0) void this.onRepeatPattern();
+  });
+  bind('armband-modifiers', () => { if (this.armbandUsable()) this.onToggleStore(); });
+  const upgrade = (id: string) => {
+    if (!this.armbandUsable()) return;
+    if (!this.storeOpen) this.onToggleStore();
+    this.forceSelectStoreTile(id);
+  };
+  bind('armband-hint-button', () => upgrade('hint'));
+  bind('armband-autoplay', () => upgrade('autoplay'));
+}
+const hand = armbandHand();
+const adapter = this.input.xr.visualAdapters[hand].peek();
+let tracked = false;
+if (this.armbandUsable() && adapter?.connected) {
+  const session = this.xrManager.getSession();
+  const frame = this.xrManager.getFrame();
+  const reference = this.xrManager.getReferenceSpace();
+  let source: XRInputSource | undefined;
+if (session) for (const candidate of session.inputSources) {
+  if (candidate.handedness === hand) { source = candidate; break; }
+}
+  if (source?.hand) {
+    const wrist = source.hand.get('wrist');
+    const pose = wrist && frame && reference ? frame.getJointPose?.(wrist, reference) : null;
+    if (pose) {
+      this.player.updateWorldMatrix(true, false);
+      this.armband.applyReferencePose(pose.transform.matrix, this.player);
+      tracked = true;
+    }
+  } else if (source?.gripSpace) {
+    const pose = frame && reference ? frame.getPose(source.gripSpace, reference) : null;
+    if (pose) {
+      this.player.gripSpaces[hand].getWorldPosition(this.armbandGripPosition);
+      this.player.gripSpaces[hand].getWorldQuaternion(this.armbandGripOrientation);
+      this.armband.applyPose(this.armbandGripPosition, this.armbandGripOrientation);
+      tracked = true;
+    }
+  }
+}
+entity.object3D.visible = tracked;
+if (housing?.object3D) housing.object3D.visible = tracked;
+if (!tracked) return;
+const position = entity.getVectorView(Transform, 'position');
+const orientation = entity.getVectorView(Transform, 'orientation');
+const scale = entity.getVectorView(Transform, 'scale');
+this.armband.position.toArray(position);
+this.armband.orientation.toArray(orientation);
+scale[0] = scale[1] = scale[2] = ARMBAND_SCALE;
+if (housing) {
+  this.armband.position.toArray(housing.getVectorView(Transform, 'position'));
+  this.armband.orientation.toArray(housing.getVectorView(Transform, 'orientation'));
+  housing.getVectorView(Transform, 'scale').fill(0.6);
+}
+const now = performance.now();
+if (now < this.armbandNextReadoutAt) return;
+this.armbandNextReadoutAt = now + 100;
+this.armband.render({ streak: this.game.streak, best: this.game.bestStreak,
+  phase: this.game.phase, inputStep: this.game.inputStep, sequence: this.game.sequence,
+  hintCount: this.economy.getHintRevealCount(), listen: this.economy.ownsListen(),
+  playbackShown: this.playbackShownCount, replays: this.economy.getReplaysTotal(),
+  autoplay: this.economy.getAutoplayLevel(), colorNames: colorNamesEnabled() });
+}
+
+private armbandUsable(): boolean {
+return this.experienceActive && this.flowPhase === 'playing' && !this.gameOverOpen &&
+  this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
+}
 
 init(): void {
 this.bindPanelIfNeeded();
@@ -592,6 +682,7 @@ this.speech.speak('lookAround');
 }
 
 update(delta: number): void {
+this.tickArmband();
 this.updateAccessibilityCaptions();
 this.tickHeadCaption();
 if (!this.experienceActive) {
@@ -1134,6 +1225,10 @@ this.panelRayHits.length=0;
 const target=headerOnly?panel.getElementById('wall-tones-panel-header'):panel;
 if(target==null)return false;
 this.panelRaycaster.intersectObject(target,true,this.panelRayHits);
+if (!headerOnly) {
+  const wrist = this.world.getSceneObject<UIKitMLAsset>('wall-tones-armband');
+  if (wrist?.visible) this.panelRaycaster.intersectObject(wrist, true, this.panelRayHits);
+}
 return this.panelRayHits.some(hit=>hit.distance>0.01);
 }
 
@@ -5183,7 +5278,9 @@ const visible =
 const names = colorNamesEnabled();
 // yourTurn must key the cache: after Listen of a longer-than-owned pattern the
 // row stays visible while the beyond-hint boxes must hide on the phase flip.
-const key = this.game.sequence.join(',') + ':' + names + ':' + visible + ':' + reveal + ':' + (yourTurn ? '1' : '0') + ':' + (listening ? this.playbackShownCount : -1);
+const windowLength = yourTurn ? Math.min(this.game.sequence.length, reveal + 5) : this.playbackShownCount;
+const windowStart = hintWindowStart(windowLength, yourTurn ? this.game.inputStep : this.playbackShownCount - 1);
+const key = windowStart + ':' + this.game.sequence.join(',') + ':' + names + ':' + visible + ':' + reveal + ':' + (yourTurn ? '1' : '0') + ':' + (listening ? this.playbackShownCount : -1);
 if (this.sequenceIconRow === row && this.sequenceIconKey === key) return;
 if (this.sequenceIconRow !== row) {
 this.sequenceCueSquares.length = 0;
@@ -5193,7 +5290,7 @@ this.sequenceIconRow = row;
 this.sequenceIconKey = key;
 row.setProperties({ display: visible ? 'flex' : 'none' });
 this.lastSequenceRowVisible = visible;
-for (let i = 0; i < this.game.sequence.length; i++) {
+for (let i = 0; i < Math.min(HINT_WINDOW_SIZE, this.game.sequence.length); i++) {
 if (!this.sequenceCueSquares[i]) {
 const square = new UIKit.Container({width: 16, height: 16, borderRadius: 2, flexShrink: 0});
 const name = new UIKit.Text({fontSize: 15, color: 0xffffff});
@@ -5205,9 +5302,10 @@ row.add(square); row.add(name);
 let shown = 0;
 let unknownShown = 0;
 for (let i = 0; i < this.sequenceCueSquares.length; i++) {
-const id = this.game.sequence[i];
-const beyondHint = yourTurn && i >= reveal;
-const notYetPlayed = listening && i >= this.playbackShownCount;
+const sequenceIndex = windowStart + i;
+const id = this.game.sequence[sequenceIndex];
+const beyondHint = yourTurn && sequenceIndex >= reveal;
+const notYetPlayed = listening && sequenceIndex >= this.playbackShownCount;
 // User ask (Nov 7): when the pattern runs past the owned hint prefix,
 // mark the hidden tail with up to 5 grey "?" squares instead of nothing.
 const unknown = beyondHint && id != null && unknownShown < 5;
@@ -5322,12 +5420,12 @@ const accessibilityChanged = this.accessibilityPanel !== panel || !previous ||
 previous.show !== show || previous.flat !== flat ||
 previous.active !== this.experienceActive || previous.caption !== caption ||
 previous.phase !== this.game.phase || previous.flow !== this.flowPhase || previous.status !== this.statusText ||
-previous.names !== names || previous.reveal !== this.economy.getHintRevealCount() ||
+previous.inputStep !== this.game.inputStep || previous.names !== names || previous.reveal !== this.economy.getHintRevealCount() ||
 previous.shown !== this.playbackShownCount || previous.listen !== this.economy.ownsListen() || sequenceChanged;
 if (accessibilityChanged) {
 this.accessibilityPanel = panel;
 this.accessibilityState = { show, flat, active: this.experienceActive, caption,
-phase: this.game.phase, flow: this.flowPhase, status: this.statusText, names, sequence: [...this.game.sequence],
+phase: this.game.phase, flow: this.flowPhase, status: this.statusText, inputStep: this.game.inputStep, names, sequence: [...this.game.sequence],
 reveal: this.economy.getHintRevealCount(), shown: this.playbackShownCount, listen: this.economy.ownsListen() };
 if (panel && this.experienceActive) this.renderSequenceIcons(panel);
 // Bug fix (user report): the info row holds the Your Turn hint boxes; it
@@ -5432,7 +5530,9 @@ this.flatCaptions.replaceChildren();
 const line = document.createElement('div');
 Object.assign(line.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexWrap: 'wrap' });
 const label = document.createElement('span'); label.textContent = info; line.append(label);
-if (seqVisible) for (let i = 0; i < this.game.sequence.length; i++) {
+const captionWindowLength = captionYourTurn ? Math.min(this.game.sequence.length, captionReveal + 5) : this.playbackShownCount;
+const captionStart = hintWindowStart(captionWindowLength, captionYourTurn ? this.game.inputStep : this.playbackShownCount - 1);
+if (seqVisible) for (let i = captionStart; i < Math.min(this.game.sequence.length, captionStart + HINT_WINDOW_SIZE); i++) {
 if (captionListening && i >= this.playbackShownCount) break;
 const unknown = captionYourTurn && i >= captionReveal;
 if (unknown && i - captionReveal >= 5) break; // cap the grey "?" tail at 5
