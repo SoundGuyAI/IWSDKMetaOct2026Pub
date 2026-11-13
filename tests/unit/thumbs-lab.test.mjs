@@ -94,20 +94,62 @@ test('disabled detector ignores poses and rearms cleanly', () => {
 });
 
 const script = await load('../../src/thumbs-lab/lab-script.ts');
-const { buildGestureLabScript, labPromptById, labAnswerFollowUp } = script;
+const { buildGestureLabScript, labPromptById, labAnswerFollowUp, labBranchIsNextPromptLine } = script;
 const tree = buildGestureLabScript(
   { clipId: 'intro-thumbs', text: 'intro line' },
   { clipId: 'retry-thumbs', text: 'retry line' },
 );
 
-test('dialogue tree: intro loops on no, branches converge at q3 then end', () => {
+test('dialogue tree: intro no goes to the short retry loop, branches converge at q3 then end', () => {
   const p = labPromptById(tree, 'intro');
   assert.equal(labAnswerFollowUp(p, 'no').branch.clipId, 'retry-thumbs');
-  assert.equal(labAnswerFollowUp(p, 'no').nextPromptId, 'intro');
+  // Nov 14: a no retries the short channel-weak line, not the full intro.
+  assert.equal(labAnswerFollowUp(p, 'no').nextPromptId, 'retry');
+  const retryPrompt = labPromptById(tree, 'retry');
+  assert.equal(labAnswerFollowUp(retryPrompt, 'no').nextPromptId, 'retry');
+  assert.equal(labAnswerFollowUp(retryPrompt, 'yes').nextPromptId, 'q2');
   assert.equal(labAnswerFollowUp(p, 'yes').nextPromptId, 'q2');
   for (const answer of ['yes', 'no']) {
     assert.equal(labAnswerFollowUp(labPromptById(tree, 'q2'), answer).nextPromptId, 'q3');
     assert.equal(labAnswerFollowUp(labPromptById(tree, 'q3'), answer).nextPromptId, 'end');
+  }
+});
+
+test('branch lines that are the next prompt line must not be spoken twice', () => {
+  const p = labPromptById(tree, 'intro');
+  const yes = labAnswerFollowUp(p, 'yes');
+  // Nov 14 Quest test: "I need to know the coast is clear" played twice.
+  assert.equal(labBranchIsNextPromptLine(tree, yes.branch, yes.nextPromptId), true);
+  const no = labAnswerFollowUp(p, 'no');
+  // The retry line is the retry prompt's own line: spoken once, in playPrompt.
+  assert.equal(labBranchIsNextPromptLine(tree, no.branch, no.nextPromptId), true);
+  const retryNo = labAnswerFollowUp(labPromptById(tree, 'retry'), 'no');
+  assert.equal(labBranchIsNextPromptLine(tree, retryNo.branch, retryNo.nextPromptId), true);
+  // Approved Nov 14 retry rotation: lab line first, then the shared variations.
+  const retryPrompt = labPromptById(tree, 'retry');
+  assert.equal(retryPrompt.loopVariations?.length, 4);
+  assert.equal(retryPrompt.loopVariations?.[0].clipId, 'retry-thumbs');
+  assert.deepEqual(
+    retryPrompt.loopVariations?.map((line) => line.clipId),
+    ['retry-thumbs', 'retry-2', 'retry-3', 'retry-4'],
+  );
+  assert.equal(
+    retryPrompt.loopVariations?.[1].text,
+    'Still nothing. Widening the band. Can you hear me now?',
+  );
+  assert.equal(
+    retryPrompt.loopVariations?.[2].text,
+    'No? Rerouting through the relay. Can you hear me now?',
+  );
+  assert.equal(
+    retryPrompt.loopVariations?.[3].text,
+    'Not yet. Pushing full power. Can you hear me now?',
+  );
+  for (const answer of ['yes', 'no']) {
+    const q2 = labAnswerFollowUp(labPromptById(tree, 'q2'), answer);
+    assert.equal(labBranchIsNextPromptLine(tree, q2.branch, q2.nextPromptId), false);
+    const q3 = labAnswerFollowUp(labPromptById(tree, 'q3'), answer);
+    assert.equal(labBranchIsNextPromptLine(tree, q3.branch, q3.nextPromptId), false);
   }
 });
 
@@ -160,7 +202,7 @@ test('wiring: menu button, mode, panel asset, scene nodes and registration', () 
 test('clip spec covers every clip id used by the lab, in both voices', () => {
   const ids = new Set();
   for (const prompt of tree.prompts) {
-    for (const line of [prompt.line, prompt.yesBranch, prompt.noBranch]) ids.add(line.clipId);
+    for (const line of [prompt.line, prompt.yesBranch, prompt.noBranch, ...(prompt.loopVariations ?? [])]) ids.add(line.clipId);
   }
   ids.add(tree.feedback.yes.clipId);
   ids.add(tree.feedback.no.clipId);
