@@ -21,6 +21,9 @@ const {
   BEAM_MIN_ENERGY,
   SEAL_HOLD_MS,
   MAX_ORBIT_NOTES,
+  NOTES_PER_SUCCESS,
+  CLOUD_MIN_RADIUS_M,
+  CLOUD_MAX_RADIUS_M,
   SEAL_ENERGY_REQUIRED,
   DESKTOP_NOTES_FLIGHT_MS,
   OPEN_RIFT_MODIFIER_FRACTION,
@@ -49,7 +52,7 @@ test('every successful note charges energy and adds an orbit note', () => {
   const game = new RiftLabGame(seq(0.5));
   game.addNoteEnergy('green', 'right');
   assert.equal(game.getEnergy(), ENERGY_PER_NOTE);
-  assert.equal(game.getNotes().length, 1);
+  assert.equal(game.getNotes().length, NOTES_PER_SUCCESS);
   assert.equal(game.getNotes()[0].color, 'green');
 });
 
@@ -66,7 +69,7 @@ test('notes orbit both hands, densest on the firing hand', () => {
   for (let i = 0; i < 10; i++) game.addNoteEnergy('blue', 'right');
   const right = game.getNotes().filter((n) => n.hand === 'right').length;
   const left = game.getNotes().filter((n) => n.hand === 'left').length;
-  assert.equal(right + left, 10);
+  assert.equal(right + left, 10 * NOTES_PER_SUCCESS);
   assert.ok(left > 0, 'both hands carry notes');
   assert.ok(right > left, 'the firing hand carries more');
 });
@@ -217,4 +220,28 @@ test('the enough-energy gate is one constant shared by every platform', () => {
   assert.equal(SEAL_ENERGY_REQUIRED / ENERGY_PER_NOTE, 12);
   const game = new RiftLabGame(seq(0.5));
   assert.equal(game.canFireBeam(), false); // XR/mobile gate, same threshold
+});
+
+test('hand cloud is dense and volumetric: spread over a sphere shell, not one ring', () => {
+  const game = new RiftLabGame(seq(0.5));
+  for (let i = 0; i < 12; i++) game.addNoteEnergy('green', 'right');
+  const notes = game.getNotes();
+  assert.equal(notes.length, 12 * NOTES_PER_SUCCESS);
+  const radii = notes.map((n) => n.radius);
+  assert.ok(Math.min(...radii) >= CLOUD_MIN_RADIUS_M - 1e-9);
+  assert.ok(Math.max(...radii) <= CLOUD_MAX_RADIUS_M + 1e-9);
+  assert.ok(Math.max(...radii) - Math.min(...radii) > 0.05, 'radius varies');
+  const phis = notes.map((n) => n.phi);
+  assert.ok(Math.min(...phis) < 0.6 && Math.max(...phis) > Math.PI - 0.6, 'spans the poles, so not a flat circle');
+});
+
+test('spent energy removes notes from the cloud', () => {
+  const game = new RiftLabGame(seq(0.5));
+  for (let i = 0; i < 24; i++) game.addNoteEnergy('red', 'right');
+  game.startBeam({ kind: 'mobile-drag', dx: 0, dy: 0 });
+  const rift = game.spawnRift();
+  game.applyBeamOnRift(rift.id, 100000);
+  game.pruneNotesToEnergy();
+  assert.equal(game.getNotes().length, Math.ceil(game.getEnergy() / ENERGY_PER_NOTE) * NOTES_PER_SUCCESS);
+  assert.ok(game.getNotes().length < 24 * NOTES_PER_SUCCESS);
 });
