@@ -1,3 +1,6 @@
+import { CYPHER_BACKGROUND, type BackgroundLineId } from './cypher-background.js';
+import { captureCypherCast, type CypherCast } from './cypher-voice.js';
+import { findCypherLine, type CypherLineId } from './cypher-script.js';
 import { CLIP_TRANSCRIPTS } from './clip-transcripts.js';
 import { startSpokenCaption, endSpokenCaption, hearingSubtitlesEnabled, voicesOffEnabled } from './accessibility.js';
 import { NEW_BEST_MALE } from './new-best-male.js';
@@ -330,15 +333,21 @@ export function resetSpeechUnlock(): void {
   speechUnlocked = !needsSpeechUnlock();
 }
 
-const bufferCache = new Map<WallTonesClipId, AudioBuffer | null>();
-const pendingDecodes = new Map<WallTonesClipId, Promise<AudioBuffer | null>>();
+interface StorySpeechClip { readonly url: string; readonly text: string; }
+type SpeechClip = WallTonesClipId | StorySpeechClip;
+function speechUrl(clip: SpeechClip): string { return typeof clip === 'string' ? clipUrl(clip) : clip.url; }
+function speechText(clip: SpeechClip): string { return typeof clip === 'string' ? CLIP_TRANSCRIPTS[clip] : clip.text; }
+// URL keys include the captured cast. A late decode for one voice cannot poison another.
+const bufferCache = new Map<string, AudioBuffer | null>();
+const pendingDecodes = new Map<string, Promise<AudioBuffer | null>>();
 
-async function decodeClip(id: WallTonesClipId): Promise<AudioBuffer | null> {
-  const cached = bufferCache.get(id);
+async function decodeClip(id: SpeechClip): Promise<AudioBuffer | null> {
+  const url = speechUrl(id);
+  const cached = bufferCache.get(url);
   if (cached !== undefined) {
     return cached;
   }
-  const pending = pendingDecodes.get(id);
+  const pending = pendingDecodes.get(url);
   if (pending != null) {
     return pending;
   }
@@ -348,7 +357,7 @@ async function decodeClip(id: WallTonesClipId): Promise<AudioBuffer | null> {
       if (context == null) {
         return null;
       }
-      const response = await fetch(clipUrl(id));
+      const response = await fetch(url);
       if (!response.ok) {
         console.warn(`[wall-tones] missing voice clip ${id} (${response.status})`);
         return null;
@@ -360,10 +369,10 @@ async function decodeClip(id: WallTonesClipId): Promise<AudioBuffer | null> {
       return null;
     }
   })();
-  pendingDecodes.set(id, job);
+  pendingDecodes.set(url, job);
   const buffer = await job;
-  pendingDecodes.delete(id);
-  bufferCache.set(id, buffer);
+  pendingDecodes.delete(url);
+  bufferCache.set(url, buffer);
   return buffer;
 }
 
@@ -443,6 +452,34 @@ export class WallTonesSpeech {
 
   /** Play a clip and resolve when it finishes, fails, or times out. */
   speakAsync(id: WallTonesClipId, startupEntry = false): Promise<void> {
+    return this.enqueueClip(id, startupEntry);
+  }
+
+  /** Uses the existing speech queue, unlock, mute, captions and Skip lifecycle. */
+  speakStoryLine(id: CypherLineId, cast: Readonly<CypherCast> = captureCypherCast(getVoiceGender())): Promise<void> {
+    const line = findCypherLine(id);
+    if (!line) return Promise.resolve();
+    const gender = line.speaker === 'cypher' ? cast.cypher : cast.narrator;
+    const url = new URL(`audio/story/${line.speaker}/${gender}/${id.toLowerCase()}.mp3`, document.baseURI).href;
+    return this.enqueueClip({ url, text: `${line.speaker === 'cypher' ? 'Cypher' : 'Narrator'}: ${line.text}` });
+  }
+
+  speakBackgroundLine(id: BackgroundLineId, cast: Readonly<CypherCast>): Promise<void> {
+    const line = CYPHER_BACKGROUND.find(line => line.id === id);
+    if (!line) return Promise.resolve();
+    return this.enqueueClip({ url: new URL(`audio/story/background/${cast.cypher}/${id.toLowerCase()}.mp3`, document.baseURI).href, text: `Cypher: ${line.text}` });
+  }
+
+  speakBackgroundEffect(id: 'open' | 'squawk' | 'close'): Promise<void> {
+    return this.enqueueClip({ url: new URL(`audio/story/background/effects/${id}.mp3`, document.baseURI).href, text: { open: '[radio squawk opens]', squawk: '[radio squawk]', close: '[radio squawk closes]' }[id] });
+  }
+
+  speakStoryEffect(id: 'open' | 'squawk' | 'close' | 'glitch' | 'shimmer'): Promise<void> {
+    const captions = { open: '[radio static]', squawk: '[radio squawk]', close: '[radio closes]', glitch: '[game diagnostic glitch]', shimmer: '[light seam closes]' };
+    return this.enqueueClip({ url: new URL(`audio/story/effects/${id}.mp3`, document.baseURI).href, text: captions[id] });
+  }
+
+  private enqueueClip(id: SpeechClip, startupEntry = false): Promise<void> {
     if (voicesOffEnabled()) {
       // Voices off silences the audio, not the words: with hearing subtitles
       // on, the narration line still shows as a caption for a reading beat.
@@ -487,7 +524,7 @@ export class WallTonesSpeech {
   }
 
   /** Subtitles-only line: show the transcript as a caption, no audio. */
-  private captionOnly(id: WallTonesClipId): Promise<void> {
+  private captionOnly(id: SpeechClip): Promise<void> {
     this.pendingLines += 1;
     const gen = this.generation;
     const uncount = () => {
@@ -505,7 +542,7 @@ export class WallTonesSpeech {
       if (gen !== this.generation) {
         return; // superseded by cancel() while queued
       }
-      const text = CLIP_TRANSCRIPTS[id];
+      const text = speechText(id);
       const token = startSpokenCaption(text);
       const words = text.split(/\s+/).filter(Boolean).length;
       const readingMs = Math.min(9000, 1200 + words * 350);
@@ -530,7 +567,7 @@ export class WallTonesSpeech {
     });
   }
 
-  private async playClip(id: WallTonesClipId, gen: number, startupEntry: boolean): Promise<void> {
+  private async playClip(id: SpeechClip, gen: number, startupEntry: boolean): Promise<void> {
     if (needsExplicitMobileSoundUnlock() && mobileVoice != null) {
       if (id === 'welcome' && startupEntry && startupWelcome != null) {
         const welcome = startupWelcome;
@@ -575,7 +612,7 @@ export class WallTonesSpeech {
   private playBuffer(
     context: AudioContext,
     buffer: AudioBuffer,
-    id: WallTonesClipId,
+    id: SpeechClip,
   ): Promise<void> {
     return new Promise((resolve) => {
       const source = context.createBufferSource();
@@ -600,14 +637,14 @@ export class WallTonesSpeech {
       window.setTimeout(finish, buffer.duration * 1000 + 800);
       try {
         source.start();
-        caption = startSpokenCaption(CLIP_TRANSCRIPTS[id]);
+        caption = startSpokenCaption(speechText(id));
       } catch {
         finish();
       }
     });
   }
 
-  private playElement(id: WallTonesClipId): Promise<void> {
+  private playElement(id: SpeechClip): Promise<void> {
     return new Promise((resolve) => {
       let caption: number | undefined;
       let settled = false;
@@ -624,8 +661,8 @@ export class WallTonesSpeech {
       try {
         const audio = needsExplicitMobileSoundUnlock() && mobileVoice != null
           ? mobileVoice
-          : new Audio(clipUrl(id));
-        audio.src = clipUrl(id);
+          : new Audio(speechUrl(id));
+        audio.src = speechUrl(id);
         audio.currentTime = 0;
         this.currentElement = audio;
         this.activeElementFinish = finish;
@@ -633,7 +670,7 @@ export class WallTonesSpeech {
         audio.onerror = finish;
         // Long setup clips must not be cut by a short media watchdog.
         window.setTimeout(finish, 60000);
-        audio.onplaying = () => { caption = startSpokenCaption(CLIP_TRANSCRIPTS[id]); };
+        audio.onplaying = () => { caption = startSpokenCaption(speechText(id)); };
         void audio.play().catch(finish);
       } catch {
         finish();

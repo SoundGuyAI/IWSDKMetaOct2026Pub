@@ -1,3 +1,5 @@
+> Historical planning document preserved by PR #64. This describes the earlier documentation stage. Later PR #70 work and `src/wall-tones/cypher-script.ts` determine implemented Act 1 behavior; the v0.1 inspiration backup remains unchanged. Statements below about unimplemented voices, gates, saving, review or merge approval are historical, not current task authority.
+
 # Wall Tones 2 - November 6 notes
 
 
@@ -83,3 +85,30 @@ Future ideas and polish lists moved to [WALL_TONES_TODO.md](WALL_TONES_TODO.md) 
 - [ ] User review and merge go-ahead.
 
 The merge-ready procedure is an enduring rule for every merge, not work in this PR; it is documented in .github/workflows/ci.yml at the workflow_dispatch block (expected_sha guard, combined-tree merge step, merge-time comparisons).
+
+
+## Cypher story starter - 2026-11-11
+
+1. [x] Draft `CYPHER_DIALOGUE.md` with stable line IDs, source wording appendix, story beats, sound cues and proposed mechanics clearly separated from owner decisions.
+2. [x] Add owner backlog item 51 alongside existing story items 14 and 31.
+3. [x] Prepare the separate documentation-only story PR; keep it unmerged for review.
+4. [ ] Review dialogue, input options, streak gates, repeat/failure rules, unlock, comfort and persistence before any gameplay slice or voice generation.
+5. [ ] After approval, implement and test in focused follow-up PRs. No runtime, economy, audio or deployment change is part of this starter.
+6. [ ] Backlog item 52: only after Cypher gameplay is added, open a separate yes/no input feasibility PR (voice and nod/headshake options remain open).
+
+
+## Cypher v0.2 review update
+
+1. [x] Preserve exact v0.1 as a readable inspiration backup and revise current dialogue for hidden-channel Act 1.
+2. [x] Record Act 2 discovery direction and Act 3 joint mission ending at streak 1024; do not silently invent intermediate gates or new characters.
+3. [ ] Implement hidden story achievements, including drone defeat, only when real story encounter completion events exist; current PR records design and checks, not runtime completion.
+4. [ ] After Cypher gameplay, item 52 separate yes/no feasibility PR also explores thumbs-up/down, alongside nod/headshake and voice.
+5. [ ] Oded rereads the current draft; no voice generation, gameplay deployment or merge is approved by this revision.
+
+## Backlog #58 menu / XR / scan loss - in progress 2026-11-12
+- [x] Keep live world on Back to menu (`returnToMenuInPlace`); do not `switchBackToHubMenu`/`destroyActiveWorld`.
+- [x] Strengthen choose-mode rescan capture/look-around recovery.
+- [x] Unit policy test `tests/unit/back-to-menu-world.test.mjs`.
+- [x] Full local `npm run test:e2e` green before PR push (51 passed; pointer first-press retry hardened).
+- [ ] Headset verification called out separately (not claimed by desktop suite).
+

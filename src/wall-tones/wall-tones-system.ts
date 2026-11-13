@@ -1,6 +1,11 @@
+import { BackgroundProgress } from './cypher-background.js';
+import { getVoiceGender } from './speech.js';
+import { CypherProgress, type CypherWindow } from './cypher-progress.js';
+import { captureCypherCast } from './cypher-voice.js';
 import {selectionPanelPose, horizontalLookAway, panelOverlapsPad, rectangleInsidePolygon} from './panel-placement.js';
 import { shouldAnnounceRecord } from './record-feedback.js';
 import { BarFloatPool } from './bar-floats.js';
+import { AchievementCelebration } from './achievement-celebration.js';
 import { achievementIconSrc, achievementTileSrc } from './achievement-icons.js';
 import { hearingSubtitlesEnabled, colorNamesEnabled, currentSpokenCaption, voicesOffEnabled } from './accessibility.js';
 import {
@@ -102,6 +107,7 @@ import {
 applyPadVisualState,
 createGhostPadRuntime,
 createPadRuntime,
+findPadById,
 defaultDesktopPadSize,
 defaultHeadsetPadSize,
 disposePadRuntimes,
@@ -139,18 +145,40 @@ type WallTonesClipId,
 import { combinedPickSpeechLines } from './combined-pick-speech.js';
 import {
   ACHIEVEMENT_CATEGORIES,
+  AUTOPLAY_UNLOCK_HINT_LEVEL,
+  LISTEN_COST,
+  REPLAY_FREE_CAP,
+  REPLAY_PRICE_BARS,
   TOP_SECRET_COST,
   WallTonesEconomy,
   nextOpenThreshold,
 } from './economy.js';
+import { storeChipGlyphSrc, storeTileSrc, type TileState as StoreTileState } from './store-icons.js';
 import { SAVER_PRICE_BARS, saverRetryPlan, saverUnitsForStreak } from './consumable-values.js';
 import {
 getActiveWorldKind,
-switchBackToHubMenu,
+returnToMenuInPlace,
 switchToWallTonesArWorld,
 } from './world-host.js';
 import { WallSlotCandidate } from './wall-slot-candidate-component.js';
 import { WallTonePad } from './wall-tone-pad-component.js';
+
+/** Preview/test aid (owner-approved 2026-11-11): ?demoBars=100 grants
+ * spendable test Bars in memory only - never saved, same preview-only idea
+ * as the ?demoAchievements sample view. */
+function withDemoBarsFlag(eco: WallTonesEconomy): WallTonesEconomy {
+const demoBars =
+typeof location === 'undefined'
+? null
+: new URLSearchParams(location.search).get('demoBars');
+if (demoBars != null) {
+const amount = Number(demoBars);
+if (Number.isFinite(amount) && amount > 0) {
+eco.applyDemoBoost(amount);
+}
+}
+return eco;
+}
 
 /** Stable hand order — never allocate per XR frame. */
 const XR_HANDS = ['right', 'left'] as const;
@@ -165,6 +193,10 @@ const FLAT_BACKDROP_NODE_IDS = [
 ] as const;
 
 type WallTonesDebugBridge = {
+cypherWindowsStarted: number;
+backgroundLinesCompleted: number;
+cypherSeamVisible: boolean;
+previewCypherSeam: (visible: boolean) => void;
 phase: string;
 flowPhase: string;
 sequence: readonly number[];
@@ -200,6 +232,12 @@ headCaptionVisibleText: string | null;
 /** Test-only: drives the exact head-caption setter path tickHeadCaption uses. */
 probeHeadCaptionText: (text: string) => void;
 barFloatsActive: boolean;
+/** Achievement unlock celebration is playing or queued (test-only). */
+celebrationActive: boolean;
+/** "title|name" of the showing celebration, else null (test-only). */
+celebrationText: string | null;
+/** Count of celebration shows that requested sound effects (test-only). */
+celebrationSfxPlays: number;
 infoRowVisible: boolean;
 scoreInfoVisible: boolean;
 gameExplanationDisplay: unknown;
@@ -207,9 +245,35 @@ scoringUiDisplays: Record<string, string | null>;
 toggleStore: () => void;
 toggleAchievements: () => void;
 buyHint: () => void;
+buyListen: () => void;
+buyAutoplay: () => void;
+buyReplay: () => void;
+buySaver: () => void;
 buyTopSecret: () => void;
+/** Test-only: plays the celebration for an arbitrary achievement def. */
+demoCelebration: (id: string, label: string) => void;
+/** Test-only: freezes the celebration show clock for deterministic shots. */
+setCelebrationFrozen: (frozen: boolean) => void;
+/** Test-only: the Achievements button's projected screen position. */
+readonly achievementsButtonScreen: { x: number; y: number } | null;
+/** Test-only: spends one Replay through the Repeat button path. */
+repeatPattern: () => void;
+/** Test-only: selects a store tile like a tap on its tile. */
+selectStoreTile: (id: string) => void;
+storePointerTargets: Record<string, { x: number; y: number }>;
+storeSelected: string | null;
 /** Whether the one-time Top Secret item is owned (test-only). */
 ownsTopSecret: boolean;
+/** Skill-tree store state (test-only reads). */
+ownsListen: boolean;
+hintUnlocked: boolean;
+autoplayLevel: number;
+autoplayUnlocked: boolean;
+replaysFree: number;
+replaysPaid: number;
+replaysTotal: number;
+/** In-memory ?demoBars grant (never saved). */
+demoBoost: number;
 /** Test-only wallet funding for e2e. */
 grantBars: (amount: number) => void;
 /** Test-only saver inventory seeding for e2e. */
@@ -277,7 +341,7 @@ this.speech.speak('chooseMode');
 }
 
 private readonly game = new WallTonesSequence();
-private readonly economy = new WallTonesEconomy();
+private readonly economy = withDemoBarsFlag(new WallTonesEconomy());
 private storeOpen = false;
 private achievementsOpen = false;
 /** Game Over popup shown after a wrong note; New run starts the next run. */
@@ -327,6 +391,11 @@ private flowPhase: FlowPhase = 'inactive';
 private setupMode: SetupMode | null = null;
 private pads: PadRuntime[] = [];
 private playbackQueue: Promise<void> = Promise.resolve();
+private readonly cypherProgress = new CypherProgress();
+private readonly backgroundProgress = new BackgroundProgress();
+private cypherSeam: Object3D | null = null;
+private cypherSeamEntity: Entity | null = null;
+private cypherFlatSeam: HTMLElement | null = null;
 private scanStartedAt = -1;
 /** One-shot room capture while scanning; blocks repeat initiateRoomCapture calls. */
 private roomCaptureInFlight = false;
@@ -388,7 +457,7 @@ const panel = this.sequenceIconPendingPanel;
 if (panel) this.reconcileSequenceIcons(panel);
 };
 private accessibilityPanel: UIKitMLAsset | undefined;
-private accessibilityState: { show: boolean; flat: boolean; active: boolean; caption: string; phase: string; flow: string; status: string; names: boolean; sequence: number[]; reveal: number; shown: number } | undefined;
+private accessibilityState: { show: boolean; flat: boolean; active: boolean; caption: string; phase: string; flow: string; status: string; names: boolean; sequence: number[]; reveal: number; shown: number; listen: boolean } | undefined;
 private sequenceIconRow: UIKit.Container | null = null;
 /** Setup HUD is world-anchored; look-away past a threshold re-snaps it. */
 private panelWorldAnchored = false;
@@ -543,6 +612,8 @@ return;
 }
 this.tickSkipVoiceButton();
 this.barFloats.update(delta, this.world.camera, this.isFlatView());
+this.cacheAchievementsButtonHome();
+this.celebration.update(delta, this.world.camera, this.world.scene, this.isFlatView());
 if (this.pads.length > 0) {
 const glowTime = performance.now() / 1000;
 for (const pad of this.pads) {
@@ -662,6 +733,9 @@ this.world
 panel
 .getElementById('store-button')
 ?.addEventListener('click', () => this.onToggleStore());
+panel.getElementById('store-popup')?.addEventListener('click', () => {
+this.clearStoreSelection();
+});
 panel
 .getElementById('achievements-button')
 ?.addEventListener('click', () => this.setAchievementsOpen(true));
@@ -681,12 +755,6 @@ panel
 .getElementById('gameover-newrun-button')
 ?.addEventListener('click', () => this.onGameOverNewRun());
 
-panel
-.getElementById('buy-hint-button')
-?.addEventListener('click', () => this.onBuyHint());
-panel
-.getElementById('buy-secret-button')
-?.addEventListener('click', () => this.onBuySecret());
 panel
 .getElementById('skip-voice-button')
 ?.addEventListener('click', () => this.onSkipVoice());
@@ -759,7 +827,9 @@ return;
 }
 this.experienceActive = false;
 this.flowPhase = 'inactive';
+this.setCypherSeam(false);
 this.barFloats.clear();
+this.celebration.clear(this.world.scene);
 this.achievementsOpen = false;
 this.storeOpen = false;
 this.gameOverOpen = false;
@@ -775,8 +845,8 @@ this.inputNeedsClear = false;
 this.mediaUnlockApplied = false;
 this.airOrientationLocked = null;
 this.dominantHand = null;
-// Keep wall-tones-dominant-hand across world swaps so AR restore can read it.
-// Cleared only when returning to the hub menu (switchBackToHubMenu).
+// Keep wall-tones-dominant-hand across in-session menu returns and any
+// full hub reboot so AR restore can read it. Cleared only by switchBackToHubMenu.
 sessionStorage.removeItem('wall-tones-awaiting-mode');
 this.lackingSpatialData = false;
 this.roomCaptureInFlight = false;
@@ -1491,6 +1561,10 @@ button.style.bottom = `max(${rounded}px, env(safe-area-inset-bottom))`;
 private publishDebugBridge(): void {
 const system = this;
 window.__wallTonesDebug = {
+get backgroundLinesCompleted() { return system.backgroundProgress.completedLines; },
+get cypherWindowsStarted() { return system.cypherProgress.completedWindows; },
+get cypherSeamVisible() { return system.cypherSeam != null; },
+previewCypherSeam: (visible) => { system.setCypherSeam(visible); },
 get phase() {
 return system.game.phase;
 },
@@ -1640,6 +1714,26 @@ properties?: { value?: { display?: string } };
 return [id, el?.properties?.value?.display ?? null];
 }));
 },
+get celebrationActive() {
+return system.celebration.isActive();
+},
+get celebrationText() {
+return system.celebration.debugText();
+},
+// Test-only: how many celebration shows requested their sound effects.
+get celebrationSfxPlays() {
+return system.celebration.debugSfxPlays();
+},
+// Test-only: the projected screen position of the celebration's effective
+// fly target (the button's live position, or its last home position while
+// a menu popup hides menu-view).
+get achievementsButtonScreen() {
+const target = system.achievementsButtonWorldPublic();
+if (target == null) return null;
+// Clone before projecting: the target aliases the cached home vector.
+const p = target.clone().project(system.world.camera);
+return { x: ((p.x + 1) * window.innerWidth) / 2, y: ((1 - p.y) * window.innerHeight) / 2 };
+},
 get barFloatsActive() {
 return system.barFloats.isActive();
 },
@@ -1649,14 +1743,88 @@ system.onToggleStore();
 toggleAchievements: () => {
 system.setAchievementsOpen(!system.achievementsOpen);
 },
+// Store purchases go through the same selection + buy path as the panel,
+// so tests exercise the real gates and denial feedback. forceSelectStoreTile
+// never toggles the tile off: a repeated buy* call must still buy.
 buyHint: () => {
-system.onBuyHint();
+system.forceSelectStoreTile('hint');
+system.onBuySelected();
+},
+buyListen: () => {
+system.forceSelectStoreTile('listen');
+system.onBuySelected();
+},
+buyAutoplay: () => {
+system.forceSelectStoreTile('autoplay');
+system.onBuySelected();
+},
+buyReplay: () => {
+system.forceSelectStoreTile('replay');
+system.onBuySelected();
+},
+buySaver: () => {
+system.forceSelectStoreTile('saver');
+system.onBuySelected();
 },
 buyTopSecret: () => {
-system.onBuySecret();
+system.forceSelectStoreTile('secret');
+system.onBuySelected();
+},
+demoCelebration: (id: string, label: string) => {
+system.demoCelebration(id, label);
+},
+setCelebrationFrozen: (frozen: boolean) => {
+system.celebration.frozen = frozen;
+},
+repeatPattern: () => {
+void system.onRepeatPattern();
 },
 get ownsTopSecret() {
 return system.economy.ownsTopSecret();
+},
+get ownsListen() {
+return system.economy.ownsListen();
+},
+get hintUnlocked() {
+return system.economy.hintUnlocked();
+},
+get autoplayLevel() {
+return system.economy.getAutoplayLevel();
+},
+get autoplayUnlocked() {
+return system.economy.autoplayUnlocked();
+},
+get replaysFree() {
+return system.economy.getReplaysFree();
+},
+get replaysPaid() {
+return system.economy.getReplaysPaid();
+},
+get replaysTotal() {
+return system.economy.getReplaysTotal();
+},
+get demoBoost() {
+return system.economy.getDemoBoost();
+},
+get storePointerTargets() {
+const panel = system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+const list = panel?.getElementById<UIKit.Container>('store-tree-list');
+const host = panel?.getElementById<UIKit.Container>('store-popup-card');
+const targets: Record<string, { x: number; y: number }> = {};
+const capture = (node: Object3D) => {
+if (!node.name.startsWith('store-tile-') && node.name !== 'store-buy') return;
+const p = node.getWorldPosition(new Vector3()).project(system.world.camera);
+targets[node.name] = { x: (p.x + 1) * window.innerWidth / 2, y: (1 - p.y) * window.innerHeight / 2 };
+};
+list?.traverse(capture);
+host?.traverse(capture);
+return targets;
+},
+get storeSelected() {
+return system.storeSelected;
+},
+selectStoreTile: (id: string) => {
+system.selectStoreTile(id);
 },
 // Test-only: fund the wallet without grinding rounds.
 grantBars: (amount: number) => {
@@ -1759,21 +1927,11 @@ this.renderPanel();
 
 private async onBackToMenu(): Promise<void> {
 this.speech.speak('backToMenu');
-const wasImmersive = !this.useDesktopPath();
-const fromArWorld = getActiveWorldKind() === 'walltones-ar';
 await this.leaveWallTonesMode();
-// Always return to the hub main menu. Immersive AR rebuilds the hub world
-// and re-enters XR so Back does not dump the player to a flat browser view.
-if (fromArWorld) {
-await switchBackToHubMenu({ reenterXr: wasImmersive });
-return;
-}
-window.dispatchEvent(
-new CustomEvent('experience-mode-changed', {
-detail: { mode: 'menu' satisfies ExperienceMode },
-}),
-);
-sessionStorage.setItem('iwsdk-experience-mode', 'menu');
+// #58: never destroy the live world just to show the menu. AppMode also
+// binds setMode('menu') on this button so panels swap in-place; XRPlane /
+// XRMesh and the immersive session stay alive in walltones-ar.
+returnToMenuInPlace();
 }
 
 private async onChooseSetup(mode: SetupMode): Promise<void> {
@@ -2360,7 +2518,7 @@ private spawnGhostPad(): void {
 this.ghostPad?.entity.dispose({ disposeResources: true });
 this.ghostPad = createGhostPadRuntime(
 this.world,
-(this.airPlaceStep % 4) as WallTonePadId,
+SIMON_FANFARE_PAD_ORDER[this.airPlaceStep % 4] as WallTonePadId,
 this.airPadSizeM,
 );
 this.applyTouchDebugVisibility();
@@ -2644,8 +2802,14 @@ await this.blinkPadNote(0);
 await this.wait(SIMON_FANFARE_END_PAUSE_S);
 }
 
+/** Pads are placed in fanfare order in MR air placement, so array position
+* is NOT the pad id there. Always resolve a note/press id to its pad. */
+private padById(padIndex: number): PadRuntime | undefined {
+return findPadById(this.pads, padIndex);
+}
+
 private async blinkPadNote(padIndex: number): Promise<void> {
-const pad = this.pads[padIndex];
+const pad = this.padById(padIndex);
 if (pad != null) {
 this.setBlinkCuePad(pad);
 flashPad(pad, true);
@@ -2713,7 +2877,7 @@ this.playbackShownCount = 0;
 this.renderPanel();
 for (let index = 0; index < this.game.sequence.length; index += 1) {
 const padId = this.game.sequence[index]!;
-const pad = this.pads[padId];
+const pad = this.padById(padId);
 if (pad != null) {
 this.setBlinkCuePad(pad);
 flashPad(pad, true);
@@ -2726,8 +2890,39 @@ this.setBlinkCuePad(null);
 }
 await this.wait(NOTE_GAP_S);
 }
+// Autoplay store modifier (store test values, balance TBD): after
+// the Listen playback, the game plays the first level*5 notes for the
+// player, capped one short of the full pattern so at least the last note
+// stays manual. Auto-played notes pay no per-press Bars (no player press).
+const autoCount = Math.min(
+this.economy.getAutoplayNoteCount(),
+this.game.sequence.length - 1,
+);
+if (autoCount > 0) {
+this.statusText = `Auto play: first ${autoCount}`;
+this.renderPanel();
+for (let index = 0; index < autoCount; index += 1) {
+if (!this.experienceActive || this.flowPhase !== 'playing') {
+return;
+}
+const padId = this.game.sequence[index]!;
+const pad = this.padById(padId);
+if (pad != null) {
+this.setBlinkCuePad(pad);
+flashPad(pad, true);
+await playPadTone(padId);
+await this.wait(NOTE_GAP_S + BLINK_HOLD_S + 0.2);
+flashPad(pad, false);
+this.setBlinkCuePad(null);
+}
+await this.wait(NOTE_GAP_S);
+}
+if (!this.experienceActive || this.flowPhase !== 'playing') {
+return;
+}
+}
 this.game.phase = 'input';
-this.game.inputStep = 0;
+this.game.inputStep = autoCount;
 this.inputNeedsClear = true;
 this.lastInputAt = performance.now() / 1000;
 this.idleReplayQueued = false;
@@ -3306,7 +3501,7 @@ return;
 // counts, correct or wrong. Host playback, menu and setup input never get
 // past the phase gate above (user-settled: presses "in the game").
 this.economy.countGameplayPress(this.game.streak);
-const pad = this.pads[padIndex];
+const pad = this.padById(padIndex);
 if (pad != null) {
 flashPad(pad, true);
 // A wrong pad gets only the failure buzzer, not its musical pad note.
@@ -3345,10 +3540,20 @@ this.barsFirstEarnedPending = true;
 }
 this.renderPanel();
 if (completed) {
+if (this.cypherSeam) this.setCypherSeam(false);
 // Lock input immediately so a held finger/click cannot eat the next round.
 this.game.phase = 'playback';
 this.inputNeedsClear = true;
-this.statusText = `Nice - streak ${this.game.streak}. Next pattern...`;
+// Free Replay earn milestones (owner rule 2026-11-11): one at every 5-note
+// milestone past the current Hint coverage; a grant at the full cap of 2
+// free Replays is lost.
+let replayNote = '';
+if (this.economy.isReplayMilestone(this.game.streak)) {
+replayNote = this.economy.grantFreeReplay()
+? ' Free Replay earned!'
+: ' Free Replay grant lost - cap full.';
+}
+this.statusText = `Nice - streak ${this.game.streak}.${replayNote} Next pattern...`;
 this.renderPanel();
 const streak = this.game.streak;
 const increasedRecord = shouldAnnounceRecord(streak, previousBest, this.firstRun);
@@ -3420,9 +3625,85 @@ await this.speech.speakAsync('barsFirstEarn');
 if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
 }
+if (narrIntact()) {
+const window = this.cypherProgress.beginWindow(streak);
+if (window) await this.playCypherWindow(window, narrIntact);
+else {
+// Skip/interrupt leaves the line unheard (lineCompleted is not reached), so it retries at the next quiet pattern boundary.
+const line = this.backgroundProgress.successfulPattern(this.cypherProgress.finished, !this.speech.isBusy());
+if (line && narrIntact()) {
+const cast = captureCypherCast(getVoiceGender());
+await this.speech.speakBackgroundEffect(this.backgroundProgress.completedLines % 3 === 2 ? 'squawk' : 'open');
+if (narrIntact()) await this.speech.speakBackgroundLine(line.id, cast);
+if (narrIntact()) this.backgroundProgress.lineCompleted();
+if (narrIntact()) await this.speech.speakBackgroundEffect('close');
+}
+}
+}
+if (!this.experienceActive || this.flowPhase !== 'playing') return;
 await this.playSequence();
 });
 }
+}
+
+/** Between patterns only: all voices and effects share the existing Skip lifecycle. */
+private async playCypherWindow(window: CypherWindow, intact: () => boolean): Promise<void> {
+const cast = captureCypherCast(getVoiceGender());
+if (window.seam === 'closed') this.setCypherSeam(false);
+if (window.fault) {
+this.statusText = 'Diagnostic: timing fault. Checking...';
+this.renderPanel();
+await this.speech.speakStoryEffect('glitch');
+} else if (window.seam === 'closed') {
+await this.speech.speakStoryEffect('shimmer');
+} else if (window.speaker === 'cypher') {
+await this.speech.speakStoryEffect(['next-window', 'your-machine', 'next-lock', 'longer-window'].includes(window.id) ? 'squawk' : 'open');
+}
+if (window.seam === 'open' && intact()) this.setCypherSeam(true);
+for (const id of window.lines) {
+if (!intact()) break;
+await this.speech.speakStoryLine(id, cast);
+if (intact()) this.cypherProgress.lineCompleted();
+}
+if (window.speaker === 'cypher' && intact()) await this.speech.speakStoryEffect('close');
+if (!intact()) this.setCypherSeam(false);
+}
+
+/** A small fictional light seam beside the play field, never a flash or pad overlay. */
+private setCypherSeam(visible: boolean): void {
+this.cypherFlatSeam?.remove();
+this.cypherFlatSeam = null;
+if (visible && this.isFlatView()) {
+const seam = document.createElement('div');
+seam.id = 'wall-tones-story-seam';
+seam.setAttribute('aria-hidden', 'true');
+Object.assign(seam.style, {position: 'fixed', left: '12%', top: '36%', width: '12px', height: '90px', background: '#c5faff', boxShadow: '0 0 8px 2px #49c9e3', clipPath: 'polygon(25% 0, 100% 35%, 35% 55%, 90% 100%, 0 55%, 65% 35%)', pointerEvents: 'none', zIndex: '100000'});
+document.body.appendChild(seam);
+this.cypherFlatSeam = seam;
+}
+this.cypherSeamEntity?.dispose({ disposeResources: true });
+this.cypherSeamEntity = null;
+this.cypherSeam = null;
+if (!visible) return;
+const root = new Object3D();
+root.name = 'CypherLightSeam';
+const camera = this.world.camera;
+const points = [new Vector3(0, 0.2, 0), new Vector3(0.025, 0.07, 0), new Vector3(-0.018, -0.04, 0), new Vector3(0.015, -0.2, 0)];
+for (let i = 1; i < points.length; i++) {
+const a = points[i - 1]!, b = points[i]!;
+const mesh = new Mesh(new CylinderGeometry(0.003, 0.003, a.distanceTo(b), 6), new MeshBasicMaterial({color: 0x77dfff, depthTest: false, depthWrite: false}));
+mesh.position.copy(a).add(b).multiplyScalar(0.5);
+mesh.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), b.clone().sub(a).normalize());
+mesh.updateMatrix();
+root.add(mesh);
+}
+this.cypherSeamEntity = this.world.createTransformEntity(root);
+camera.getWorldPosition(root.position);
+camera.getWorldQuaternion(root.quaternion);
+root.position.add(new Vector3(0, 0.9, -2).applyQuaternion(root.quaternion));
+root.updateMatrix();
+root.updateMatrixWorld(true);
+this.cypherSeam = root;
 }
 
 private async startFlatPlayFromPad(padIndex: number): Promise<void> {
@@ -3436,7 +3717,7 @@ this.speech.cancel();
 this.startPromptSpoken = true;
 primeWallTonesAudioFromGesture();
 // Confirm the tap briefly, then run the spoken intro before the first sequence tone.
-const pad = this.pads[padIndex];
+const pad = this.padById(padIndex);
 if (pad != null) {
 flashPad(pad, true);
 playPadToneFromUserAction(padIndex);
@@ -3458,6 +3739,7 @@ return this.game.runImprovedBest;
 }
 
 private async onWrongInput(): Promise<void> {
+this.setCypherSeam(false);
 this.firstRun = false;
 this.roundBarsEarned = 0;
 this.roundBonusEarned = 0;
@@ -3532,7 +3814,17 @@ void playErrorTone();
 this.renderGameOverSummary();
 return;
 }
-for (let i = 0; i < plan.buy; i++) this.economy.buySaver(SAVER_PRICE_BARS);
+// Abort on the first failed buy so a mid-loop refusal cannot leave a
+// partial stock and still call useSavers with the full need.
+for (let i = 0; i < plan.buy; i++) {
+if (!this.economy.buySaver(SAVER_PRICE_BARS)) {
+void playErrorTone();
+this.showAchievementToasts();
+this.renderGameOverSummary();
+this.renderPanel();
+return;
+}
+}
 this.showAchievementToasts();
 if (plan.apply) {
 this.onGameOverUseSaver();
@@ -3631,15 +3923,20 @@ if (!this.experienceActive) {
 return;
 }
 if (this.flowPhase === 'choose-mode') {
-// Rescan before play-mode selection: refresh room data, keep choosing.
+// Rescan before play-mode selection: run the same capture + look-around
+// path used mid-setup so empty plane queries can recover (#58).
 this.speech.speak('rescanRoom');
 this.statusText = 'Rescanning room...';
 this.renderPanel();
+this.roomCaptureInFlight = false;
+this.roomCaptureAttempted = false;
+this.lackingSpatialData = false;
 const session = this.xrManager.getSession() as XRSession & {
 initiateRoomCapture?: () => Promise<undefined>;
 };
 if (typeof session?.initiateRoomCapture === 'function') {
 this.roomCaptureInFlight = true;
+this.roomCaptureAttempted = true;
 try {
 await session.initiateRoomCapture();
 } catch (error) {
@@ -3648,6 +3945,11 @@ console.warn('[wall-tones] rescan room capture failed', error);
 this.roomCaptureInFlight = false;
 }
 }
+this.setSpatialMeshesVisible(true);
+this.scanStartedAt = performance.now() / 1000;
+this.setRescanUiVisible(true);
+this.speech.speak('lookAround');
+this.renderPanel();
 return;
 }
 if (
@@ -3702,6 +4004,16 @@ if (this.game.sequence.length === 0) {
 return;
 }
 if (this.game.phase === 'playback' || this.game.phase === 'resetting') {
+return;
+}
+// Replay is a consumable (owner-approved 2026-11-11): the Repeat button
+// spends one; free Replays are earned past the Hint coverage and paid ones
+// come from the Store.
+if (!this.economy.useReplay()) {
+this.statusText =
+'No Replay left. Earn one 5 notes past your Hint coverage, or buy one in the Store.';
+this.renderPanel();
+void playErrorTone();
 return;
 }
 this.lastInputAt = performance.now() / 1000;
@@ -3780,11 +4092,20 @@ panel
 .getElementById<UIKit.Text>('wall-tones-best-streak')
 ?.setProperties({ text: String(this.game.bestStreak) });
 this.renderSequenceIcons(panel);
+// Owner ask 2026-11-12 11:40: the Listen/Hint titles stay hidden until the
+// matching store item is owned; a non-breaking space reserves the line so
+// the panel never shrinks.
 panel
 .getElementById<UIKit.Text>('wall-tones-status')
 ?.setProperties({
 text: this.game.phase === 'input'
-? (performance.now() < this.idleNudgeUntil ? 'Still there?' : 'Hint:')
+? (performance.now() < this.idleNudgeUntil
+? 'Still there?'
+: this.economy.getHintRevealCount() > 0
+? 'Hint:'
+: '\u00a0')
+: this.statusText === 'Listen:' && !this.economy.ownsListen()
+? '\u00a0'
 : this.statusText || 'Ready',
 });
 panel
@@ -3803,6 +4124,11 @@ private economyRenderLevel = -1;
 private economyRenderStoreOpen = false;
 private economyRenderPresses = -1;
 private economyRenderSecretOwned = false;
+private economyRenderListenOwned = false;
+private economyRenderAutoplayLevel = -1;
+private economyRenderReplaysTotal = -1;
+private economyRenderDemoBoost = -1;
+private economyRenderStoreSelected: string | null = null;
 private renderEconomy(panel: UIKitMLAsset): void {
 const bars = this.economy.getBars();
 const level = this.economy.getHintLevel();
@@ -3812,14 +4138,29 @@ const open = this.storeOpen;
 // popup (bars, hint level and store state are unchanged on that path).
 const presses = this.economy.getPresses();
 const secretOwned = this.economy.ownsTopSecret();
+const listenOwned = this.economy.ownsListen();
+const autoplayLevel = this.economy.getAutoplayLevel();
+const replaysTotal = this.economy.getReplaysTotal();
+const demoBoost = this.economy.getDemoBoost();
+const storeSelected = this.storeSelected;
 if (bars === this.economyRenderBars && level === this.economyRenderLevel &&
 open === this.economyRenderStoreOpen && presses === this.economyRenderPresses &&
-secretOwned === this.economyRenderSecretOwned) return;
+secretOwned === this.economyRenderSecretOwned &&
+listenOwned === this.economyRenderListenOwned &&
+autoplayLevel === this.economyRenderAutoplayLevel &&
+replaysTotal === this.economyRenderReplaysTotal &&
+demoBoost === this.economyRenderDemoBoost &&
+storeSelected === this.economyRenderStoreSelected) return;
 this.economyRenderBars = bars;
 this.economyRenderLevel = level;
 this.economyRenderStoreOpen = open;
 this.economyRenderPresses = presses;
 this.economyRenderSecretOwned = secretOwned;
+this.economyRenderListenOwned = listenOwned;
+this.economyRenderAutoplayLevel = autoplayLevel;
+this.economyRenderReplaysTotal = replaysTotal;
+this.economyRenderDemoBoost = demoBoost;
+this.economyRenderStoreSelected = storeSelected;
 panel
 .getElementById<UIKit.Text>('wall-tones-bars')
 ?.setProperties({ text: String(this.economy.getBars()) });
@@ -3832,36 +4173,563 @@ panel
 panel
 .getElementById<UIKit.Container>('store-popup')
 ?.setProperties({ display: this.storeOpen ? 'flex' : 'none' });
-const nextCost = this.economy.hintCost(level + 1);
-const buyLabel = `Your Turn hint lv ${level + 1} - ${nextCost} Bars`;
-const affordable = this.economy.getBars() >= nextCost;
 panel
-.getElementById<UIKit.Text>('buy-hint-label')
-?.setProperties({ text: buyLabel, color: affordable ? 0x1c1d20 : 0xd43a3a });
-panel
-.getElementById<UIKit.Text>('store-hint-status')
+.getElementById<UIKit.Text>('store-heading')
 ?.setProperties({
-text: level === 0
-? 'No hint owned. The pattern stays hidden during Your Turn.'
-: `Hint level ${level}: first ${this.economy.getHintRevealCount()} colors shown during Your Turn.`,
+text: this.economy.getDemoBoost() > 0 ? 'Store (TEST Bars)' : 'Store',
 });
 panel
-.getElementById<UIKit.Text>('buy-secret-label')
+.getElementById<UIKit.Text>('repeat-pattern-label')
 ?.setProperties({
-text: secretOwned
-? 'Top Secret - owned'
-: `Top Secret - ${TOP_SECRET_COST} Bars`,
-color:
-!secretOwned && this.economy.getBars() >= TOP_SECRET_COST
-? 0x1c1d20
-: 0x8a8f98,
+text: `Repeat pattern (${this.economy.getReplaysTotal()})`,
 });
-panel
-.getElementById<UIKit.Text>('store-secret-status')
-?.setProperties({
-text: secretOwned ? 'Secret Revealed.' : 'A secret. It stays secret.',
-});
+this.reconcileStore(panel);
 this.reconcileAchievements(panel);
+}
+
+/** Detail card currently shown on the store popup chrome (removed on rebuild). */
+private storeDetailCard: UIKit.Container | null = null;
+
+/** Store skill tree (item 44): one square line-glyph tile per category,
+ * level/count badges, and reach-level-X gates on the chain connections.
+ * Rebuilt on the economy change key only (same codex P2 rule as the
+ * achievements grid). */
+private reconcileStore(panel: UIKitMLAsset): void {
+const list = panel.getElementById<UIKit.Container>('store-tree-list');
+if (list == null) return;
+while (list.children.length > 0) {
+list.remove(list.children[0]!);
+}
+// The detail card lives on the fixed popup chrome (store-popup-card), not
+// in the scroll list, so scrolling the tree can never move or hide it.
+const cardHost = panel.getElementById<UIKit.Container>('store-popup-card');
+if (this.storeDetailCard != null) {
+cardHost?.remove(this.storeDetailCard);
+this.storeDetailCard = null;
+}
+const eco = this.economy;
+interface StoreTile {
+id: string;
+name: string;
+badge: string;
+state: StoreTileState;
+price: string;
+/** True when the price line leads with the Bars icon (owner ask 2026-11-12). */
+icon: boolean;
+}
+const hintLevel = eco.getHintLevel();
+const autoplayLevel = eco.getAutoplayLevel();
+const replaysTotal = eco.getReplaysTotal();
+const savers = eco.getSavers();
+const bars = eco.getBars();
+// Unpurchased items render in the greyed "off" language (owner ask
+// 2026-11-12: like the achievements, an item you do not own yet must look
+// different); owned/leveled items are colored. The price line under the
+// name repeats the next buy's cost (owner ask 2026-11-12).
+const tiles: StoreTile[] = [
+{
+id: 'listen',
+name: 'Listen',
+badge: eco.ownsListen() ? '\u2713' : '',
+state: eco.ownsListen() ? 'on' : 'off',
+price: eco.ownsListen() ? 'Owned' : `${LISTEN_COST}`,
+icon: !eco.ownsListen(),
+},
+{
+id: 'hint',
+name: 'Hint',
+badge: hintLevel > 0 ? String(hintLevel) : '',
+state: hintLevel > 0 ? 'on' : 'off',
+price: eco.hintUnlocked()
+? `L${hintLevel + 1} - ${eco.hintCost(hintLevel + 1)}`
+: 'Locked',
+icon: eco.hintUnlocked(),
+},
+{
+id: 'autoplay',
+name: 'Autoplay',
+badge: autoplayLevel > 0 ? String(autoplayLevel) : '',
+state: autoplayLevel > 0 ? 'on' : 'off',
+price: eco.autoplayUnlocked()
+? `L${autoplayLevel + 1} - ${eco.autoplayCost(autoplayLevel + 1)}`
+: 'Locked',
+icon: eco.autoplayUnlocked(),
+},
+{
+id: 'replay',
+name: 'Replay',
+badge: replaysTotal > 0 ? String(replaysTotal) : '',
+state: replaysTotal > 0 ? 'on' : 'off',
+price: `${REPLAY_PRICE_BARS}`,
+icon: true,
+},
+// Streak saver: no unlock prerequisites (owner rule 2026-11-11), stock is
+// the shared PR #63 inventory the Game Over popup spends from.
+{
+id: 'saver',
+name: 'Saver',
+badge: savers > 0 ? String(savers) : '',
+state: savers > 0 ? 'on' : 'off',
+price: `${SAVER_PRICE_BARS}`,
+icon: true,
+},
+{
+id: 'secret',
+name: 'Secret',
+badge: eco.ownsTopSecret() ? '\u2713' : '?',
+state: eco.ownsTopSecret() ? 'on' : 'off',
+price: eco.ownsTopSecret() ? 'Owned' : `${TOP_SECRET_COST}`,
+icon: !eco.ownsTopSecret(),
+},
+// Room for the modifiers the owner listed (2026-11-11): 5th/6th pads, the
+// story hack, double-score multiplier and the speed modifier. Their
+// phrasing is just "Locked" (owner ask 2026-11-12).
+{ id: 'multiplier', name: 'x2', badge: '?', state: 'off', price: 'Locked', icon: false },
+{ id: 'speed', name: 'Speed', badge: '?', state: 'off', price: 'Locked', icon: false },
+{ id: 'pads56', name: 'Pads 5-6', badge: '?', state: 'off', price: 'Locked', icon: false },
+{ id: 'narrator', name: 'Hack', badge: '?', state: 'off', price: 'Locked', icon: false },
+];
+// Skill-tree layout (owner-approved concept 2026-11-11; the lost mockup's
+// caption: "each category has its own levels, with level gates on the
+// connections"). Owner layout 2026-11-12: Replay + Saver on top, Listen on
+// its own row, then the gated chain Hint -> Autoplay as labeled centered
+// connections (single-dependency rows sit in the middle), Secret on its
+// own centered bottom row below the future placeholders.
+const TREE_W = 308;
+const TILE_S = 70;
+// Tile + name + price lines.
+const TILE_H = TILE_S + 34;
+const LINE_COLOR = 0x9aa4b6;
+const LINE_OK = 0x4cc38a;
+const byId = new Map(tiles.map((t) => [t.id, t]));
+const makeTile = (t: StoreTile): UIKit.Container => {
+const selected = this.storeSelected === t.id;
+const tile = new UIKit.Container({
+flexDirection: 'column',
+alignItems: 'center',
+gap: 2,
+width: TILE_S,
+height: TILE_H,
+flexShrink: 0,
+});
+tile.add(
+new UIKit.Image({
+src: storeTileSrc(t.id, selected && t.state === 'on' ? 'sel' : t.state, t.badge),
+width: TILE_S,
+height: TILE_S,
+}),
+);
+tile.add(
+new UIKit.Text({
+fontSize: 13,
+color: t.state === 'off' ? 0x9aa4b6 : 0xffffff,
+text: t.name,
+}),
+);
+// Price line (owner ask 2026-11-12): the Bars icon in front of the number
+// instead of the word "Bars"; plain text only for Owned/Locked.
+if (t.icon) {
+const priceRow = new UIKit.Container({
+flexDirection: 'row',
+alignItems: 'center',
+justifyContent: 'center',
+gap: 3,
+width: TILE_S,
+});
+priceRow.add(
+new UIKit.Image({
+src: `${import.meta.env.BASE_URL}ui/bars-icon.png`,
+width: 12,
+height: 12,
+}),
+);
+priceRow.add(new UIKit.Text({ fontSize: 11, color: 0x9aa4b6, text: t.price }));
+tile.add(priceRow);
+} else {
+tile.add(
+new UIKit.Text({
+fontSize: 11,
+color: 0x9aa4b6,
+width: TILE_S,
+textAlign: 'center',
+text: t.price,
+}),
+);
+}
+tile.name = `store-tile-${t.id}`;
+tile.addEventListener('click', (event) => {
+event.stopPropagation();
+this.selectStoreTile(t.id);
+});
+return tile;
+};
+// Connection column (owner-approved mockup variant A, 2026-11-12): spine,
+// a gate chip naming the requirement (padlock + progress badge while locked,
+// check once open), then a short spine and arrow into the gated tile.
+const connection = (label: string, open: boolean, frac: string | null): UIKit.Container => {
+const col = new UIKit.Container({
+flexDirection: 'column',
+alignItems: 'center',
+width: TREE_W,
+});
+col.add(
+new UIKit.Container({
+width: 3,
+height: 10,
+backgroundColor: open ? LINE_OK : LINE_COLOR,
+}),
+);
+const chip = new UIKit.Container({
+flexDirection: 'row',
+alignItems: 'center',
+gap: 6,
+backgroundColor: open ? 0x1e3a2c : 0x3a4150,
+borderWidth: 1,
+borderColor: open ? LINE_OK : 0x6b7a90,
+borderRadius: 12,
+padding: 5,
+});
+chip.add(
+new UIKit.Image({
+src: storeChipGlyphSrc(open ? 'check' : 'lock', open ? '#4cc38a' : '#9aa4b6'),
+width: open ? 12 : 11,
+height: open ? 12 : 13,
+}),
+);
+chip.add(
+new UIKit.Text({
+fontSize: 12,
+color: open ? LINE_OK : 0xc6cedb,
+text: label,
+}),
+);
+if (frac != null) {
+const badge = new UIKit.Container({
+backgroundColor: 0x24262b,
+borderRadius: 8,
+padding: 2,
+});
+badge.add(new UIKit.Text({ fontSize: 11, color: 0x9aa4b6, text: frac }));
+chip.add(badge);
+}
+col.add(chip);
+col.add(
+new UIKit.Container({
+width: 3,
+height: 6,
+backgroundColor: open ? LINE_OK : LINE_COLOR,
+}),
+);
+col.add(
+new UIKit.Image({
+src: storeChipGlyphSrc('arrow', open ? '#4cc38a' : '#9aa4b6'),
+width: 10,
+height: 6,
+}),
+);
+return col;
+};
+// Level track: one filled pip per owned level (category colour), then the
+// next level outlined (the one the Buy button sells). Uncapped by design;
+// the display caps at 9 pips plus a "+N" counter.
+const levelTrack = (level: number, color: number): UIKit.Container => {
+const track = new UIKit.Container({
+flexDirection: 'row',
+alignItems: 'center',
+justifyContent: 'center',
+gap: 4,
+width: 240,
+});
+const shown = Math.min(level, 9);
+for (let i = 0; i < shown; i += 1) {
+track.add(
+new UIKit.Container({
+width: 12,
+height: 12,
+borderRadius: 3,
+backgroundColor: color,
+}),
+);
+}
+if (level > 9) {
+track.add(new UIKit.Text({ fontSize: 12, color, text: `+${level - 9}` }));
+}
+track.add(
+new UIKit.Container({
+width: 12,
+height: 12,
+borderRadius: 3,
+borderWidth: 2,
+borderColor: color,
+}),
+);
+return track;
+};
+// Tile above, level track below, both centered (owner ask 2026-11-12:
+// rows holding a single gated button sit in the middle). Row+wrap like
+// the list itself (tile images mis-size inside plain columns).
+const chainRow = (t: StoreTile, level: number, color: number): UIKit.Container => {
+const col = new UIKit.Container({
+flexDirection: 'row',
+flexWrap: 'wrap',
+justifyContent: 'center',
+gap: 4,
+width: TREE_W,
+});
+col.add(makeTile(t));
+col.add(levelTrack(level, color));
+return col;
+};
+const soloRow = (t: StoreTile): UIKit.Container => {
+const row = new UIKit.Container({
+flexDirection: 'row',
+justifyContent: 'center',
+width: TREE_W,
+});
+row.add(makeTile(t));
+return row;
+};
+// Detail-card copy is computed before the rows. The card is a persistent
+// overlay pinned to the bottom of the tree viewport on the fixed popup
+// chrome (owner ask 2026-11-12: "the pop up stayed", same details pattern
+// as the achievements), so it never scrolls away while the tree scrolls
+// behind it. The selected row always scrolls fully into the clear band
+// above the card (review 2026-11-12: tile + name + price + pips fully
+// visible, the card never covers the selected row). The Buy row inside
+// carries the Bars icon and greys out while unaffordable.
+const sel = this.storeSelected;
+let titleText = '';
+let bodyText = '';
+let buyText: string | null = null;
+let cost: number | null = null;
+if (sel != null) {
+switch (sel) {
+case 'listen':
+titleText = 'Listen';
+if (eco.ownsListen()) {
+bodyText = 'Owned. The pattern boxes show during Listen playback.';
+} else {
+bodyText =
+'Shows the pattern boxes one by one during Listen playback. Without it the row stays hidden. Adds no Your Turn hints.';
+buyText = `Listen - ${LISTEN_COST}`;
+cost = LISTEN_COST;
+}
+break;
+case 'hint':
+titleText = `Hint - Level ${hintLevel}`;
+bodyText = !eco.hintUnlocked()
+? 'Locked: buy Listen first.'
+: hintLevel === 0
+? 'Shows the first 5 colors of the pattern during Your Turn. Each level adds 5.'
+: `First ${eco.getHintRevealCount()} colors shown during Your Turn. Next level adds 5.`;
+if (eco.hintUnlocked()) {
+cost = eco.hintCost(hintLevel + 1);
+buyText = `Hint L${hintLevel + 1} - ${cost}`;
+}
+break;
+case 'autoplay':
+titleText = `Autoplay - Level ${autoplayLevel}`;
+bodyText = !eco.ownsListen()
+? 'Locked: buy Listen first.'
+: !eco.autoplayUnlocked()
+? `Locked: reach Hint level ${AUTOPLAY_UNLOCK_HINT_LEVEL} (now level ${hintLevel}).`
+: autoplayLevel === 0
+? 'Plays the first 5 notes of each pattern for you. Each level adds 5.'
+: `Plays the first ${eco.getAutoplayNoteCount()} notes of each pattern for you. Next level adds 5.`;
+if (eco.autoplayUnlocked()) {
+cost = eco.autoplayCost(autoplayLevel + 1);
+buyText = `Autoplay L${autoplayLevel + 1} - ${cost}`;
+}
+break;
+case 'replay':
+titleText = 'Replay';
+bodyText =
+`Re-hear the pattern (the Repeat button spends one). Held: ${eco.getReplaysFree()} free + ${eco.getReplaysPaid()} paid. ` +
+`Earn a free one per 5 notes past Hint coverage (cap ${REPLAY_FREE_CAP}).`;
+buyText = `Replay - ${REPLAY_PRICE_BARS}`;
+cost = REPLAY_PRICE_BARS;
+break;
+case 'saver':
+titleText = 'Streak saver';
+bodyText =
+'Retry the pattern when you miss (Game Over popup). Costs 1 saver per 10-streak stretch, doubling after. Held: ' + eco.getSavers() + '.';
+buyText = 'Saver - ' + SAVER_PRICE_BARS;
+cost = SAVER_PRICE_BARS;
+break;
+case 'secret':
+titleText = 'Top Secret';
+if (eco.ownsTopSecret()) {
+bodyText = 'Secret Revealed.';
+} else {
+bodyText = 'A secret. It stays secret.';
+buyText = `Top Secret - ${TOP_SECRET_COST}`;
+cost = TOP_SECRET_COST;
+}
+break;
+default:
+titleText =
+sel === 'multiplier' ? 'Multiplier x2'
+: sel === 'speed' ? 'Speed'
+: sel === 'pads56' ? 'Pads 5-6'
+: 'Hack';
+bodyText = 'Locked.';
+break;
+}
+}
+// Height follows the body length so the card leaves the clear band: title
+// (~20) + gaps + padding (44), one 18px line per ~30 body chars, plus the
+// Buy row when present.
+const bodyLines = Math.max(1, Math.ceil(bodyText.length / 30));
+const POPUP_W = 248;
+const POPUP_H = 44 + 18 * bodyLines + (buyText != null ? 40 : 0);
+// Must match the store-tree-list viewport height in the uikitml.
+const VIEW_H = 296;
+const ROW_TILE_H = TILE_H;
+// spine 10 + chip ~24 + short spine 6 + arrow 6.
+const ROW_CONN_H = 46;
+const ROW_CHAIN_H = TILE_H + 4 + 16;
+const ROW_GAP = 8;
+// Top row: the no-prerequisite consumables (owner layout 2026-11-12).
+const topRow = new UIKit.Container({
+flexDirection: 'row',
+justifyContent: 'center',
+gap: 8,
+width: TREE_W,
+});
+for (const id of ['replay', 'saver']) {
+topRow.add(makeTile(byId.get(id)!));
+}
+// Bottom row: the future placeholders, phrased just "Locked" (owner ask
+// 2026-11-12). Secret sits on its own centered row below them.
+const bottomRow = new UIKit.Container({
+flexDirection: 'row',
+flexWrap: 'wrap',
+gap: 8,
+width: TREE_W,
+});
+for (const id of ['multiplier', 'speed', 'pads56', 'narrator']) {
+bottomRow.add(makeTile(byId.get(id)!));
+}
+// Rows in display order; the detail card overlays the viewport bottom
+// and is added after them.
+const rows: { ids: string[]; node: UIKit.Container | UIKit.Text; h: number }[] = [
+{ ids: ['replay', 'saver'], node: topRow, h: ROW_TILE_H },
+{ ids: ['listen'], node: soloRow(byId.get('listen')!), h: ROW_TILE_H },
+{ ids: [], node: connection('unlocks Hint L1', eco.hintUnlocked(), null), h: ROW_CONN_H },
+{ ids: ['hint'], node: chainRow(byId.get('hint')!, hintLevel, 0xf2c14e), h: ROW_CHAIN_H },
+{
+ids: [],
+// Listen ownership is part of autoplayUnlocked(); without it a legacy
+// Hint L4 save would otherwise show "4/4" on a still-locked gate.
+node: !eco.ownsListen()
+? connection('Buy Listen first', false, null)
+: connection(
+eco.autoplayUnlocked() ? 'Autoplay unlocked' : `Reach Hint Lv ${AUTOPLAY_UNLOCK_HINT_LEVEL}`,
+eco.autoplayUnlocked(),
+eco.autoplayUnlocked()
+? null
+: `${Math.min(hintLevel, AUTOPLAY_UNLOCK_HINT_LEVEL)}/${AUTOPLAY_UNLOCK_HINT_LEVEL}`,
+),
+h: ROW_CONN_H,
+},
+{ ids: ['autoplay'], node: chainRow(byId.get('autoplay')!, autoplayLevel, 0x4cc38a), h: ROW_CHAIN_H },
+// No standalone 'Locked' caption between Autoplay and the modifiers row:
+// each future tile already says 'Locked' under its name, and a floating
+// label here reads as Autoplay's own state even after purchase.
+{ ids: ['multiplier', 'speed', 'pads56', 'narrator'], node: bottomRow, h: ROW_TILE_H },
+{ ids: ['secret'], node: soloRow(byId.get('secret')!), h: ROW_TILE_H },
+];
+// The detail card itself. popup-card geometry (uikitml px): 12 padding +
+// 26 heading + 6 gap put the list top at 44; the viewport bottom is
+// 44 + VIEW_H. The card pins 4px above it; horizontally it centers on
+// the list (12 padding + half the list/card width difference).
+let popupLine: UIKit.Container | null = null;
+if (sel != null) {
+const card = new UIKit.Container({
+positionType: 'absolute',
+positionLeft: 12 + Math.max(0, Math.floor((TREE_W - POPUP_W) / 2)),
+positionTop: 44 + VIEW_H - POPUP_H - 4,
+zIndex: 20,
+width: POPUP_W,
+height: POPUP_H,
+flexDirection: 'column',
+gap: 4,
+padding: 8,
+borderRadius: 12,
+borderWidth: 1,
+borderColor: 0x6b7a90,
+backgroundColor: 0x222c3a,
+});
+card.add(new UIKit.Text({ fontSize: 15, color: 0xfafaf7, text: titleText }));
+card.add(new UIKit.Text({ fontSize: 13, color: 0xaab6c6, text: bodyText }));
+if (buyText != null) {
+const affordable = cost != null && bars >= cost;
+const buyRow = new UIKit.Container({
+flexDirection: 'row',
+alignItems: 'center',
+justifyContent: 'center',
+gap: 6,
+padding: 8,
+borderRadius: 10,
+backgroundColor: affordable ? 0xf5d90a : 0x3a4150,
+});
+buyRow.add(
+new UIKit.Image({
+src: `${import.meta.env.BASE_URL}ui/bars-icon.png`,
+width: 16,
+height: 16,
+}),
+);
+buyRow.add(
+new UIKit.Text({
+fontSize: 14,
+color: affordable ? 0x1c1d20 : 0x9aa4b6,
+text: buyText,
+}),
+);
+buyRow.name = 'store-buy';
+buyRow.addEventListener('click', (event) => {
+event.stopPropagation();
+this.onBuySelected();
+});
+card.add(buyRow);
+}
+// Details and Buy are not empty space. Keep the selection when used.
+card.addEventListener('click', (event) => event.stopPropagation());
+popupLine = card;
+}
+let selTop = 0;
+let cursorY = 0;
+for (const row of rows) {
+const hit = sel != null && row.ids.includes(sel);
+if (hit) selTop = cursorY;
+list.add(row.node);
+cursorY += row.h + ROW_GAP;
+}
+list.setProperties({ overflow: 'scroll' });
+if (popupLine != null && cardHost != null) {
+cardHost.add(popupLine);
+this.storeDetailCard = popupLine;
+// Bottom spacer sized to the pinned card: the scroll clamp
+// cursorY - ROW_GAP - VIEW_H then still lets the LAST rows (bottom row,
+// secret) rise fully into the clear band above the card instead of
+// stopping with the selected row hidden behind it.
+const spacer = new UIKit.Container({ width: TREE_W, height: POPUP_H + 8 });
+list.add(spacer);
+cursorY += POPUP_H + 8 + ROW_GAP;
+}
+if (sel != null) {
+// Scroll so the selected row (tile + name + price + pips) sits fully in
+// the clear band above the pinned card with an 8px top margin. The card
+// is sized so the band always holds the row, so the row never slides out
+// of view and the rows above scroll fully out of the way (clamped at the
+// content end so the last row cannot overscroll).
+const maxScroll = Math.max(0, cursorY - ROW_GAP - VIEW_H);
+const scrollTarget = Math.max(0, Math.min(selTop - 8, maxScroll));
+list.scrollPosition.value = [0, scrollTarget];
+} else {
+list.scrollPosition.value = [0, 0];
+}
 }
 
 /** Last values pushed to the pattern row, exposed for e2e assertions. */
@@ -4072,8 +4940,10 @@ list.add(popup);
 list.setProperties({ overflow: 'scroll', onScroll: () => { hide(); } });
 }
 
-/** Visual-only achievement toast; voice stays milestone-only (user rule). */
-private achievementToastUntil = 0;
+/** Achievement unlock celebration (item 54): visual-only flare; voice stays
+ * milestone-only (user rule). */
+public readonly celebration = new AchievementCelebration();
+private readonly celebrationTarget = new Vector3();
 /** Bars float animation pool + scratch (no per-frame allocations). */
 public readonly barFloats = new BarFloatPool();
 private readonly barFloatFrom = new Vector3();
@@ -4091,22 +4961,52 @@ private barsFirstEarnedPending = false;
 private showAchievementToasts(): void {
 const toasts = this.economy.drainToasts();
 if (toasts.length === 0) return;
-const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
-const text = toasts.length === 1
-? `Achievement unlocked: ${toasts[0]!.label}`
-: `Achievements unlocked: ${toasts.map((t) => t.label).join(', ')}`;
-panel
-?.getElementById<UIKit.Text>('wall-tones-achievement-toast')
-?.setProperties({ display: 'flex', text });
-this.achievementToastUntil = performance.now() + 5000;
-window.setTimeout(() => {
-if (performance.now() >= this.achievementToastUntil) {
-this.world
-.getSceneObject<UIKitMLAsset>('wall-tones-panel')
-?.getElementById<UIKit.Text>('wall-tones-achievement-toast')
-?.setProperties({ display: 'none' });
+for (const toast of toasts) this.celebration.show(toast, this.achievementsButtonWorld());
 }
-}, 5100);
+// Item 54: the approved celebration replaces the plain panel text toast.
+// The fly-in targets the Achievements button (world position; the flat
+// overlay projects it to the screen, MR flies to it directly).
+// Owner call 2026-11-13: the celebration stays in FRONT of an open menu
+// popup - the popup keeps its state and is not dismissed. But an open
+// popup (store/achievements/game-over) hides menu-view, which collapses
+// the button's layout to the panel corner, so while one is open the fly
+// target is the button's last home position from before the popup opened.
+private readonly achievementsButtonHome = new Vector3();
+private achievementsButtonHomeValid = false;
+private achievementsButtonWorld(): Vector3 | null {
+if (this.storeOpen || this.achievementsOpen || this.gameOverOpen) {
+return this.achievementsButtonHomeValid
+? this.achievementsButtonHome
+: this.readAchievementsButtonWorld();
+}
+return this.readAchievementsButtonWorld();
+}
+private readAchievementsButtonWorld(): Vector3 | null {
+const button = this.world
+.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('achievements-button');
+return button == null
+? null
+: button.getWorldPosition(this.celebrationTarget) as Vector3;
+}
+/** Refresh the button's home position while no popup hides menu-view
+ * (runs in update(); copies into a preallocated vector, no allocation). */
+private cacheAchievementsButtonHome(): void {
+if (this.storeOpen || this.achievementsOpen || this.gameOverOpen) return;
+const live = this.readAchievementsButtonWorld();
+if (live == null) return;
+this.achievementsButtonHome.copy(live);
+this.achievementsButtonHomeValid = true;
+}
+/** Test-only: play the celebration for an arbitrary achievement without
+ * touching unlock state (visual verification driver). */
+public demoCelebration(id: string, label: string): void {
+this.celebration.show({ id, label, description: '' }, this.achievementsButtonWorld());
+}
+/** Test-only: expose the effective fly target for the debug bridge
+ * (aliases internal state; callers must not mutate the returned vector). */
+public achievementsButtonWorldPublic(): Vector3 | null {
+return this.achievementsButtonWorld();
 }
 
 /** +N Bars earned at a pad: float the amount from the pad to the panel's
@@ -4261,36 +5161,73 @@ card.setProperties({ transformTranslateX: x });
 });
 }
 
-private onBuySecret(): void {
-if (this.economy.ownsTopSecret()) return;
-if (!this.economy.buyTopSecret()) {
-const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
-panel
-?.getElementById<UIKit.Text>('store-secret-status')
-?.setProperties({
-text: 'Not enough Bars yet. Complete more patterns!',
-});
-void playErrorTone();
-this.shakeStorePopup();
-return;
+/** Store skill-tree selection (sticky tile the details + Buy button act on). */
+private storeSelected: string | null = null;
+
+/** Select a store tile (tap, ray click, or the debug bridge). Tapping the
+ * open tile again closes its details (same pin/unpin rule as the
+ * achievements popup). */
+private selectStoreTile(id: string): void {
+this.storeSelected = this.storeSelected === id ? null : id;
+this.renderPanel();
+// A new selection resets the status line, so a previous tile's "Bought."
+// or denial never lingers over another item's details.
+this.world
+.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById<UIKit.Text>('store-detail-status')
+?.setProperties({ text: 'Prices are test values.' });
 }
-this.showAchievementToasts();
+
+private clearStoreSelection(): void {
+if (this.storeSelected == null) return;
+this.storeSelected = null;
 this.renderPanel();
 }
 
-private onBuyHint(): void {
-const before = this.economy.getBars();
-if (!this.economy.buyNextHintLevel()) {
+/** Bridge-only select that never toggles off (repeat buy* calls must buy). */
+private forceSelectStoreTile(id: string): void {
+if (this.storeSelected !== id) {
+this.selectStoreTile(id);
+}
+}
+
+/** Buy the selected store tile. Gates and denial feedback live here so the
+ * economy methods stay single-purpose. */
+private onBuySelected(): void {
+const id = this.storeSelected;
+if (id == null) return;
 const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
-panel
-?.getElementById<UIKit.Text>('store-hint-status')
-?.setProperties({
-text: 'Not enough Bars yet. Complete more patterns!',
-});
+const status = panel?.getElementById<UIKit.Text>('store-detail-status');
+const deny = (text: string): void => {
+status?.setProperties({ text });
 void playErrorTone();
 this.shakeStorePopup();
+};
+if (id === 'hint' && !this.economy.hintUnlocked()) {
+deny('Locked: buy Listen first.');
 return;
 }
+if (id === 'autoplay' && !this.economy.autoplayUnlocked()) {
+deny(
+!this.economy.ownsListen()
+? 'Locked: buy Listen first.'
+: `Locked: reach Hint level ${AUTOPLAY_UNLOCK_HINT_LEVEL} (now level ${this.economy.getHintLevel()}).`,
+);
+return;
+}
+const ok =
+id === 'listen' ? this.economy.buyListen()
+: id === 'hint' ? this.economy.buyNextHintLevel()
+: id === 'autoplay' ? this.economy.buyNextAutoplayLevel()
+: id === 'replay' ? this.economy.buyReplay()
+: id === 'saver' ? this.economy.buySaver(SAVER_PRICE_BARS)
+: id === 'secret' ? this.economy.buyTopSecret()
+: false;
+if (!ok) {
+deny('Not enough Bars yet. Complete more patterns!');
+return;
+}
+status?.setProperties({ text: 'Bought. Prices are test values.' });
 this.showAchievementToasts();
 this.renderPanel();
 }
@@ -4309,11 +5246,14 @@ const row = panel.getElementById<UIKit.Container>('wall-tones-sequence-icons');
 if (row == null) return;
 // Backlog 12a: during Your Turn the pattern row only appears when a hint
 // level is owned, revealing the first 5 boxes per level; subtitles alone no
-// longer show it. Listen playback keeps the full row.
+// longer show it. The Listen-phase row needs the Listen store item (owner
+// rule 2026-11-11: no Listen item, no listen line).
 const listening = this.statusText === 'Listen:';
 const reveal = this.economy.getHintRevealCount();
 const yourTurn = this.game.phase === 'input' && !listening;
-const visible = listening || (this.game.phase === 'input' && reveal > 0);
+const visible =
+(listening && this.economy.ownsListen()) ||
+(this.game.phase === 'input' && reveal > 0);
 const names = colorNamesEnabled();
 // yourTurn must key the cache: after Listen of a longer-than-owned pattern the
 // row stays visible while the beyond-hint boxes must hide on the phase flip.
@@ -4457,12 +5397,12 @@ previous.show !== show || previous.flat !== flat ||
 previous.active !== this.experienceActive || previous.caption !== caption ||
 previous.phase !== this.game.phase || previous.flow !== this.flowPhase || previous.status !== this.statusText ||
 previous.names !== names || previous.reveal !== this.economy.getHintRevealCount() ||
-previous.shown !== this.playbackShownCount || sequenceChanged;
+previous.shown !== this.playbackShownCount || previous.listen !== this.economy.ownsListen() || sequenceChanged;
 if (accessibilityChanged) {
 this.accessibilityPanel = panel;
 this.accessibilityState = { show, flat, active: this.experienceActive, caption,
 phase: this.game.phase, flow: this.flowPhase, status: this.statusText, names, sequence: [...this.game.sequence],
-reveal: this.economy.getHintRevealCount(), shown: this.playbackShownCount };
+reveal: this.economy.getHintRevealCount(), shown: this.playbackShownCount, listen: this.economy.ownsListen() };
 if (panel && this.experienceActive) this.renderSequenceIcons(panel);
 // Bug fix (user report): the info row holds the Your Turn hint boxes; it
 // used to be hidden unless subtitles were on AND the session was immersive,
@@ -4544,16 +5484,22 @@ this.flatCaptions.style.top = `${bottom + 14}px`;
 this.flatCaptionsRectDirty = true;
 }
 // Backlog 12a applies here too (codex P2): during Your Turn the subtitle
-// sequence only reveals the owned hint prefix; no hint, no sequence.
+// sequence only reveals the owned hint prefix; no hint, no sequence. The
+// Listen-phase strip needs the Listen store item (owner rule 2026-11-11).
 const captionListening = this.statusText === 'Listen:';
 const captionReveal = this.economy.getHintRevealCount();
 const captionYourTurn = this.game.phase === 'input' && !captionListening;
 const seqVisible = this.experienceActive &&
-(captionListening || (this.game.phase === 'input' && captionReveal > 0));
+((captionListening && this.economy.ownsListen()) ||
+(this.game.phase === 'input' && captionReveal > 0));
+// Same owner ask as the panel status: no Listen/Hint title before purchase;
+// the blank line keeps the strip height unchanged.
 const info = !this.experienceActive
 ? ''
 : this.game.phase === 'input'
-? 'Hint:'
+? (captionReveal > 0 ? 'Hint:' : '\u00a0')
+: this.statusText === 'Listen:' && !this.economy.ownsListen()
+? '\u00a0'
 : this.statusText;
 if (!accessibilityChanged && this.flatCaptions.childElementCount > 0) return;
 this.flatCaptions.replaceChildren();
