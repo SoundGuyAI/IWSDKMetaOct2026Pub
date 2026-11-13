@@ -132,7 +132,7 @@ export async function bootHubWorld(container: HTMLElement): Promise<World> {
  * Tear down the hub and boot the AR/passthrough Wall Tones world, then enter XR once.
  * Call this while still NonImmersive (e.g. from Enter XR) so mode select never mid-session destroys XR.
  */
-export async function switchToWallTonesArWorld(entry: 'menu' | 'setup' = 'setup'): Promise<World> {
+export async function switchToWallTonesArWorld(entry: 'menu' | 'setup' | 'riftlab' = 'setup'): Promise<World> {
   const run = switchChain.then(async () => {
     if (sceneContainer == null) {
       throw new Error('Scene container is not initialized');
@@ -141,8 +141,11 @@ export async function switchToWallTonesArWorld(entry: 'menu' | 'setup' = 'setup'
       showXrEntryGate(activeWorld);
       return activeWorld;
     }
-    sessionStorage.setItem(MODE_STORAGE_KEY, entry === 'menu' ? 'menu' : 'walltones');
-    if (entry === 'menu') {
+    sessionStorage.setItem(
+      MODE_STORAGE_KEY,
+      entry === 'menu' ? 'menu' : entry === 'riftlab' ? 'riftlab' : 'walltones',
+    );
+    if (entry === 'menu' || entry === 'riftlab') {
       sessionStorage.removeItem('wall-tones-awaiting-mode');
       sessionStorage.removeItem('wall-tones-setup-mode');
     }
