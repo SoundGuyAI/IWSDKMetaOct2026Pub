@@ -1,5 +1,6 @@
 import { hintWindowStart, HINT_WINDOW_SIZE } from './hint-window.js';
-import { armbandHand, ArmbandDisplay, ARMBAND_SCALE } from './armband.js';
+import { armbandHand, armbandDisplayMode, ArmbandDisplay, ARMBAND_SCALE } from './armband.js';
+import { palmPanelPose, type PalmJoints, type PalmVec } from './palm-projector.js';
 import { BackgroundProgress } from './cypher-background.js';
 import { getVoiceGender } from './speech.js';
 import { CypherProgress, type CypherWindow } from './cypher-progress.js';
@@ -530,6 +531,7 @@ if (!this.armband) {
 const hand = armbandHand();
 const adapter = this.input.xr.visualAdapters[hand].peek();
 let tracked = false;
+let floating: { open: number; center: PalmVec; normal: PalmVec; along: PalmVec } | undefined;
 if (this.armbandTrackable() && adapter?.connected) {
   const session = this.xrManager.getSession();
   const frame = this.xrManager.getFrame();
@@ -545,6 +547,21 @@ if (session) for (const candidate of session.inputSources) {
       this.player.updateWorldMatrix(true, false);
       this.armband.applyReferencePose(pose.transform.matrix, this.player);
       tracked = true;
+      // Projector mode: the panel leaves the wrist and floats above the open flat palm.
+      if (armbandDisplayMode() === 'projector') {
+        const joints = frame && reference ? this.readPalmJoints(source.hand, frame, reference) : null;
+        if (joints) {
+          const panel = palmPanelPose(joints, hand);
+          const target = panel.openFlat ? 1 : 0;
+          const step = target > this.armbandProjectorOpen ? 0.09 : -0.14;
+          this.armbandProjectorOpen = Math.min(1, Math.max(0, this.armbandProjectorOpen + step));
+          floating = { open: this.armbandProjectorOpen, center: panel.center, normal: panel.normal, along: panel.along };
+        } else {
+          this.armbandProjectorOpen = 0;
+        }
+      } else {
+        this.armbandProjectorOpen = 0;
+      }
     }
   } else if (source?.gripSpace) {
     const pose = frame && reference ? frame.getPose(source.gripSpace, reference) : null;
@@ -556,15 +573,33 @@ if (session) for (const candidate of session.inputSources) {
     }
   }
 }
-entity.object3D.visible = tracked;
+const panelShown = !floating || floating.open > 0.02;
+entity.object3D.visible = tracked && panelShown;
 if (housing?.object3D) housing.object3D.visible = tracked;
-if (!tracked) return;
+if (!tracked || !panelShown) return;
 const position = entity.getVectorView(Transform, 'position');
 const orientation = entity.getVectorView(Transform, 'orientation');
 const scale = entity.getVectorView(Transform, 'scale');
-this.armband.position.toArray(position);
-this.armband.orientation.toArray(orientation);
-scale[0] = scale[1] = scale[2] = ARMBAND_SCALE;
+if (floating) {
+  // Unfold animation: rise out of the palm while growing to full size.
+  const e = floating.open * floating.open * (3 - 2 * floating.open);
+  const yDot = floating.normal.x * floating.along.x + floating.normal.y * floating.along.y + floating.normal.z * floating.along.z;
+  this.armbandPanelZ.set(floating.normal.x, floating.normal.y, floating.normal.z);
+  this.armbandPanelY.set(floating.along.x - floating.normal.x * yDot,
+    floating.along.y - floating.normal.y * yDot, floating.along.z - floating.normal.z * yDot).normalize();
+  this.armbandPanelX.crossVectors(this.armbandPanelY, this.armbandPanelZ);
+  this.armbandPanelBasis.makeBasis(this.armbandPanelX, this.armbandPanelY, this.armbandPanelZ);
+  this.armbandPanelQuat.setFromRotationMatrix(this.armbandPanelBasis);
+  this.armbandPanelPos.set(floating.center.x + floating.normal.x * 0.04 * e,
+    floating.center.y + floating.normal.y * 0.04 * e, floating.center.z + floating.normal.z * 0.04 * e);
+  this.armbandPanelPos.toArray(position);
+  this.armbandPanelQuat.toArray(orientation);
+  scale[0] = scale[1] = scale[2] = ARMBAND_SCALE * (0.35 + 0.65 * e);
+} else {
+  this.armband.position.toArray(position);
+  this.armband.orientation.toArray(orientation);
+  scale[0] = scale[1] = scale[2] = ARMBAND_SCALE;
+}
 if (housing) {
   this.armband.position.toArray(housing.getVectorView(Transform, 'position'));
   this.armband.orientation.toArray(housing.getVectorView(Transform, 'orientation'));
@@ -589,6 +624,34 @@ return this.experienceActive && this.flowPhase === 'playing' &&
 /** Wrist controls only while play is live; the Game Over popup owns retry decisions. */
 private armbandUsable(): boolean {
 return this.armbandTrackable() && !this.gameOverOpen;
+}
+private armbandProjectorOpen = 0;
+private readonly armbandPanelPos = new Vector3();
+private readonly armbandPanelQuat = new Quaternion();
+private readonly armbandPanelX = new Vector3();
+private readonly armbandPanelY = new Vector3();
+private readonly armbandPanelZ = new Vector3();
+private readonly armbandPanelBasis = new Matrix4();
+private readonly armbandJointMatrix = new Matrix4();
+/** World-space palm joints for projector mode; null when any joint pose is missing. */
+private readPalmJoints(hand: XRHand, frame: XRFrame, reference: XRReferenceSpace): PalmJoints | null {
+  const names: Record<keyof PalmJoints, string> = {
+    wrist: 'wrist',
+    indexMcp: 'index-finger-metacarpal', middleMcp: 'middle-finger-metacarpal',
+    ringMcp: 'ring-finger-metacarpal', pinkyMcp: 'pinky-finger-metacarpal',
+    indexTip: 'index-finger-tip', middleTip: 'middle-finger-tip',
+    ringTip: 'ring-finger-tip', pinkyTip: 'pinky-finger-tip',
+  };
+  const out = {} as Record<keyof PalmJoints, PalmVec>;
+  for (const key of Object.keys(names) as (keyof PalmJoints)[]) {
+    const joint = hand.get(names[key] as XRHandJoint);
+    const pose = joint ? frame.getJointPose?.(joint, reference) : null;
+    if (!pose) return null;
+    this.armbandJointMatrix.fromArray(pose.transform.matrix).premultiply(this.player.matrixWorld);
+    const e = this.armbandJointMatrix.elements;
+    out[key] = { x: e[12]!, y: e[13]!, z: e[14]! };
+  }
+  return out as PalmJoints;
 }
 
 init(): void {
