@@ -42,6 +42,7 @@ function registerArSystems(world: World): void {
   world.registerSystem(AppModeSystem);
   world.registerSystem(PanelSystem);
   world.registerSystem(WallTonesSystem);
+  world.registerSystem(RiftLabSystem);
 }
 
 function buildArWorldOptions(): WorldOptions {
