@@ -101,7 +101,34 @@ await page.waitForFunction(()=>window.__armbandHarness.world.getSceneObject('wal
 console.log('RIGHT_HAND',await page.evaluate(()=>({label:window.__armbandHarness.world.getSceneObject('wall-tones-armband').getElementById('armband-hand-label').properties.peek().text,preference:localStorage.getItem('wall-tones-armband-hand')})));
 await page.screenshot({path:join(evidenceDir,'armband-xr-right.png')});
 assert.equal(await page.evaluate(()=>localStorage.getItem('wall-tones-armband-hand')),'right');
+// Game Over: the band must stay on the wrist with inert controls (user feedback Nov 14).
+await page.evaluate(async()=>{
+ const {setArmbandHand}=await import('/src/wall-tones/armband.ts');setArmbandHand('left');
+ // Mirror the real wrong-press handler: game over closes other popups.
+ const s=window.__armbandHarness.system;s.flowPhase='playing';s.experienceActive=true;s.storeOpen=false;s.achievementsOpen=false;s.gameOverOpen=true;s.game.phase='resetting';
+});
+await page.waitForTimeout(400);
+assert.equal(await page.evaluate(()=>window.__armbandHarness.world.getSceneObject('wall-tones-armband').visible),true,'band stays visible on game over');
+assert.equal(await page.evaluate(()=>window.__armbandHarness.world.getSceneObject('wall-tones-armband-housing')?.visible ?? true),true,'housing stays visible on game over');
+console.log('GAME_OVER',await page.evaluate(()=>{
+ const p=window.__armbandHarness.world.getSceneObject('wall-tones-armband');
+ return {phase:p.getElementById('armband-phase').properties.peek().text,
+  modifiersDisabled:p.getElementById('armband-modifiers').properties.peek().disabled,
+  repeatDisabled:p.getElementById('armband-repeat').properties.peek().disabled};
+}));
+const gameOverPress=await page.evaluate(async()=>{
+ const r=window.IWER_DEVICE.remote;
+ const t=r.executeListTargets({}).targets.find(t=>t.name==='armband-modifiers');
+ if(t){ await r.dispatch('look_at',{device:'hand-right',target:t.position}); await new Promise(res=>setTimeout(res,300)); await r.dispatch('select',{device:'hand-right',duration:.12}); await new Promise(res=>setTimeout(res,200)); }
+ return {targetListed:!!t, store:window.__wallTonesDebug.storeOpen};
+});
+console.log('GAME_OVER_PRESS',gameOverPress);
+assert.equal(gameOverPress.store,false,'store stays closed on game over');
+await page.screenshot({path:join(evidenceDir,'armband-xr-game-over.png')});
+await page.evaluate(()=>{window.__armbandHarness.system.gameOverOpen=false;});
+await page.waitForTimeout(400);
+assert.equal(await page.evaluate(()=>window.__armbandHarness.world.getSceneObject('wall-tones-armband').getElementById('armband-modifiers').properties.peek().disabled),false,'controls restore after game over');
 await page.evaluate(()=>{window.__armbandHarness.system.flowPhase='choose-mode';});
 await page.waitForFunction(()=>!window.__armbandHarness.world.getSceneObject('wall-tones-armband').visible);
-console.log('PASS: hand rays, Replay cost, upgrade destinations, 20 owned cues, tracking-loss hide, arm preference, setup hide. Poke and physical headset are not verified.');
+console.log('PASS: hand rays, Replay cost, upgrade destinations, 20 owned cues, tracking-loss hide, arm preference, game-over visible/inert/restore, setup hide. Poke and physical headset are not verified.');
 } finally { await browser.close(); }
