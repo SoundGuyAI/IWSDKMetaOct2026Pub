@@ -144,7 +144,8 @@ type WallTonesClipId,
 import { combinedPickSpeechLines } from './combined-pick-speech.js';
 import {
   ACHIEVEMENT_CATEGORIES,
-  AUTOPLAY_UNLOCK_HINT_LEVEL,
+  AUTOPLAY_UNLOCK_PLAY_LEVEL,
+  PLAY_UNLOCK_HINT_LEVEL,
   LISTEN_COST,
   REPLAY_FREE_CAP,
   REPLAY_PRICE_BARS,
@@ -240,11 +241,14 @@ toggleAchievements: () => void;
 buyHint: () => void;
 buyListen: () => void;
 buyAutoplay: () => void;
+buyPlay: () => void;
 buyReplay: () => void;
 buySaver: () => void;
 buyTopSecret: () => void;
 /** Test-only: spends one Replay through the Repeat button path. */
 repeatPattern: () => void;
+/** Test-only: the control-row Play button path (greyed -> Store). */
+pressPlay: () => void;
 /** Test-only: selects a store tile like a tap on its tile. */
 selectStoreTile: (id: string) => void;
 storePointerTargets: Record<string, { x: number; y: number }>;
@@ -256,6 +260,7 @@ ownsListen: boolean;
 hintUnlocked: boolean;
 autoplayLevel: number;
 autoplayUnlocked: boolean;
+playLevel: number;
 replaysFree: number;
 replaysPaid: number;
 replaysTotal: number;
@@ -265,6 +270,12 @@ demoBoost: number;
 grantBars: (amount: number) => void;
 /** Test-only saver inventory seeding for e2e. */
 grantSavers: (units: number) => void;
+/** Test-only: seed the Play level while its prices are unset. */
+grantPlayLevel: (level: number) => void;
+/** Test-only: grant the Index pointer while its price is unset. */
+grantIndex: () => void;
+ownsIndex: boolean;
+buyIndex: () => void;
 /** Test-only streak seeding for e2e Game Over cost checks. */
 setStreak: (streak: number) => void;
 flatAwaitingStart: boolean;
@@ -336,6 +347,8 @@ private gameOverOpen = false;
 // No buy-confirm arming: buying a saver is a single press that applies it when enough are held (owner request 2026-11-11).
 /** Run id whose single automatic replay has been used. */
 private idleReplayUsedRunId = -1;
+/** Once-per-pattern Play use key (the streak identifies the pattern). */
+private playUsedForStreak = -1;
 /** Until this time the status line shows the caption-only idle nudge. */
 private idleNudgeUntil = 0;
 private readonly viewer = new Vector3();
@@ -707,6 +720,22 @@ panel
 panel
 .getElementById('repeat-pattern-button')
 ?.addEventListener('click', () => void this.onRepeatPattern());
+// Control row (owner request 2026-11-12, item 67): Repeat keeps its Replay
+// behavior; a button whose modifier is not owned shows greyed and opens
+// the Store when pressed. The owned Autoplay button opens its store tile
+// (no owned-press action was specified; owner to confirm).
+panel
+.getElementById('control-play-button')
+?.addEventListener('click', () => void this.onPlayControl());
+panel
+.getElementById('control-autoplay-button')
+?.addEventListener('click', () => this.openStoreAtTile('autoplay'));
+panel
+.getElementById('control-speed-button')
+?.addEventListener('click', () => this.openStoreAtTile('speed'));
+panel
+.getElementById('control-multiplier-button')
+?.addEventListener('click', () => this.openStoreAtTile('multiplier'));
 panel
 .getElementById('rescan-room-button')
 ?.addEventListener('click', () => void this.onRescanRoom());
@@ -1722,6 +1751,14 @@ buyAutoplay: () => {
 system.forceSelectStoreTile('autoplay');
 system.onBuySelected();
 },
+buyPlay: () => {
+system.forceSelectStoreTile('play');
+system.onBuySelected();
+},
+buyIndex: () => {
+system.forceSelectStoreTile('index');
+system.onBuySelected();
+},
 buyReplay: () => {
 system.forceSelectStoreTile('replay');
 system.onBuySelected();
@@ -1737,6 +1774,9 @@ system.onBuySelected();
 repeatPattern: () => {
 void system.onRepeatPattern();
 },
+pressPlay: () => {
+void system.onPlayControl();
+},
 get ownsTopSecret() {
 return system.economy.ownsTopSecret();
 },
@@ -1751,6 +1791,12 @@ return system.economy.getAutoplayLevel();
 },
 get autoplayUnlocked() {
 return system.economy.autoplayUnlocked();
+},
+get playLevel() {
+return system.economy.getPlayLevel();
+},
+get ownsIndex() {
+return system.economy.ownsIndex();
 },
 get replaysFree() {
 return system.economy.getReplaysFree();
@@ -1790,6 +1836,12 @@ system.debugGrantBars(amount);
 },
 grantSavers: (units: number) => {
 system.debugGrantSavers(units);
+},
+grantPlayLevel: (level: number) => {
+system.debugGrantPlayLevel(level);
+},
+grantIndex: () => {
+system.economy.debugGrantIndex();
 },
 setStreak: (streak: number) => {
 system.debugSetStreak(streak);
@@ -3498,6 +3550,14 @@ this.barsFirstEarnedPending = true;
 }
 this.renderPanel();
 if (completed) {
+this.finishCompletedPattern(padIndex, previousBest);
+}
+}
+
+/** Shared pattern-completion path: a manual final press and a Play-entered
+ * final note (owner-approved 2026-11-13) both land here. */
+private finishCompletedPattern(padIndex: number, previousBest: number): void {
+{
 if (this.cypherSeam) this.setCypherSeam(false);
 // Lock input immediately so a held finger/click cannot eat the next round.
 this.game.phase = 'playback';
@@ -3856,9 +3916,11 @@ this.world
 }
 
 private setRepeatUiVisible(visible: boolean): void {
+// Item 67: the single Repeat button is now the control row (Repeat / Play
+// / Autoplay / Speed / Multiplier); visibility moves to the row.
 this.world
 .getSceneObject<UIKitMLAsset>('wall-tones-panel')
-?.getElementById('repeat-pattern-button')
+?.getElementById('control-row')
 ?.setProperties({ display: visible ? 'flex' : 'none' });
 }
 
@@ -3990,6 +4052,134 @@ await this.playSequence();
 });
 }
 
+/** Control-row state (item 67): a button whose modifier is not owned shows
+ * greyed and opens the Store when pressed. Repeat stays active (it spends
+ * Replay consumables); Speed and Multiplier stay greyed until those
+ * modifiers exist. */
+private syncControlRow(panel: UIKitMLAsset): void {
+const greyed = 0.45;
+panel
+.getElementById('control-play-button')
+?.setProperties({ opacity: this.economy.getPlayLevel() > 0 ? 1 : greyed });
+panel
+.getElementById('control-autoplay-button')
+?.setProperties({ opacity: this.economy.getAutoplayLevel() > 0 ? 1 : greyed });
+panel
+.getElementById('control-speed-button')
+?.setProperties({ opacity: greyed });
+panel
+.getElementById('control-multiplier-button')
+?.setProperties({ opacity: greyed });
+}
+
+/** Control-row shortcut (owner rule 2026-11-12): a greyed button opens the
+ * Store. The owned Autoplay button also opens its tile (for upgrades);
+ * no owned-press action was specified, owner to confirm. */
+private openStoreAtTile(id: string): void {
+if (!this.storeOpen) {
+this.onToggleStore();
+}
+if (this.storeSelected !== id) {
+this.selectStoreTile(id);
+}
+}
+
+/** Control-row Play button: greyed while unowned -> Store shortcut; owned
+ * -> Play behavior below. */
+private async onPlayControl(): Promise<void> {
+if (this.economy.getPlayLevel() < 1) {
+this.openStoreAtTile('play');
+return;
+}
+await this.onPlayTones();
+}
+
+/**
+ * Play modifier (item 66). CONFIRMED by the owner 2026-11-13: it plays the
+ * next 5 x level tones starting from the player's current position
+ * (including the pattern start) and ENTERS them for the player - re-hearing
+ * is what Repeat is for. Once per pattern. It may enter the pattern's final
+ * note too (owner-approved 2026-11-13, "potentially change later"), which
+ * completes the round through the normal finish path. STILL PENDING: prices
+ * (deferred to the balance pass), so the preview reaches this only via the
+ * debug grant. */
+private async onPlayTones(): Promise<void> {
+if (!this.experienceActive || this.flowPhase !== 'playing') {
+return;
+}
+if (this.game.phase !== 'input' || this.game.sequence.length === 0) {
+return;
+}
+// Owner rule 2026-11-13: once per pattern (keyed on the streak, which
+// identifies the current pattern and resets on failure).
+if (this.playUsedForStreak === this.game.streak) {
+this.statusText = 'Play is once per pattern.';
+this.renderPanel();
+void playErrorTone();
+return;
+}
+const playCount = Math.min(
+this.economy.getPlayNoteCount(),
+this.game.sequence.length - this.game.inputStep,
+);
+if (playCount <= 0) {
+return;
+}
+this.playUsedForStreak = this.game.streak;
+this.lastInputAt = performance.now() / 1000;
+this.idleReplayQueued = false;
+this.game.phase = 'playback';
+this.inputNeedsClear = true;
+this.statusText = `Play: ${playCount} tones`;
+this.renderPanel();
+this.playbackQueue = this.playbackQueue.then(async () => {
+for (let i = 0; i < playCount; i += 1) {
+if (!this.experienceActive || this.flowPhase !== 'playing') {
+return;
+}
+const padId = this.game.sequence[this.game.inputStep]!;
+if (padId == null) {
+break;
+}
+const pad = this.padById(padId);
+if (pad != null) {
+this.setBlinkCuePad(pad);
+flashPad(pad, true);
+await playPadTone(padId);
+await this.wait(NOTE_GAP_S + BLINK_HOLD_S + 0.2);
+flashPad(pad, false);
+this.setBlinkCuePad(null);
+}
+// Confirmed 2026-11-13: Play's tones count as entered. REVIEW PROPOSAL
+// (owner to confirm, not settled): entered tones pay no per-press Bars and
+// are not counted as player presses, following the Autoplay precedent;
+// completion/record awards run the normal round flow. Economic behavior
+// is flagged for the owner's balance pass.
+const previousBest = this.game.bestStreak;
+const completed = this.game.onCorrectInput();
+if (this.game.bestStreak > previousBest) {
+this.economy.saveBestStreak(this.game.bestStreak);
+this.recordBeatenThisAttempt = true;
+}
+if (completed) {
+// Owner-approved 2026-11-13: Play may enter the final note too; the
+// round then completes through the exact manual-finish path.
+this.finishCompletedPattern(padId, previousBest);
+return;
+}
+await this.wait(NOTE_GAP_S);
+}
+if (!this.experienceActive || this.flowPhase !== 'playing') {
+return;
+}
+this.game.phase = 'input';
+this.inputNeedsClear = true;
+this.lastInputAt = performance.now() / 1000;
+this.statusText = `Your turn: ${this.formatSequenceLabel()}`;
+this.renderPanel();
+});
+}
+
 private tickIdleReplay(): void {
 if (
 !this.experienceActive ||
@@ -4069,6 +4259,21 @@ text: this.game.phase === 'input'
 panel
 .getElementById<UIKit.Text>('wall-tones-current-streak')
 ?.setProperties({ text: String(this.game.streak) });
+// Index pointer (owner add 2026-11-13, original 2026-11-07: "shows where I
+// clicked in the pattern"): while owned, Your Turn shows the position.
+// Display wording is a proposal pending owner review.
+panel
+.getElementById<UIKit.Text>('index-indicator')
+?.setProperties({
+display: this.economy.ownsIndex()
+&& this.experienceActive
+&& this.flowPhase === 'playing'
+&& this.game.phase === 'input'
+&& this.game.sequence.length > 0
+? 'flex'
+: 'none',
+text: `Note ${Math.min(this.game.inputStep + 1, this.game.sequence.length)} of ${this.game.sequence.length}`,
+});
 this.renderEconomy(panel);
 }
 
@@ -4084,6 +4289,7 @@ private economyRenderPresses = -1;
 private economyRenderSecretOwned = false;
 private economyRenderListenOwned = false;
 private economyRenderAutoplayLevel = -1;
+private economyRenderPlayLevel = -1;
 private economyRenderReplaysTotal = -1;
 private economyRenderDemoBoost = -1;
 private economyRenderStoreSelected: string | null = null;
@@ -4098,6 +4304,7 @@ const presses = this.economy.getPresses();
 const secretOwned = this.economy.ownsTopSecret();
 const listenOwned = this.economy.ownsListen();
 const autoplayLevel = this.economy.getAutoplayLevel();
+const playLevel = this.economy.getPlayLevel();
 const replaysTotal = this.economy.getReplaysTotal();
 const demoBoost = this.economy.getDemoBoost();
 const storeSelected = this.storeSelected;
@@ -4106,6 +4313,7 @@ open === this.economyRenderStoreOpen && presses === this.economyRenderPresses &&
 secretOwned === this.economyRenderSecretOwned &&
 listenOwned === this.economyRenderListenOwned &&
 autoplayLevel === this.economyRenderAutoplayLevel &&
+playLevel === this.economyRenderPlayLevel &&
 replaysTotal === this.economyRenderReplaysTotal &&
 demoBoost === this.economyRenderDemoBoost &&
 storeSelected === this.economyRenderStoreSelected) return;
@@ -4116,6 +4324,7 @@ this.economyRenderPresses = presses;
 this.economyRenderSecretOwned = secretOwned;
 this.economyRenderListenOwned = listenOwned;
 this.economyRenderAutoplayLevel = autoplayLevel;
+this.economyRenderPlayLevel = playLevel;
 this.economyRenderReplaysTotal = replaysTotal;
 this.economyRenderDemoBoost = demoBoost;
 this.economyRenderStoreSelected = storeSelected;
@@ -4139,8 +4348,10 @@ text: this.economy.getDemoBoost() > 0 ? 'Store (TEST Bars)' : 'Store',
 panel
 .getElementById<UIKit.Text>('repeat-pattern-label')
 ?.setProperties({
-text: `Repeat pattern (${this.economy.getReplaysTotal()})`,
+// Compact label for the control row (item 67).
+text: `Repeat (${this.economy.getReplaysTotal()})`,
 });
+this.syncControlRow(panel);
 this.reconcileStore(panel);
 this.reconcileAchievements(panel);
 }
@@ -4177,6 +4388,7 @@ icon: boolean;
 }
 const hintLevel = eco.getHintLevel();
 const autoplayLevel = eco.getAutoplayLevel();
+const playLevel = eco.getPlayLevel();
 const replaysTotal = eco.getReplaysTotal();
 const savers = eco.getSavers();
 const bars = eco.getBars();
@@ -4212,6 +4424,26 @@ price: eco.autoplayUnlocked()
 ? `L${autoplayLevel + 1} - ${eco.autoplayCost(autoplayLevel + 1)}`
 : 'Locked',
 icon: eco.autoplayUnlocked(),
+},
+// Play (item 66): prices are deferred to the owner's balance pass, so the
+// tile shows TBD and its detail card carries no Buy row until then.
+{
+id: 'play',
+name: 'Play',
+badge: playLevel > 0 ? String(playLevel) : '',
+state: playLevel > 0 ? 'on' : 'off',
+price: !eco.playUnlocked() ? 'Locked' : playLevel > 0 ? `L${playLevel}` : 'TBD',
+icon: eco.playUnlocked(),
+},
+// Index pointer (owner add 2026-11-13): same row as Play, gated at Hint
+// level 3 (owner 2026-11-12). Prices deferred like Play.
+{
+id: 'index',
+name: 'Index',
+badge: eco.ownsIndex() ? '\u2713' : '',
+state: eco.ownsIndex() ? 'on' : 'off',
+price: eco.ownsIndex() ? 'Owned' : eco.indexUnlocked() ? 'TBD' : 'Locked',
+icon: false,
 },
 {
 id: 'replay',
@@ -4490,7 +4722,7 @@ titleText = `Autoplay - Level ${autoplayLevel}`;
 bodyText = !eco.ownsListen()
 ? 'Locked: buy Listen first.'
 : !eco.autoplayUnlocked()
-? `Locked: reach Hint level ${AUTOPLAY_UNLOCK_HINT_LEVEL} (now level ${hintLevel}).`
+? `Locked: reach Play level ${AUTOPLAY_UNLOCK_PLAY_LEVEL} (now level ${playLevel}).`
 : autoplayLevel === 0
 ? 'Plays the first 5 notes of each pattern for you. Each level adds 5.'
 : `Plays the first ${eco.getAutoplayNoteCount()} notes of each pattern for you. Next level adds 5.`;
@@ -4498,6 +4730,18 @@ if (eco.autoplayUnlocked()) {
 cost = eco.autoplayCost(autoplayLevel + 1);
 buyText = `Autoplay L${autoplayLevel + 1} - ${cost}`;
 }
+break;
+case 'play':
+titleText = `Play - Level ${playLevel}`;
+bodyText = !eco.playUnlocked()
+? `Locked: reach Hint level ${PLAY_UNLOCK_HINT_LEVEL} (now level ${hintLevel}).`
+: 'Press its game-menu button and it plays the next 5 tones per level from where you are. Four levels; level 4 unlocks Autoplay. Prices land with the balance pass.';
+break;
+case 'index':
+titleText = 'Index';
+bodyText = !eco.indexUnlocked()
+? `Locked: reach Hint level ${3} first.`
+: 'Shows which note of the pattern you are on. Prices land with the balance pass.';
 break;
 case 'replay':
 titleText = 'Replay';
@@ -4577,16 +4821,40 @@ const rows: { ids: string[]; node: UIKit.Container | UIKit.Text; h: number }[] =
 { ids: ['hint'], node: chainRow(byId.get('hint')!, hintLevel, 0xf2c14e), h: ROW_CHAIN_H },
 {
 ids: [],
-// Listen ownership is part of autoplayUnlocked(); without it a legacy
-// Hint L4 save would otherwise show "4/4" on a still-locked gate.
+// Gate chain settled (owner voice 2026-11-13): Hint L4 unlocks Play L1,
+// Play L4 unlocks Autoplay, Hint levels keep increasing independently.
 node: !eco.ownsListen()
 ? connection('Buy Listen first', false, null)
 : connection(
-eco.autoplayUnlocked() ? 'Autoplay unlocked' : `Reach Hint Lv ${AUTOPLAY_UNLOCK_HINT_LEVEL}`,
+eco.playUnlocked() ? 'Play unlocked' : `Reach Hint Lv ${PLAY_UNLOCK_HINT_LEVEL}`,
+eco.playUnlocked(),
+eco.playUnlocked()
+? null
+: `${Math.min(hintLevel, PLAY_UNLOCK_HINT_LEVEL)}/${PLAY_UNLOCK_HINT_LEVEL}`,
+),
+h: ROW_CONN_H,
+},
+// Play's row leaves room beside it for the Index pointer (owner 2026-11-12:
+// "same row as play").
+{ ids: ['play', 'index'], node: (() => {
+const duo = new UIKit.Container({
+flexDirection: 'row',
+justifyContent: 'center',
+gap: 8,
+width: TREE_W,
+});
+duo.add(makeTile(byId.get('play')!));
+duo.add(makeTile(byId.get('index')!));
+return duo;
+})(), h: ROW_TILE_H },
+{
+ids: [],
+node: connection(
+eco.autoplayUnlocked() ? 'Autoplay unlocked' : `Reach Play Lv ${AUTOPLAY_UNLOCK_PLAY_LEVEL}`,
 eco.autoplayUnlocked(),
 eco.autoplayUnlocked()
 ? null
-: `${Math.min(hintLevel, AUTOPLAY_UNLOCK_HINT_LEVEL)}/${AUTOPLAY_UNLOCK_HINT_LEVEL}`,
+: `${Math.min(playLevel, AUTOPLAY_UNLOCK_PLAY_LEVEL)}/${AUTOPLAY_UNLOCK_PLAY_LEVEL}`,
 ),
 h: ROW_CONN_H,
 },
@@ -4999,6 +5267,11 @@ this.economy.debugGrantSavers(units);
 this.renderPanel();
 }
 
+private debugGrantPlayLevel(level: number): void {
+this.economy.debugGrantPlayLevel(level);
+this.renderPanel();
+}
+
 private debugSetStreak(streak: number): void {
 if (!Number.isFinite(streak) || streak < 0) return;
 this.game.streak = Math.floor(streak);
@@ -5137,8 +5410,21 @@ if (id === 'autoplay' && !this.economy.autoplayUnlocked()) {
 deny(
 !this.economy.ownsListen()
 ? 'Locked: buy Listen first.'
-: `Locked: reach Hint level ${AUTOPLAY_UNLOCK_HINT_LEVEL} (now level ${this.economy.getHintLevel()}).`,
+: `Locked: reach Play level ${AUTOPLAY_UNLOCK_PLAY_LEVEL} (now level ${this.economy.getPlayLevel()}).`,
 );
+return;
+}
+if (id === 'play' && !this.economy.playUnlocked()) {
+deny(
+!this.economy.ownsListen()
+? 'Locked: buy Listen first.'
+: `Locked: reach Hint level ${PLAY_UNLOCK_HINT_LEVEL} (now level ${this.economy.getHintLevel()}).`,
+);
+return;
+}
+if (id === 'play' || id === 'index') {
+// Prices are the owner's balance-pass decision; nothing is sold as a price.
+deny(id === 'play' ? 'Play prices land with the balance pass.' : 'Index prices land with the balance pass.');
 return;
 }
 const ok =

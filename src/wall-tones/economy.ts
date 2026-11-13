@@ -47,7 +47,11 @@ export const LISTEN_COST = 30;
 export const AUTOPLAY_BASE_COSTS: readonly number[] = [250];
 export const AUTOPLAY_COST_GROWTH = 2;
 export const AUTOPLAY_NOTES_PER_LEVEL = 5;
-export const AUTOPLAY_UNLOCK_HINT_LEVEL = 4;
+/** Gate chain (owner voice 2026-11-13): Hint L4 unlocks Play L1; Play L4
+ * unlocks Autoplay; Hint levels keep increasing independently. */
+export const PLAY_UNLOCK_HINT_LEVEL = 4;
+/** Autoplay unlocks at Play level 4 (= PLAY_MAX_LEVEL, declared below). */
+export const AUTOPLAY_UNLOCK_PLAY_LEVEL = 4;
 
 /** Play (owner request 2026-11-12, backlog 66, verbatim): "another modifier
  * called "Play" and then after 4 levels it will enable autoplay. Each level
@@ -450,11 +454,11 @@ export class WallTonesEconomy {
     return this.listenOwned;
   }
 
-  /** Skill-tree gate: Autoplay unlocks at Hint level 4 (owner 2026-11-11).
-   * Listen ownership required too (bug report 2026-11-12): legacy saves could
-   * carry Hint L4+ without Listen and unlock Autoplay out of the box. */
+  /** Skill-tree gate: Autoplay unlocks at Play level 4 (owner voice
+   * 2026-11-13). Listen ownership required too (bug report 2026-11-12):
+   * legacy saves could carry levels without Listen. */
   autoplayUnlocked(): boolean {
-    return this.listenOwned && this.hintLevel >= AUTOPLAY_UNLOCK_HINT_LEVEL;
+    return this.listenOwned && this.playLevel >= AUTOPLAY_UNLOCK_PLAY_LEVEL;
   }
 
   /** Buy the next hint level. Returns true when the purchase landed. */
@@ -514,9 +518,17 @@ export class WallTonesEconomy {
     return PLAY_COSTS[Math.min(Math.max(level, 1), PLAY_MAX_LEVEL) - 1]!;
   }
 
-  /** Buy the next Play level. REFUSES while PLAY_PRICING_SET is false
-   * (owner deferred pricing to the balance pass); four levels max. */
+  /** Play unlocks at Hint level 4 (owner voice 2026-11-13: only then can
+   * Play level one be opened). Listen ownership required too. */
+  playUnlocked(): boolean {
+    return this.listenOwned && this.hintLevel >= PLAY_UNLOCK_HINT_LEVEL;
+  }
+
+  /** Buy the next Play level. REFUSES while locked, and while
+   * PLAY_PRICING_SET is false (owner deferred pricing to the balance
+   * pass); four levels max. */
   buyNextPlayLevel(): boolean {
+    if (!this.playUnlocked()) return false;
     if (!PLAY_PRICING_SET) return false;
     if (this.playLevel >= PLAY_MAX_LEVEL) return false;
     const cost = this.playCost(this.playLevel + 1);

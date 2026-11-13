@@ -173,7 +173,7 @@ test.describe('Wall Tones store skill tree', () => {
       .toBe('shown');
   });
 
-  test('Autoplay unlocks at Hint L4 and plays the pattern prefix, capped one short', async ({
+  test('Autoplay unlocks at Play L4 (after Hint L4) and plays the pattern prefix, capped one short', async ({
     page,
   }) => {
     test.slow();
@@ -188,9 +188,15 @@ test.describe('Wall Tones store skill tree', () => {
     for (let i = 0; i < 4; i += 1) {
       await dbg(page, 'buyHint');
     }
+    // Gate chain (owner voice 2026-11-13): Hint L4 unlocks Play L1, and
+    // only Play L4 unlocks Autoplay - Hint L4 alone is no longer enough.
+    await dbg(page, 'buyAutoplay');
+    expect((await readState(page)).autoplayLevel).toBe(0);
+    await grantPlayLevel(page, 4);
     await dbg(page, 'buyAutoplay');
     let snap = await readState(page);
     expect(snap.hintLevel).toBe(4);
+    expect(snap.playLevel).toBe(4);
     expect(snap.autoplayLevel).toBe(1);
     expect(snap.bars).toBe(5);
 
