@@ -21,11 +21,10 @@ import {
   PANEL_LOOK_AWAY_DEG,
   PANEL_RAY_BLOCK_DEG,
   PANEL_RAY_DODGE_HOLD_MS,
-  PANEL_RAY_DODGE_UP_M,
   PANEL_SNAP_ARRIVE_M,
 } from './wall-tones/constants.js';
 import { riftAimRays, riftTargetPositions } from './rift-lab/rift-targets.js';
-import { riftPanelBlocked, type Ray } from './rift-lab/rift-dodge.js';
+import { riftBlockingLineY, type Ray } from './rift-lab/rift-dodge.js';
 import { horizontalLookAway } from './wall-tones/panel-placement.js';
 import { enterXrButtonVisible } from './enter-xr-visibility.js';
 
@@ -73,6 +72,13 @@ function riftVisibleForFollow(world: {
   return world.getSceneEntity('rift-lab-panel')?.getValue(Visibility, 'isVisible') === true;
 }
 
+/** Gap kept between the lifted panel's bottom edge and the blocking sightline. */
+const RIFT_DODGE_CLEAR_M = 0.12;
+/** Estimated half height of the (center-anchored) Rift Lab panel, meters. */
+const RIFT_PANEL_HALF_HEIGHT_M = 0.65;
+/** Largest lift so the panel never flies out of reach. */
+const RIFT_DODGE_MAX_LIFT_M = 1.2;
+
 export class PanelSystem extends createSystem({}) {
   private readonly savedMainMenuPosition = new Float32Array(3);
   private readonly savedMainMenuScale = new Float32Array(3);
@@ -100,6 +106,7 @@ export class PanelSystem extends createSystem({}) {
   /** Rift Lab panel only: vertical offset currently applied by the ray dodge. */
   private riftDodgeAppliedY = 0;
   private riftDodgeLift = 0;
+  private riftDodgeLineY = 0;
   private riftDodgeUntil = 0;
   private readonly riftRayOrigin = new Vector3();
   private readonly riftRayDir = new Vector3();
@@ -133,17 +140,24 @@ export class PanelSystem extends createSystem({}) {
       this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
     if (!immersive) return;
     const now = performance.now();
-    if (this.riftRayPointsAtRiftThroughPanel(position)) {
+    const lineY = this.riftBlockingLineY(position);
+    if (lineY != null) {
       this.riftDodgeUntil = now + PANEL_RAY_DODGE_HOLD_MS;
+      this.riftDodgeLineY = lineY;
     }
-    // Ease the lift like the setup panel's lerp: up to viewer height + 0.5 m
-    // while a ray is aimed through it, back down after the hold.
+    // Ease the lift like the setup panel's lerp. The target puts the panel's
+    // BOTTOM edge above the blocking sightline (eye line to the rift, aim ray)
+    // plus a margin, using the panel's estimated half height; held after the ray
+    // leaves, then eased back down.
     let targetLift = 0;
     if (now < this.riftDodgeUntil) {
-      this.player.head.getWorldPosition(this.menuViewer);
-      targetLift = Math.max(
-        0,
-        this.menuViewer.y + PANEL_RAY_DODGE_UP_M - position[1]!,
+      const bottomOffset = RIFT_PANEL_HALF_HEIGHT_M;
+      targetLift = Math.min(
+        RIFT_DODGE_MAX_LIFT_M,
+        Math.max(
+          0,
+          this.riftDodgeLineY + RIFT_DODGE_CLEAR_M + bottomOffset - position[1]!,
+        ),
       );
     }
     const alpha = 1 - Math.exp(-delta * 9);
@@ -160,10 +174,8 @@ export class PanelSystem extends createSystem({}) {
    * sits between the viewer's eyes and a rift (it occludes the target).
    */
   /** See rift-dodge.ts: aim ray / UI ray / eye line crossing the panel. */
-  private riftRayPointsAtRiftThroughPanel(
-    panelPos: ArrayLike<number>,
-  ): boolean {
-    if (riftTargetPositions.length === 0) return false;
+  private riftBlockingLineY(panelPos: ArrayLike<number>): number | null {
+    if (riftTargetPositions.length === 0) return null;
     const aimRays: Ray[] = riftAimRays.map((r) => ({
       origin: [r.ox, r.oy, r.oz] as const,
       dir: [r.dx, r.dy, r.dz] as const,
@@ -181,7 +193,7 @@ export class PanelSystem extends createSystem({}) {
       });
     }
     this.player.head.getWorldPosition(this.riftScratchA);
-    return riftPanelBlocked({
+    return riftBlockingLineY({
       eye: [this.riftScratchA.x, this.riftScratchA.y, this.riftScratchA.z],
       panel: [panelPos[0]!, panelPos[1]!, panelPos[2]!],
       targets: riftTargetPositions.map((t) => [t.x, t.y, t.z] as const),
@@ -189,6 +201,7 @@ export class PanelSystem extends createSystem({}) {
       uiRays,
       blockDeg: PANEL_RAY_BLOCK_DEG,
       lateralM: 0.5,
+      riftTopM: 0.45,
     });
   }
 
