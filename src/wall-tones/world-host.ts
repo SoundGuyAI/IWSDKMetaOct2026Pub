@@ -112,8 +112,16 @@ async function destroyActiveWorld(): Promise<void> {
   } catch {
     // Session may already be ending during a world swap.
   }
+  const staleCanvas = activeWorld.renderer?.domElement;
   activeWorld.destroy();
   activeWorld = null;
+  // world.destroy() leaves its canvas in the container. A stale canvas keeps
+  // catching the pointer after the next world is built (menu looks alive but
+  // never reacts once an XR session has ended), so drop it with the world.
+  if (staleCanvas != null && staleCanvas.isConnected) {
+    recordXrEvent('stale-canvas-removed');
+    staleCanvas.remove();
+  }
 }
 
 export async function bootHubWorld(container: HTMLElement): Promise<World> {
