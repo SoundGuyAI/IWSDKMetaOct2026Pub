@@ -22,6 +22,7 @@ const {
   MOVE_MAX_SPEED_MPS,
   MAX_PAD_REACH_M,
   formatMeters,
+  formatMetersNumber,
   readLifetimeMovementMeters,
   MOVEMENT_STORAGE_KEYS,
 } = movement;
@@ -134,6 +135,10 @@ test('meter labels render one decimal', () => {
   assert.equal(formatMeters(0), '0.0 m');
   assert.equal(formatMeters(1.26), '1.3 m');
   assert.equal(formatMeters(12.04), '12.0 m');
+  // Menu fields carry the digits only; the unit is a separate element.
+  assert.equal(formatMetersNumber(0), '0.0');
+  assert.equal(formatMetersNumber(1.26), '1.3');
+  assert.equal(formatMetersNumber(12.04), '12.0');
 });
 
 test('achievement category, menu line and system hooks are wired', () => {
@@ -148,6 +153,9 @@ test('achievement category, menu line and system hooks are wired', () => {
   assert.ok(ui.includes('id="wall-tones-movement-pad"'), 'pad reach field on the same line');
   assert.ok(sys.includes('tickMovementTracking'), 'per-frame headset sampling');
   assert.ok(sys.includes('noteCorrectPadPress'), 'pad reach hook on correct presses');
+  assert.ok(sys.includes('pad != null && physicalTouch'), 'pad reach counts physical touches only, not ray/gaze');
+  assert.ok(sys.includes('handlePadInput(pad.padIndex, true)'), 'fingertip touch passes the physical flag');
+  assert.ok(ui.includes('stat-number-field'), 'number and unit split into a no-wrap field');
   assert.ok(sys.includes("movement: 'Movement'"), 'one-word tile name');
   assert.ok(sys.includes('resetPadAnchor'), 'pad anchor resets on re-placement');
 });
