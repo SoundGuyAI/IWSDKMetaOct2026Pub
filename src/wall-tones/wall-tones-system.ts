@@ -3915,13 +3915,15 @@ this.world
 ?.setProperties({ display: visible ? 'flex' : 'none' });
 }
 
-private setRepeatUiVisible(visible: boolean): void {
+private setRepeatUiVisible(_visible: boolean): void {
 // Item 67: the single Repeat button is now the control row (Repeat / Play
 // / Autoplay / Speed / Multiplier); visibility moves to the row.
 this.world
 .getSceneObject<UIKitMLAsset>('wall-tones-panel')
 ?.getElementById('control-row')
-?.setProperties({ display: visible ? 'flex' : 'none' });
+// Owner 2026-11-14: the modifier buttons live in the game menu from the
+// start (locked ones greyed) and are not added when a run begins.
+?.setProperties({ display: 'flex' });
 }
 
 private setRescanUiVisible(visible: boolean): void {
@@ -4031,7 +4033,7 @@ return;
 // come from the Store.
 if (!this.economy.useReplay()) {
 this.statusText =
-'No Replay left. Earn one 5 notes past your Hint coverage, or buy one in the Store.';
+'No Replay left. Earn one 5 notes past your Hint coverage, or buy one in Modifiers.';
 this.renderPanel();
 void playErrorTone();
 return;
@@ -4336,14 +4338,14 @@ panel
 ?.setProperties({ text: String(this.economy.getBarsTotal()) });
 panel
 .getElementById<UIKit.Text>('store-button-label')
-?.setProperties({ text: this.storeOpen ? 'Close store' : 'Store' });
+?.setProperties({ text: this.storeOpen ? 'Close modifiers' : 'Modifiers' });
 panel
 .getElementById<UIKit.Container>('store-popup')
 ?.setProperties({ display: this.storeOpen ? 'flex' : 'none' });
 panel
 .getElementById<UIKit.Text>('store-heading')
 ?.setProperties({
-text: this.economy.getDemoBoost() > 0 ? 'Store (TEST Bars)' : 'Store',
+text: this.economy.getDemoBoost() > 0 ? 'Modifiers (TEST Bars)' : 'Modifiers',
 });
 panel
 .getElementById<UIKit.Text>('repeat-pattern-label')
@@ -4837,14 +4839,22 @@ h: ROW_CONN_H,
 // Play's row leaves room beside it for the Index pointer (owner 2026-11-12:
 // "same row as play").
 { ids: ['play', 'index'], node: (() => {
+// Owner layout 2026-11-14: Play sits centered on the vertical
+// progression axis; Index is independent, pinned to the right edge
+// without displacing Play.
 const duo = new UIKit.Container({
 flexDirection: 'row',
 justifyContent: 'center',
-gap: 8,
 width: TREE_W,
 });
 duo.add(makeTile(byId.get('play')!));
-duo.add(makeTile(byId.get('index')!));
+const indexSlot = new UIKit.Container({
+positionType: 'absolute',
+positionRight: 0,
+positionTop: 0,
+});
+indexSlot.add(makeTile(byId.get('index')!));
+duo.add(indexSlot);
 return duo;
 })(), h: ROW_TILE_H },
 {
