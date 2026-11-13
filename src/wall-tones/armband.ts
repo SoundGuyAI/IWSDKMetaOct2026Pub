@@ -13,6 +13,20 @@ export function setArmbandHand(hand: ArmbandHand): void {
   try { localStorage.setItem(HAND_KEY, hand); } catch { /* Keep the session preference. */ }
   window.dispatchEvent(new Event('wall-tones-accessibility-change'));
 }
+/** Display mode: wristband on the wrist, or the palm projector (same hand). */
+export type ArmbandDisplayMode = 'band' | 'projector';
+const MODE_KEY = 'wall-tones-armband-mode';
+let sessionMode: ArmbandDisplayMode | undefined;
+export function armbandDisplayMode(): ArmbandDisplayMode {
+  if (sessionMode) return sessionMode;
+  try { return localStorage.getItem(MODE_KEY) === 'projector' ? 'projector' : 'band'; }
+  catch { return 'band'; }
+}
+export function setArmbandDisplayMode(mode: ArmbandDisplayMode): void {
+  sessionMode = mode;
+  try { localStorage.setItem(MODE_KEY, mode); } catch { /* Keep the session preference. */ }
+  window.dispatchEvent(new Event('wall-tones-accessibility-change'));
+}
 
 import { Matrix4, Quaternion, Vector3, UIKit, type UIKitMLAsset } from '@iwsdk/core';
 import { WALL_TONE_PADS } from './constants.js';
