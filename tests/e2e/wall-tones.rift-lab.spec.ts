@@ -36,11 +36,11 @@ test('Rift Sealing Lab opens from the Lab menu and runs the charge-seal loop', a
 
   // Successful notes charge the hands (lab stand-in for main-game notes).
   await page.evaluate(() => {
-    for (let i = 0; i < 5; i++) window.__riftLabDebug!.playNote('green', 'right');
+    for (let i = 0; i < 12; i++) window.__riftLabDebug!.playNote('green', 'right');
   });
   snap = await snapshot(page);
-  expect(snap.energy).toBe(50);
-  expect(snap.noteCount).toBe(5);
+  expect(snap.energy).toBe(120); // settled 14:46: 12 notes = one closure
+  expect(snap.noteCount).toBe(12);
 
   // Seal the rift: modifier lifts, rift count drops.
   await page.evaluate(() => window.__riftLabDebug!.sealFirstRift());
