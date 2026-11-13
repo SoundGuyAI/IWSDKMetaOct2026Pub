@@ -9,21 +9,27 @@
  * the fixed charge spot on mobile (settled 12:25). Final animated rift art
  * (particles/shaders/glows) is a later dedicated PR.
  *
- * UNRESOLVED, held for Oded (no defaults invented):
- *  - PC click target: canvas clicks route to RiftLabGame.onPcClick(), a
- *    deliberate no-op, and the panel says so.
- *  - Open-rift negative modifier identity: the game tracks the until-cleared
- *    gate; the effect is OPEN_RIFT_MODIFIER_EFFECT (null no-op).
+ * Settled inputs (13:38): desktop clicks the rift itself with enough energy
+ * (notes fly pointer-to-rift, no hold); the enough-energy gate is shared by
+ * every platform (SEAL_ENERGY_REQUIRED, number provisional); while a rift is
+ * open, score/bars carry a fractional multiplier until cleared (fraction
+ * provisional).
  *
- * Headset tuning (hand anchors, palm pose thresholds, rift placement on room
- * surfaces) is the point of this Lab PR, same as the other lab demos.
+ * XR: real hand tracking. When the world is immersive and a hand is tracked,
+ * notes orbit the live palm and an open palm fires the beam along the
+ * fingers' direction; closing the hand or losing tracking stops it. Palm
+ * thresholds and rift placement on real room surfaces are the on-headset
+ * tuning this Lab exists for.
  */
 
 import {
   createSystem,
   UIKit,
   UIKitMLAsset,
+  VisibilityState,
 } from '@iwsdk/core';
+import { XRHandVisualAdapter } from '@iwsdk/xr-input';
+import { readPalmPose, type PalmPose } from './rift-hands.js';
 import {
   AdditiveBlending,
   BufferGeometry,
@@ -110,6 +116,19 @@ export class RiftLabSystem extends createSystem({}) {
   private dragStart = { x: 0, y: 0 };
   private aimNdc = { x: 0, y: 0 };
   private lastUiUpdate = 0;
+  /** Live XR palm poses per hand, refreshed each update; null when flat or
+   * the hand is untracked. */
+  private readonly palms: Record<'left' | 'right', PalmPose | null> = {
+    left: null,
+    right: null,
+  };
+  /** True while the active beam was opened by an XR open palm (so only XR
+   * logic stops it on palm close / tracking loss). */
+  private xrBeamActive = false;
+  private beamLine: Line | null = null;
+  private readonly palmAnchorLeft = new Vector3();
+  private readonly palmAnchorRight = new Vector3();
+  private readonly headPos = new Vector3();
 
   init(): void {
     this.root.visible = false;
@@ -243,6 +262,10 @@ export class RiftLabSystem extends createSystem({}) {
   private stopRun(): void {
     this.running = false;
     this.dragging = false;
+    this.xrBeamActive = false;
+    if (this.beamLine != null) {
+      this.beamLine.visible = false;
+    }
     this.game.stopBeam();
     for (const id of [...this.riftViews.keys()]) {
       this.removeRiftView(id);
@@ -262,6 +285,28 @@ export class RiftLabSystem extends createSystem({}) {
     const rift = this.game.spawnRift();
     const position =
       RIFT_POSITIONS[(rift.id - 1) % RIFT_POSITIONS.length].clone();
+    let face: Vector3 | null = null;
+    if (this.isImmersive()) {
+      // MR: hang rifts in the room around the player, not at hub-scene
+      // coords. Roughly 2m out, spread laterally, at chest-to-head height;
+      // real room-surface placement is on-headset tuning.
+      this.player.head.getWorldPosition(this.headPos);
+      const forward = new Vector3();
+      this.world.camera.getWorldDirection(forward);
+      forward.y = 0;
+      if (forward.lengthSq() < 1e-6) forward.set(0, 0, -1);
+      forward.normalize();
+      const side = new Vector3(-forward.z, 0, forward.x);
+      const offsets = [0, -0.8, 0.8];
+      const heights = [0.1, -0.15, 0.3];
+      const idx = (rift.id - 1) % 3;
+      position
+        .copy(this.headPos)
+        .add(forward.multiplyScalar(2))
+        .add(side.multiplyScalar(offsets[idx]));
+      position.y = this.headPos.y + heights[idx];
+      face = this.headPos.clone();
+    }
     const group = new Group();
     // Placeholder fracture: a jagged four-edge ring, each edge a pad color.
     const points: Vector3[] = [];
@@ -285,6 +330,9 @@ export class RiftLabSystem extends createSystem({}) {
       group.add(new Line(new BufferGeometry().setFromPoints(edgePoints), material));
     }
     group.position.copy(position);
+    if (face != null) {
+      group.lookAt(face);
+    }
     this.root.add(group);
     this.riftViews.set(rift.id, { rift, group, position });
     this.renderPanel();
@@ -297,14 +345,127 @@ export class RiftLabSystem extends createSystem({}) {
     this.riftViews.delete(id);
   }
 
+  private isImmersive(): boolean {
+    return this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
+  }
+
+  /** Refresh live palm poses from the hand-tracking adapters. No-ops to
+   * nulls when flat or untracked, so flat input paths are untouched. */
+  private updateXrHands(): void {
+    if (!this.isImmersive()) {
+      this.palms.left = null;
+      this.palms.right = null;
+      return;
+    }
+    for (const hand of ['right', 'left'] as const) {
+      const adapter = this.input.xr.visualAdapters[hand].peek();
+      if (adapter instanceof XRHandVisualAdapter) {
+        const grip = this.player.gripSpaces[hand];
+        grip.updateWorldMatrix(true, false);
+        this.palms[hand] = readPalmPose(
+          adapter.jointTransforms,
+          grip.matrixWorld.elements,
+        );
+      } else {
+        this.palms[hand] = null;
+      }
+    }
+  }
+
+  /** Open-palm beam control (his 12:15 input): an open palm with enough
+   * energy starts the beam; closing the hand or losing tracking stops it. */
+  private updateXrBeam(): void {
+    if (this.palms.left == null && this.palms.right == null) {
+      if (this.xrBeamActive) {
+        this.xrBeamActive = false;
+        this.game.stopBeam();
+      }
+      return;
+    }
+    if (this.xrBeamActive) {
+      const palm = this.palms[this.game.getFiringHand()];
+      if (palm == null || !palm.open) {
+        this.xrBeamActive = false;
+        this.game.stopBeam();
+      }
+      return;
+    }
+    if (this.game.isBeamActive()) {
+      return; // a flat (drag) beam is already running
+    }
+    for (const hand of ['right', 'left'] as const) {
+      const palm = this.palms[hand];
+      if (palm != null && palm.open && this.game.canFireBeam()) {
+        this.xrBeamActive = this.game.startBeam({
+          kind: 'xr-open-palm',
+          hand,
+        });
+        if (this.xrBeamActive) {
+          this.renderPanel('Palm beam firing. Aim at a rift.');
+          break;
+        }
+      }
+    }
+  }
+
   private handAnchor(hand: 'left' | 'right'): Vector3 {
-    // Placeholder anchors; XR hand-joint anchors are the headset-tuning half
-    // of this Lab PR (hand tracking is only requested in the AR world).
+    const palm = this.palms[hand];
+    if (palm != null) {
+      const scratch =
+        hand === 'right' ? this.palmAnchorRight : this.palmAnchorLeft;
+      return scratch.set(palm.center[0], palm.center[1], palm.center[2]);
+    }
     return hand === 'right' ? FLAT_RIGHT_HAND : FLAT_LEFT_HAND;
   }
 
+  /** Beam ray for the active beam: live palm aim in XR, flat aim point
+   * otherwise. */
+  private beamRay(out: { origin: Vector3; direction: Vector3 }): void {
+    out.origin.copy(this.handAnchor(this.game.getFiringHand()));
+    if (this.xrBeamActive) {
+      const palm = this.palms[this.game.getFiringHand()];
+      if (palm != null) {
+        out.direction.set(
+          palm.direction[0],
+          palm.direction[1],
+          palm.direction[2],
+        );
+        return;
+      }
+    }
+    const target = new Vector3(
+      this.aimNdc.x * 2.2,
+      1.6 + this.aimNdc.y * 1.2,
+      -2.5,
+    );
+    out.direction.copy(target.sub(out.origin)).normalize();
+  }
+
+  private ensureBeamLine(): Line {
+    if (this.beamLine == null) {
+      this.beamLine = new Line(
+        new BufferGeometry().setFromPoints([new Vector3(), new Vector3()]),
+        new LineBasicMaterial({
+          color: new Color('#ffe9a8'),
+          blending: AdditiveBlending,
+          transparent: true,
+          opacity: 0.9,
+        }),
+      );
+      this.beamLine.visible = false;
+      this.root.add(this.beamLine);
+    }
+    return this.beamLine;
+  }
+
+  private readonly beamRayScratch = {
+    origin: new Vector3(),
+    direction: new Vector3(),
+  };
+
   update(delta: number): void {
     if (!this.active) return;
+    this.updateXrHands();
     this.game.updateOrbit(delta);
 
     // Sync orbit note meshes with the logic model.
@@ -345,6 +506,8 @@ export class RiftLabSystem extends createSystem({}) {
       } else {
         mesh.position.set(ox, oy, anchor.z);
       }
+      // Notes face the viewer (billboard), in XR and flat alike.
+      mesh.quaternion.copy(this.world.camera.quaternion);
     }
     for (const [id, mesh] of this.noteMeshes) {
       if (!seen.has(id)) {
@@ -354,6 +517,7 @@ export class RiftLabSystem extends createSystem({}) {
     }
 
     if (this.running) {
+      this.updateXrBeam();
       const now = performance.now();
       if (
         this.riftViews.size < MAX_OPEN_RIFTS &&
@@ -363,26 +527,30 @@ export class RiftLabSystem extends createSystem({}) {
         this.spawnRift();
       }
 
-      // Beam: from the firing-hand anchor toward the flat aim point; seal on
-      // sustained contact. XR open-palm input is the headset-tuning half.
+      // Beam: live palm aim in XR (open palm), the flat aim point otherwise.
       if (this.game.isBeamActive()) {
-        const origin = this.handAnchor(this.game.getFiringHand());
-        const target = new Vector3(
-          this.aimNdc.x * 2.2,
-          1.6 + this.aimNdc.y * 1.2,
-          -2.5,
-        );
-        const direction = target.clone().sub(origin).normalize();
+        const ray = this.beamRayScratch;
+        this.beamRay(ray);
+        const line = this.ensureBeamLine();
+        line.visible = true;
+        const end = ray.origin
+          .clone()
+          .add(ray.direction.clone().multiplyScalar(3.5));
+        line.geometry.setFromPoints([ray.origin, end]);
         for (const view of this.riftViews.values()) {
-          const toRift = view.position.clone().sub(origin);
-          const along = toRift.dot(direction);
+          const toRift = view.position.clone().sub(ray.origin);
+          const along = toRift.dot(ray.direction);
           if (along <= 0) continue;
-          const closest = origin.clone().add(direction.clone().multiplyScalar(along));
+          const closest = ray.origin
+            .clone()
+            .add(ray.direction.clone().multiplyScalar(along));
           if (closest.distanceTo(view.position) <= BEAM_HIT_RADIUS_M) {
             this.game.applyBeamOnRift(view.rift.id, delta * 1000);
             break;
           }
         }
+      } else if (this.beamLine != null) {
+        this.beamLine.visible = false;
       }
 
       // Desktop notes-flight seals advance without the beam.
