@@ -19,8 +19,12 @@ import {
   PANEL_FOLLOW_SLERP,
   PANEL_FOLLOW_Y_OFFSET_M,
   PANEL_LOOK_AWAY_DEG,
+  PANEL_RAY_BLOCK_DEG,
+  PANEL_RAY_DODGE_HOLD_MS,
+  PANEL_RAY_DODGE_UP_M,
   PANEL_SNAP_ARRIVE_M,
 } from './wall-tones/constants.js';
+import { riftTargetPositions } from './rift-lab/rift-targets.js';
 import { horizontalLookAway } from './wall-tones/panel-placement.js';
 import { enterXrButtonVisible } from './enter-xr-visibility.js';
 
@@ -62,6 +66,12 @@ function isCompactFlatViewport(): boolean {
   return false;
 }
 
+function riftVisibleForFollow(world: {
+  getSceneEntity: (id: string) => { getValue: (c: typeof Visibility, k: 'isVisible') => unknown } | undefined;
+}): boolean {
+  return world.getSceneEntity('rift-lab-panel')?.getValue(Visibility, 'isVisible') === true;
+}
+
 export class PanelSystem extends createSystem({}) {
   private readonly savedMainMenuPosition = new Float32Array(3);
   private readonly savedMainMenuScale = new Float32Array(3);
@@ -86,12 +96,99 @@ export class PanelSystem extends createSystem({}) {
    * same placement rules as the in-game panel (distance, height offset, scale,
    * look-away threshold, eased snap). Flat layouts are untouched.
    */
+  /** Rift Lab panel only: vertical offset currently applied by the ray dodge. */
+  private riftDodgeAppliedY = 0;
+  private riftDodgeUntil = 0;
+  private readonly riftRayOrigin = new Vector3();
+  private readonly riftRayDir = new Vector3();
+  private readonly riftRayQuat = new Quaternion();
+  private readonly riftScratchA = new Vector3();
+  private readonly riftScratchB = new Vector3();
+
+  /**
+   * Rift Lab panel follows the player like the menus (his 23:48 Quest test),
+   * and, like the setup window, swings up out of the way while a hand ray
+   * points at a rift through it (the ray stays clear for the target).
+   */
   update(delta: number): void {
+    const riftEntity = this.world.getSceneEntity('rift-lab-panel');
+    const riftShown =
+      riftEntity?.getValue(Visibility, 'isVisible') === true;
+    if (riftEntity != null && this.riftDodgeAppliedY !== 0) {
+      // Undo last frame's dodge so the follow logic works on the true base.
+      riftEntity.getVectorView(Transform, 'position')[1]! -= this.riftDodgeAppliedY;
+      this.riftDodgeAppliedY = 0;
+    }
+    this.updateMenuFollow(delta);
+    if (riftEntity == null || !riftShown) {
+      this.riftDodgeUntil = 0;
+      return;
+    }
+    const position = riftEntity.getVectorView(Transform, 'position');
+    const immersive =
+      this.world.xrEnabled &&
+      this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
+    if (!immersive) return;
+    const now = performance.now();
+    if (this.riftRayPointsAtRiftThroughPanel(position)) {
+      this.riftDodgeUntil = now + PANEL_RAY_DODGE_HOLD_MS;
+    }
+    if (now < this.riftDodgeUntil) {
+      this.player.head.getWorldPosition(this.menuViewer);
+      const lift = Math.max(
+        0,
+        this.menuViewer.y + PANEL_RAY_DODGE_UP_M - position[1]!,
+      );
+      this.riftDodgeAppliedY = lift;
+      position[1]! += lift;
+    }
+  }
+
+  private riftRayPointsAtRiftThroughPanel(
+    panelPos: ArrayLike<number>,
+  ): boolean {
+    if (riftTargetPositions.length === 0) return false;
+    for (const hand of ['right', 'left'] as const) {
+      const space = this.player.raySpaces[hand];
+      space.updateWorldMatrix(true, false);
+      space.getWorldPosition(this.riftRayOrigin);
+      space.getWorldQuaternion(this.riftRayQuat);
+      this.riftRayDir.set(0, 0, -1).applyQuaternion(this.riftRayQuat).normalize();
+      for (const target of riftTargetPositions) {
+        this.riftScratchA.set(target.x, target.y, target.z).sub(this.riftRayOrigin);
+        const along = this.riftScratchA.dot(this.riftRayDir);
+        if (along < 0.05 || along > 8) continue;
+        const lateral = this.riftScratchB
+          .copy(this.riftRayOrigin)
+          .addScaledVector(this.riftRayDir, along)
+          .distanceTo(this.riftScratchA.set(target.x, target.y, target.z));
+        if (lateral > 0.35) continue;
+        // The ray must also pass through the panel's horizontal footprint.
+        this.riftScratchA
+          .set(panelPos[0]!, panelPos[1]!, panelPos[2]!)
+          .sub(this.riftRayOrigin)
+          .setY(0);
+        this.riftScratchB.copy(this.riftRayDir).setY(0);
+        if (this.riftScratchA.lengthSq() < 1e-6 || this.riftScratchB.lengthSq() < 1e-6) {
+          continue;
+        }
+        const dot = Math.max(
+          -1,
+          Math.min(1, this.riftScratchA.normalize().dot(this.riftScratchB.normalize())),
+        );
+        if ((Math.acos(dot) * 180) / Math.PI < PANEL_RAY_BLOCK_DEG) return true;
+      }
+    }
+    return false;
+  }
+
+  private updateMenuFollow(delta: number): void {
     // The Lab menu replaces the main menu in place, so it follows the player
     // with the same rules. Switching menus re-anchors it in front of the viewer.
     const labVisible =
       this.world.getSceneEntity('lab-menu-panel')?.getValue(Visibility, 'isVisible') === true;
-    const followId = labVisible ? 'lab-menu-panel' : 'main-menu-panel';
+    const baseId = labVisible ? 'lab-menu-panel' : 'main-menu-panel';
+    const followId = riftVisibleForFollow(this.world) ? 'rift-lab-panel' : baseId;
     if (followId !== this.followedMenuId) {
       this.followedMenuId = followId;
       this.menuAnchored = false;
