@@ -75,6 +75,10 @@
     <ButtonIcon><FlaskConical></FlaskConical></ButtonIcon>
     <ButtonLabel id="rift-lab-note-label" class="rift-lab-button-label">Play a note (lab stand-in)</ButtonLabel>
   </Button>
+  <Button id="rift-lab-mr-button" class="rift-lab-button" style="height: 64px; display: none">
+    <ButtonIcon><FlaskConical></FlaskConical></ButtonIcon>
+    <ButtonLabel id="rift-lab-mr-label" class="rift-lab-button-label">Enter mixed reality</ButtonLabel>
+  </Button>
   <Button id="rift-lab-start-button" class="rift-lab-button" style="height: 64px">
     <ButtonIcon><FlaskConical></FlaskConical></ButtonIcon>
     <ButtonLabel id="rift-lab-start-label" class="rift-lab-button-label">Start</ButtonLabel>
