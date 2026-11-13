@@ -236,6 +236,8 @@ barFloatsActive: boolean;
 celebrationActive: boolean;
 /** "title|name" of the showing celebration, else null (test-only). */
 celebrationText: string | null;
+/** Count of celebration shows that requested sound effects (test-only). */
+celebrationSfxPlays: number;
 infoRowVisible: boolean;
 scoreInfoVisible: boolean;
 gameExplanationDisplay: unknown;
@@ -1717,6 +1719,10 @@ return system.celebration.isActive();
 },
 get celebrationText() {
 return system.celebration.debugText();
+},
+// Test-only: how many celebration shows requested their sound effects.
+get celebrationSfxPlays() {
+return system.celebration.debugSfxPlays();
 },
 // Test-only: the projected screen position of the celebration's effective
 // fly target (the button's live position, or its last home position while

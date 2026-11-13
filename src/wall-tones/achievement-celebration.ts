@@ -23,8 +23,11 @@
  * Flat mode (desktop/phone) plays a DOM overlay with transform-only CSS
  * animation; immersive mode plays the same beats on a head-facing
  * billboarded canvas panel plus the true 3D flame mesh, then flies into the
- * panel's Achievements button in world space. Visual only: voice stays
- * milestone-only (user rule). Multiple simultaneous unlocks queue and play
+ * panel's Achievements button in world space. No spoken words: voice
+ * stays milestone-only (user rule); the November 14 revision adds
+ * synthesized sound effects on the show beats (his ask: "There should
+ * also be some audio for the achievement, some sound effects
+ * associated with it."). Multiple simultaneous unlocks queue and play
  * one at a time.
  */
 import {
@@ -44,6 +47,7 @@ import {
   type Scene,
 } from '@iwsdk/core';
 import type { AchievementDef } from './economy.js';
+import { playAchievementCelebrationSfx } from './audio.js';
 import { ACHIEVEMENT_ICON_PNG } from './achievement-icon-art.js';
 
 /* Timing (seconds), shared by the flat DOM choreography and the MR canvas
@@ -733,6 +737,13 @@ export class AchievementCelebration {
     this.queue.push({ def, targetWorld: targetWorld?.clone() ?? null });
   }
 
+  /** Shows whose sound effects were requested (test-only). */
+  private sfxPlays = 0;
+
+  debugSfxPlays(): number {
+    return this.sfxPlays;
+  }
+
   isActive(): boolean {
     return this.active != null || this.queue.length > 0;
   }
@@ -822,6 +833,8 @@ export class AchievementCelebration {
       mr: null,
     };
     this.active = show;
+    this.sfxPlays += 1;
+    void playAchievementCelebrationSfx();
     if (flat) {
       this.buildFlatDom(show, camera);
     } else {
@@ -1127,6 +1140,11 @@ export class AchievementCelebration {
     show.pulseDiv = null;
     if (show.mr != null) {
       show.mr.root.visible = false;
+      // The gold target pulse outlives the show clock (TARGET_PULSE 2.55s
+      // plus its 0.9s fade ends after TOTAL 3.1s), so updateMr never gets
+      // to hide it: without this it stays stuck on the Achievements
+      // button after the show (user report, November 14).
+      show.mr.pulse.visible = false;
       show.mr = null;
     }
     void scene;

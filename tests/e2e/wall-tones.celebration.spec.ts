@@ -11,6 +11,7 @@ import { expect, test, type Page } from '@playwright/test';
 interface CelebrationDebug {
   celebrationActive: boolean;
   celebrationText: string | null;
+  celebrationSfxPlays: number;
   ownsTopSecret: boolean;
   unlockedAchievements: string[];
 }
@@ -22,6 +23,7 @@ const readCelebration = (page: Page): Promise<CelebrationDebug> =>
     return {
       celebrationActive: d.celebrationActive,
       celebrationText: d.celebrationText,
+      celebrationSfxPlays: d.celebrationSfxPlays,
       ownsTopSecret: d.ownsTopSecret,
       unlockedAchievements: [...d.unlockedAchievements],
     };
@@ -167,6 +169,9 @@ test.describe('Wall Tones achievement unlock celebration (item 54)', () => {
       .toBe(true);
 
     const snap = await readCelebration(page);
+    // Both queued shows requested their synthesized sound effects (user ask,
+    // November 14): two shows played, two SFX sequences.
+    expect(snap.celebrationSfxPlays).toBe(2);
     expect(snap.ownsTopSecret).toBe(true);
     expect(snap.unlockedAchievements).toContain('secret-1');
     expect(snap.unlockedAchievements).toContain('store-1');
