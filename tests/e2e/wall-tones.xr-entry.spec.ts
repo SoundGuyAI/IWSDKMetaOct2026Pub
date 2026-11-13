@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { showXrEntryGate } from '../../src/wall-tones/xr-entry.js';
+import { removeDestroyedWorldCanvas } from '../../src/wall-tones/world-canvas.js';
 import { getXrLog } from '../../src/wall-tones/xr-diagnostics.js';
 
 class ElementStub extends EventTarget {
@@ -87,4 +88,20 @@ test('XR gate works again after a session ends (enter, leave, Enter XR) and logs
   } finally {
     Object.assign(globalThis, { window: oldWindow, document: oldDocument });
   }
+});
+
+test('a world swap removes the destroyed world canvas so only the live one can catch clicks', () => {
+  const container: Array<{ isConnected: boolean; remove(): void }> = [];
+  const makeCanvas = () => {
+    const c = { isConnected: true, remove() { c.isConnected = false; container.splice(container.indexOf(c), 1); } };
+    container.push(c);
+    return c;
+  };
+  const hubCanvas = makeCanvas();
+  expect(removeDestroyedWorldCanvas(hubCanvas)).toBe(true); // hub world destroyed for the AR world
+  const arCanvas = makeCanvas();
+  expect(container).toEqual([arCanvas]);
+  expect(removeDestroyedWorldCanvas(hubCanvas)).toBe(false); // already gone
+  expect(removeDestroyedWorldCanvas(undefined)).toBe(false);
+  expect(arCanvas.isConnected).toBe(true);
 });
