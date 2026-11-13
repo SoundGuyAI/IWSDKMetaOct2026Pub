@@ -530,7 +530,7 @@ if (!this.armband) {
 const hand = armbandHand();
 const adapter = this.input.xr.visualAdapters[hand].peek();
 let tracked = false;
-if (this.armbandUsable() && adapter?.connected) {
+if (this.armbandTrackable() && adapter?.connected) {
   const session = this.xrManager.getSession();
   const frame = this.xrManager.getFrame();
   const reference = this.xrManager.getReferenceSpace();
@@ -568,7 +568,7 @@ scale[0] = scale[1] = scale[2] = ARMBAND_SCALE;
 if (housing) {
   this.armband.position.toArray(housing.getVectorView(Transform, 'position'));
   this.armband.orientation.toArray(housing.getVectorView(Transform, 'orientation'));
-  housing.getVectorView(Transform, 'scale').fill(0.6);
+  housing.getVectorView(Transform, 'scale').fill(0.556);
 }
 const now = performance.now();
 if (now < this.armbandNextReadoutAt) return;
@@ -577,12 +577,18 @@ this.armband.render({ streak: this.game.streak, best: this.game.bestStreak,
   phase: this.game.phase, inputStep: this.game.inputStep, sequence: this.game.sequence,
   hintCount: this.economy.getHintRevealCount(), listen: this.economy.ownsListen(),
   playbackShown: this.playbackShownCount, replays: this.economy.getReplaysTotal(),
-  autoplay: this.economy.getAutoplayLevel(), colorNames: colorNamesEnabled() });
+  autoplay: this.economy.getAutoplayLevel(), colorNames: colorNamesEnabled(),
+  gameOver: this.gameOverOpen, bars: this.economy.getBars() });
 }
 
-private armbandUsable(): boolean {
-return this.experienceActive && this.flowPhase === 'playing' && !this.gameOverOpen &&
+/** The band stays on the wrist for the whole run, including the Game Over popup. */
+private armbandTrackable(): boolean {
+return this.experienceActive && this.flowPhase === 'playing' &&
   this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
+}
+/** Wrist controls only while play is live; the Game Over popup owns retry decisions. */
+private armbandUsable(): boolean {
+return this.armbandTrackable() && !this.gameOverOpen;
 }
 
 init(): void {
