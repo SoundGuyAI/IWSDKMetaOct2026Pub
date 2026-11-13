@@ -11,9 +11,9 @@
  *
  * Settled inputs (13:38): desktop clicks the rift itself with enough energy
  * (notes fly pointer-to-rift, no hold); the enough-energy gate is shared by
- * every platform (SEAL_ENERGY_REQUIRED, number provisional); while a rift is
- * open, score/bars carry a fractional multiplier until cleared (fraction
- * provisional).
+ * every platform (SEAL_ENERGY_REQUIRED, settled 14:46: 12 notes = one
+ * closure); while a rift is open, score/bars carry a fractional multiplier
+ * until cleared (settled 14:46: x0.5; both tunable after testing).
  *
  * XR: real hand tracking. When the world is immersive and a hand is tracked,
  * notes orbit the live palm and an open palm fires the beam along the
@@ -33,14 +33,16 @@ import { readPalmPose, type PalmPose } from './rift-hands.js';
 import {
   AdditiveBlending,
   BufferGeometry,
-  CircleGeometry,
+  CanvasTexture,
   Color,
   Group,
   Line,
   LineBasicMaterial,
   Mesh,
   MeshBasicMaterial,
+  PlaneGeometry,
   Vector3,
+  type Texture,
 } from 'three';
 import {
   PAD_COLORS,
@@ -49,7 +51,7 @@ import {
   type PadColorName,
   type Rift,
 } from './rift-energy.js';
-import { SEAL_ENERGY_REQUIRED } from './rift-energy.js';
+import { SEAL_ENERGY_REQUIRED, isOverLabPanel } from './rift-energy.js';
 
 /** Virtual hand anchors in flat mode (meters, hub scene space). */
 const FLAT_RIGHT_HAND = new Vector3(0.45, 1.35, -1.9);
@@ -61,7 +63,7 @@ const CHARGE_SPOT_X_TOL_FRAC = 0.25;
 const RIFT_POSITIONS = [
   new Vector3(1.1, 1.7, -2.4),
   new Vector3(-1.1, 1.6, -2.4),
-  new Vector3(0, 2.05, -2.6),
+  new Vector3(0, 2.7, -2.4), // above the panel, outside the click guard
 ];
 const RIFT_RING_RADIUS_M = 0.22;
 const RIFT_SPAWN_INTERVAL_MS = 6000;
@@ -70,6 +72,35 @@ const MAX_OPEN_RIFTS = 3;
 const BEAM_HIT_RADIUS_M = 0.3;
 
 const NOTE_SIZE_M = 0.03;
+
+const noteGlyphTextureCache = new Map<string, Texture>();
+/**
+ * Colored note-glyph sprite. Additive-blend dots washed to white on the
+ * bright room (14:38 live check, and his 13:41 correction: the dots must be
+ * colorful musical notes); a per-color glyph texture with normal blending
+ * stays readable.
+ */
+function noteGlyphTexture(color: PadColorName): Texture {
+  let tex = noteGlyphTextureCache.get(color);
+  if (tex == null) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    if (ctx != null) {
+      ctx.font = 'bold 52px serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.shadowColor = PAD_COLORS[color];
+      ctx.shadowBlur = 8;
+      ctx.fillStyle = PAD_COLORS[color];
+      ctx.fillText('\u266A', 32, 36);
+    }
+    tex = new CanvasTexture(canvas);
+    noteGlyphTextureCache.set(color, tex);
+  }
+  return tex;
+}
 
 export interface RiftLabDebugSnapshot {
   active: boolean;
@@ -175,6 +206,8 @@ export class RiftLabSystem extends createSystem({}) {
           1.6 + (-((event.clientY / window.innerHeight) * 2 - 1)) * 1.2,
           -2.5,
         );
+        // Clicks on the Lab panel are UI interaction, not world clicks.
+        if (isOverLabPanel(clickTarget)) return;
         let best: RiftView | null = null;
         let bestDist = BEAM_HIT_RADIUS_M;
         for (const view of this.riftViews.values()) {
@@ -379,6 +412,9 @@ export class RiftLabSystem extends createSystem({}) {
       if (this.xrBeamActive) {
         this.xrBeamActive = false;
         this.game.stopBeam();
+        if (this.game.openRiftModifierActive()) {
+          this.renderPanel('A rift is open. Charge up and seal it.');
+        }
       }
       return;
     }
@@ -387,6 +423,9 @@ export class RiftLabSystem extends createSystem({}) {
       if (palm == null || !palm.open) {
         this.xrBeamActive = false;
         this.game.stopBeam();
+        if (this.game.openRiftModifierActive()) {
+          this.renderPanel('A rift is open. Charge up and seal it.');
+        }
       }
       return;
     }
@@ -475,11 +514,11 @@ export class RiftLabSystem extends createSystem({}) {
       let mesh = this.noteMeshes.get(note.id);
       if (mesh == null) {
         mesh = new Mesh(
-          new CircleGeometry(NOTE_SIZE_M, 12),
+          new PlaneGeometry(NOTE_SIZE_M * 2.4, NOTE_SIZE_M * 2.4),
           new MeshBasicMaterial({
-            color: new Color(PAD_COLORS[note.color]),
-            blending: AdditiveBlending,
+            map: noteGlyphTexture(note.color),
             transparent: true,
+            depthWrite: false,
           }),
         );
         this.noteMeshes.set(note.id, mesh);
@@ -586,7 +625,7 @@ export class RiftLabSystem extends createSystem({}) {
       .getRifts()
       .filter((rift) => rift.state === 'open' || rift.state === 'sealing').length;
     const modifier = this.game.openRiftModifierActive()
-      ? `Score/bars x${this.game.openRiftScoreMultiplier()} while a rift is open (fraction provisional)`
+      ? `Score/bars x${this.game.openRiftScoreMultiplier()} while a rift is open (initial tuning)`
       : 'Open-rift modifier: off';
     this.telemetryText?.setProperties({
       text: `Rifts open: ${open}. ${modifier}.`,
