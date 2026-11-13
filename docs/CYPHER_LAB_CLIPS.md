@@ -28,7 +28,7 @@ Generation/publish route: the established chunk + `decode-voice-clips`
 workflow (see the story clips). The tar for lab clips must extract into
 `public/audio/speech/cypher-lab/<set>/`.
 
-## Lines (13 per set, same wording both sets)
+## Lines (16 per set, same wording both sets)
 
 | id | text |
 | --- | --- |
@@ -45,6 +45,9 @@ workflow (see the story clips). The tar for lab clips must extract into
 | `retry-nod` | No? Then the channel is still weak. Let me boost the signal. Try again. Can you hear me now? |
 | `intro-thumbs` | Connection check. This channel only goes one way. I can see you through the link, but I cannot hear you. So thumb up for yes. Thumb down for no. First question. Can you hear me? |
 | `retry-thumbs` | No? Then the channel is still weak. Let me boost the signal. Show me again. Thumb up if you can hear me now. |
+| `retry-2` | Still nothing. Widening the band. Can you hear me now? |
+| `retry-3` | No? Rerouting through the relay. Can you hear me now? |
+| `retry-4` | Not yet. Pushing full power. Can you hear me now? |
 
 ## Canon constraints (from the reviewed Act 1 draft)
 
