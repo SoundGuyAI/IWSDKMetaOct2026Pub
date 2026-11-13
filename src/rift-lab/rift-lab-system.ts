@@ -41,6 +41,9 @@ import {
   Mesh,
   MeshBasicMaterial,
   PlaneGeometry,
+  Plane,
+  Raycaster,
+  Vector2,
   Vector3,
   type Texture,
 } from 'three';
@@ -110,6 +113,9 @@ export interface RiftLabDebugSnapshot {
   openRifts: number;
   modifierActive: boolean;
   beamActive: boolean;
+  status: string;
+  palms: Record<'left' | 'right', PalmPose | null>;
+  targets: { id: number; position: number[]; ndc: number[] }[];
 }
 
 declare global {
@@ -147,6 +153,7 @@ export class RiftLabSystem extends createSystem({}) {
   private dragStart = { x: 0, y: 0 };
   private aimNdc = { x: 0, y: 0 };
   private lastUiUpdate = 0;
+  private statusMessage = 'Press Start. Successful notes charge your hands.';
   /** Live XR palm poses per hand, refreshed each update; null when flat or
    * the hand is untracked. */
   private readonly palms: Record<'left' | 'right', PalmPose | null> = {
@@ -160,6 +167,10 @@ export class RiftLabSystem extends createSystem({}) {
   private readonly palmAnchorLeft = new Vector3();
   private readonly palmAnchorRight = new Vector3();
   private readonly headPos = new Vector3();
+  private readonly desktopRay = new Raycaster();
+  private readonly desktopNdc = new Vector2();
+  private readonly flatInputPlane = new Plane(new Vector3(0, 0, 1), 2.5);
+  private readonly flatInputPoint = new Vector3();
 
   init(): void {
     this.root.visible = false;
@@ -201,17 +212,24 @@ export class RiftLabSystem extends createSystem({}) {
       } else {
         // Desktop (settled 13:38): click the rift itself with enough energy;
         // notes fly pointer-to-rift and it seals. No hold duration.
-        const clickTarget = new Vector3(
-          ((event.clientX / window.innerWidth) * 2 - 1) * 2.2,
-          1.6 + (-((event.clientY / window.innerHeight) * 2 - 1)) * 1.2,
-          -2.5,
+        // Use the rendered camera projection, not a linear world-coordinate
+        // approximation: a visible rift must be clickable at its actual pixel.
+        const rect = canvas.getBoundingClientRect();
+        this.desktopNdc.set(
+          ((event.clientX - rect.left) / rect.width) * 2 - 1,
+          -((event.clientY - rect.top) / rect.height) * 2 + 1,
         );
-        // Clicks on the Lab panel are UI interaction, not world clicks.
-        if (isOverLabPanel(clickTarget)) return;
+        this.world.camera.updateMatrixWorld();
+        this.desktopRay.setFromCamera(this.desktopNdc, this.world.camera);
+        const panelPoint = this.desktopRay.ray.intersectPlane(
+          this.flatInputPlane, this.flatInputPoint,
+        );
+        // UI interaction must never seal a rift behind the panel.
+        if (panelPoint != null && isOverLabPanel(panelPoint)) return;
         let best: RiftView | null = null;
         let bestDist = BEAM_HIT_RADIUS_M;
         for (const view of this.riftViews.values()) {
-          const d = view.position.distanceTo(clickTarget);
+          const d = this.desktopRay.ray.distanceToPoint(view.position);
           if (d <= bestDist) {
             best = view;
             bestDist = d;
@@ -310,7 +328,9 @@ export class RiftLabSystem extends createSystem({}) {
     const picked =
       color ?? PAD_COLOR_NAMES[Math.floor(Math.random() * PAD_COLOR_NAMES.length)];
     this.game.addNoteEnergy(picked, hand);
-    this.renderPanel();
+    this.renderPanel(this.game.canFireBeam()
+      ? 'Ready. Click a rift, or aim an open palm in XR.'
+      : `Charge: ${Math.round(this.game.getEnergy())}/${SEAL_ENERGY_REQUIRED}.`);
   }
 
   private spawnRift(): void {
@@ -616,6 +636,7 @@ export class RiftLabSystem extends createSystem({}) {
   private renderPanel(statusOverride?: string): void {
     this.lastUiUpdate = performance.now();
     if (statusOverride != null) {
+      this.statusMessage = statusOverride;
       this.statusText?.setProperties({ text: statusOverride } as never);
     }
     this.energyText?.setProperties({
@@ -656,6 +677,13 @@ export class RiftLabSystem extends createSystem({}) {
         .length,
       modifierActive: this.game.openRiftModifierActive(),
       beamActive: this.game.isBeamActive(),
+      status: this.statusMessage,
+      palms: this.palms,
+      targets: [...this.riftViews.values()].map((v) => ({
+        id: v.rift.id,
+        position: v.position.toArray(),
+        ndc: v.position.clone().project(this.world.camera).toArray(),
+      })),
     };
   }
 }
