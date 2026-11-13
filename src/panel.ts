@@ -25,6 +25,7 @@ import {
   PANEL_SNAP_ARRIVE_M,
 } from './wall-tones/constants.js';
 import { riftAimRays, riftTargetPositions } from './rift-lab/rift-targets.js';
+import { riftPanelBlocked, type Ray } from './rift-lab/rift-dodge.js';
 import { horizontalLookAway } from './wall-tones/panel-placement.js';
 import { enterXrButtonVisible } from './enter-xr-visibility.js';
 
@@ -158,61 +159,37 @@ export class PanelSystem extends createSystem({}) {
    * passes near a rift while crossing the panel's footprint, or (2) the panel
    * sits between the viewer's eyes and a rift (it occludes the target).
    */
+  /** See rift-dodge.ts: aim ray / UI ray / eye line crossing the panel. */
   private riftRayPointsAtRiftThroughPanel(
     panelPos: ArrayLike<number>,
   ): boolean {
     if (riftTargetPositions.length === 0) return false;
-    const rays: { o: Vector3; d: Vector3 }[] = [];
-    for (const r of riftAimRays) {
-      rays.push({
-        o: new Vector3(r.ox, r.oy, r.oz),
-        d: new Vector3(r.dx, r.dy, r.dz).normalize(),
-      });
-    }
+    const aimRays: Ray[] = riftAimRays.map((r) => ({
+      origin: [r.ox, r.oy, r.oz] as const,
+      dir: [r.dx, r.dy, r.dz] as const,
+    }));
+    const uiRays: Ray[] = [];
     for (const hand of ['right', 'left'] as const) {
       const space = this.player.raySpaces[hand];
       space.updateWorldMatrix(true, false);
       space.getWorldPosition(this.riftRayOrigin);
       space.getWorldQuaternion(this.riftRayQuat);
-      rays.push({
-        o: this.riftRayOrigin.clone(),
-        d: new Vector3(0, 0, -1).applyQuaternion(this.riftRayQuat).normalize(),
+      this.riftRayDir.set(0, 0, -1).applyQuaternion(this.riftRayQuat);
+      uiRays.push({
+        origin: [this.riftRayOrigin.x, this.riftRayOrigin.y, this.riftRayOrigin.z],
+        dir: [this.riftRayDir.x, this.riftRayDir.y, this.riftRayDir.z],
       });
     }
-    // Eye line: viewer to each rift.
     this.player.head.getWorldPosition(this.riftScratchA);
-    const eye = this.riftScratchA.clone();
-    for (const target of riftTargetPositions) {
-      const tv = new Vector3(target.x, target.y, target.z);
-      const eyeDir = tv.clone().sub(eye).normalize();
-      rays.push({ o: eye.clone(), d: eyeDir });
-    }
-    const panel = new Vector3(panelPos[0]!, panelPos[1]!, panelPos[2]!);
-    for (const ray of rays) {
-      // The panel must be ahead of the ray origin and roughly on its line
-      // (horizontal angle), otherwise it is not in the way.
-      const toPanel = panel.clone().sub(ray.o).setY(0);
-      const flat = ray.d.clone().setY(0);
-      if (toPanel.lengthSq() < 1e-6 || flat.lengthSq() < 1e-6) continue;
-      const angle =
-        (Math.acos(
-          Math.max(-1, Math.min(1, toPanel.clone().normalize().dot(flat.normalize()))),
-        ) *
-          180) /
-        Math.PI;
-      if (angle >= PANEL_RAY_BLOCK_DEG) continue;
-      for (const target of riftTargetPositions) {
-        const tv = new Vector3(target.x, target.y, target.z);
-        const rel = tv.clone().sub(ray.o);
-        const along = rel.dot(ray.d);
-        if (along < 0.05 || along > 10) continue;
-        // The rift must be beyond the panel (the panel is the blocker).
-        if (along < panel.clone().sub(ray.o).dot(ray.d) - 0.1) continue;
-        const lateral = ray.o.clone().addScaledVector(ray.d, along).distanceTo(tv);
-        if (lateral <= 0.5) return true;
-      }
-    }
-    return false;
+    return riftPanelBlocked({
+      eye: [this.riftScratchA.x, this.riftScratchA.y, this.riftScratchA.z],
+      panel: [panelPos[0]!, panelPos[1]!, panelPos[2]!],
+      targets: riftTargetPositions.map((t) => [t.x, t.y, t.z] as const),
+      aimRays,
+      uiRays,
+      blockDeg: PANEL_RAY_BLOCK_DEG,
+      lateralM: 0.5,
+    });
   }
 
   private updateMenuFollow(delta: number): void {
