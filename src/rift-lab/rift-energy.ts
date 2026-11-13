@@ -41,8 +41,19 @@ export const MAX_ENERGY = 100;
 export const BEAM_DRAIN_PER_SECOND = 25;
 /** Beam must stay on one rift this long to seal it. */
 export const SEAL_HOLD_MS = 1500;
+/**
+ * "Enough energy" gate, settled 13:38: sealing needs enough energy on EVERY
+ * platform (desktop click, mobile drag, XR palm). The exact threshold is
+ * still unspecified - this value is a clearly-marked provisional placeholder.
+ */
+export const SEAL_ENERGY_REQUIRED = 30;
 /** Energy cost to start firing a beam at all. */
-export const BEAM_MIN_ENERGY = 10;
+export const BEAM_MIN_ENERGY = SEAL_ENERGY_REQUIRED;
+/** Desktop seal: energy deducted when the click fires the notes. */
+export const DESKTOP_SEAL_COST = SEAL_ENERGY_REQUIRED;
+/** Desktop seal: notes fly pointer-to-rift, then the rift seals. Pure
+ * animation timing, NOT a hold-to-seal duration (none was approved). */
+export const DESKTOP_NOTES_FLIGHT_MS = 800;
 
 /** Orbit note visuals (logic side; rendering reads these). */
 export const NOTE_ORBIT_RADIUS_M = 0.09;
@@ -53,10 +64,14 @@ export const FIRING_HAND_NOTE_SHARE = 0.7;
 export const MAX_ORBIT_NOTES = 48;
 
 /**
- * UNRESOLVED: what the open-rift negative modifier does. Placeholder effect
- * is intentionally a no-op; only the until-cleared gate below is settled.
+ * Open-rift negative modifier, settled by Oded 13:38 (verbatim): "less
+ * score/bars for now. it's like the opposite of a mulripliet modifier it's a
+ * fractional mulitplier". Applies while any rift is open, lifts when cleared.
+ * The EXACT FRACTION is still unspecified - PROVISIONAL_MODIFIER_FRACTION is a
+ * clearly-marked placeholder, not a balance decision.
  */
-export const OPEN_RIFT_MODIFIER_EFFECT = null as null;
+export const OPEN_RIFT_MODIFIER_KIND = 'fractional-score-bars-multiplier' as const;
+export const PROVISIONAL_MODIFIER_FRACTION = 0.5;
 
 export interface OrbitNote {
   readonly id: number;
@@ -180,6 +195,14 @@ export class RiftLabGame {
     return this.rifts.some((rift) => rift.state === 'open' || rift.state === 'opening');
   }
 
+  /**
+   * The fractional score/bars multiplier currently in force: 1 when no rift
+   * is open, the (provisional) fraction while one is open until cleared.
+   */
+  openRiftScoreMultiplier(): number {
+    return this.openRiftModifierActive() ? PROVISIONAL_MODIFIER_FRACTION : 1;
+  }
+
   canFireBeam(): boolean {
     return this.energy >= BEAM_MIN_ENERGY;
   }
@@ -246,12 +269,37 @@ export class RiftLabGame {
   }
 
   /**
-   * UNRESOLVED: PC click target. Click-the-rift-directly vs
-   * click-fires-orbiting-notes are both on the table; until Oded picks one a
-   * PC click deliberately does nothing. Returns 'unresolved' so callers and
-   * tests cannot mistake the no-op for a settled mechanic.
+   * Desktop mechanic, settled by Oded 13:38 (verbatim): "click on the rift
+   * once we have anogh energy (the enough energy applies to all platforms)
+   * would seal the rift with an animation of notes moving from the pointer to
+   * the rift." No hold duration on desktop: the notes flight is animation,
+   * then the rift seals. Returns false when energy is short or the rift is
+   * not sealable; the caller shows "not enough energy" then.
    */
-  onPcClick(): 'unresolved' {
-    return 'unresolved';
+  pcClickRift(riftId: number): boolean {
+    const rift = this.rifts.find((candidate) => candidate.id === riftId);
+    if (rift == null || rift.state !== 'open') {
+      return false;
+    }
+    if (this.energy < SEAL_ENERGY_REQUIRED) {
+      return false;
+    }
+    this.energy -= DESKTOP_SEAL_COST;
+    rift.state = 'sealing';
+    rift.sealProgressMs = 0;
+    return true;
+  }
+
+  /** Advance a desktop notes-flight seal; seals when the flight lands. */
+  updateDesktopSeal(riftId: number, dtMs: number): Rift | null {
+    const rift = this.rifts.find((candidate) => candidate.id === riftId);
+    if (rift == null || rift.state !== 'sealing' || this.beamActive) {
+      return null;
+    }
+    rift.sealProgressMs += dtMs;
+    if (rift.sealProgressMs >= DESKTOP_NOTES_FLIGHT_MS) {
+      rift.state = 'sealed';
+    }
+    return rift;
   }
 }

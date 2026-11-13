@@ -43,6 +43,7 @@ import {
   type PadColorName,
   type Rift,
 } from './rift-energy.js';
+import { SEAL_ENERGY_REQUIRED } from './rift-energy.js';
 
 /** Virtual hand anchors in flat mode (meters, hub scene space). */
 const FLAT_RIGHT_HAND = new Vector3(0.45, 1.35, -1.9);
@@ -148,9 +149,30 @@ export class RiftLabSystem extends createSystem({}) {
         this.dragStart = { x: fracX, y: fracY };
         this.game.startBeam({ kind: 'mobile-drag', dx: 0, dy: 0 });
       } else {
-        // UNRESOLVED: PC click target. Deliberate no-op until Oded picks.
-        this.game.onPcClick();
-        this.renderPanel('PC click target is still awaiting Oded\'s decision.');
+        // Desktop (settled 13:38): click the rift itself with enough energy;
+        // notes fly pointer-to-rift and it seals. No hold duration.
+        const clickTarget = new Vector3(
+          ((event.clientX / window.innerWidth) * 2 - 1) * 2.2,
+          1.6 + (-((event.clientY / window.innerHeight) * 2 - 1)) * 1.2,
+          -2.5,
+        );
+        let best: RiftView | null = null;
+        let bestDist = BEAM_HIT_RADIUS_M;
+        for (const view of this.riftViews.values()) {
+          const d = view.position.distanceTo(clickTarget);
+          if (d <= bestDist) {
+            best = view;
+            bestDist = d;
+          }
+        }
+        if (best != null) {
+          const fired = this.game.pcClickRift(best.rift.id);
+          this.renderPanel(
+            fired
+              ? 'Notes fly to the rift.'
+              : `Not enough energy (need ${SEAL_ENERGY_REQUIRED}).`,
+          );
+        }
       }
     };
     const onPointerMove = (event: PointerEvent) => {
@@ -303,11 +325,26 @@ export class RiftLabSystem extends createSystem({}) {
         this.root.add(mesh);
       }
       const anchor = this.handAnchor(note.hand);
-      mesh.position.set(
-        anchor.x + Math.cos(note.angle) * note.radius,
-        anchor.y + Math.sin(note.angle) * note.radius,
-        anchor.z,
+      const ox = anchor.x + Math.cos(note.angle) * note.radius;
+      const oy = anchor.y + Math.sin(note.angle) * note.radius;
+      const sealingView = [...this.riftViews.values()].find(
+        (view) => view.rift.state === 'sealing',
       );
+      if (sealingView != null) {
+        // Settled desktop seal visual: notes move from the pointer/hand
+        // toward the rift while the flight runs.
+        const u = Math.min(
+          1,
+          sealingView.rift.sealProgressMs / 800,
+        );
+        mesh.position.set(
+          ox + (sealingView.position.x - ox) * u,
+          oy + (sealingView.position.y - oy) * u,
+          anchor.z + (sealingView.position.z - anchor.z) * u,
+        );
+      } else {
+        mesh.position.set(ox, oy, anchor.z);
+      }
     }
     for (const [id, mesh] of this.noteMeshes) {
       if (!seen.has(id)) {
@@ -348,6 +385,11 @@ export class RiftLabSystem extends createSystem({}) {
         }
       }
 
+      // Desktop notes-flight seals advance without the beam.
+      for (const view of this.riftViews.values()) {
+        this.game.updateDesktopSeal(view.rift.id, delta * 1000);
+      }
+
       const cleared = this.game.clearSealed();
       if (cleared > 0) {
         for (const [id, view] of this.riftViews) {
@@ -376,7 +418,7 @@ export class RiftLabSystem extends createSystem({}) {
       .getRifts()
       .filter((rift) => rift.state === 'open' || rift.state === 'sealing').length;
     const modifier = this.game.openRiftModifierActive()
-      ? 'Open-rift modifier: ACTIVE (effect awaiting Oded)'
+      ? `Score/bars x${this.game.openRiftScoreMultiplier()} while a rift is open (fraction provisional)`
       : 'Open-rift modifier: off';
     this.telemetryText?.setProperties({
       text: `Rifts open: ${open}. ${modifier}.`,
