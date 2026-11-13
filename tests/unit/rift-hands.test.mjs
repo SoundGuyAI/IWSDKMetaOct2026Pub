@@ -17,6 +17,8 @@ const {
   HAND_JOINT,
   FINGER_EXTENSION_RATIO,
   OPEN_PALM_MIN_EXTENDED,
+  HAND_SEGMENTS,
+  pointOnHandShape,
 } = mod;
 
 const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
@@ -72,18 +74,60 @@ test('a closed fist is not an open palm', () => {
   assert.equal(pose.open, false);
 });
 
-test(`palm opens at ${OPEN_PALM_MIN_EXTENDED} extended fingers`, () => {
+test(`firing needs a really open hand: ${OPEN_PALM_MIN_EXTENDED} fully extended fingers`, () => {
   const pos = handPositions({ extended: true });
-  // Curl the pinky only: 3 extended still counts as open.
+  // Curl the pinky only: 3 extended is no longer enough to start the beam.
   pos[HAND_JOINT.pinkyTip] = [-0.065, 0.05, -0.05];
   const three = readPalmPose(makeJoints(pos), IDENTITY);
   assert.equal(three.extendedFingers, 3);
-  assert.equal(three.open, true);
-  // Curl ring too: 2 extended is not a palm.
-  pos[HAND_JOINT.ringTip] = [-0.035, 0.05, -0.05];
-  const two = readPalmPose(makeJoints(pos), IDENTITY);
-  assert.equal(two.extendedFingers, 2);
-  assert.equal(two.open, false);
+  assert.equal(three.open, false);
+  // ...but a running beam holds through it (hysteresis).
+  assert.equal(three.holdOpen, true);
+});
+
+test('a barely opened fist neither starts nor holds the beam', () => {
+  const pos = handPositions({ extended: false });
+  // Fingers half-uncurled: tip about 1.3x the proximal wrist distance.
+  for (const [prox, tip] of [
+    [HAND_JOINT.indexProximal, HAND_JOINT.indexTip],
+    [HAND_JOINT.middleProximal, HAND_JOINT.middleTip],
+    [HAND_JOINT.ringProximal, HAND_JOINT.ringTip],
+    [HAND_JOINT.pinkyProximal, HAND_JOINT.pinkyTip],
+  ]) {
+    pos[prox] = [pos[prox]?.[0] ?? 0, 0.09, 0];
+    pos[tip] = [pos[prox][0], 0.1, -0.01];
+  }
+  const pose = readPalmPose(makeJoints(pos), IDENTITY);
+  assert.equal(pose.open, false);
+  assert.equal(pose.holdOpen, false);
+});
+
+test('a half-open hand (tips ~1.45x) is still too loose to start firing', () => {
+  const pos = handPositions({ extended: true });
+  for (const tip of [HAND_JOINT.indexTip, HAND_JOINT.middleTip, HAND_JOINT.ringTip, HAND_JOINT.pinkyTip]) {
+    pos[tip] = [pos[tip][0], 0.13, -0.01];
+  }
+  const pose = readPalmPose(makeJoints(pos), IDENTITY);
+  assert.equal(pose.open, false);
+  assert.equal(pose.holdOpen, true);
+});
+
+test('hand-shape points ride the real joints in world space', () => {
+  const grip = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1.4, -0.5, 1];
+  const pose = readPalmPose(makeJoints(handPositions({ extended: true })), grip);
+  assert.equal(pose.joints.length, 75);
+  // Wrist joint is at the grip origin.
+  assert.ok(Math.abs(pose.joints[1] - 1.4) < 1e-6);
+  const point = [0, 0, 0];
+  const dir = [0, 0, 0];
+  // Segment 0 is wrist->thumb metacarpal (zero length in this synthetic
+  // hand), so find a real one: middle chain wrist->middleMetacarpal.
+  const idx = HAND_SEGMENTS.findIndex(([a, b]) => a === 0 && b === HAND_JOINT.middleMetacarpal);
+  assert.ok(idx >= 0);
+  assert.equal(pointOnHandShape(pose.joints, idx, 1, point, dir), true);
+  assert.ok(Math.abs(point[1] - (1.4 + 0.09)) < 1e-6);
+  assert.ok(dir[1] > 0.97);
+  assert.ok(HAND_SEGMENTS.length >= 20);
 });
 
 test('extension is a wrist-distance ratio, so hand size cancels out', () => {
