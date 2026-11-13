@@ -292,6 +292,11 @@ export class AppModeSystem extends createSystem({}) {
         this.setMode(target as ExperienceMode);
       });
     }
+    // Rift Lab Back returns to the Lab menu (it only stopped the run before).
+    this.world
+      .getSceneObject<UIKitMLAsset>('rift-lab-panel')
+      ?.getElementById('rift-lab-back-button')
+      ?.addEventListener('click', () => this.setMode('lab'));
     const back = menu.getElementById('lab-menu-back-button');
     back?.addEventListener('click', () => this.setMode('menu'));
     if (back != null) {
