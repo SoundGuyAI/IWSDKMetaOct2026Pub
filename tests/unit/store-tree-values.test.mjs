@@ -78,7 +78,8 @@ const {
   LISTEN_COST,
   REPLAY_PRICE_BARS,
   REPLAY_FREE_CAP,
-  AUTOPLAY_UNLOCK_HINT_LEVEL,
+  PLAY_UNLOCK_HINT_LEVEL,
+  AUTOPLAY_UNLOCK_PLAY_LEVEL,
 } = await import('data:text/javascript;base64,' + Buffer.from(js).toString('base64'));
 
 /** Fresh economy with `bars` test-funded (in-memory; no localStorage in node). */
@@ -96,7 +97,7 @@ test('approved test prices: Listen 30, Hint 25/50/100 then doubling, Autoplay 25
   assert.deepEqual([1, 2, 3, 4, 5].map((l) => eco.autoplayCost(l)), [250, 500, 1000, 2000, 4000]);
 });
 
-test('gates: Hint L1 needs Listen, Autoplay needs Hint L4 (owner 2026-11-11)', () => {
+test('gates: Hint L1 needs Listen, Play L1 needs Hint L4, Autoplay needs Play L4 (owner voice 2026-11-13)', () => {
   const eco = ecoWith(1000);
   assert.equal(eco.hintUnlocked(), false);
   assert.equal(eco.buyNextHintLevel(), false, 'hint refused before Listen');
@@ -104,14 +105,19 @@ test('gates: Hint L1 needs Listen, Autoplay needs Hint L4 (owner 2026-11-11)', (
   assert.equal(eco.getBars(), 970);
   assert.equal(eco.buyListen(), false, 'Listen is one-time');
   assert.equal(eco.hintUnlocked(), true);
+  assert.equal(eco.playUnlocked(), false);
   assert.equal(eco.autoplayUnlocked(), false);
-  assert.equal(eco.buyNextAutoplayLevel(), false, 'autoplay refused before Hint L4');
+  assert.equal(eco.buyNextAutoplayLevel(), false, 'autoplay refused before Play L4');
   for (let i = 0; i < 3; i++) assert.equal(eco.buyNextHintLevel(), true);
   assert.equal(eco.getHintLevel(), 3);
-  assert.equal(eco.autoplayUnlocked(), false);
+  assert.equal(eco.playUnlocked(), false);
   assert.equal(eco.buyNextHintLevel(), true);
-  assert.equal(eco.getHintLevel(), AUTOPLAY_UNLOCK_HINT_LEVEL);
-  assert.equal(eco.autoplayUnlocked(), true);
+  assert.equal(eco.getHintLevel(), PLAY_UNLOCK_HINT_LEVEL);
+  assert.equal(eco.playUnlocked(), true, 'Hint L4 opens Play L1');
+  assert.equal(eco.autoplayUnlocked(), false, 'Hint L4 alone no longer unlocks Autoplay');
+  assert.equal(eco.buyNextPlayLevel(), false, 'play buys refused while prices unset');
+  eco.debugGrantPlayLevel(AUTOPLAY_UNLOCK_PLAY_LEVEL);
+  assert.equal(eco.autoplayUnlocked(), true, 'Play L4 unlocks Autoplay');
   assert.equal(eco.buyNextAutoplayLevel(), true);
   assert.equal(eco.getAutoplayLevel(), 1);
   assert.equal(eco.getAutoplayNoteCount(), 5);
@@ -136,11 +142,13 @@ test('legacy saves: hint levels without Listen reveal nothing and unlock no Auto
     assert.equal(eco.getHintLevel(), 4, 'legacy levels load untouched');
     assert.equal(eco.ownsListen(), false);
     assert.equal(eco.getHintRevealCount(), 0, 'no reveal without Listen');
+    assert.equal(eco.playUnlocked(), false, 'no Play without Listen');
     assert.equal(eco.autoplayUnlocked(), false, 'no Autoplay without Listen');
     eco.debugGrant(30);
     assert.equal(eco.buyListen(), true);
     assert.equal(eco.getHintRevealCount(), 20, 'owned levels act again');
-    assert.equal(eco.autoplayUnlocked(), true);
+    assert.equal(eco.playUnlocked(), true, 'legacy Hint L4 opens Play L1');
+    assert.equal(eco.autoplayUnlocked(), false, 'Autoplay still needs Play L4');
     assert.equal(eco.getHintLevel(), 4, 'levels never clamped');
   } finally {
     if (prev === undefined) delete globalThis.localStorage;

@@ -228,7 +228,7 @@
   </Button>
   <!-- Seeded initial text: an empty element compiles no Text child and the
        setter silently no-ops (same pattern as the spoken caption). -->
-  <div id="index-indicator" class="status" style="display: none">...</div>
+  <div id="index-indicator" class="status" style="display: none; margin-left: 24px; margin-right: 24px">...</div>
   <div id="control-row" class="control-row" style="display: none">
     <Button id="repeat-pattern-button" class="button control-button" size="sm">
       <ButtonIcon><RefreshCw></RefreshCw></ButtonIcon>
