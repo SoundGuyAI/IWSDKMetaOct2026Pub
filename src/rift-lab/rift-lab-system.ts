@@ -27,7 +27,19 @@ import {
   UIKit,
   UIKitMLAsset,
   VisibilityState,
+  XRPlane,
+  type Entity,
 } from '@iwsdk/core';
+import { collectVerticalWalls } from '../wall-tones/plane-placement.js';
+import { enterXrButtonVisible } from '../enter-xr-visibility.js';
+import {
+  playNoteChime,
+  playRiftOpen,
+  playRiftSeal,
+  playSealDenied,
+  startBeamHum,
+  stopBeamHum,
+} from './rift-sounds.js';
 import { XRHandVisualAdapter } from '@iwsdk/xr-input';
 import { readPalmPose, type PalmPose } from './rift-hands.js';
 import {
@@ -74,7 +86,13 @@ const MAX_OPEN_RIFTS = 3;
 /** Beam hit test: ray-to-rift distance under this counts as contact. */
 const BEAM_HIT_RADIUS_M = 0.3;
 
-const NOTE_SIZE_M = 0.03;
+const NOTE_SIZE_M = 0.026;
+/** Real-wall rift placement: reachable band around eye height. */
+const WALL_RIFT_BAND_BELOW_M = 0.55;
+const WALL_RIFT_BAND_ABOVE_M = 0.5;
+const WALL_RIFT_INSET_M = 0.3;
+const WALL_RIFT_SPACING_M = 0.6;
+const WALL_RIFT_OFFSET_M = 0.03;
 
 const noteGlyphTextureCache = new Map<string, Texture>();
 /**
@@ -138,7 +156,9 @@ interface RiftView {
   position: Vector3;
 }
 
-export class RiftLabSystem extends createSystem({}) {
+export class RiftLabSystem extends createSystem({
+  planes: { required: [XRPlane] },
+}) {
   private readonly game = new RiftLabGame();
   private panel: UIKitMLAsset | null = null;
   private statusText: UIKit.Text | null = null;
@@ -175,6 +195,10 @@ export class RiftLabSystem extends createSystem({}) {
   private readonly desktopNdc = new Vector2();
   private readonly flatInputPlane = new Plane(new Vector3(0, 0, 1), 2.5);
   private readonly flatInputPoint = new Vector3();
+  private readonly planeScratch: Entity[] = [];
+  private roomCaptureAttempted = false;
+  private awaitingWalls = false;
+  private mrButton: unknown = null;
 
   init(): void {
     this.root.visible = false;
@@ -196,9 +220,15 @@ export class RiftLabSystem extends createSystem({}) {
     panel
       .getElementById('rift-lab-note-button')
       ?.addEventListener('click', () => this.playNote());
+    // Back stops the run here; AppModeSystem owns the mode swap back to the
+    // Lab menu (bound on the same button, like the other Back buttons).
     panel
       .getElementById('rift-lab-back-button')
       ?.addEventListener('click', () => this.stopRun());
+    this.mrButton = panel.getElementById('rift-lab-mr-button');
+    panel
+      .getElementById('rift-lab-mr-button')
+      ?.addEventListener('click', () => this.enterMixedReality());
 
     const canvas = this.world.renderer.domElement;
     const onPointerDown = (event: PointerEvent) => {
@@ -247,6 +277,7 @@ export class RiftLabSystem extends createSystem({}) {
         }
         if (best != null) {
           const fired = this.game.pcClickRift(best.rift.id);
+          if (!fired) void playSealDenied();
           this.renderPanel(
             fired
               ? 'Notes fly to the rift.'
@@ -315,15 +346,139 @@ export class RiftLabSystem extends createSystem({}) {
     }
   }
 
+  /** Mixed reality = an immersive session that shows the real room. */
+  private isMixedReality(): boolean {
+    if (!this.isImmersive()) return false;
+    const blend = (this.world.session as XRSession | null | undefined)
+      ?.environmentBlendMode;
+    return blend != null && blend !== 'opaque';
+  }
+
+  private currentWalls() {
+    this.planeScratch.length = 0;
+    for (const entity of this.queries.planes.entities) {
+      this.planeScratch.push(entity);
+    }
+    this.player.head.getWorldPosition(this.headPos);
+    return collectVerticalWalls(this.planeScratch, this.headPos);
+  }
+
   private startRun(): void {
+    if (this.isImmersive() && !this.isMixedReality()) {
+      // A passthrough-free VR session cannot show rifts on real walls.
+      this.renderPanel(
+        'Rift Lab needs mixed reality, not VR. Press Enter mixed reality below.',
+      );
+      return;
+    }
     this.running = true;
     this.lastSpawnAt = performance.now();
+    if (this.isMixedReality()) {
+      this.roomCaptureAttempted = false;
+      this.awaitingWalls = true;
+      this.renderPanel('Looking for your real walls...');
+      this.trySpawnOnWalls();
+      return;
+    }
     this.spawnRift();
     this.renderPanel('A rift is open. Charge up and seal it.');
   }
 
+  /** MR: rifts only open on detected real walls. Ask Quest for room capture
+   * once when none are known; never fall back to pretend walls. */
+  private trySpawnOnWalls(): void {
+    if (this.currentWalls().length > 0) {
+      this.awaitingWalls = false;
+      this.spawnRift();
+      return;
+    }
+    const session = this.world.session as
+      | (XRSession & { initiateRoomCapture?: () => Promise<undefined> })
+      | null
+      | undefined;
+    if (
+      !this.roomCaptureAttempted &&
+      typeof session?.initiateRoomCapture === 'function'
+    ) {
+      this.roomCaptureAttempted = true;
+      this.renderPanel('No walls found yet. Opening room capture...');
+      void session.initiateRoomCapture().catch((error: unknown) => {
+        console.warn('[rift-lab] room capture failed', error);
+        this.renderPanel(
+          'No real walls detected. Scan your room in Quest space setup, then press Start again.',
+        );
+      });
+      return;
+    }
+    if (this.roomCaptureAttempted) return; // keep waiting for planes to arrive
+    this.renderPanel(
+      'No real walls detected. Scan your room in Quest space setup, then press Start again.',
+    );
+  }
+
+  /** A spot on a real detected wall, at reachable height, facing the room. */
+  private pickWallSpot(): { position: Vector3; normal: Vector3 } | null {
+    const walls = this.currentWalls();
+    if (walls.length === 0) return null;
+    const existing = [...this.riftViews.values()].map((v) => v.position);
+    const crowd = (w: (typeof walls)[number]) =>
+      existing.filter((p) => p.distanceTo(new Vector3(w.center.x, p.y, w.center.z)) < 1.5).length;
+    const ordered = [...walls].sort((a, b) => crowd(a) - crowd(b));
+    for (const wall of ordered) {
+      const object = wall.entity.object3D;
+      if (object == null) continue;
+      object.updateWorldMatrix(true, false);
+      const spanX = wall.localMaxX - wall.localMinX;
+      const spanZ = wall.localMaxZ - wall.localMinZ;
+      const insetX = Math.min(WALL_RIFT_INSET_M, spanX / 2);
+      const insetZ = Math.min(WALL_RIFT_INSET_M, spanZ / 2);
+      for (let attempt = 0; attempt < 30; attempt++) {
+        const lx = wall.localMinX + insetX + Math.random() * Math.max(0, spanX - 2 * insetX);
+        const lz = wall.localMinZ + insetZ + Math.random() * Math.max(0, spanZ - 2 * insetZ);
+        const world = object.localToWorld(new Vector3(lx, 0, lz));
+        if (
+          world.y < this.headPos.y - WALL_RIFT_BAND_BELOW_M ||
+          world.y > this.headPos.y + WALL_RIFT_BAND_ABOVE_M
+        ) {
+          continue;
+        }
+        if (existing.some((p) => p.distanceTo(world) < WALL_RIFT_SPACING_M)) continue;
+        const normal = new Vector3(wall.normal.x, wall.normal.y, wall.normal.z);
+        return {
+          position: world.add(normal.clone().multiplyScalar(WALL_RIFT_OFFSET_M)),
+          normal,
+        };
+      }
+    }
+    return null;
+  }
+
+  private enterMixedReality(): void {
+    if (this.isMixedReality()) return;
+    const wasImmersive = this.isImmersive();
+    void import('../wall-tones/world-host.js')
+      .then(async (host) => {
+        if (wasImmersive) {
+          try {
+            this.world.exitXR();
+          } catch {
+            // The VR session may already be ending.
+          }
+        }
+        // Boots the mixed-reality world straight back into this Lab and shows
+        // the tap-to-enter gate (a session needs a real tap).
+        await host.switchToWallTonesArWorld('riftlab');
+      })
+      .catch((error) => {
+        console.warn('[rift-lab] mixed reality switch failed', error);
+        this.renderPanel('Could not open mixed reality. Try the main menu Enter XR.');
+      });
+  }
+
   private stopRun(): void {
     this.running = false;
+    this.awaitingWalls = false;
+    stopBeamHum();
     this.dragging = false;
     this.xrBeamActive = false;
     if (this.beamLine != null) {
@@ -340,6 +495,7 @@ export class RiftLabSystem extends createSystem({}) {
     const picked =
       color ?? PAD_COLOR_NAMES[Math.floor(Math.random() * PAD_COLOR_NAMES.length)];
     this.game.addNoteEnergy(picked, hand);
+    void playNoteChime(picked);
     this.renderPanel(this.game.canFireBeam()
       ? 'Ready. Click a rift, or aim an open palm in XR.'
       : `Charge: ${Math.round(this.game.getEnergy())}/${SEAL_ENERGY_REQUIRED}.`);
@@ -347,31 +503,21 @@ export class RiftLabSystem extends createSystem({}) {
 
   private spawnRift(): void {
     if (this.riftViews.size >= MAX_OPEN_RIFTS) return;
+    let wallSpot: { position: Vector3; normal: Vector3 } | null = null;
+    if (this.isImmersive()) {
+      // MR: only on real detected walls. No wall spot means no rift: pretend
+      // walls would misstate what this Lab is testing.
+      wallSpot = this.isMixedReality() ? this.pickWallSpot() : null;
+      if (wallSpot == null) return;
+    }
     const rift = this.game.spawnRift();
     const position =
-      RIFT_POSITIONS[(rift.id - 1) % RIFT_POSITIONS.length].clone();
-    let face: Vector3 | null = null;
-    if (this.isImmersive()) {
-      // MR: hang rifts in the room around the player, not at hub-scene
-      // coords. Roughly 2m out, spread laterally, at chest-to-head height;
-      // real room-surface placement is on-headset tuning.
-      this.player.head.getWorldPosition(this.headPos);
-      const forward = new Vector3();
-      this.world.camera.getWorldDirection(forward);
-      forward.y = 0;
-      if (forward.lengthSq() < 1e-6) forward.set(0, 0, -1);
-      forward.normalize();
-      const side = new Vector3(-forward.z, 0, forward.x);
-      const offsets = [0, -0.8, 0.8];
-      const heights = [0.1, -0.15, 0.3];
-      const idx = (rift.id - 1) % 3;
-      position
-        .copy(this.headPos)
-        .add(forward.multiplyScalar(2))
-        .add(side.multiplyScalar(offsets[idx]));
-      position.y = this.headPos.y + heights[idx];
-      face = this.headPos.clone();
-    }
+      wallSpot != null
+        ? wallSpot.position
+        : RIFT_POSITIONS[(rift.id - 1) % RIFT_POSITIONS.length].clone();
+    const lookTarget: Vector3 | null =
+      wallSpot != null ? wallSpot.position.clone().add(wallSpot.normal) : null;
+    void playRiftOpen();
     const group = new Group();
     // Placeholder fracture: a jagged four-edge ring, each edge a pad color.
     const points: Vector3[] = [];
@@ -395,8 +541,8 @@ export class RiftLabSystem extends createSystem({}) {
       group.add(new Line(new BufferGeometry().setFromPoints(edgePoints), material));
     }
     group.position.copy(position);
-    if (face != null) {
-      group.lookAt(face);
+    if (lookTarget != null) {
+      group.lookAt(lookTarget);
     }
     this.root.add(group);
     this.riftViews.set(rift.id, { rift, group, position });
@@ -567,8 +713,13 @@ export class RiftLabSystem extends createSystem({}) {
         this.root.add(mesh);
       }
       const anchor = this.handAnchor(note.hand);
-      const ox = anchor.x + Math.cos(note.angle) * note.radius;
-      const oy = anchor.y + Math.sin(note.angle) * note.radius;
+      // Volumetric cloud: azimuth (angle) and polar angle (phi) place the
+      // note on a sphere shell around the palm, with a slow breathing wobble.
+      const wobble = 1 + 0.12 * Math.sin(note.angle * 3 + note.id);
+      const sinPhi = Math.sin(note.phi);
+      const ox = anchor.x + Math.cos(note.angle) * sinPhi * note.radius * wobble;
+      const oy = anchor.y + Math.cos(note.phi) * note.radius * wobble;
+      const oz = anchor.z + Math.sin(note.angle) * sinPhi * note.radius * wobble;
       const sealingView = [...this.riftViews.values()].find(
         (view) => view.rift.state === 'sealing',
       );
@@ -582,10 +733,10 @@ export class RiftLabSystem extends createSystem({}) {
         mesh.position.set(
           ox + (sealingView.position.x - ox) * u,
           oy + (sealingView.position.y - oy) * u,
-          anchor.z + (sealingView.position.z - anchor.z) * u,
+          oz + (sealingView.position.z - oz) * u,
         );
       } else {
-        mesh.position.set(ox, oy, anchor.z);
+        mesh.position.set(ox, oy, oz);
       }
       // Notes face the viewer (billboard), in XR and flat alike.
       mesh.quaternion.copy(this.world.camera.quaternion);
@@ -598,6 +749,16 @@ export class RiftLabSystem extends createSystem({}) {
     }
 
     if (this.running) {
+      if (this.awaitingWalls && performance.now() - this.lastSpawnAt > 500) {
+        this.lastSpawnAt = performance.now();
+        if (this.currentWalls().length > 0) {
+          this.awaitingWalls = false;
+          this.spawnRift();
+          if (this.riftViews.size > 0) {
+            this.renderPanel('A rift is open on your wall. Charge up and seal it.');
+          }
+        }
+      }
       this.updateXrBeam();
       const now = performance.now();
       if (
@@ -614,6 +775,7 @@ export class RiftLabSystem extends createSystem({}) {
         this.beamRay(ray);
         const line = this.ensureBeamLine();
         line.visible = true;
+        startBeamHum();
         const end = ray.origin
           .clone()
           .add(ray.direction.clone().multiplyScalar(3.5));
@@ -630,8 +792,14 @@ export class RiftLabSystem extends createSystem({}) {
             break;
           }
         }
-      } else if (this.beamLine != null) {
-        this.beamLine.visible = false;
+      } else {
+        stopBeamHum();
+        if (this.beamLine != null) this.beamLine.visible = false;
+      }
+
+      // Spent energy leaves the hands once no seal is in flight.
+      if (![...this.riftViews.values()].some((v) => v.rift.state === 'sealing')) {
+        this.game.pruneNotesToEnergy();
       }
 
       // Desktop notes-flight seals advance without the beam.
@@ -647,6 +815,7 @@ export class RiftLabSystem extends createSystem({}) {
           }
         }
         this.renderPanel('Rift sealed.');
+        void playRiftSeal();
       }
     }
 
@@ -661,6 +830,11 @@ export class RiftLabSystem extends createSystem({}) {
       this.statusMessage = statusOverride;
       this.statusText?.setProperties({ text: statusOverride } as never);
     }
+    const needsMr = this.isImmersive()
+      ? !this.isMixedReality()
+      : enterXrButtonVisible(true, this.world.xrEnabled, false, navigator.userAgent);
+    (this.mrButton as { setProperties?: (p: object) => void } | null)
+      ?.setProperties?.({ display: needsMr ? 'flex' : 'none' });
     this.energyText?.setProperties({
       text: `Energy: ${Math.round(this.game.getEnergy())}`,
     } as never);
@@ -684,6 +858,7 @@ export class RiftLabSystem extends createSystem({}) {
     this.game.applyBeamOnRift(first, 100000);
     this.game.clearSealed();
     this.removeRiftView(first);
+    void playRiftSeal();
     this.renderPanel('Rift sealed.');
   }
 
