@@ -1,8 +1,9 @@
 import { Group, Mesh, MeshStandardMaterial, CylinderGeometry } from '@iwsdk/core';
 import { bevelBox } from './lib/hardsurface.js';
 /** Concept A cuff. Meters, screen-normal +Z, wrist along local X.
- * Screen opening 0.22 x 0.24 m; housing outer envelope 0.25 x 0.25 x 0.025 m.
- * Straps encircle the forearm, not the screen; the display is a separate UI asset.
+ * Roughly square broad face: screen opening ~0.21 x 0.19 m; outer 0.27 x 0.25 x 0.025 m.
+ * Bold housing with angular copper trim per the concept. Straps encircle the
+ * forearm, not the screen; the display is a separate UI asset.
  */
 export function createArmbandHousing(): Group {
   const root = new Group(); root.name = 'Retro Armband Housing';
@@ -13,16 +14,26 @@ export function createArmbandHousing(): Group {
     const mesh = new Mesh(bevelBox(w, h, d, 0.004, 0.01, 3), material);
     mesh.name = name; mesh.position.set(x, y, z); root.add(mesh);
   };
-  mount('Backplate', 0.25, 0.25, 0.022, 0, 0, -0.018);
-  mount('Left Bezel', 0.018, 0.25, 0.028, -0.119, 0, -0.002);
-  mount('Right Bezel', 0.018, 0.25, 0.028, 0.119, 0, -0.002);
-  mount('Upper Bezel', 0.25, 0.018, 0.028, 0, 0.116, -0.002);
-  mount('Lower Bezel', 0.25, 0.018, 0.028, 0, -0.116, -0.002);
-  mount('Upper Copper Trim', 0.22, 0.005, 0.007, 0, 0.12, 0.014, copper);
-  mount('Lower Copper Trim', 0.22, 0.005, 0.007, 0, -0.12, 0.014, copper);
-  for (const x of [-0.09, 0.09]) {
+  mount('Backplate', 0.27, 0.25, 0.022, 0, 0, -0.018);
+  mount('Left Bezel', 0.03, 0.25, 0.028, -0.12, 0, -0.002);
+  mount('Right Bezel', 0.03, 0.25, 0.028, 0.12, 0, -0.002);
+  mount('Upper Bezel', 0.27, 0.03, 0.028, 0, 0.11, -0.002);
+  mount('Lower Bezel', 0.27, 0.03, 0.028, 0, -0.11, -0.002);
+  mount('Upper Copper Trim', 0.22, 0.006, 0.007, 0, 0.117, 0.014, copper);
+  mount('Lower Copper Trim', 0.22, 0.006, 0.007, 0, -0.117, 0.014, copper);
+  mount('Left Copper Trim', 0.006, 0.2, 0.007, -0.127, 0, 0.014, copper);
+  mount('Right Copper Trim', 0.006, 0.2, 0.007, 0.127, 0, 0.014, copper);
+  // Angular copper corner accents, a concept-A signature.
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
+    const corner = new Mesh(bevelBox(0.034, 0.034, 0.012, 0.003, 0.006, 2), copper);
+    corner.name = 'Copper Corner Accent';
+    corner.position.set(sx * 0.118, sy * 0.108, 0.01);
+    corner.rotation.z = Math.PI / 4;
+    root.add(corner);
+  }
+  for (const x of [-0.1, 0.1]) {
     // Open tube has a wrist-sized hollow instead of a solid cylinder through skin.
-    const strap = new Mesh(new CylinderGeometry(0.047, 0.047, 0.026, 24, 1, true), rubber);
+    const strap = new Mesh(new CylinderGeometry(0.047, 0.047, 0.05, 24, 1, true), rubber);
     strap.name = x < 0 ? 'Wrist Strap' : 'Forearm Strap';
     strap.rotation.z = Math.PI / 2;
     strap.position.set(x, 0, -0.062); root.add(strap);
