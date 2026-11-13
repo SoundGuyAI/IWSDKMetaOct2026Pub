@@ -3,9 +3,9 @@ import { expect, test } from '@playwright/test';
 /**
  * Rift Sealing Lab (backlog item 75). Flat-mode e2e: the Lab menu's Rift row
  * opens the rift lab, and the debug surface drives a full charge-seal loop:
- * notes charge energy, a rift opens (modifier gate on), sealing clears it
- * (modifier gate off). PC click target and the modifier effect stay
- * UNRESOLVED and are not exercised as mechanics here.
+ * notes charge energy, a rift opens (modifier gate on), a real click at its
+ * rendered camera-projected position seals it (modifier gate off).
+ * Off-target, panel, and undercharged clicks must leave it untouched.
  */
 const mode = (page: import('@playwright/test').Page) =>
   page.evaluate(() => sessionStorage.getItem('iwsdk-experience-mode'));
@@ -34,17 +34,39 @@ test('Rift Sealing Lab opens from the Lab menu and runs the charge-seal loop', a
   expect(snap.openRifts).toBe(1);
   expect(snap.modifierActive).toBe(true); // his until-cleared gate
 
+  const [ux, uy] = snap.targets[0].ndc;
+  await page.mouse.click(((ux + 1) / 2) * 1280, ((1 - uy) / 2) * 800);
+  expect((await snapshot(page)).energy).toBe(0);
+  expect((await snapshot(page)).openRifts).toBe(1);
+
   // Successful notes charge the hands (lab stand-in for main-game notes).
   await page.evaluate(() => {
     for (let i = 0; i < 12; i++) window.__riftLabDebug!.playNote('green', 'right');
   });
   snap = await snapshot(page);
+  expect(snap.status).toMatch(/^Ready\./);
+  expect(snap.status).not.toContain('Not enough');
   expect(snap.energy).toBe(120); // settled 14:46: 12 notes = one closure
   expect(snap.noteCount).toBe(12);
 
-  // Seal the rift: modifier lifts, rift count drops.
-  await page.evaluate(() => window.__riftLabDebug!.sealFirstRift());
+  // Panel click must not close any rift.
+  await page.mouse.click(640, 300);
+  expect((await snapshot(page)).energy).toBe(120);
+  // Empty background also must not spend energy.
+  await page.mouse.click(1210, 730);
+  expect((await snapshot(page)).energy).toBe(120);
+
+  // Click the ACTUAL visible target, using its camera projection rather
+  // than the old linear pixel-to-world approximation.
+  const [nx, ny] = snap.targets[0].ndc;
+  const canvas = await page.locator('canvas').first().boundingBox();
+  expect(canvas).not.toBeNull();
+  const x = canvas!.x + ((nx + 1) / 2) * canvas!.width;
+  const y = canvas!.y + ((1 - ny) / 2) * canvas!.height;
+  await page.mouse.click(x, y);
+  await expect.poll(async () => (await snapshot(page)).openRifts).toBe(0);
   snap = await snapshot(page);
+  expect(snap.energy).toBe(0);
   expect(snap.openRifts).toBe(0);
   expect(snap.modifierActive).toBe(false);
 });
