@@ -37,9 +37,14 @@ const FINGERS = [
 
 /** A finger counts as extended when its tip sits this much farther from the
  * wrist than its proximal joint (ratio, so hand size cancels out). */
-export const FINGER_EXTENSION_RATIO = 1.15;
-/** Palm counts as open when at least this many fingers are extended. */
-export const OPEN_PALM_MIN_EXTENDED = 3;
+export const FINGER_EXTENSION_RATIO = 1.55;
+/** Starting the beam needs a really open hand: all four fingers fully
+ * extended (his 23:49 Quest feedback: a barely opened fist fired it). */
+export const OPEN_PALM_MIN_EXTENDED = 4;
+/** Once firing, the beam keeps going until the hand loosens past this
+ * (hysteresis, so tracking jitter does not flicker the beam). */
+export const HOLD_EXTENSION_RATIO = 1.35;
+export const HOLD_PALM_MIN_EXTENDED = 3;
 
 export interface PalmPose {
   /** World-space palm center (middle finger metacarpal). */
@@ -47,10 +52,15 @@ export interface PalmPose {
   /** World-space unit direction the open palm fires along (wrist to
    * middle-finger metacarpal: roughly where the fingers point). */
   direction: [number, number, number];
-  /** True when the hand reads as an open palm. */
+  /** True when the hand reads as a really open palm (start gate). */
   open: boolean;
+  /** True while the hand is still open enough to keep a running beam. */
+  holdOpen: boolean;
   /** How many of the four checked fingers are extended (0-4). */
   extendedFingers: number;
+  /** World-space position of all 25 joints (x,y,z per joint), so effects can
+   * follow the real hand shape. */
+  joints: Float32Array;
 }
 
 function jointPosition(
@@ -105,13 +115,19 @@ export function readPalmPose(
   jointPosition(joints, HAND_JOINT.wrist, wrist);
 
   let extendedFingers = 0;
+  let holdFingers = 0;
   const proximal: [number, number, number] = [0, 0, 0];
   const tip: [number, number, number] = [0, 0, 0];
   for (const finger of FINGERS) {
     jointPosition(joints, finger.proximal, proximal);
     jointPosition(joints, finger.tip, tip);
-    if (distance(tip, wrist) > distance(proximal, wrist) * FINGER_EXTENSION_RATIO) {
+    const tipDist = distance(tip, wrist);
+    const proxDist = distance(proximal, wrist);
+    if (tipDist > proxDist * FINGER_EXTENSION_RATIO) {
       extendedFingers += 1;
+    }
+    if (tipDist > proxDist * HOLD_EXTENSION_RATIO) {
+      holdFingers += 1;
     }
   }
 
@@ -129,10 +145,74 @@ export function readPalmPose(
   if (len < 1e-6) {
     return null; // degenerate tracking frame
   }
+  const jointsWorld = new Float32Array(25 * 3);
+  const local: [number, number, number] = [0, 0, 0];
+  const world: [number, number, number] = [0, 0, 0];
+  for (let j = 0; j < 25; j++) {
+    jointPosition(joints, j, local);
+    transformPoint(gripWorldElements, local, world);
+    jointsWorld[j * 3] = world[0];
+    jointsWorld[j * 3 + 1] = world[1];
+    jointsWorld[j * 3 + 2] = world[2];
+  }
   return {
+    joints: jointsWorld,
     center,
     direction: [dx / len, dy / len, dz / len],
     open: extendedFingers >= OPEN_PALM_MIN_EXTENDED,
+    holdOpen: holdFingers >= HOLD_PALM_MIN_EXTENDED,
     extendedFingers,
   };
+}
+
+/**
+ * Bone segments that make up the visible hand shape (joint index pairs):
+ * every finger chain from the wrist out to the tip, the thumb, and the
+ * knuckle line across the palm. Notes ride these segments so the cloud takes
+ * the shape of the hand instead of a ball (his 23:48 Quest feedback).
+ */
+const CHAINS: readonly (readonly number[])[] = [
+  [0, 1, 2, 3, 4], // thumb
+  [0, 5, 6, 7, 8, 9], // index
+  [0, 10, 11, 12, 13, 14], // middle
+  [0, 15, 16, 17, 18, 19], // ring
+  [0, 20, 21, 22, 23, 24], // pinky
+];
+export const HAND_SEGMENTS: readonly (readonly [number, number])[] = [
+  ...CHAINS.flatMap((chain) =>
+    chain.slice(1).map((joint, i): [number, number] => [chain[i], joint]),
+  ),
+  [5, 10],
+  [10, 15],
+  [15, 20],
+];
+
+/**
+ * Point along hand segment `segment` at fraction `t` (0..1) from world joint
+ * positions, plus the segment direction for orbiting around the bone.
+ * Returns false when the segment is degenerate.
+ */
+export function pointOnHandShape(
+  jointsWorld: Float32Array,
+  segment: number,
+  t: number,
+  outPoint: [number, number, number],
+  outDir: [number, number, number],
+): boolean {
+  const [a, b] = HAND_SEGMENTS[segment % HAND_SEGMENTS.length];
+  const ax = jointsWorld[a * 3];
+  const ay = jointsWorld[a * 3 + 1];
+  const az = jointsWorld[a * 3 + 2];
+  const dx = jointsWorld[b * 3] - ax;
+  const dy = jointsWorld[b * 3 + 1] - ay;
+  const dz = jointsWorld[b * 3 + 2] - az;
+  const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  if (len < 1e-6) return false;
+  outPoint[0] = ax + dx * t;
+  outPoint[1] = ay + dy * t;
+  outPoint[2] = az + dz * t;
+  outDir[0] = dx / len;
+  outDir[1] = dy / len;
+  outDir[2] = dz / len;
+  return true;
 }
