@@ -23,8 +23,11 @@ const {
   MAX_ORBIT_NOTES,
   SEAL_ENERGY_REQUIRED,
   DESKTOP_NOTES_FLIGHT_MS,
-  PROVISIONAL_MODIFIER_FRACTION,
+  OPEN_RIFT_MODIFIER_FRACTION,
   OPEN_RIFT_MODIFIER_KIND,
+  BEAM_DRAIN_PER_SECOND,
+  LAB_PANEL_RECT,
+  isOverLabPanel,
 } = mod;
 
 const seq = (...values) => {
@@ -90,7 +93,7 @@ test('his rule: modifier is on while a rift is open and lifts when cleared', () 
   assert.equal(game.openRiftModifierActive(), false);
   const rift = game.spawnRift();
   assert.equal(game.openRiftModifierActive(), true);
-  for (let i = 0; i < 10; i++) game.addNoteEnergy('green');
+  for (let i = 0; i < 12; i++) game.addNoteEnergy('green');
   assert.ok(game.startBeam({ kind: 'xr-open-palm', hand: 'right' }));
   game.applyBeamOnRift(rift.id, SEAL_HOLD_MS);
   assert.equal(rift.state, 'sealed');
@@ -106,7 +109,7 @@ test('modifier is his settled fractional score/bars multiplier (13:38)', () => {
   assert.equal(game.openRiftScoreMultiplier(), 1); // no rift: no modifier
   game.spawnRift();
   const m = game.openRiftScoreMultiplier();
-  assert.equal(m, PROVISIONAL_MODIFIER_FRACTION); // provisional, not balance
+  assert.equal(m, OPEN_RIFT_MODIFIER_FRACTION); // settled x0.5, tunable
   assert.ok(m > 0 && m < 1, 'fractional: the opposite of a multiplier bonus');
 });
 
@@ -115,7 +118,7 @@ test('beam needs enough energy and drains while sealing', () => {
   assert.equal(game.canFireBeam(), false);
   assert.equal(game.startBeam({ kind: 'xr-open-palm', hand: 'right' }), false);
   // The settled enough-energy gate (13:38) applies to XR and mobile too.
-  for (let i = 0; i < 3; i++) game.addNoteEnergy('red');
+  for (let i = 0; i < 12; i++) game.addNoteEnergy('red');
   assert.equal(game.canFireBeam(), true);
   const rift = game.spawnRift();
   assert.ok(game.startBeam({ kind: 'xr-open-palm', hand: 'left' }));
@@ -131,7 +134,7 @@ test('beam needs enough energy and drains while sealing', () => {
 
 test('holding the beam long enough seals the rift and stops the beam', () => {
   const game = new RiftLabGame(seq(0.5));
-  for (let i = 0; i < 10; i++) game.addNoteEnergy('green');
+  for (let i = 0; i < 12; i++) game.addNoteEnergy('green');
   const rift = game.spawnRift();
   game.startBeam({ kind: 'mobile-drag', dx: 0.4, dy: -0.2 });
   game.applyBeamOnRift(rift.id, SEAL_HOLD_MS);
@@ -139,14 +142,36 @@ test('holding the beam long enough seals the rift and stops the beam', () => {
   assert.equal(game.isBeamActive(), false);
 });
 
-test('beam cannot seal a rift it cannot afford', () => {
+test('the gate funds exactly one full seal (no impossible seal)', () => {
+  // Drain x hold must cost exactly the gate: SEAL_ENERGY_REQUIRED.
+  assert.equal((BEAM_DRAIN_PER_SECOND * SEAL_HOLD_MS) / 1000, SEAL_ENERGY_REQUIRED);
   const game = new RiftLabGame(seq(0.5));
-  for (let i = 0; i < 3; i++) game.addNoteEnergy('green'); // exactly the gate
+  for (let i = 0; i < 12; i++) game.addNoteEnergy('green'); // exactly the gate
   const rift = game.spawnRift();
   game.startBeam({ kind: 'xr-open-palm', hand: 'right' });
-  game.applyBeamOnRift(rift.id, 100000); // would drain far more than held
-  assert.equal(game.isBeamActive(), false);
-  assert.notEqual(rift.state, 'sealed');
+  game.applyBeamOnRift(rift.id, SEAL_HOLD_MS);
+  assert.equal(rift.state, 'sealed');
+  assert.equal(game.getEnergy(), 0);
+});
+
+test('clearSealed leaves open rifts untouched (respawn stays isolated)', () => {
+  const game = new RiftLabGame(seq(0.5));
+  for (let i = 0; i < 12; i++) game.addNoteEnergy('yellow');
+  const first = game.spawnRift();
+  const second = game.spawnRift();
+  game.startBeam({ kind: 'mobile-drag', dx: 0, dy: 0 });
+  game.applyBeamOnRift(first.id, SEAL_HOLD_MS);
+  assert.equal(game.clearSealed(), 1);
+  assert.deepEqual(game.getRifts().map((rift) => rift.id), [second.id]);
+  assert.equal(game.openRiftModifierActive(), true); // one still open
+});
+
+test('desktop clicks over the Lab panel are not world clicks', () => {
+  // Panel rect straddles the panel center; the center rift sits above it.
+  assert.equal(isOverLabPanel({ x: 0, y: 1.8 }), true);
+  assert.equal(isOverLabPanel({ x: LAB_PANEL_RECT.halfWidth + 0.6, y: 1.8 }), false);
+  assert.equal(isOverLabPanel({ x: 0, y: LAB_PANEL_RECT.minY - 0.5 }), false);
+  assert.equal(isOverLabPanel({ x: 0, y: LAB_PANEL_RECT.maxY + 0.2 }), false);
 });
 
 test('orbit angles advance with time', () => {
@@ -164,7 +189,7 @@ test('desktop (settled 13:38): click the rift with enough energy seals it', () =
   assert.equal(game.pcClickRift(rift.id), false);
   assert.equal(rift.state, 'open');
   // Charge up, then one click fires the notes; no hold duration.
-  for (let i = 0; i < 5; i++) game.addNoteEnergy('green');
+  for (let i = 0; i < 12; i++) game.addNoteEnergy('green');
   assert.ok(game.getEnergy() >= SEAL_ENERGY_REQUIRED);
   assert.equal(game.pcClickRift(rift.id), true);
   assert.equal(rift.state, 'sealing');
@@ -178,7 +203,7 @@ test('desktop (settled 13:38): click the rift with enough energy seals it', () =
 
 test('desktop click rejects unknown or already-sealed rifts', () => {
   const game = new RiftLabGame(seq(0.5));
-  for (let i = 0; i < 5; i++) game.addNoteEnergy('green');
+  for (let i = 0; i < 12; i++) game.addNoteEnergy('green');
   const rift = game.spawnRift();
   assert.equal(game.pcClickRift(9999), false);
   game.pcClickRift(rift.id);
@@ -188,6 +213,8 @@ test('desktop click rejects unknown or already-sealed rifts', () => {
 
 test('the enough-energy gate is one constant shared by every platform', () => {
   assert.equal(BEAM_MIN_ENERGY, SEAL_ENERGY_REQUIRED);
+  // Settled 14:46: 12 successful notes charge exactly one rift closure.
+  assert.equal(SEAL_ENERGY_REQUIRED / ENERGY_PER_NOTE, 12);
   const game = new RiftLabGame(seq(0.5));
   assert.equal(game.canFireBeam(), false); // XR/mobile gate, same threshold
 });
