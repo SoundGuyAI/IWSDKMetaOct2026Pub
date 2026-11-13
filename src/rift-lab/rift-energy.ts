@@ -163,7 +163,7 @@ export class RiftLabGame {
     }
     const rift: Rift = {
       id: this.nextRiftId++,
-      edgeColors: shuffled as Rift['edgeColors'],
+      edgeColors: shuffled.slice(0, 4) as unknown as Rift['edgeColors'],
       state: 'open',
       sealProgressMs: 0,
     };

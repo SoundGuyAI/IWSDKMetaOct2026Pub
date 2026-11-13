@@ -11,6 +11,7 @@ import { GuidedSensingSystem } from '../guided-sensing.js';
 import { PanelSystem } from '../panel.js';
 import { RobotSystem } from '../robot.js';
 import { WallTonesSystem } from './wall-tones-system.js';
+import { RiftLabSystem } from '../rift-lab/rift-lab-system.js';
 
 export { backToMenuDestroysWorld } from './back-to-menu-policy.js';
 
@@ -34,6 +35,7 @@ function registerHubSystems(world: World): void {
   world.registerSystem(RobotSystem);
   world.registerSystem(PanelSystem);
   world.registerSystem(WallTonesSystem);
+  world.registerSystem(RiftLabSystem);
 }
 
 function registerArSystems(world: World): void {
