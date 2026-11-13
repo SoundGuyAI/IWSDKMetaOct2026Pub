@@ -44,8 +44,16 @@ const CUE_GAIN = 0.16;
  */
 export async function playLabAnswerCue(answer: YesNoAnswer): Promise<void> {
   try {
-    const context = await ensureAudioRunning();
-    if (context == null) {
+    // Never let a pending resume() wedge the dialogue: cap the wait and
+    // stay silent (the panel's "Answer received." status and telemetry
+    // still confirm the answer) when the context cannot start.
+    const context = await Promise.race([
+      ensureAudioRunning(),
+      new Promise<null>((resolve) => {
+        window.setTimeout(() => resolve(null), 1500);
+      }),
+    ]);
+    if (context == null || context.state !== 'running') {
       return;
     }
     const notes = answer === 'yes' ? YES_NOTES : NO_NOTES;
