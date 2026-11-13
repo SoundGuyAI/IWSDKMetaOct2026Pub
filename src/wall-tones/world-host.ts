@@ -6,6 +6,7 @@ import {
 } from '@iwsdk/core';
 import projectOptions from 'virtual:iwsdk-project';
 import { showXrEntryGate } from './xr-entry.js';
+import { recordXrEvent } from './xr-diagnostics.js';
 import { AppModeSystem, type ExperienceMode } from '../app-mode.js';
 import { GuidedSensingSystem } from '../guided-sensing.js';
 import { PanelSystem } from '../panel.js';
@@ -134,6 +135,7 @@ export async function switchToWallTonesArWorld(entry: 'menu' | 'setup' = 'setup'
     if (sceneContainer == null) {
       throw new Error('Scene container is not initialized');
     }
+    recordXrEvent('switch-to-ar', `entry=${entry} kind=${activeKind} reuse=${activeKind === 'walltones-ar' && activeWorld != null}`);
     if (activeKind === 'walltones-ar' && activeWorld != null) {
       showXrEntryGate(activeWorld);
       return activeWorld;
