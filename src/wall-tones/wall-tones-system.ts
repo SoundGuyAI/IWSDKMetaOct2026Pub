@@ -1,6 +1,6 @@
 import { hintWindowStart, HINT_WINDOW_SIZE } from './hint-window.js';
 import { armbandHand, armbandDisplayMode, ArmbandDisplay, ARMBAND_SCALE } from './armband.js';
-import { palmPanelPose, type PalmJoints, type PalmVec } from './palm-projector.js';
+import { PALM_PANEL_LIFT, palmPanelPose, type PalmJoints, type PalmVec } from './palm-projector.js';
 import { BackgroundProgress } from './cypher-background.js';
 import { getVoiceGender } from './speech.js';
 import { CypherProgress, type CypherWindow } from './cypher-progress.js';
@@ -11,6 +11,7 @@ import { BarFloatPool } from './bar-floats.js';
 import { achievementIconSrc, achievementTileSrc } from './achievement-icons.js';
 import { hearingSubtitlesEnabled, colorNamesEnabled, currentSpokenCaption, voicesOffEnabled } from './accessibility.js';
 import {
+AdditiveBlending,
 ConeGeometry,
 Matrix4,
 Raycaster,
@@ -23,6 +24,8 @@ Object3D,
 Pressed,
 Quaternion,
 RayInteractable,
+ShaderMaterial,
+SphereGeometry,
 Transform,
 UIKit,
 Visibility,
@@ -502,7 +505,7 @@ private armbandNextReadoutAt = 0;
 private readonly armbandGripPosition = new Vector3();
 private readonly armbandGripOrientation = new Quaternion();
 
-private tickArmband(): void {
+private tickArmband(delta: number): void {
 const entity = this.world.getSceneEntity('wall-tones-armband');
 const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-armband');
 if (!entity?.object3D || !panel) return;
@@ -576,25 +579,51 @@ if (session) for (const candidate of session.inputSources) {
 const panelShown = !floating || floating.open > 0.02;
 entity.object3D.visible = tracked && panelShown;
 if (housing?.object3D) housing.object3D.visible = tracked;
-if (!tracked || !panelShown) return;
+if (!tracked || !panelShown) {
+  if (this.armbandBeam) this.armbandBeam.visible = false;
+  if (this.armbandGlow) this.armbandGlow.visible = false;
+  return;
+}
 const position = entity.getVectorView(Transform, 'position');
 const orientation = entity.getVectorView(Transform, 'orientation');
 const scale = entity.getVectorView(Transform, 'scale');
 if (floating) {
   // Unfold animation: rise out of the palm while growing to full size.
   const e = floating.open * floating.open * (3 - 2 * floating.open);
-  const yDot = floating.normal.x * floating.along.x + floating.normal.y * floating.along.y + floating.normal.z * floating.along.z;
-  this.armbandPanelZ.set(floating.normal.x, floating.normal.y, floating.normal.z);
-  this.armbandPanelY.set(floating.along.x - floating.normal.x * yDot,
-    floating.along.y - floating.normal.y * yDot, floating.along.z - floating.normal.z * yDot).normalize();
+  // Billboard: the floating panel faces the player's head, text upright in
+  // world space; the palm only anchors WHERE the panel floats, not its tilt.
+  this.player.head.getWorldPosition(this.viewer);
+  this.armbandPanelZ.set(this.viewer.x - floating.center.x,
+    this.viewer.y - floating.center.y, this.viewer.z - floating.center.z).normalize();
+  const upDot = this.armbandPanelZ.y;
+  if (upDot * upDot > 0.96) {
+    // Head almost straight above: fall back to the wrist-to-fingers direction.
+    const aDot = floating.along.x * this.armbandPanelZ.x + floating.along.y * this.armbandPanelZ.y + floating.along.z * this.armbandPanelZ.z;
+    this.armbandPanelY.set(floating.along.x - this.armbandPanelZ.x * aDot,
+      floating.along.y - this.armbandPanelZ.y * aDot, floating.along.z - this.armbandPanelZ.z * aDot).normalize();
+  } else {
+    this.armbandPanelY.set(-this.armbandPanelZ.x * upDot,
+      1 - this.armbandPanelZ.y * upDot, -this.armbandPanelZ.z * upDot).normalize();
+  }
   this.armbandPanelX.crossVectors(this.armbandPanelY, this.armbandPanelZ);
   this.armbandPanelBasis.makeBasis(this.armbandPanelX, this.armbandPanelY, this.armbandPanelZ);
   this.armbandPanelQuat.setFromRotationMatrix(this.armbandPanelBasis);
   this.armbandPanelPos.set(floating.center.x + floating.normal.x * 0.04 * e,
     floating.center.y + floating.normal.y * 0.04 * e, floating.center.z + floating.normal.z * 0.04 * e);
-  this.armbandPanelPos.toArray(position);
-  this.armbandPanelQuat.toArray(orientation);
+  // Movement stabilization: soft-follow so small hand jitters don't jerk the
+  // panel. Snaps while (re)opening so it grows out of the palm, then lags.
+  if (floating.open < 0.06) {
+    this.armbandSmoothPos.copy(this.armbandPanelPos);
+    this.armbandSmoothQuat.copy(this.armbandPanelQuat);
+  } else {
+    const follow = 1 - Math.exp(-Math.max(delta, 1 / 120) * 6);
+    this.armbandSmoothPos.lerp(this.armbandPanelPos, follow);
+    this.armbandSmoothQuat.slerp(this.armbandPanelQuat, follow);
+  }
+  this.armbandSmoothPos.toArray(position);
+  this.armbandSmoothQuat.toArray(orientation);
   scale[0] = scale[1] = scale[2] = ARMBAND_SCALE * (0.35 + 0.65 * e);
+  this.updateArmbandBeam(floating, e, delta);
 } else {
   this.armband.position.toArray(position);
   this.armband.orientation.toArray(orientation);
@@ -628,11 +657,78 @@ return this.armbandTrackable() && !this.gameOverOpen;
 private armbandProjectorOpen = 0;
 private readonly armbandPanelPos = new Vector3();
 private readonly armbandPanelQuat = new Quaternion();
+private readonly armbandSmoothPos = new Vector3();
+private readonly armbandSmoothQuat = new Quaternion();
+private readonly armbandBeamBase = new Vector3();
+private readonly armbandBeamDir = new Vector3();
+private armbandBeam: Mesh | undefined;
+private armbandBeamMat: ShaderMaterial | undefined;
+private armbandGlow: Mesh | undefined;
+private armbandBeamTime = 0;
 private readonly armbandPanelX = new Vector3();
 private readonly armbandPanelY = new Vector3();
 private readonly armbandPanelZ = new Vector3();
 private readonly armbandPanelBasis = new Matrix4();
 private readonly armbandJointMatrix = new Matrix4();
+/** The palm-center light beam + emitter glow for projector mode (concept art: rays from the open palm). */
+private ensureArmbandBeam(): void {
+  if (this.armbandBeam) return;
+  const geo = new CylinderGeometry(0.055, 0.006, 1, 24, 1, true);
+  this.armbandBeamMat = new ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    blending: AdditiveBlending,
+    side: DoubleSide,
+    uniforms: { uTime: { value: 0 }, uStrength: { value: 0 } },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: [
+      'uniform float uTime; uniform float uStrength; varying vec2 vUv;',
+      'void main(){',
+      '  float rays = 0.55 + 0.45 * sin(vUv.x * 43.0 + sin(vUv.y * 9.0 - uTime * 7.0) * 1.5 + uTime * 2.5);',
+      '  float rise = fract(vUv.y * 2.0 - uTime * 1.6);',
+      '  float pulse = 0.75 + 0.25 * sin(uTime * 11.0 + vUv.y * 25.0);',
+      '  float body = smoothstep(0.0, 0.15, vUv.y) * (1.0 - vUv.y * 0.55);',
+      '  vec3 color = mix(vec3(0.30, 1.0, 0.65), vec3(0.55, 1.0, 0.9), vUv.y);',
+      '  float a = uStrength * body * pulse * (0.35 + 0.65 * rays) * (0.6 + 0.4 * rise);',
+      '  gl_FragColor = vec4(color * a, a);',
+      '}',
+    ].join('\n'),
+  });
+  this.armbandBeam = new Mesh(geo, this.armbandBeamMat);
+  this.armbandBeam.visible = false;
+  this.world.scene.add(this.armbandBeam);
+  this.armbandGlow = new Mesh(
+    new SphereGeometry(0.011, 12, 8),
+    new MeshBasicMaterial({ color: 0x9dffc9, transparent: true, opacity: 0.9, blending: AdditiveBlending, depthWrite: false }),
+  );
+  this.armbandGlow.visible = false;
+  this.world.scene.add(this.armbandGlow);
+}
+
+private updateArmbandBeam(floating: { open: number; center: PalmVec; normal: PalmVec; along: PalmVec }, e: number, delta: number): void {
+  this.ensureArmbandBeam();
+  const beam = this.armbandBeam!;
+  const glow = this.armbandGlow!;
+  this.armbandBeamTime += Math.max(delta, 0);
+  // Beam runs from the palm's center (below the floating panel) to the panel.
+  this.armbandBeamBase.set(
+    floating.center.x - floating.normal.x * PALM_PANEL_LIFT,
+    floating.center.y - floating.normal.y * PALM_PANEL_LIFT,
+    floating.center.z - floating.normal.z * PALM_PANEL_LIFT);
+  this.armbandBeamDir.copy(this.armbandSmoothPos).sub(this.armbandBeamBase);
+  const len = Math.max(this.armbandBeamDir.length(), 0.001);
+  beam.position.copy(this.armbandBeamBase).addScaledVector(this.armbandBeamDir, 0.5);
+  beam.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), this.armbandBeamDir.normalize());
+  beam.scale.set(1, len, 1);
+  this.armbandBeamMat!.uniforms.uTime!.value = this.armbandBeamTime;
+  this.armbandBeamMat!.uniforms.uStrength!.value = e;
+  beam.visible = e > 0.05;
+  glow.position.copy(this.armbandBeamBase);
+  const pulse = 1 + 0.18 * Math.sin(this.armbandBeamTime * 9);
+  glow.scale.set(pulse, pulse, pulse);
+  glow.visible = beam.visible;
+}
+
 /** World-space palm joints for projector mode; null when any joint pose is missing. */
 private readPalmJoints(hand: XRHand, frame: XRFrame, reference: XRReferenceSpace): PalmJoints | null {
   const names: Record<keyof PalmJoints, string> = {
@@ -751,7 +847,7 @@ this.speech.speak('lookAround');
 }
 
 update(delta: number): void {
-this.tickArmband();
+this.tickArmband(delta);
 this.updateAccessibilityCaptions();
 this.tickHeadCaption();
 if (!this.experienceActive) {
