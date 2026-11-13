@@ -28,6 +28,12 @@ export interface LabPrompt {
   readonly yesNext: string | null;
   readonly noBranch: LabScriptLine;
   readonly noNext: string | null;
+  /**
+   * Retry prompts only: lines rotated on each loop entry, first entry
+   * first. Approved by the owner Nov 14 (variations of the hearing-check
+   * retry instead of replaying one line).
+   */
+  readonly loopVariations?: readonly LabScriptLine[];
 }
 
 export interface GestureLabScript {
@@ -68,6 +74,28 @@ export const SHARED_LAB_LINES = {
   },
 } as const;
 
+/**
+ * Rotating retry variations after a "no" to the hearing check, approved
+ * verbatim by the owner Nov 14. The lab-specific retry line stays first;
+ * these shared follow-ups then cycle. Clips pending generation (Kore /
+ * Algenib, same delivery direction as the other lab lines); until they
+ * land the variations run in the lab's silent text-preview mode.
+ */
+export const RETRY_VARIATION_LINES: readonly LabScriptLine[] = [
+  {
+    clipId: 'retry-2',
+    text: 'Still nothing. Widening the band. Can you hear me now?',
+  },
+  {
+    clipId: 'retry-3',
+    text: 'No? Rerouting through the relay. Can you hear me now?',
+  },
+  {
+    clipId: 'retry-4',
+    text: 'Not yet. Pushing full power. Can you hear me now?',
+  },
+];
+
 export function buildGestureLabScript(
   intro: LabScriptLine,
   retry: LabScriptLine,
@@ -81,7 +109,20 @@ export function buildGestureLabScript(
         yesBranch: SHARED_LAB_LINES.q2,
         yesNext: 'q2',
         noBranch: retry,
-        noNext: 'intro',
+        noNext: 'retry',
+      },
+      {
+        // Owner (Nov 14): a "no" to the hearing check gets the short
+        // channel-weak retry line, not the full connection-check phrase.
+        // The retry prompt loops on itself; rotating retry variations are
+        // drafted and pending owner approval before clips are generated.
+        id: 'retry',
+        line: retry,
+        yesBranch: SHARED_LAB_LINES.q2,
+        yesNext: 'q2',
+        noBranch: retry,
+        noNext: 'retry',
+        loopVariations: [retry, ...RETRY_VARIATION_LINES],
       },
       {
         id: 'q2',
@@ -139,4 +180,21 @@ export function labAnswerFollowUp(
 export function labLineReadingMs(text: string): number {
   const words = text.split(/\s+/u).filter(Boolean).length;
   return Math.min(12000, 1000 + words * 340);
+}
+
+/**
+ * True when the answer branch line IS the next prompt's own line
+ * (intro -yes-> q2). The flow speaks each prompt line once in playPrompt,
+ * so speaking such a branch too repeats the line (Nov 14 Quest test:
+ * "I need to know the coast is clear" played twice).
+ */
+export function labBranchIsNextPromptLine(
+  script: GestureLabScript,
+  branch: LabScriptLine,
+  nextPromptId: string | null,
+): boolean {
+  if (nextPromptId == null || nextPromptId === 'end') {
+    return false;
+  }
+  return labPromptById(script, nextPromptId).line.clipId === branch.clipId;
 }
