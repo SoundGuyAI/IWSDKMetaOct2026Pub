@@ -5,6 +5,7 @@ import { captureCypherCast } from './cypher-voice.js';
 import {selectionPanelPose, horizontalLookAway, panelOverlapsPad, rectangleInsidePolygon} from './panel-placement.js';
 import { shouldAnnounceRecord } from './record-feedback.js';
 import { BarFloatPool } from './bar-floats.js';
+import { AchievementCelebration } from './achievement-celebration.js';
 import { achievementIconSrc, achievementTileSrc } from './achievement-icons.js';
 import { hearingSubtitlesEnabled, colorNamesEnabled, currentSpokenCaption, voicesOffEnabled } from './accessibility.js';
 import {
@@ -231,6 +232,10 @@ headCaptionVisibleText: string | null;
 /** Test-only: drives the exact head-caption setter path tickHeadCaption uses. */
 probeHeadCaptionText: (text: string) => void;
 barFloatsActive: boolean;
+/** Achievement unlock celebration is playing or queued (test-only). */
+celebrationActive: boolean;
+/** "title|name" of the showing celebration, else null (test-only). */
+celebrationText: string | null;
 infoRowVisible: boolean;
 scoreInfoVisible: boolean;
 gameExplanationDisplay: unknown;
@@ -243,6 +248,12 @@ buyAutoplay: () => void;
 buyReplay: () => void;
 buySaver: () => void;
 buyTopSecret: () => void;
+/** Test-only: plays the celebration for an arbitrary achievement def. */
+demoCelebration: (id: string, label: string) => void;
+/** Test-only: freezes the celebration show clock for deterministic shots. */
+setCelebrationFrozen: (frozen: boolean) => void;
+/** Test-only: the Achievements button's projected screen position. */
+readonly achievementsButtonScreen: { x: number; y: number } | null;
 /** Test-only: spends one Replay through the Repeat button path. */
 repeatPattern: () => void;
 /** Test-only: selects a store tile like a tap on its tile. */
@@ -599,6 +610,7 @@ return;
 }
 this.tickSkipVoiceButton();
 this.barFloats.update(delta, this.world.camera, this.isFlatView());
+this.celebration.update(delta, this.world.camera, this.world.scene, this.isFlatView());
 if (this.pads.length > 0) {
 const glowTime = performance.now() / 1000;
 for (const pad of this.pads) {
@@ -814,6 +826,7 @@ this.experienceActive = false;
 this.flowPhase = 'inactive';
 this.setCypherSeam(false);
 this.barFloats.clear();
+this.celebration.clear(this.world.scene);
 this.achievementsOpen = false;
 this.storeOpen = false;
 this.gameOverOpen = false;
@@ -1698,6 +1711,23 @@ properties?: { value?: { display?: string } };
 return [id, el?.properties?.value?.display ?? null];
 }));
 },
+get celebrationActive() {
+return system.celebration.isActive();
+},
+get celebrationText() {
+return system.celebration.debugText();
+},
+// Test-only: the Achievements button's projected screen position, used to
+// verify the celebration's fly target lands on the real button even when a
+// menu popup (store/achievements) covers it.
+get achievementsButtonScreen() {
+const button = system.world
+.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('achievements-button');
+if (button == null) return null;
+const p = button.getWorldPosition(new Vector3()).project(system.world.camera);
+return { x: ((p.x + 1) * window.innerWidth) / 2, y: ((1 - p.y) * window.innerHeight) / 2 };
+},
 get barFloatsActive() {
 return system.barFloats.isActive();
 },
@@ -1733,6 +1763,12 @@ system.onBuySelected();
 buyTopSecret: () => {
 system.forceSelectStoreTile('secret');
 system.onBuySelected();
+},
+demoCelebration: (id: string, label: string) => {
+system.demoCelebration(id, label);
+},
+setCelebrationFrozen: (frozen: boolean) => {
+system.celebration.frozen = frozen;
 },
 repeatPattern: () => {
 void system.onRepeatPattern();
@@ -4898,8 +4934,10 @@ list.add(popup);
 list.setProperties({ overflow: 'scroll', onScroll: () => { hide(); } });
 }
 
-/** Visual-only achievement toast; voice stays milestone-only (user rule). */
-private achievementToastUntil = 0;
+/** Achievement unlock celebration (item 54): visual-only flare; voice stays
+ * milestone-only (user rule). */
+public readonly celebration = new AchievementCelebration();
+private readonly celebrationTarget = new Vector3();
 /** Bars float animation pool + scratch (no per-frame allocations). */
 public readonly barFloats = new BarFloatPool();
 private readonly barFloatFrom = new Vector3();
@@ -4917,22 +4955,25 @@ private barsFirstEarnedPending = false;
 private showAchievementToasts(): void {
 const toasts = this.economy.drainToasts();
 if (toasts.length === 0) return;
-const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
-const text = toasts.length === 1
-? `Achievement unlocked: ${toasts[0]!.label}`
-: `Achievements unlocked: ${toasts.map((t) => t.label).join(', ')}`;
-panel
-?.getElementById<UIKit.Text>('wall-tones-achievement-toast')
-?.setProperties({ display: 'flex', text });
-this.achievementToastUntil = performance.now() + 5000;
-window.setTimeout(() => {
-if (performance.now() >= this.achievementToastUntil) {
-this.world
-.getSceneObject<UIKitMLAsset>('wall-tones-panel')
-?.getElementById<UIKit.Text>('wall-tones-achievement-toast')
-?.setProperties({ display: 'none' });
+for (const toast of toasts) this.celebration.show(toast, this.achievementsButtonWorld());
 }
-}, 5100);
+// Item 54: the approved celebration replaces the plain panel text toast.
+// The fly-in targets the Achievements button (world position; the flat
+// overlay projects it to the screen, MR flies to it directly). The button
+// keeps its layout position while a menu popup (store/achievements) covers
+// it, so the target stays correct with a popup open.
+private achievementsButtonWorld(): Vector3 | null {
+const button = this.world
+.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('achievements-button');
+return button == null
+? null
+: button.getWorldPosition(this.celebrationTarget) as Vector3;
+}
+/** Test-only: play the celebration for an arbitrary achievement without
+ * touching unlock state (visual verification driver). */
+public demoCelebration(id: string, label: string): void {
+this.celebration.show({ id, label, description: '' }, this.achievementsButtonWorld());
 }
 
 /** +N Bars earned at a pad: float the amount from the pad to the panel's
