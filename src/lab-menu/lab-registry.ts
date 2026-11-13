@@ -21,6 +21,8 @@ export interface LabEntry {
 
 export const LAB_ENTRIES: readonly LabEntry[] = [
   { id: 'nod', label: 'Nod Yes/No Lab', available: false },
+  // Rift Sealing Lab connects itself here (feature-PR one-liner, see header).
+  { id: 'rift', label: 'Rift Sealing Lab', mode: 'riftlab', available: true },
   { id: 'thumbs', label: 'Thumbs Yes/No Lab', available: false },
 ];
 

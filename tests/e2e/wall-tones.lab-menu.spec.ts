@@ -14,9 +14,10 @@ test('Lab entry opens the Lab menu and Back returns to the main menu', async ({ 
   await page.mouse.click(1100, 320);
   await expect.poll(() => mode(page)).toBe('lab');
   expect(await page.title()).toBe('Wall Tones 2: Lab');
-  // Let the Lab menu take the flat layout and render before clicking Back.
+  // Let the Lab menu take the flat layout and render before clicking Back
+  // (bottom row; sits under the connected Rift Sealing Lab row).
   await page.waitForTimeout(2000);
-  await page.mouse.move(640, 495);
-  await page.mouse.click(640, 495);
+  await page.mouse.move(640, 532);
+  await page.mouse.click(640, 532);
   await expect.poll(() => mode(page)).toBe('menu');
 });
