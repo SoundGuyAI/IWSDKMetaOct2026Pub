@@ -55,6 +55,7 @@ import {
   PlaneGeometry,
   Plane,
   Raycaster,
+  SRGBColorSpace,
   Vector2,
   Vector3,
   type Texture,
@@ -86,7 +87,7 @@ const MAX_OPEN_RIFTS = 3;
 /** Beam hit test: ray-to-rift distance under this counts as contact. */
 const BEAM_HIT_RADIUS_M = 0.3;
 
-const NOTE_SIZE_M = 0.026;
+const NOTE_SIZE_M = 0.034;
 /** Real-wall rift placement: reachable band around eye height. */
 const WALL_RIFT_BAND_BELOW_M = 0.55;
 const WALL_RIFT_BAND_ABOVE_M = 0.5;
@@ -115,9 +116,13 @@ function noteGlyphTexture(color: PadColorName): Texture {
       ctx.shadowColor = PAD_COLORS[color];
       ctx.shadowBlur = 8;
       ctx.fillStyle = PAD_COLORS[color];
+      ctx.strokeStyle = PAD_COLORS[color];
+      ctx.lineWidth = 3;
+      ctx.strokeText('\u266A', 32, 36);
       ctx.fillText('\u266A', 32, 36);
     }
     tex = new CanvasTexture(canvas);
+    tex.colorSpace = SRGBColorSpace;
     noteGlyphTextureCache.set(color, tex);
   }
   return tex;
@@ -707,6 +712,7 @@ export class RiftLabSystem extends createSystem({
             map: noteGlyphTexture(note.color),
             transparent: true,
             depthWrite: false,
+            toneMapped: false,
           }),
         );
         this.noteMeshes.set(note.id, mesh);
