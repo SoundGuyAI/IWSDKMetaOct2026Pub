@@ -17,6 +17,8 @@ type Snapshot = {
   immersive: boolean;
   voiceStatus: string;
   answerCount: number;
+  cueCount: number;
+  clipPlays: Record<string, number>;
 };
 
 const bridge = (page: import('@playwright/test').Page) =>
@@ -95,7 +97,7 @@ test('main menu carries a working Nod Yes/No Lab button (real canvas click)', as
   expect(snapshot?.voiceStatus).toContain('Cypher voice:');
 });
 
-test('full dialogue: yes path walks intro -> q2 -> q3 -> done with echoes', async ({
+test('full dialogue: yes path walks intro -> q2 -> q3 -> done with answer cues', async ({
   page,
 }) => {
   await page.mouse.click(1100, 320);
@@ -109,12 +111,21 @@ test('full dialogue: yes path walks intro -> q2 -> q3 -> done with echoes', asyn
   let snapshot = await bridge(page);
   expect(snapshot?.lastAnswer).toBe('yes');
   expect(snapshot?.answerCount).toBe(1);
+  // Regression (Nov 14 Quest test): the q2 line must play exactly once -
+  // the intro yes-branch used to speak it and then playPrompt repeated it.
+  expect(snapshot?.clipPlays['q2']).toBe(1);
   await answer(page, 'no');
   await waitPhase(page, 'listening', 'q3');
   await answer(page, 'yes');
   await waitPhase(page, 'done');
   snapshot = await bridge(page);
   expect(snapshot?.answerCount).toBe(3);
+  expect(snapshot?.clipPlays['q2']).toBe(1);
+  // Each answer played one recognition cue instead of a spoken yes/no echo;
+  // the echo clips are never spoken in the lab flow anymore.
+  expect(snapshot?.cueCount).toBe(3);
+  expect(snapshot?.clipPlays['yes'] ?? 0).toBe(0);
+  expect(snapshot?.clipPlays['no'] ?? 0).toBe(0);
 });
 
 test('intro no loops through the retry line until a yes', async ({ page }) => {
@@ -125,9 +136,17 @@ test('intro no loops through the retry line until a yes', async ({ page }) => {
   );
   await waitPhase(page, 'listening', 'intro');
   await answer(page, 'no');
-  await waitPhase(page, 'listening', 'intro');
-  const snapshot = await bridge(page);
+  await waitPhase(page, 'listening', 'retry');
+  let snapshot = await bridge(page);
   expect(snapshot?.lastAnswer).toBe('no');
+  // The full connection-check intro must not replay after a no.
+  expect(snapshot?.clipPlays['intro-nod'] ?? 0).toBe(1);
+  // Approved Nov 14: a second no rotates to the first variation clip.
+  await answer(page, 'no');
+  await waitPhase(page, 'listening', 'retry');
+  snapshot = await bridge(page);
+  expect(snapshot?.clipPlays['retry-nod'] ?? 0).toBe(1);
+  expect(snapshot?.clipPlays['retry-2'] ?? 0).toBe(1);
   await answer(page, 'yes');
   await waitPhase(page, 'listening', 'q2');
 });
@@ -145,7 +164,7 @@ test('keyboard fallback answers work in flat mode (Y/N keys)', async ({
   // Flat sessions never arm the head detector; buttons/keys are the answer path.
   expect(snapshot?.detectorArmed).toBe(false);
   await page.keyboard.press('n');
-  await waitPhase(page, 'listening', 'intro');
+  await waitPhase(page, 'listening', 'retry');
   const after = await bridge(page);
   expect(after?.lastAnswer).toBe('no');
   await page.keyboard.press('y');
