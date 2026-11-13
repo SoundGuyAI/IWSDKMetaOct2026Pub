@@ -158,6 +158,9 @@ export interface RiftLabDebugSnapshot {
   palms: Record<'left' | 'right', PalmPose | null>;
   targets: { id: number; position: number[]; ndc: number[] }[];
   noteOriginNdc: number[];
+  /** Viewer pose, for QA placement of synthetic hands. */
+  cameraPos: number[];
+  cameraDir: number[];
 }
 
 declare global {
@@ -1220,6 +1223,8 @@ export class RiftLabSystem extends createSystem({
       beamActive: this.game.isBeamActive(),
       status: this.statusMessage,
       noteOriginNdc: this.handAnchor('right').clone().project(this.world.camera).toArray(),
+      cameraPos: this.world.camera.getWorldPosition(new Vector3()).toArray(),
+      cameraDir: this.world.camera.getWorldDirection(new Vector3()).toArray(),
       palms: this.palms,
       targets: [...this.riftViews.values()].map((v) => ({
         id: v.rift.id,
