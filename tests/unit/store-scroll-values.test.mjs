@@ -30,8 +30,13 @@ test('store popup has click-scroll chevrons and a top-right Bars balance', () =>
   ]) {
     assert.ok(ui.includes(id), `uikitml missing ${id}`);
   }
-  // Chevrons overlay the right edge of the fixed tree viewport.
-  assert.ok(ui.includes('position-type: absolute'), 'chevrons not overlaid');
+  // Chevrons sit in a reserved gutter beside the tree viewport so they never
+  // overlap tiles, labels, or the scrollbar (review feedback 2026-11-14).
+  assert.ok(ui.includes('id="store-scroll-gutter"'), 'chevron gutter missing');
+  const gutterAt = ui.indexOf('id="store-scroll-gutter"');
+  const upAt = ui.indexOf('id="store-scroll-up"');
+  const downAt = ui.indexOf('id="store-scroll-down"');
+  assert.ok(gutterAt !== -1 && gutterAt < upAt && upAt < downAt, 'chevrons must live inside the gutter, up before down');
   for (const snippet of [
     'scrollStoreTreeBy',
     'syncStoreScrollButtons',
