@@ -80,6 +80,7 @@ const {
   REPLAY_FREE_CAP,
   PLAY_UNLOCK_HINT_LEVEL,
   AUTOPLAY_UNLOCK_PLAY_LEVEL,
+  INDEX_COST,
 } = await import('data:text/javascript;base64,' + Buffer.from(js).toString('base64'));
 
 /** Fresh economy with `bars` test-funded (in-memory; no localStorage in node). */
@@ -115,7 +116,6 @@ test('gates: Hint L1 needs Listen, Play L1 needs Hint L4, Autoplay needs Play L4
   assert.equal(eco.getHintLevel(), PLAY_UNLOCK_HINT_LEVEL);
   assert.equal(eco.playUnlocked(), true, 'Hint L4 opens Play L1');
   assert.equal(eco.autoplayUnlocked(), false, 'Hint L4 alone no longer unlocks Autoplay');
-  assert.equal(eco.buyNextPlayLevel(), false, 'play buys refused while prices unset');
   eco.debugGrantPlayLevel(AUTOPLAY_UNLOCK_PLAY_LEVEL);
   assert.equal(eco.autoplayUnlocked(), true, 'Play L4 unlocks Autoplay');
   assert.equal(eco.buyNextAutoplayLevel(), true);
@@ -237,4 +237,43 @@ test('demoBars boost: Saver buys through spend() like every other store item', (
   assert.equal(eco2.getBars(), 2);
   assert.equal(eco2.buySaver(saverPrice), false, 'refuses when total wallet is short');
   assert.equal(eco2.getSavers(), 1);
+});
+
+test('Play 500/1000/2000/4000 and Index 500 one-off (owner approved test prices 2026-11-14), gated and spending Bars', () => {
+  assert.equal(INDEX_COST, 500);
+  const eco = ecoWith(0);
+  assert.deepEqual([1, 2, 3, 4].map((l) => eco.playCost(l)), [500, 1000, 2000, 4000]);
+  // Locked: nothing sells and no Bars move.
+  const locked = ecoWith(10000);
+  assert.equal(locked.buyNextPlayLevel(), false, 'Play locked before Listen/Hint L4');
+  assert.equal(locked.buyIndex(), false, 'Index locked before Hint L3');
+  assert.equal(locked.getBars(), 10000);
+  // Hint L3 opens Index only; Play still needs Hint L4.
+  const e = ecoWith(10000);
+  assert.equal(e.buyListen(), true);
+  for (let i = 0; i < 3; i++) assert.equal(e.buyNextHintLevel(), true);
+  assert.equal(e.indexUnlocked(), true);
+  assert.equal(e.playUnlocked(), false);
+  assert.equal(e.buyNextPlayLevel(), false);
+  const before = e.getBars();
+  assert.equal(e.buyIndex(), true);
+  assert.equal(e.ownsIndex(), true);
+  assert.equal(e.getBars(), before - 500);
+  assert.equal(e.buyIndex(), false, 'Index is one-off');
+  assert.equal(e.getBars(), before - 500);
+  assert.equal(e.buyNextHintLevel(), true);
+  assert.equal(e.playUnlocked(), true);
+  const b2 = e.getBars();
+  for (const [lvl, cost] of [[1, 500], [2, 1000], [3, 2000], [4, 4000]]) {
+    assert.equal(e.buyNextPlayLevel(), true, 'Play L' + lvl);
+    assert.equal(e.getPlayLevel(), lvl);
+  }
+  assert.equal(e.getBars(), b2 - 7500);
+  assert.equal(e.buyNextPlayLevel(), false, 'Play stops at level 4');
+  // Not enough Bars: nothing changes.
+  const poor = ecoWith(700); // 700 - 30 - 25 - 50 - 100 = 495 < 500
+  poor.buyListen(); for (let i = 0; i < 3; i++) poor.buyNextHintLevel();
+  const pb = poor.getBars();
+  assert.equal(poor.buyIndex(), false);
+  assert.equal(poor.getBars(), pb);
 });
