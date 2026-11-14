@@ -63,13 +63,16 @@ export function formatMeters(meters: number): string {
  * uikitml element so a tight panel can never wrap it away from the number
  * (Quest feedback Nov 14). */
 /** Movement UI visibility by device (user Nov 14: "Movement on pc - there
- * is none but there is on mobile and XR"). Desktop PCs in flat mode see no
- * Movement UI (the achievement tile); XR sessions and mobile devices keep
- * it. Quest's browser UA matches the mobile/Android patterns. */
+ * is none but there is on mobile and XR"; later Nov 14: hide the entry on
+ * iPhone too, until iPhone movement is implemented). Desktop PCs and iOS
+ * devices in flat mode see no Movement UI (the achievement tile); XR
+ * sessions and Android devices keep it. Quest's browser UA matches the
+ * mobile/Android patterns. */
 export function movementUiVisible(opts: { immersive: boolean; userAgent?: string | undefined }): boolean {
   if (opts.immersive) return true;
   const ua = opts.userAgent ?? '';
-  return /Mobi|Android|iPhone|iPad|iPod|Quest/i.test(ua);
+  if (/iPhone|iPad|iPod/i.test(ua)) return false;
+  return /Mobi|Android|Quest/i.test(ua);
 }
 
 export function formatMetersNumber(meters: number): string {
