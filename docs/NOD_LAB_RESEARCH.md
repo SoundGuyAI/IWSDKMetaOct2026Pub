@@ -59,7 +59,13 @@ only buttons.
   tilting the phone forward/back answers yes, left/right answers no
   (deviceorientation beta/gamma, `src/nod-lab/tilt-gesture.ts`). A denial
   or a device without the API is respected silently - no re-asking, no
-  listener, pointer drag and buttons keep working.
+  listener, pointer drag and buttons keep working. The tilt baseline is
+  not frozen at arm time: an anchor grabbed mid-motion makes the
+  return-to-baseline requirement unachievable and every later gesture
+  expires (the owner's Nov 14 iPhone failure: first yes registered,
+  then nothing). While the phone reads as still the baseline tracks the
+  resting pose (like the pointer path's re-prime), so a gesture always
+  reads as out-and-back from where the phone actually rests.
 - Desktop intro caption (owner, Nov 14): on flat desktop the intro line's
   shown text says to move the mouse up/down for yes and left/right for no
   instead of nodding your head. Display-only: the approved recorded line
