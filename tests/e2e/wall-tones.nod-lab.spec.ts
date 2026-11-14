@@ -18,6 +18,7 @@ type Snapshot = {
   voiceStatus: string;
   answerCount: number;
   cueCount: number;
+  noInputCount: number;
   clipPlays: Record<string, number>;
 };
 
@@ -169,6 +170,45 @@ test('keyboard fallback answers work in flat mode (Y/N keys)', async ({
   expect(after?.lastAnswer).toBe('no');
   await page.keyboard.press('y');
   await waitPhase(page, 'listening', 'q2');
+});
+
+test('no input inside the 6s answer window re-asks the same prompt', async ({
+  page,
+}) => {
+  test.setTimeout(90000);
+  await page.mouse.click(1100, 320);
+  await waitPhase(page, 'idle');
+  await page.evaluate(() =>
+    (window as unknown as { __nodLabDebug: { start: () => void } }).__nodLabDebug.start(),
+  );
+  await waitPhase(page, 'listening', 'intro');
+
+  // Say nothing. After ~6s Cypher acknowledges the silence (no cue, not an
+  // answer) and the same prompt is armed again.
+  await page.waitForFunction(
+    () => {
+      const snapshot = (
+        window as unknown as {
+          __nodLabDebug?: { snapshot: () => Snapshot };
+        }
+      ).__nodLabDebug?.snapshot();
+      return snapshot?.noInputCount === 1;
+    },
+    null,
+    { timeout: 20000 },
+  );
+  const silent = await bridge(page);
+  expect(silent?.answerCount).toBe(0);
+  expect(silent?.cueCount).toBe(0);
+  expect(silent?.clipPlays['no-input-nod']).toBe(1);
+  await waitPhase(page, 'listening', 'intro');
+
+  // The dialogue still answers normally afterwards.
+  await answer(page, 'yes');
+  await waitPhase(page, 'listening', 'q2');
+  const after = await bridge(page);
+  expect(after?.lastAnswer).toBe('yes');
+  expect(after?.answerCount).toBe(1);
 });
 
 test('flat mode: mouse drag gestures answer without buttons (up-down = yes, left-right = no)', async ({
