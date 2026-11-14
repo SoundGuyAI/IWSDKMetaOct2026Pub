@@ -154,7 +154,12 @@ import {
   nextOpenThreshold,
 } from './economy.js';
 import { storeChipGlyphSrc, storeTileSrc, type TileState as StoreTileState } from './store-icons.js';
-import { attachStoreDragGuard, storePressWasDrag } from './store-drag-guard.js';
+import {
+  attachStoreDragGuard,
+  resetStorePress,
+  storeListOnScroll,
+  storePressWasDrag,
+} from './store-drag-guard.js';
 import { STORE_SCROLL_STEP, clampStoreScroll, storeScrollEnabled } from './store-scroll.js';
 import { SAVER_PRICE_BARS, saverRetryPlan, saverUnitsForStreak } from './consumable-values.js';
 import {
@@ -4473,6 +4478,7 @@ text: t.price,
 );
 }
 tile.name = `store-tile-${t.id}`;
+tile.addEventListener('pointerdown', () => resetStorePress());
 tile.addEventListener('click', (event) => {
 event.stopPropagation();
 // A pinch/ray drag that ends over a tile is a scroll, not a selection.
@@ -4824,7 +4830,7 @@ if (hit) selTop = cursorY;
 list.add(row.node);
 cursorY += row.h + ROW_GAP;
 }
-list.setProperties({ overflow: 'scroll' });
+list.setProperties({ overflow: 'scroll', onScroll: storeListOnScroll });
 if (popupLine != null && cardHost != null) {
 cardHost.add(popupLine);
 this.storeDetailCard = popupLine;
