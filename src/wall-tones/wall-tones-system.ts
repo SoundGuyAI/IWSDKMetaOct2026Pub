@@ -154,6 +154,7 @@ import {
   nextOpenThreshold,
 } from './economy.js';
 import { storeChipGlyphSrc, storeTileSrc, type TileState as StoreTileState } from './store-icons.js';
+import { STORE_SCROLL_STEP, clampStoreScroll, storeScrollEnabled } from './store-scroll.js';
 import { SAVER_PRICE_BARS, saverRetryPlan, saverUnitsForStreak } from './consumable-values.js';
 import {
 getActiveWorldKind,
@@ -262,6 +263,14 @@ repeatPattern: () => void;
 selectStoreTile: (id: string) => void;
 storePointerTargets: Record<string, { x: number; y: number }>;
 storeSelected: string | null;
+/** Store tree scroll state (test-only reads). */
+storeScroll: { y: number; maxY: number; scrollable: boolean };
+/** Chevron opacity state: 1 = can scroll that way, 0.35 = at the end. */
+storeScrollButtonOpacity: { up: number | null; down: number | null };
+/** Test-only: scrolls the store tree like a chevron press. */
+scrollStore: (delta: number) => void;
+/** Live Bars balance shown at the top right of the Store window. */
+storeBalanceText: string | null;
 /** Whether the one-time Top Secret item is owned (test-only). */
 ownsTopSecret: boolean;
 /** Skill-tree store state (test-only reads). */
@@ -627,6 +636,12 @@ animatePadGlow(pad.glow, glowTime);
 }
 }
 this.bindPanelIfNeeded();
+// Chevron enabled state follows the live scroll position (drag, wheel and
+// programmatic scrolls included) while the store is open; cheap no-change
+// early-out inside.
+if (this.storeOpen) {
+this.syncStoreScrollButtons();
+}
 if (!this.useDesktopPath()) {
 this.noteDominantHandFromInput();
 this.tickSetupPanelFollow(delta);
@@ -742,6 +757,25 @@ panel
 panel
 .getElementById('store-close-button')
 ?.addEventListener('click', () => this.onToggleStore());
+// Store scroll chevrons (critical MR scroll fix 2026-11-14): plain-click
+// scrolling for input modes without a held drag. stopPropagation keeps a
+// chevron press from clearing the tile selection via the popup handler.
+const storeScrollUp = panel.getElementById('store-scroll-up');
+if (storeScrollUp != null) {
+storeScrollUp.name = 'store-scroll-up';
+storeScrollUp.addEventListener('click', (event) => {
+event.stopPropagation();
+this.scrollStoreTreeBy(-STORE_SCROLL_STEP);
+});
+}
+const storeScrollDown = panel.getElementById('store-scroll-down');
+if (storeScrollDown != null) {
+storeScrollDown.name = 'store-scroll-down';
+storeScrollDown.addEventListener('click', (event) => {
+event.stopPropagation();
+this.scrollStoreTreeBy(STORE_SCROLL_STEP);
+});
+}
 panel
 .getElementById('achievements-close-button')
 ?.addEventListener('click', () => this.setAchievementsOpen(false));
@@ -1806,13 +1840,41 @@ return system.economy.getReplaysTotal();
 get demoBoost() {
 return system.economy.getDemoBoost();
 },
+get storeScroll() {
+const panel = system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+const list = panel?.getElementById<UIKit.Container>('store-tree-list');
+return {
+y: list?.scrollPosition.value?.[1] ?? 0,
+maxY: list?.maxScrollPosition.value?.[1] ?? 0,
+scrollable: list?.scrollable.value?.[1] ?? false,
+};
+},
+get storeScrollButtonOpacity() {
+const panel = system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+const read = (id: string): number | null =>
+(panel?.getElementById(id) as unknown as {
+properties?: { value?: { opacity?: number } };
+} | null)?.properties?.value?.opacity ?? null;
+return { up: read('store-scroll-up'), down: read('store-scroll-down') };
+},
+scrollStore: (delta: number) => {
+system.scrollStoreTreeBy(delta);
+},
+get storeBalanceText() {
+const panel = system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+return (
+(panel?.getElementById('store-bars-value') as unknown as {
+properties?: { value?: { text?: string } };
+} | null)?.properties?.value?.text ?? null
+);
+},
 get storePointerTargets() {
 const panel = system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
 const list = panel?.getElementById<UIKit.Container>('store-tree-list');
 const host = panel?.getElementById<UIKit.Container>('store-popup-card');
 const targets: Record<string, { x: number; y: number }> = {};
 const capture = (node: Object3D) => {
-if (!node.name.startsWith('store-tile-') && node.name !== 'store-buy') return;
+if (!node.name.startsWith('store-tile-') && node.name !== 'store-buy' && !node.name.startsWith('store-scroll-')) return;
 const p = node.getWorldPosition(new Vector3()).project(system.world.camera);
 targets[node.name] = { x: (p.x + 1) * window.innerWidth / 2, y: (1 - p.y) * window.innerHeight / 2 };
 };
@@ -4178,6 +4240,12 @@ panel
 ?.setProperties({
 text: this.economy.getDemoBoost() > 0 ? 'Store (TEST Bars)' : 'Store',
 });
+// Owner ask 2026-11-14: the live Bars balance sits at the top right of the
+// Store window so he can see his money while shopping; bars is already part
+// of this render's change key.
+panel
+.getElementById<UIKit.Text>('store-bars-value')
+?.setProperties({ text: String(this.economy.getBars()) });
 panel
 .getElementById<UIKit.Text>('repeat-pattern-label')
 ?.setProperties({
@@ -4189,6 +4257,52 @@ this.reconcileAchievements(panel);
 
 /** Detail card currently shown on the store popup chrome (removed on rebuild). */
 private storeDetailCard: UIKit.Container | null = null;
+
+/** Last chevron enabled state pushed to the popup (skip no-change writes);
+ * null until the first sync so the initial state always lands. */
+private storeScrollUpEnabled: boolean | null = null;
+private storeScrollDownEnabled: boolean | null = null;
+
+/** Scroll the store tree by delta px through the chevron buttons (or the
+ * debug bridge), clamped to the scrollable range. Drag and wheel scrolling
+ * still go through uikit's own handlers. */
+private scrollStoreTreeBy(delta: number): void {
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+const list = panel?.getElementById<UIKit.Container>('store-tree-list');
+if (list == null) return;
+const y = list.scrollPosition.value?.[1] ?? 0;
+const maxY = list.maxScrollPosition.value?.[1] ?? 0;
+const next = clampStoreScroll(y, maxY, delta);
+if (next !== y) {
+list.scrollPosition.value = [0, next];
+}
+this.syncStoreScrollButtons();
+}
+
+/** Dim the chevron that cannot scroll further; reads the live position so
+ * drag/wheel/programmatic scrolls all update the same state. */
+private syncStoreScrollButtons(): void {
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+if (panel == null) return;
+const list = panel.getElementById<UIKit.Container>('store-tree-list');
+const y = list?.scrollPosition.value?.[1] ?? 0;
+const maxY = list?.maxScrollPosition.value?.[1] ?? 0;
+const enabled = storeScrollEnabled(y, maxY);
+if (
+enabled.up === this.storeScrollUpEnabled &&
+enabled.down === this.storeScrollDownEnabled
+) {
+return;
+}
+this.storeScrollUpEnabled = enabled.up;
+this.storeScrollDownEnabled = enabled.down;
+panel
+.getElementById('store-scroll-up')
+?.setProperties({ opacity: enabled.up ? 1 : 0.35 });
+panel
+.getElementById('store-scroll-down')
+?.setProperties({ opacity: enabled.down ? 1 : 0.35 });
+}
 
 /** Store skill tree (item 44): one square line-glyph tile per category,
  * level/count badges, and reach-level-X gates on the chain connections.

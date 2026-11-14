@@ -36,6 +36,10 @@
         touch-action: manipulation;
       }
       #audio-start-button:disabled { opacity: 0.6; }
+      /* Phone touch drags must reach the game (camera orbit, store tree
+         drag-scroll); without this the browser pointer-cancels them as a
+         native pan. Buttons/panels above still get their clicks. */
+      #scene-container { touch-action: none; }
       #wt-loading {
         position: fixed;
         inset: 0;
