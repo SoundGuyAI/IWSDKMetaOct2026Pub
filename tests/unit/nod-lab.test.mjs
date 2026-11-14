@@ -465,6 +465,38 @@ test('null tilt angles (unsupported sensor) produce no sample', () => {
   assert.equal(tracker.feed(45, null), null);
 });
 
+test('a mid-motion arm anchors at the rest pose so a later nod completes (iPhone regression)', () => {
+  // Real failure (Nov 14 iPhone run): the phone was moving when listening
+  // armed, so the tilt baseline anchored off-pose. After the user settled,
+  // every later nod returned to the REST pose, never to the stale anchor,
+  // so the mandatory return-to-baseline never completed. The tracker now
+  // re-anchors toward a held pose once the head is still: settle 70->58 deg
+  // while already armed, then nod down 25 deg and hold at 58 - the nod must
+  // fire once the baseline converges to the rest pose.
+  const detector = new HeadNodShakeDetector({
+    ...DEFAULT_HEAD_GESTURE_CONFIG,
+    returnToBaselineRad: DEFAULT_HEAD_GESTURE_CONFIG.activationRad,
+  });
+  const tracker = new TiltBaselineTracker();
+  now = 0;
+  // Converge the baseline on 70 deg while not armed (still counts while idle).
+  for (let i = 0; i < 360; i += 1) { tracker.feed(70, 6); }
+  detector.setEnabled(true);
+  let event = null;
+  const feed = (deg) => {
+    const s = tracker.feed(deg, 6);
+    const e = detector.feed(s.pitchDeg * D, 0, now);
+    event = event ?? e;
+  };
+  // Mid-motion arm: user settles 70 -> 58 over 0.25 s while already listening.
+  for (let i = 0; i < 15; i += 1) { now += 1 / 60; feed(70 - 12 * (i / 15)); }
+  // Nod down 25 deg and back over 0.5 s.
+  for (let i = 0; i < 30; i += 1) { now += 1 / 60; feed(58 - 25 * Math.sin(Math.PI * Math.min(1, i / 30))); }
+  // Hold still at the rest pose until the baseline re-anchors.
+  for (let i = 0; i < 240; i += 1) { now += 1 / 60; feed(58); }
+  assert.equal(event?.answer, 'yes');
+});
+
 test('pointer scale keeps a deliberate flick above the peak threshold', () => {
   // A 90px flick must read as at least the 14 deg peak the detector needs.
   assert.ok(45 / POINTER_PX_PER_DEG >= 14); // 45px flick now clears the peak threshold
