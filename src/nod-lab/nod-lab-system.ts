@@ -515,11 +515,19 @@ export class NodLabSystem extends createSystem({}) {
     if (seq !== this.sequence || !this.active) {
       return;
     }
+    // Arm before the reminder, not after it: the no-input line ends with
+    // "try again", the user's natural cue to move, so the answer window
+    // must already be open while the short reminder plays. Arming only
+    // after the reminder dropped every gesture made on that cue (owner's
+    // Nov 14 desktop retest: nothing registered after "try again").
+    this.armListening();
     await this.speakLine(this.remindLine());
     if (seq !== this.sequence || !this.active) {
       return;
     }
-    this.armListening();
+    // The reminder spoke over the armed window; restart the no-input clock
+    // so the full timeout runs from when speech actually ends.
+    this.listeningIdleMs = 0;
   }
 
   private deviceKind(): 'desktop' | 'headset' | 'tilt' {
