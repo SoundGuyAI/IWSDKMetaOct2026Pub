@@ -204,6 +204,7 @@ phase: string;
 flowPhase: string;
 sequence: readonly number[];
 inputStep: number;
+playbackKindNow: 'listen' | 'play' | 'autoplay' | null;
 streak: number;
 bestStreak: number;
 bars: number;
@@ -462,10 +463,26 @@ private flatLayoutDirty = true;
 private sequenceIconKey = '';
 /** Squares revealed so far during Listen playback (appear one per note). */
 private playbackShownCount = 0;
+/** Owner 2026-11-14 (dim + arrow pick): which playback is on the hint row.
+ * Play and Autoplay keep the pattern visible while they enter notes; Listen
+ * keeps its reveal-one-by-one behavior. */
+private playbackKind: 'listen' | 'play' | 'autoplay' | null = null;
+/** Absolute sequence index of the note playing right now (-1 = none). */
+private playbackCursor = -1;
+/** Indices entered by Play/Autoplay for the current pattern; they stay
+ * dimmed on the hint row after playback (his 18:26 "some indication of what
+ * was played", settled 18:53 as dimmed notes). */
+private readonly enteredByModifier = new Set<number>();
+/** Arrow position after Play/Autoplay: the last auto-entered note, kept
+ * while the player continues the pattern (-1 = no arrow). */
+private arrowSeqIndex = -1;
 private sequenceIconPendingPanel: UIKitMLAsset | null = null;
 private sequenceIconUpdateQueued = false;
 private readonly sequenceCueSquares: UIKit.Container[] = [];
 private readonly sequenceCueNames: UIKit.Text[] = [];
+/** Small '▼' markers: one per square, shown only on the current/last
+ * auto-entered note (owner 2026-11-14 dim + arrow pick). */
+private readonly sequenceCueArrows: UIKit.Text[] = [];
 private readonly flushSequenceIcons = () => {
 this.sequenceIconUpdateQueued = false;
 const panel = this.sequenceIconPendingPanel;
@@ -1607,6 +1624,9 @@ return [...system.game.sequence];
 },
 get inputStep() {
 return system.game.inputStep;
+},
+get playbackKindNow() {
+return system.playbackKind;
 },
 get streak() {
 return system.game.streak;
@@ -2928,6 +2948,10 @@ this.armAllPads();
 this.statusText = 'Listen:';
 // User ask (Nov 7): Listen squares appear one by one as each note plays.
 this.playbackShownCount = 0;
+this.playbackKind = 'listen';
+this.playbackCursor = -1;
+this.enteredByModifier.clear();
+this.arrowSeqIndex = -1;
 this.renderPanel();
 for (let index = 0; index < this.game.sequence.length; index += 1) {
 const padId = this.game.sequence[index]!;
@@ -2936,6 +2960,7 @@ if (pad != null) {
 this.setBlinkCuePad(pad);
 flashPad(pad, true);
 this.playbackShownCount = index + 1;
+this.playbackCursor = index;
 this.renderPanel();
 await playPadTone(padId);
 await this.wait(NOTE_GAP_S + BLINK_HOLD_S + 0.2);
@@ -2953,7 +2978,8 @@ this.economy.getAutoplayNoteCount(),
 this.game.sequence.length - 1,
 );
 if (autoCount > 0) {
-this.statusText = `Auto play: first ${autoCount}`;
+this.statusText = `Auto play: first $${autoCount}`;
+this.playbackKind = 'autoplay';
 this.renderPanel();
 for (let index = 0; index < autoCount; index += 1) {
 if (!this.experienceActive || this.flowPhase !== 'playing') {
@@ -2964,10 +2990,15 @@ const pad = this.padById(padId);
 if (pad != null) {
 this.setBlinkCuePad(pad);
 flashPad(pad, true);
+this.playbackCursor = index;
+this.renderPanel();
 await playPadTone(padId);
 await this.wait(NOTE_GAP_S + BLINK_HOLD_S + 0.2);
 flashPad(pad, false);
 this.setBlinkCuePad(null);
+this.enteredByModifier.add(index);
+this.arrowSeqIndex = index;
+this.renderPanel();
 }
 await this.wait(NOTE_GAP_S);
 }
@@ -2975,6 +3006,8 @@ if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
 }
 }
+this.playbackKind = null;
+this.playbackCursor = -1;
 this.game.phase = 'input';
 this.game.inputStep = autoCount;
 this.inputNeedsClear = true;
@@ -4176,7 +4209,8 @@ this.lastInputAt = performance.now() / 1000;
 this.idleReplayQueued = false;
 this.game.phase = 'playback';
 this.inputNeedsClear = true;
-this.statusText = `Play: ${playCount} tones`;
+this.statusText = `Play: $${playCount} tones`;
+this.playbackKind = 'play';
 this.renderPanel();
 this.playbackQueue = this.playbackQueue.then(async () => {
 for (let i = 0; i < playCount; i += 1) {
@@ -4191,11 +4225,15 @@ const pad = this.padById(padId);
 if (pad != null) {
 this.setBlinkCuePad(pad);
 flashPad(pad, true);
+this.playbackCursor = this.game.inputStep;
+this.renderPanel();
 await playPadTone(padId);
 await this.wait(NOTE_GAP_S + BLINK_HOLD_S + 0.2);
 flashPad(pad, false);
 this.setBlinkCuePad(null);
 }
+this.enteredByModifier.add(this.game.inputStep);
+this.arrowSeqIndex = this.game.inputStep;
 // Confirmed 2026-11-13: Play's tones count as entered. REVIEW PROPOSAL
 // (owner to confirm, not settled): entered tones pay no per-press Bars and
 // are not counted as player presses, following the Autoplay precedent;
@@ -4218,6 +4256,8 @@ await this.wait(NOTE_GAP_S);
 if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
 }
+this.playbackKind = null;
+this.playbackCursor = -1;
 this.game.phase = 'input';
 this.inputNeedsClear = true;
 this.lastInputAt = performance.now() / 1000;
@@ -5554,6 +5594,18 @@ this.renderPanel();
 }
 
 /** Real colored geometry avoids emoji / font fallback rendering white boxes. */
+/** Dim a pad color towards grey for the hint-row played-notes treatment
+ * (owner 2026-11-14): the note's color stays recognizable underneath.
+ * amount 0.55 = played/dimmed, 0.35 = the blink-off beat of the current note. */
+private dimSequenceColor(color: number, amount: number): number {
+const r = (color >> 16) & 0xff;
+const g = (color >> 8) & 0xff;
+const b = color & 0xff;
+const t = 0x55;
+const mix = (c: number): number => Math.round(c + (t - c) * amount);
+return (mix(r) << 16) | (mix(g) << 8) | mix(b);
+}
+
 private renderSequenceIcons(panel: UIKitMLAsset): void {
 this.sequenceIconPendingPanel = panel;
 if (this.sequenceIconUpdateQueued) return;
@@ -5571,14 +5623,25 @@ if (row == null) return;
 // rule 2026-11-11: no Listen item, no listen line).
 const listening = this.statusText === 'Listen:';
 const reveal = this.economy.getHintRevealCount();
+// Owner 2026-11-14 (his dim + arrow pick, 18:53): Play and Autoplay keep
+// the pattern row visible while they enter notes; auto-entered notes stay
+// dimmed afterwards and a small arrow marks the note playing now, or the
+// last auto-entered note once playback ends.
+const modifying = this.playbackKind === 'play' || this.playbackKind === 'autoplay';
+let enteredMax = -1;
+for (const idx of this.enteredByModifier) { if (idx > enteredMax) enteredMax = idx; }
+const rowReveal = Math.max(reveal, enteredMax + 1, modifying ? this.playbackCursor + 1 : 0);
 const yourTurn = this.game.phase === 'input' && !listening;
 const visible =
 (listening && this.economy.ownsListen()) ||
-(this.game.phase === 'input' && reveal > 0);
+modifying ||
+(this.game.phase === 'input' && rowReveal > 0);
+const arrowAt = modifying ? this.playbackCursor : yourTurn ? this.arrowSeqIndex : -1;
+const blinkOn = modifying && Math.floor(performance.now() / 320) % 2 === 0;
 const names = colorNamesEnabled();
 // yourTurn must key the cache: after Listen of a longer-than-owned pattern the
 // row stays visible while the beyond-hint boxes must hide on the phase flip.
-const key = this.game.sequence.join(',') + ':' + names + ':' + visible + ':' + reveal + ':' + (yourTurn ? '1' : '0') + ':' + (listening ? this.playbackShownCount : -1);
+const key = this.game.sequence.join(',') + ':' + names + ':' + visible + ':' + reveal + ':' + (yourTurn ? '1' : '0') + ':' + (listening ? this.playbackShownCount : -1) + ':' + (this.playbackKind ?? '-') + ':' + this.playbackCursor + ':' + rowReveal + ':' + arrowAt + ':' + (blinkOn ? 1 : 0) + ':' + this.enteredByModifier.size + ':' + enteredMax;
 if (this.sequenceIconRow === row && this.sequenceIconKey === key) return;
 if (this.sequenceIconRow !== row) {
 this.sequenceCueSquares.length = 0;
@@ -5590,19 +5653,23 @@ row.setProperties({ display: visible ? 'flex' : 'none' });
 this.lastSequenceRowVisible = visible;
 for (let i = 0; i < this.game.sequence.length; i++) {
 if (!this.sequenceCueSquares[i]) {
+const arrow = new UIKit.Text({fontSize: 15, color: 0xffffff});
 const square = new UIKit.Container({width: 16, height: 16, borderRadius: 2, flexShrink: 0});
 const name = new UIKit.Text({fontSize: 15, color: 0xffffff});
+this.sequenceCueArrows.push(arrow);
 this.sequenceCueSquares.push(square);
 this.sequenceCueNames.push(name);
-row.add(square); row.add(name);
+row.add(arrow); row.add(square); row.add(name);
 }
 }
 let shown = 0;
 let unknownShown = 0;
 for (let i = 0; i < this.sequenceCueSquares.length; i++) {
 const id = this.game.sequence[i];
-const beyondHint = yourTurn && i >= reveal;
+const beyondHint = (yourTurn || modifying) && i >= rowReveal;
 const notYetPlayed = listening && i >= this.playbackShownCount;
+const dimmed = this.enteredByModifier.has(i);
+const current = modifying && i === this.playbackCursor;
 // User ask (Nov 7): when the pattern runs past the owned hint prefix,
 // mark the hidden tail with up to 5 grey "?" squares instead of nothing.
 const unknown = beyondHint && id != null && unknownShown < 5;
@@ -5610,7 +5677,14 @@ if (visible && id != null && !beyondHint && !notYetPlayed) shown += 1;
 if (visible && unknown) unknownShown += 1;
 this.sequenceCueSquares[i]!.setProperties({
 display: id == null || (beyondHint && !unknown) || notYetPlayed ? 'none' : 'flex',
-backgroundColor: id == null ? 0 : unknown ? 0x8a8f98 : WALL_TONE_PADS[id].color,
+backgroundColor: id == null ? 0 : unknown ? 0x8a8f98
+: dimmed ? this.dimSequenceColor(WALL_TONE_PADS[id].color, 0.55)
+: current && !blinkOn ? this.dimSequenceColor(WALL_TONE_PADS[id].color, 0.35)
+: WALL_TONE_PADS[id].color,
+});
+this.sequenceCueArrows[i]!.setProperties({
+display: i === arrowAt && id != null && !notYetPlayed ? 'flex' : 'none',
+text: '\u25BA',
 });
 this.sequenceCueNames[i]!.setProperties({
 display: id != null && !notYetPlayed && ((names && !beyondHint) || unknown) ? 'flex' : 'none',
