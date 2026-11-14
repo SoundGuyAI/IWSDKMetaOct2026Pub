@@ -151,6 +151,9 @@ test('achievement category, menu line and system hooks are wired', () => {
   assert.ok(ui.includes('id="wall-tones-movement-row"'), 'menu movement row');
   assert.ok(ui.includes('id="wall-tones-movement-head"'), 'head field on the same line');
   assert.ok(ui.includes('id="wall-tones-movement-pad"'), 'pad reach field on the same line');
+  assert.ok(ui.includes('id="wall-tones-movement-total-row"'), 'lifetime total row (owner Nov 14: session and total)');
+  assert.ok(ui.includes('id="wall-tones-movement-total"'), 'total movement field');
+  assert.ok(sys.includes('movementRowTotalDm'), 'total row refreshes on whole-decimeter change');
   assert.ok(sys.includes('tickMovementTracking'), 'per-frame headset sampling');
   assert.ok(sys.includes('noteCorrectPadPress'), 'pad reach hook on correct presses');
   assert.ok(sys.includes('pad != null && physicalTouch'), 'pad reach counts physical touches only, not ray/gaze');
