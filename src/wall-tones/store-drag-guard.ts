@@ -21,6 +21,40 @@ let dragged = false;
 
 const attached = new WeakSet<object>();
 
+/** A new press began on a tile: forget any earlier drag. */
+export const resetStorePress = (): void => {
+  dragged = false;
+};
+
+/**
+ * uikit `onScroll` hook for the Store list (runs on every scroll step).
+ *
+ * 1. uikit stamps a "was scrolled" flag on the pointer's native event and
+ *    zeroes later deltas while it is set. XR pointers reuse ONE native-event
+ *    object for every move of every drag, so after the first few px the flag
+ *    stays set and the drag stalls (and later drags never start). The Store
+ *    list has no nested scroller to protect, so clear the flag every step.
+ * 2. A pointer-driven scroll step means the press is a drag, not a tap.
+ */
+export function storeListOnScroll(
+  newX: number,
+  newY: number,
+  scrollPosition: { value?: number[] | undefined } | undefined,
+  event?: { nativeEvent?: unknown },
+): undefined {
+  const ne = event?.nativeEvent;
+  if (ne != null && typeof ne === 'object') {
+    for (const sym of Object.getOwnPropertySymbols(ne)) {
+      if (sym.description === 'was-scrolled') (ne as Record<symbol, unknown>)[sym] = undefined;
+    }
+  }
+  if (event != null) {
+    const cur = scrollPosition?.value;
+    if (cur == null || cur[0] !== newX || cur[1] !== newY) dragged = true;
+  }
+  return undefined;
+}
+
 /** Whether the press that is ending (or just ended) was a drag. */
 export const storePressWasDrag = (): boolean => dragged;
 
