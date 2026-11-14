@@ -418,8 +418,9 @@ export class NodLabSystem extends createSystem({}) {
     this.flatDetector.setEnabled(!immersive);
     // The pointer tracker is fed even while not listening, so its baseline
     // already tracks the resting pointer; resetting it here would re-anchor
-    // mid-swing for a user who started gesturing during the line.
-    this.tiltTracker.reset();
+    // mid-swing for a user who started gesturing during the line. The tilt
+    // tracker now feeds the same way (rest-pose tracking while still), so
+    // it is left alone for the same reason.
     this.listeningIdleMs = 0;
     this.lastIdleTickAt = performance.now();
     this.phase = 'listening';
