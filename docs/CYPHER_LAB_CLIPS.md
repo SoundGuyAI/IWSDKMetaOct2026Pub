@@ -28,7 +28,7 @@ Generation/publish route: the established chunk + `decode-voice-clips`
 workflow (see the story clips). The tar for lab clips must extract into
 `public/audio/speech/cypher-lab/<set>/`.
 
-## Lines (16 per set, same wording both sets)
+## Lines (17 per set, same wording both sets)
 
 | id | text |
 | --- | --- |
@@ -48,6 +48,7 @@ workflow (see the story clips). The tar for lab clips must extract into
 | `retry-2` | Still nothing. Widening the band. Can you hear me now? |
 | `retry-3` | No? Rerouting through the relay. Can you hear me now? |
 | `retry-4` | Not yet. Pushing full power. Can you hear me now? |
+| `no-input-nod` | Nothing came through. I saw no movement. Let us try again. (DRAFT pending owner approval, Nov 14; silent text-preview until approved) |
 
 ## Canon constraints (from the reviewed Act 1 draft)
 
