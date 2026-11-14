@@ -154,6 +154,7 @@ import {
   nextOpenThreshold,
 } from './economy.js';
 import { storeChipGlyphSrc, storeTileSrc, type TileState as StoreTileState } from './store-icons.js';
+import { attachStoreDragGuard, storePressWasDrag } from './store-drag-guard.js';
 import { STORE_SCROLL_STEP, clampStoreScroll, storeScrollEnabled } from './store-scroll.js';
 import { SAVER_PRICE_BARS, saverRetryPlan, saverUnitsForStreak } from './consumable-values.js';
 import {
@@ -4311,6 +4312,7 @@ panel
 private reconcileStore(panel: UIKitMLAsset): void {
 const list = panel.getElementById<UIKit.Container>('store-tree-list');
 if (list == null) return;
+attachStoreDragGuard(list as never);
 while (list.children.length > 0) {
 list.remove(list.children[0]!);
 }
@@ -4473,6 +4475,8 @@ text: t.price,
 tile.name = `store-tile-${t.id}`;
 tile.addEventListener('click', (event) => {
 event.stopPropagation();
+// A pinch/ray drag that ends over a tile is a scroll, not a selection.
+if (storePressWasDrag()) return;
 this.selectStoreTile(t.id);
 });
 return tile;
