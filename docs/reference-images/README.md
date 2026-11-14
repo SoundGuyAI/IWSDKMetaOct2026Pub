@@ -2,7 +2,7 @@
 
 Visual references made for Wall Tones, with an index of Oded's own comments, picks and corrections: see [index.md](index.md).
 
-Files are original bytes at full resolution (not recompressed). Names are prefixed by section: `ui-`, `armband-`, `rift-`, `marketing-`.
+Files are original bytes at full resolution (not recompressed). Names are prefixed by section: `ui-`, `armband-`, `rift-`, `marketing-`. The upload tool also put a number in front of each image file name (`N-`). `index.md` has the table of stored names.
 
 ## Visibility note
 
