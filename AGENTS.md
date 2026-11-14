@@ -24,6 +24,10 @@ After each Wall Tones PR update (including pushed review fixes), merge, or revie
 `WALL_TONES_TODO.md` the same day: move finished items to Done and mark active
 ones in progress (owner rule, 2026-11-08). Keep pushed but unaccepted work in progress, and record partial uploads and pending device checks rather than marking it done.
 
+## Reference images
+
+`docs/reference-images/` holds the reference images made for Wall Tones (armband, rift, marketing concept art, unlock glow) with `index.md`, which has Oded's own comments, picks and rejections. Read `docs/reference-images/index.md` before changing anything that has a visual reference. Concept art is direction, not gameplay or final art. Some earlier mockups were not recovered; the index lists their comments without images. When you make a new reference image or get new comments, add the file and an index row in the same PR. Each project keeps its references in its own repo. This repo is public until Oded makes it private, so only add images he asked to archive.
+
 ## What is not standard Vite
 
 **`iwsdk.config.json` is the project authority, not `vite.config.ts`.** It selects
