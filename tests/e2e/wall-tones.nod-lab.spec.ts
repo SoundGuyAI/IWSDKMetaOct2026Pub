@@ -141,7 +141,7 @@ test('intro no loops through the retry line until a yes', async ({ page }) => {
   let snapshot = await bridge(page);
   expect(snapshot?.lastAnswer).toBe('no');
   // The full connection-check intro must not replay after a no.
-  expect(snapshot?.clipPlays['intro-nod'] ?? 0).toBe(1);
+  expect(snapshot?.clipPlays['intro-nod-desktop'] ?? 0).toBe(1);
   // Approved Nov 14: a second no rotates to the first variation clip.
   await answer(page, 'no');
   await waitPhase(page, 'listening', 'retry');
@@ -202,6 +202,11 @@ test('no input inside the 6s answer window re-asks the same prompt', async ({
   expect(silent?.cueCount).toBe(0);
   expect(silent?.clipPlays['no-input-1']).toBe(1);
   await waitPhase(page, 'listening', 'intro');
+  // Nov 14: a short device-specific reminder follows the no-input line;
+  // the full intro is not repeated.
+  const rearmed = await bridge(page);
+  expect(rearmed?.clipPlays['remind-desktop']).toBe(1);
+  expect(rearmed?.clipPlays['intro-nod-desktop']).toBe(1);
 
   // The dialogue still answers normally afterwards.
   await answer(page, 'yes');
