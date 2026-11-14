@@ -8,6 +8,7 @@ import { captureCypherCast } from './cypher-voice.js';
 import {selectionPanelPose, horizontalLookAway, panelOverlapsPad, rectangleInsidePolygon} from './panel-placement.js';
 import { shouldAnnounceRecord } from './record-feedback.js';
 import { BarFloatPool } from './bar-floats.js';
+import { AchievementCelebration } from './achievement-celebration.js';
 import { achievementIconSrc, achievementTileSrc } from './achievement-icons.js';
 import { hearingSubtitlesEnabled, colorNamesEnabled, currentSpokenCaption, voicesOffEnabled } from './accessibility.js';
 import {
@@ -237,6 +238,12 @@ headCaptionVisibleText: string | null;
 /** Test-only: drives the exact head-caption setter path tickHeadCaption uses. */
 probeHeadCaptionText: (text: string) => void;
 barFloatsActive: boolean;
+/** Achievement unlock celebration is playing or queued (test-only). */
+celebrationActive: boolean;
+/** "title|name" of the showing celebration, else null (test-only). */
+celebrationText: string | null;
+/** Count of celebration shows that requested sound effects (test-only). */
+celebrationSfxPlays: number;
 infoRowVisible: boolean;
 scoreInfoVisible: boolean;
 gameExplanationDisplay: unknown;
@@ -249,6 +256,12 @@ buyAutoplay: () => void;
 buyReplay: () => void;
 buySaver: () => void;
 buyTopSecret: () => void;
+/** Test-only: plays the celebration for an arbitrary achievement def. */
+demoCelebration: (id: string, label: string) => void;
+/** Test-only: freezes the celebration show clock for deterministic shots. */
+setCelebrationFrozen: (frozen: boolean) => void;
+/** Test-only: the Achievements button's projected screen position. */
+readonly achievementsButtonScreen: { x: number; y: number } | null;
 /** Test-only: spends one Replay through the Repeat button path. */
 repeatPattern: () => void;
 /** Test-only: selects a store tile like a tap on its tile. */
@@ -892,6 +905,8 @@ return;
 }
 this.tickSkipVoiceButton();
 this.barFloats.update(delta, this.world.camera, this.isFlatView());
+this.cacheAchievementsButtonHome();
+this.celebration.update(delta, this.world.camera, this.world.scene, this.isFlatView());
 if (this.pads.length > 0) {
 const glowTime = performance.now() / 1000;
 for (const pad of this.pads) {
@@ -1107,6 +1122,7 @@ this.experienceActive = false;
 this.flowPhase = 'inactive';
 this.setCypherSeam(false);
 this.barFloats.clear();
+this.celebration.clear(this.world.scene);
 this.achievementsOpen = false;
 this.storeOpen = false;
 this.gameOverOpen = false;
@@ -1995,6 +2011,26 @@ properties?: { value?: { display?: string } };
 return [id, el?.properties?.value?.display ?? null];
 }));
 },
+get celebrationActive() {
+return system.celebration.isActive();
+},
+get celebrationText() {
+return system.celebration.debugText();
+},
+// Test-only: how many celebration shows requested their sound effects.
+get celebrationSfxPlays() {
+return system.celebration.debugSfxPlays();
+},
+// Test-only: the projected screen position of the celebration's effective
+// fly target (the button's live position, or its last home position while
+// a menu popup hides menu-view).
+get achievementsButtonScreen() {
+const target = system.achievementsButtonWorldPublic();
+if (target == null) return null;
+// Clone before projecting: the target aliases the cached home vector.
+const p = target.clone().project(system.world.camera);
+return { x: ((p.x + 1) * window.innerWidth) / 2, y: ((1 - p.y) * window.innerHeight) / 2 };
+},
 get barFloatsActive() {
 return system.barFloats.isActive();
 },
@@ -2030,6 +2066,12 @@ system.onBuySelected();
 buyTopSecret: () => {
 system.forceSelectStoreTile('secret');
 system.onBuySelected();
+},
+demoCelebration: (id: string, label: string) => {
+system.demoCelebration(id, label);
+},
+setCelebrationFrozen: (frozen: boolean) => {
+system.celebration.frozen = frozen;
 },
 repeatPattern: () => {
 void system.onRepeatPattern();
@@ -5195,8 +5237,10 @@ list.add(popup);
 list.setProperties({ overflow: 'scroll', onScroll: () => { hide(); } });
 }
 
-/** Visual-only achievement toast; voice stays milestone-only (user rule). */
-private achievementToastUntil = 0;
+/** Achievement unlock celebration (item 54): visual-only flare; voice stays
+ * milestone-only (user rule). */
+public readonly celebration = new AchievementCelebration();
+private readonly celebrationTarget = new Vector3();
 /** Bars float animation pool + scratch (no per-frame allocations). */
 public readonly barFloats = new BarFloatPool();
 private readonly barFloatFrom = new Vector3();
@@ -5214,22 +5258,52 @@ private barsFirstEarnedPending = false;
 private showAchievementToasts(): void {
 const toasts = this.economy.drainToasts();
 if (toasts.length === 0) return;
-const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
-const text = toasts.length === 1
-? `Achievement unlocked: ${toasts[0]!.label}`
-: `Achievements unlocked: ${toasts.map((t) => t.label).join(', ')}`;
-panel
-?.getElementById<UIKit.Text>('wall-tones-achievement-toast')
-?.setProperties({ display: 'flex', text });
-this.achievementToastUntil = performance.now() + 5000;
-window.setTimeout(() => {
-if (performance.now() >= this.achievementToastUntil) {
-this.world
-.getSceneObject<UIKitMLAsset>('wall-tones-panel')
-?.getElementById<UIKit.Text>('wall-tones-achievement-toast')
-?.setProperties({ display: 'none' });
+for (const toast of toasts) this.celebration.show(toast, this.achievementsButtonWorld());
 }
-}, 5100);
+// Item 54: the approved celebration replaces the plain panel text toast.
+// The fly-in targets the Achievements button (world position; the flat
+// overlay projects it to the screen, MR flies to it directly).
+// Owner call 2026-11-13: the celebration stays in FRONT of an open menu
+// popup - the popup keeps its state and is not dismissed. But an open
+// popup (store/achievements/game-over) hides menu-view, which collapses
+// the button's layout to the panel corner, so while one is open the fly
+// target is the button's last home position from before the popup opened.
+private readonly achievementsButtonHome = new Vector3();
+private achievementsButtonHomeValid = false;
+private achievementsButtonWorld(): Vector3 | null {
+if (this.storeOpen || this.achievementsOpen || this.gameOverOpen) {
+return this.achievementsButtonHomeValid
+? this.achievementsButtonHome
+: this.readAchievementsButtonWorld();
+}
+return this.readAchievementsButtonWorld();
+}
+private readAchievementsButtonWorld(): Vector3 | null {
+const button = this.world
+.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('achievements-button');
+return button == null
+? null
+: button.getWorldPosition(this.celebrationTarget) as Vector3;
+}
+/** Refresh the button's home position while no popup hides menu-view
+ * (runs in update(); copies into a preallocated vector, no allocation). */
+private cacheAchievementsButtonHome(): void {
+if (this.storeOpen || this.achievementsOpen || this.gameOverOpen) return;
+const live = this.readAchievementsButtonWorld();
+if (live == null) return;
+this.achievementsButtonHome.copy(live);
+this.achievementsButtonHomeValid = true;
+}
+/** Test-only: play the celebration for an arbitrary achievement without
+ * touching unlock state (visual verification driver). */
+public demoCelebration(id: string, label: string): void {
+this.celebration.show({ id, label, description: '' }, this.achievementsButtonWorld());
+}
+/** Test-only: expose the effective fly target for the debug bridge
+ * (aliases internal state; callers must not mutate the returned vector). */
+public achievementsButtonWorldPublic(): Vector3 | null {
+return this.achievementsButtonWorld();
 }
 
 /** +N Bars earned at a pad: float the amount from the pad to the panel's
