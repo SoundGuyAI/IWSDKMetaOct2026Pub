@@ -107,10 +107,13 @@ function glyphPath(ctx: CanvasRenderingContext2D, id: string): void {
     ctx.stroke();
   } else if (id === 'movement') {
     // Double-headed arrow over stride dots: walking between two points.
-    P('M14 28h36M14 28l7-7M14 28l7 7M50 28l-7-7M50 28l-7 7');
-    for (const dx of [-8, 0, 8]) {
+    // Fills the grid like the other glyphs (owner Nov 14: the first pass was
+    // too small to read on the headset, "the Movement achievement has no
+    // icon").
+    P('M8 30h48M8 30l11-11M8 30l11 11M56 30l-11-11M56 30l-11 11');
+    for (const dx of [-12, 0, 12]) {
       ctx.beginPath();
-      ctx.arc(32 + dx, 44, 1.8, 0, Math.PI * 2);
+      ctx.arc(32 + dx, 50, 3, 0, Math.PI * 2);
       ctx.fill();
     }
   } else {
