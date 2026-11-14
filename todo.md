@@ -112,3 +112,7 @@ The merge-ready procedure is an enduring rule for every merge, not work in this 
 - [x] Full local `npm run test:e2e` green before PR push (51 passed; pointer first-press retry hardened).
 - [ ] Headset verification called out separately (not claimed by desktop suite).
 
+
+- [ ] MR armband (backlog 7): Concept A approved Nov 13. Separate feat/mr-armband PR in progress; left/right Accessibility, functional controls, owned Hint/Listen cues and streak readout. No merge or production promotion. Backlog 76 tracks the >20 Hint policy; in-game board surface confirmed. Headset acceptance pending.
+
+Armband verification update (Nov 13): typecheck/build and 102 unit tests pass. Quest-emulator hand-ray assertion check passes (Modifiers open/close, one Replay spent, exact Hint/Autoplay upgrade selection, 20 owned cues, tracking-loss hide, right-arm preference, setup hide). Run with the app-only dev server active: `node tests/xr/wall-tones-armband.mjs` (optional `XR_URL` and `XR_EVIDENCE_DIR`). The test injects its setup access into intercepted dev responses only; no extra production debug access is added. Near-touch remains inconsistent in emulation and is not accepted. Physical headset acceptance remains required. Full desktop E2E: 59/59 pass, including slow tests (22.9 minutes). The existing mute-test fake now models removeEventListener for the new listener cleanup. Separate draft PR pending; physical headset and near-touch acceptance remain open.

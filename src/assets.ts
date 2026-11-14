@@ -1,3 +1,4 @@
+import { createArmbandHousing } from './scene-assets/armband.scene-asset.js';
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
@@ -67,6 +68,8 @@ export default defineAssets({
     'wall-tones-head-caption.uikitml',
     'Wall Tones Head Caption',
   ),
+  'wall-tones-armband-housing': createArmbandHousing(),
+  'wall-tones-armband': uikitml('wall-tones-armband.uikitml', 'Wall Tones Armband'),
   'demo-nav-panel': uikitml('demo-nav.uikitml', 'Demo Nav'),
   'label-grab': uikitml('label-grab.uikitml', 'Grab Label'),
   'label-select': uikitml('label-select.uikitml', 'Select Label'),

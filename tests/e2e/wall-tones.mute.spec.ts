@@ -32,7 +32,7 @@ test('Voices off cancels the menu preview and listener cleanup stops further cal
   let cancels = 0;
   const cleanupFuncs: Array<() => void> = [];
   const context = { voicePreview: { cancel: () => { cancels++; } }, cleanupFuncs };
-  const panel = { getElementById: () => ({ setProperties() {}, addEventListener() {} }) };
+  const panel = { getElementById: () => ({ setProperties() {}, addEventListener() {}, removeEventListener() {} }) };
   try {
     setVoicesOff(false);
     (AppModeSystem.prototype as any).bindSettingsMenu.call(context, panel);
