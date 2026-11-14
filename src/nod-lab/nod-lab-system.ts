@@ -58,6 +58,19 @@ import {
   type LabVoiceStatus,
 } from './lab-voice.js';
 
+/**
+ * Owner, Nov 14: about 6 seconds with no answer at all counts as another
+ * no-case, but Cypher acknowledges that nothing came through and asks to
+ * try again. The wording below is a DRAFT pending owner approval; until
+ * approved (and clips generated) it runs in the lab's silent text-preview
+ * mode like the retry variations did.
+ */
+export const NO_INPUT_TIMEOUT_SEC = 6;
+const NO_INPUT_LINE: LabScriptLine = {
+  clipId: 'no-input-nod',
+  text: 'Nothing came through. I saw no movement. Let us try again.',
+};
+
 const NOD_LAB_SCRIPT: GestureLabScript = buildGestureLabScript(
   {
     clipId: 'intro-nod',
@@ -67,6 +80,7 @@ const NOD_LAB_SCRIPT: GestureLabScript = buildGestureLabScript(
     clipId: 'retry-nod',
     text: 'No? Then the channel is still weak. Let me boost the signal. Try again. Can you hear me now?',
   },
+  NO_INPUT_LINE,
 );
 
 type LabPhase =
@@ -91,6 +105,7 @@ export interface NodLabDebugSnapshot {
   voiceStatus: string;
   answerCount: number;
   cueCount: number;
+  noInputCount: number;
   clipPlays: Record<string, number>;
 }
 
@@ -132,6 +147,9 @@ export class NodLabSystem extends createSystem({}) {
   private answerCount = 0;
   private voiceStatus: LabVoiceStatus | null = null;
   private cueCount = 0;
+  private noInputCount = 0;
+  private listeningIdleMs = 0;
+  private lastIdleTickAt = 0;
   private readonly clipPlays: Record<string, number> = {};
   private readonly baselineQuat = new Quaternion();
   private readonly headQuat = new Quaternion();
@@ -296,6 +314,7 @@ export class NodLabSystem extends createSystem({}) {
     this.lastAnswer = null;
     this.lastAmplitudeDeg = null;
     this.cueCount = 0;
+    this.noInputCount = 0;
     this.retryLoopCount = 0;
     for (const key of Object.keys(this.clipPlays)) {
       delete this.clipPlays[key];
@@ -338,6 +357,8 @@ export class NodLabSystem extends createSystem({}) {
     this.flatDetector.setEnabled(!immersive);
     this.pointerTracker.reset();
     this.tiltTracker.reset();
+    this.listeningIdleMs = 0;
+    this.lastIdleTickAt = performance.now();
     this.phase = 'listening';
     this.renderPanel();
   }
@@ -373,6 +394,29 @@ export class NodLabSystem extends createSystem({}) {
       return;
     }
     await this.playPrompt(this.currentPrompt.id, false);
+  }
+
+  /**
+   * No input inside the answer window: acknowledge that nothing came
+   * through, then re-ask the same prompt (retry variations do not rotate
+   * on a no-input loop). Not an answer: no cue, no answerCount.
+   */
+  private async handleNoInput(): Promise<void> {
+    if (!this.active || this.phase !== 'listening' || this.currentPrompt == null) {
+      return;
+    }
+    const prompt = this.currentPrompt;
+    const seq = ++this.sequence;
+    this.phase = 'responding';
+    this.detector.setEnabled(false);
+    this.flatDetector.setEnabled(false);
+    this.noInputCount += 1;
+    this.renderPanel();
+    await this.speakLine(this.script.noInput ?? NO_INPUT_LINE);
+    if (seq !== this.sequence || !this.active) {
+      return;
+    }
+    await this.playPrompt(prompt.id, false);
   }
 
   private submitAnswer(
@@ -471,6 +515,19 @@ export class NodLabSystem extends createSystem({}) {
     if (!this.active) {
       return;
     }
+    if (this.phase === 'listening' && this.script.noInput != null) {
+      // Answer-window timer (owner, Nov 14): ~6s of no input counts as a
+      // no-case. Runs only while a prompt is actually listening - never
+      // while a line plays, and paused while the tab is hidden.
+      const nowMs = performance.now();
+      if (!document.hidden) {
+        this.listeningIdleMs += nowMs - this.lastIdleTickAt;
+      }
+      this.lastIdleTickAt = nowMs;
+      if (this.listeningIdleMs >= NO_INPUT_TIMEOUT_SEC * 1000) {
+        void this.handleNoInput();
+      }
+    }
     if (this.phase === 'listening' && this.isImmersive()) {
       this.player.head.getWorldQuaternion(this.headQuat);
       this.relativeQuat
@@ -503,7 +560,7 @@ export class NodLabSystem extends createSystem({}) {
         ? 'Listening. Nod for yes, shake for no.'
         : this.tiltState === 'on'
           ? 'Listening. Tilt forward/back for yes, left/right for no - or tap the buttons.'
-          : 'Listening. Drag up-down for yes, left-right for no - or use the buttons (Y/N).',
+          : 'Listening. Move your mouse up or down for yes, left or right for no - or use the buttons (Y/N).',
       responding: 'Answer received.',
       done: 'Link check complete. Cypher out.',
     };
@@ -551,6 +608,7 @@ export class NodLabSystem extends createSystem({}) {
       voiceStatus: this.voiceStatusLine(),
       answerCount: this.answerCount,
       cueCount: this.cueCount,
+      noInputCount: this.noInputCount,
       clipPlays: { ...this.clipPlays },
     };
   }
