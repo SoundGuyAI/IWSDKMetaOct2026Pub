@@ -146,6 +146,7 @@ export interface NodLabDebugSnapshot {
   detectorArmed: boolean;
   flatDetectorArmed: boolean;
   tilt: 'off' | 'on' | 'denied';
+  readonly tiltSensor: boolean;
   immersive: boolean;
   voiceStatus: string;
   answerCount: number;
@@ -178,6 +179,10 @@ export class NodLabSystem extends createSystem({}) {
   private readonly pointerTracker = new PointerGestureTracker();
   private readonly tiltTracker = new TiltBaselineTracker();
   private tiltState: 'off' | 'on' | 'denied' = 'off';
+  // Desktops expose DeviceOrientationEvent without a real sensor (events
+  // carry null angles or never fire), so a granted/unneeded permission is
+  // not evidence of a phone. Only actual sensor data is.
+  private tiltSensorSeen = false;
   private detachPointer: (() => void) | null = null;
   private detachTilt: (() => void) | null = null;
   private readonly voice = new CypherLabVoice();
@@ -411,7 +416,9 @@ export class NodLabSystem extends createSystem({}) {
     this.detector.setEnabled(immersive);
     this.flatDetector.reset();
     this.flatDetector.setEnabled(!immersive);
-    this.pointerTracker.reset();
+    // The pointer tracker is fed even while not listening, so its baseline
+    // already tracks the resting pointer; resetting it here would re-anchor
+    // mid-swing for a user who started gesturing during the line.
     this.tiltTracker.reset();
     this.listeningIdleMs = 0;
     this.lastIdleTickAt = performance.now();
@@ -439,7 +446,40 @@ export class NodLabSystem extends createSystem({}) {
       () => this.flatDetector.isEnabled,
       (sample, now) => this.handleFlatAngles(sample, now, 'tilt'),
     );
+    await this.detectTiltSensor();
     this.renderPanel();
+  }
+
+  /**
+   * Wait briefly for real orientation data before the lab treats the
+   * device as a phone. Resolves on the first reading with actual angles;
+   * on a desktop without a sensor the timeout expires instead.
+   */
+  private detectTiltSensor(timeoutMs = 800): Promise<void> {
+    if (this.tiltSensorSeen) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      const onOrientation = (event: Event) => {
+        const orientation = event as DeviceOrientationEvent;
+        if (orientation.beta != null || orientation.gamma != null) {
+          this.tiltSensorSeen = true;
+          window.removeEventListener('deviceorientation', onOrientation);
+          clearTimeout(timer);
+          resolve();
+        }
+      };
+      const timer = setTimeout(() => {
+        window.removeEventListener('deviceorientation', onOrientation);
+        resolve();
+      }, timeoutMs);
+      window.addEventListener('deviceorientation', onOrientation);
+    });
+  }
+
+  /** Tilt wording only when a real orientation sensor is delivering data. */
+  private hasTiltInput(): boolean {
+    return this.tiltState === 'on' && this.tiltSensorSeen;
   }
 
   private async repeatLine(): Promise<void> {
@@ -485,7 +525,7 @@ export class NodLabSystem extends createSystem({}) {
     if (this.isImmersive()) {
       return 'headset';
     }
-    return this.tiltState === 'on' ? 'tilt' : 'desktop';
+    return this.hasTiltInput() ? 'tilt' : 'desktop';
   }
 
   private remindLine(): LabScriptLine {
@@ -636,7 +676,7 @@ export class NodLabSystem extends createSystem({}) {
       speaking: 'Cypher is transmitting...',
       listening: this.isImmersive()
         ? 'Listening. Nod for yes, shake for no.'
-        : this.tiltState === 'on'
+        : this.hasTiltInput()
           ? 'Listening. Tilt forward/back for yes, left/right for no - or tap the buttons.'
           : 'Listening. Move your mouse up or down for yes, left or right for no - or use the buttons (Y/N).',
       responding: 'Answer received.',
@@ -682,6 +722,7 @@ export class NodLabSystem extends createSystem({}) {
       detectorArmed: this.detector.isEnabled,
       flatDetectorArmed: this.flatDetector.isEnabled,
       tilt: this.tiltState,
+      tiltSensor: this.tiltSensorSeen,
       immersive: this.isImmersive(),
       voiceStatus: this.voiceStatusLine(),
       answerCount: this.answerCount,
