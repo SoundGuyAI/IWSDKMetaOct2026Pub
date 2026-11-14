@@ -7,7 +7,7 @@ import { shouldAnnounceRecord } from './record-feedback.js';
 import { BarFloatPool } from './bar-floats.js';
 import { AchievementCelebration } from './achievement-celebration.js';
 import { achievementIconSrc, achievementTileSrc } from './achievement-icons.js';
-import { MovementTracker, formatMetersNumber, readLifetimeMovementMeters } from './movement.js';
+import { MovementTracker, formatMetersNumber, movementUiVisible, readLifetimeMovementMeters } from './movement.js';
 import { hearingSubtitlesEnabled, colorNamesEnabled, currentSpokenCaption, voicesOffEnabled } from './accessibility.js';
 import {
 ConeGeometry,
@@ -4928,7 +4928,13 @@ popup.setProperties({ display: 'none' });
 const demoParam = typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('demoAchievements');
 const demoLevels: Record<string, number> = { streak: 3, bars: 4, score: 1, presses: 2 };
 type TileCat = { id: string; label: string; description: string; levels: readonly number[]; hidden?: boolean; glyph?: string };
-const tileCats: TileCat[] = [...ACHIEVEMENT_CATEGORIES];
+const showMovement = movementUiVisible({
+immersive: this.world.visibilityState.peek() !== VisibilityState.NonImmersive,
+userAgent: typeof navigator === 'undefined' ? undefined : navigator.userAgent,
+});
+const tileCats: TileCat[] = showMovement
+? [...ACHIEVEMENT_CATEGORIES]
+: ACHIEVEMENT_CATEGORIES.filter((c) => c.id !== 'movement');
 if (demoParam === 'many') {
 const glyphs = ['streak', 'bars', 'store', 'presses', 'score', 'secret'];
 for (let i = 0; i < 6; i++) {
