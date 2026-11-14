@@ -1,3 +1,4 @@
+import { captureCypherCast } from './wall-tones/cypher-voice.js';
 import { hearingSubtitlesEnabled, colorNamesEnabled, setHearingSubtitles, setColorNames, voicesOffEnabled, setVoicesOff } from './wall-tones/accessibility.js';
 /**
  * Switches between the main menu and experience modes by toggling authored
@@ -74,6 +75,17 @@ function persistMode(mode: ExperienceMode): void {
 export class AppModeSystem extends createSystem({}) {
   private mode: ExperienceMode = 'menu';
   private readonly voicePreview = new WallTonesSpeech();
+  private readonly labSpeech = new WallTonesSpeech();
+  private playLabIntro(): void {
+    this.voicePreview.cancel();
+    this.labSpeech.cancel();
+    const cast = captureCypherCast(getVoiceGender());
+    // Queue the whole window now: leaving Lab cancels all remaining lines.
+    void this.labSpeech.speakLabLine('narrator', cast);
+    void this.labSpeech.speakBackgroundEffect('open');
+    void this.labSpeech.speakLabLine('cypher', cast);
+    void this.labSpeech.speakBackgroundEffect('close');
+  }
 
   init(): void {
     this.mode = readStoredMode();
@@ -102,6 +114,10 @@ export class AppModeSystem extends createSystem({}) {
     this.bindDemoNav();
     this.bindWelcomeBack();
     this.applyMode(this.mode, false);
+    this.cleanupFuncs.push(() => this.labSpeech.cancel());
+    const muteLab = () => { if (voicesOffEnabled()) this.labSpeech.cancel(); };
+    window.addEventListener('wall-tones-accessibility-change', muteLab);
+    this.cleanupFuncs.push(() => window.removeEventListener('wall-tones-accessibility-change', muteLab));
     // Static splash in index.html stays up until the menu is usable: buttons
     // are wired (above) AND the menu text can actually render. Panel text
     // waits on the Inter MSDF font chunk, which can arrive seconds after
@@ -179,6 +195,7 @@ export class AppModeSystem extends createSystem({}) {
   }
 
   private applyMode(mode: ExperienceMode, dispatchEvent: boolean): void {
+    this.labSpeech.cancel();
     this.mode = mode;
     persistMode(mode);
 
@@ -253,6 +270,7 @@ export class AppModeSystem extends createSystem({}) {
       primeWallTonesAudioFromGesture();
       unlockSpeechFromGesture();
       this.setMode('lab');
+      this.playLabIntro();
     });
     if (entryButton != null) {
       entryButton.name = 'Btn_Lab';
