@@ -33,6 +33,13 @@ export interface HeadGestureConfig {
   readonly axisDominanceRatio: number;
   /** Quiet time after a reported gesture (seconds). */
   readonly cooldownSec: number;
+  /**
+   * When set, a committed extreme completes its cycle only once the angle
+   * also returns within this distance of baseline (a true out-and-back).
+   * Flat-mode pointer input uses this so a one-way drag toward a button
+   * can never read as a gesture; the headset path leaves it null.
+   */
+  readonly returnToBaselineRad: number | null;
 }
 
 export const DEFAULT_HEAD_GESTURE_CONFIG: HeadGestureConfig = {
@@ -42,6 +49,7 @@ export const DEFAULT_HEAD_GESTURE_CONFIG: HeadGestureConfig = {
   windowSec: 1.4,
   axisDominanceRatio: 1.6,
   cooldownSec: 1.2,
+  returnToBaselineRad: null,
 };
 
 interface CommittedExtreme {
@@ -55,6 +63,7 @@ export class AxisOscillationTracker {
   private extreme = 0;
   private armedAt = -1;
   private lastCommitted: CommittedExtreme | null = null;
+  private pendingCycle: CommittedExtreme | null = null;
   private recentExcursion = 0;
 
   constructor(private readonly config: HeadGestureConfig) {}
@@ -64,6 +73,7 @@ export class AxisOscillationTracker {
     this.extreme = 0;
     this.armedAt = -1;
     this.lastCommitted = null;
+    this.pendingCycle = null;
     this.recentExcursion = 0;
   }
 
@@ -79,6 +89,19 @@ export class AxisOscillationTracker {
   feed(angle: number, now: number): number | null {
     this.recentExcursion += Math.abs(angle);
     let completed: number | null = null;
+    // A committed extreme awaiting the return stroke either completes here
+    // (back near baseline, still inside the window) or expires.
+    if (this.pendingCycle != null) {
+      if (now - this.pendingCycle.startedAt > this.config.windowSec) {
+        this.pendingCycle = null;
+      } else if (
+        Math.abs(angle) <= (this.config.returnToBaselineRad ?? 0)
+      ) {
+        completed = this.pendingCycle.amplitude;
+        this.pendingCycle = null;
+        return completed;
+      }
+    }
     if (this.direction === 0) {
       if (Math.abs(angle) >= this.config.activationRad) {
         this.direction = Math.sign(angle);
@@ -106,7 +129,12 @@ export class AxisOscillationTracker {
         withinWindow &&
         this.lastCommitted == null
       ) {
-        completed = committed.amplitude;
+        if (this.config.returnToBaselineRad == null) {
+          completed = committed.amplitude;
+        } else {
+          // Wait for the return stroke before completing (see config doc).
+          this.pendingCycle = committed;
+        }
       }
       this.lastCommitted = committed;
       // Re-arm from the current angle so the return stroke does not
@@ -126,6 +154,12 @@ export class AxisOscillationTracker {
       now - this.lastCommitted.committedAt > this.config.windowSec
     ) {
       this.lastCommitted = null;
+    }
+    if (
+      this.pendingCycle != null &&
+      now - this.pendingCycle.startedAt > this.config.windowSec
+    ) {
+      this.pendingCycle = null;
     }
   }
 }
