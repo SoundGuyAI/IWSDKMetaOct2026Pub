@@ -60,6 +60,11 @@ only buttons.
   (deviceorientation beta/gamma, `src/nod-lab/tilt-gesture.ts`). A denial
   or a device without the API is respected silently - no re-asking, no
   listener, pointer drag and buttons keep working.
+- Desktop intro caption (owner, Nov 14): on flat desktop the intro line's
+  shown text says to move the mouse up/down for yes and left/right for no
+  instead of nodding your head. Display-only: the approved recorded line
+  is unchanged, so desktop caption and audio intentionally differ until
+  the owner approves a new take.
 - No-input timeout (owner, Nov 14): about 6 s with no answer while a
   prompt is listening counts as another no-case - Cypher acknowledges
   that nothing came through and asks to try again, then the SAME prompt
