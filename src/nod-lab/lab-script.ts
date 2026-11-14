@@ -40,12 +40,13 @@ export interface GestureLabScript {
   readonly feedback: Record<YesNoAnswer, LabScriptLine>;
   readonly prompts: readonly LabPrompt[];
   /**
-   * Spoken when the answer window closes with no input at all (owner,
+   * Rotated when the answer window closes with no input at all (owner,
    * Nov 14: ~6s of silence counts as another no-case, but Cypher
-   * acknowledges nothing came through and asks to try again). Optional so
-   * the shared tree shape stays valid for a lab without the timer.
+   * acknowledges nothing came through and asks to try again; approved set
+   * of variations rotated like the retry lines). Optional so the shared
+   * tree shape stays valid for a lab without the timer.
    */
-  readonly noInput?: LabScriptLine;
+  readonly noInput?: readonly LabScriptLine[];
 }
 
 export const SHARED_LAB_LINES = {
@@ -106,11 +107,12 @@ export const RETRY_VARIATION_LINES: readonly LabScriptLine[] = [
 export function buildGestureLabScript(
   intro: LabScriptLine,
   retry: LabScriptLine,
-  noInput?: LabScriptLine,
+  noInput?: LabScriptLine | readonly LabScriptLine[],
 ): GestureLabScript {
   return {
     feedback: { yes: SHARED_LAB_LINES.yes, no: SHARED_LAB_LINES.no },
-    noInput,
+    noInput:
+      noInput == null || Array.isArray(noInput) ? noInput : [noInput],
     prompts: [
       {
         id: 'intro',
