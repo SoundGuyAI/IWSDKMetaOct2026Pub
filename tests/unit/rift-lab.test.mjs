@@ -245,3 +245,12 @@ test('spent energy removes notes from the cloud', () => {
   assert.equal(game.getNotes().length, Math.ceil(game.getEnergy() / ENERGY_PER_NOTE) * NOTES_PER_SUCCESS);
   assert.ok(game.getNotes().length < 24 * NOTES_PER_SUCCESS);
 });
+
+test('discardRift removes an open rift without sealing or clearing it', () => {
+  const game = new RiftLabGame(() => 0.5);
+  const a = game.spawnRift();
+  const b = game.spawnRift();
+  assert.equal(game.discardRift(a.id), true);
+  assert.deepEqual(game.getRifts().map((r) => r.id), [b.id]);
+  assert.equal(game.discardRift(a.id), false);
+});
