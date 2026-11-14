@@ -46,6 +46,20 @@ export async function requestTiltPermission(): Promise<TiltPermission> {
  * held still. A deliberate nod runs ~1 deg/event; hand settling runs well
  * under this, so stillness tracking never absorbs a real gesture. */
 export const TILT_STILL_DEG_PER_EVENT = 0.17;
+/**
+ * Single-event jump no hand motion can produce (a deliberate gesture is
+ * ~1 deg/event at ~60 Hz): a deviceorientation artifact, either a beta
+ * wrap at +-180 or the iOS gamma reflection when the phone pitches past
+ * vertical. Absorbed into the baseline in feed() instead of the sample.
+ */
+export const TILT_WRAP_JUMP_DEG = 45;
+/**
+ * Smaller gamma jump accepted as the iOS reflection only when beta crossed
+ * +-90 in the same event (the reflection flips gamma's sign; at a shallow
+ * roll the flip is smaller than TILT_WRAP_JUMP_DEG but still not real
+ * motion at ~1 deg/event).
+ */
+export const TILT_FLIP_JUMP_DEG = 10;
 /** Still events before the baseline starts tracking the resting pose (~0.2 s). */
 export const TILT_STILL_EVENTS_TO_TRACK = 12;
 /** Per-event convergence toward the resting pose while still. */
@@ -88,7 +102,29 @@ export class TiltBaselineTracker {
       this.baseBeta = betaDeg;
       this.baseGamma = gammaDeg;
     } else if (this.lastBeta != null && this.lastGamma != null) {
-      const speed = Math.hypot(betaDeg - this.lastBeta, gammaDeg - this.lastGamma);
+      let dBeta = betaDeg - this.lastBeta;
+      let dGamma = gammaDeg - this.lastGamma;
+      // iOS reflects gamma when the phone pitches past vertical (beta
+      // across +-90) and wraps beta at +-180; both arrive as single-event
+      // jumps no hand motion can produce. If the jump reached the sample
+      // it would read as a huge swing - the owner's Nov 14 iPhone run
+      // answered "no" at 76 deg for a forward nod across vertical. Absorb
+      // the artifact into the baseline so the sample stays continuous.
+      const betaCrossedVertical =
+        (this.lastBeta - 90) * (betaDeg - 90) < 0 ||
+        (this.lastBeta + 90) * (betaDeg + 90) < 0;
+      if (Math.abs(dBeta) > TILT_WRAP_JUMP_DEG) {
+        this.baseBeta += dBeta;
+        dBeta = 0;
+      }
+      if (
+        Math.abs(dGamma) > TILT_WRAP_JUMP_DEG ||
+        (betaCrossedVertical && Math.abs(dGamma) > TILT_FLIP_JUMP_DEG)
+      ) {
+        this.baseGamma += dGamma;
+        dGamma = 0;
+      }
+      const speed = Math.hypot(dBeta, dGamma);
       if (speed <= TILT_STILL_DEG_PER_EVENT) {
         this.stillEvents += 1;
         if (this.stillEvents >= TILT_STILL_EVENTS_TO_TRACK) {
