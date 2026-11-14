@@ -61,15 +61,30 @@ import {
 /**
  * Owner, Nov 14: about 6 seconds with no answer at all counts as another
  * no-case, but Cypher acknowledges that nothing came through and asks to
- * try again. The wording below is a DRAFT pending owner approval; until
- * approved (and clips generated) it runs in the lab's silent text-preview
- * mode like the retry variations did.
+ * try again. The four lines were approved verbatim by the owner Nov 14
+ * (quote-replied "Ok" to the exact set) and rotate like the retry
+ * variations. Clips pending generation; until they land the lines run in
+ * the lab's silent text-preview mode.
  */
 export const NO_INPUT_TIMEOUT_SEC = 6;
-const NO_INPUT_LINE: LabScriptLine = {
-  clipId: 'no-input-nod',
-  text: 'Nothing came through. I saw no movement. Let us try again.',
-};
+const NO_INPUT_LINES: readonly LabScriptLine[] = [
+  {
+    clipId: 'no-input-1',
+    text: 'Nothing. No movement on my end. The link is still open. Try again.',
+  },
+  {
+    clipId: 'no-input-2',
+    text: "I saw nothing. Could be the link, could be you didn't move. Again.",
+  },
+  {
+    clipId: 'no-input-3',
+    text: 'Still no movement. Widening the band anyway. Show me once more.',
+  },
+  {
+    clipId: 'no-input-4',
+    text: 'No nod, no shake. Giving the channel a moment. Try again.',
+  },
+];
 
 /**
  * Desktop-only caption for the intro line (owner, Nov 14: on desktop the
@@ -89,7 +104,7 @@ const NOD_LAB_SCRIPT: GestureLabScript = buildGestureLabScript(
     clipId: 'retry-nod',
     text: 'No? Then the channel is still weak. Let me boost the signal. Try again. Can you hear me now?',
   },
-  NO_INPUT_LINE,
+  NO_INPUT_LINES,
 );
 
 type LabPhase =
@@ -421,7 +436,10 @@ export class NodLabSystem extends createSystem({}) {
     this.flatDetector.setEnabled(false);
     this.noInputCount += 1;
     this.renderPanel();
-    await this.speakLine(this.script.noInput ?? NO_INPUT_LINE);
+    const noInputLines = this.script.noInput ?? NO_INPUT_LINES;
+    const line =
+      noInputLines[(this.noInputCount - 1) % noInputLines.length];
+    await this.speakLine(line);
     if (seq !== this.sequence || !this.active) {
       return;
     }
