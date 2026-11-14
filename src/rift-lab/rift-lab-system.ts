@@ -793,7 +793,7 @@ export class RiftLabSystem extends createSystem({
   }
 
   /** Flat mode: if a resize or menu move put an open rift over the menu or off
-   * screen, move or shrink it; if nothing fits it stays and is reported. */
+   * screen, move or shrink it; if nothing fits it is discarded (never left clipped). */
   private reflowFlatRifts(): void {
     if (this.isImmersive() || this.riftViews.size === 0) return;
     const now = performance.now();
@@ -805,7 +805,13 @@ export class RiftLabSystem extends createSystem({
       const radius = v.group.scale.x * RIFT_VISIBLE_RADIUS_M;
       if (!this.flatSpotBlocked(v.position, radius, hasPanel)) continue;
       const spot = this.pickFlatSpot(id);
-      if (spot == null) continue;
+      if (spot == null) {
+        // Nowhere safe on this viewport: drop the open rift rather than leave
+        // it clipped or over the menu. The spawn timer brings one back when a
+        // spot exists again.
+        if (this.game.discardRift(id)) this.removeRiftView(id);
+        continue;
+      }
       v.position.copy(spot.pos);
       v.group.position.copy(spot.pos);
       v.group.scale.setScalar(spot.radius / RIFT_VISIBLE_RADIUS_M);
