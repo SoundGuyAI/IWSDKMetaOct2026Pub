@@ -161,13 +161,13 @@ test('achievement category, menu line and system hooks are wired', () => {
   assert.ok(sys.includes('movementUiVisible'), 'achievement tile filtering uses the shared visibility rule');
 });
 
-test('movement UI hidden on desktop PC flat, visible on XR and mobile (user Nov 14)', () => {
+test('movement UI hidden on desktop PC flat and iPhone, visible on XR and Android (user Nov 14)', () => {
   const pc = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
   const iphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
   const android = 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36';
   assert.equal(movement.movementUiVisible({ immersive: false, userAgent: pc }), false, 'desktop PC flat hides Movement');
   assert.equal(movement.movementUiVisible({ immersive: false, userAgent: undefined }), false, 'no UA means desktop-safe hide');
   assert.equal(movement.movementUiVisible({ immersive: true, userAgent: pc }), true, 'immersive session always shows');
-  assert.equal(movement.movementUiVisible({ immersive: false, userAgent: iphone }), true, 'phone keeps Movement');
+  assert.equal(movement.movementUiVisible({ immersive: false, userAgent: iphone }), false, 'iPhone hides Movement until phone movement is implemented (user Nov 14)');
   assert.equal(movement.movementUiVisible({ immersive: false, userAgent: android }), true, 'Android phone keeps Movement');
 });
