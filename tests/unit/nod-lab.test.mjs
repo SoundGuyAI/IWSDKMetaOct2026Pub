@@ -137,6 +137,15 @@ const intro = { clipId: 'intro-nod', text: 'intro line' };
 const retry = { clipId: 'retry-nod', text: 'retry line' };
 const tree = buildGestureLabScript(intro, retry);
 
+test('script builder carries the optional no-input line', () => {
+  const withNoInput = buildGestureLabScript(intro, retry, {
+    clipId: 'no-input-nod',
+    text: 'Nothing came through. I saw no movement. Let us try again.',
+  });
+  assert.equal(withNoInput.noInput?.clipId, 'no-input-nod');
+  assert.equal(buildGestureLabScript(intro, retry).noInput, undefined);
+});
+
 test('dialogue tree: intro no goes to the short retry loop, branches converge at q3 then end', () => {
   const p = labPromptById(tree, 'intro');
   assert.equal(labAnswerFollowUp(p, 'no').branch.clipId, 'retry-nod');
@@ -332,6 +341,9 @@ test('a one-way pointer drag (toward a button) never answers', () => {
 });
 
 test('a small pointer wiggle around a rested spot does not fire', () => {
+  // Guard floor: +-12px jitter. At the tuned 2 px/deg a +-12px wiggle reads
+  // 12 deg below the 14 deg peak; +-20px jitter can now complete a cycle,
+  // the accepted trade for the smaller desktop threshold.
   const detector = new HeadNodShakeDetector({
     ...DEFAULT_HEAD_GESTURE_CONFIG,
     returnToBaselineRad: DEFAULT_HEAD_GESTURE_CONFIG.activationRad,
@@ -341,13 +353,13 @@ test('a small pointer wiggle around a rested spot does not fire', () => {
   now = 0;
   tracker.feed(200, 200, 0);
   // Move far away slowly (no cycle), rest (a real resting pointer emits no
-  // events), then wiggle +-20px around the new spot.
+  // events), then wiggle +-12px around the new spot.
   for (let i = 1; i <= 30; i += 1) { now += 0.1; tracker.feed(200 + i * 12, 200, now); }
   now += 4;
   let fired = false;
   for (let i = 0; i < 20; i += 1) {
     now += step;
-    const s = tracker.feed(560 + (i % 2 === 0 ? 20 : -20), 200, now);
+    const s = tracker.feed(560 + (i % 2 === 0 ? 12 : -12), 200, now);
     fired = fired || detector.feed(s.pitchDeg * D, s.yawDeg * D, now) != null;
   }
   assert.equal(fired, false);
@@ -415,6 +427,8 @@ test('null tilt angles (unsupported sensor) produce no sample', () => {
 test('pointer scale keeps a deliberate flick above the peak threshold', () => {
   // A 90px flick must read as at least the 14 deg peak the detector needs.
   assert.ok(45 / POINTER_PX_PER_DEG >= 14); // 45px flick now clears the peak threshold
+  // Desktop tuning (user request): 2 px per degree, so a nod peaks at ~28px.
+  assert.equal(POINTER_PX_PER_DEG, 2);
 });
 
 test('a fast move, a pause, then a wiggle does not fire (idle re-prime)', () => {
@@ -426,13 +440,14 @@ test('a fast move, a pause, then a wiggle does not fire (idle re-prime)', () => 
   detector.setEnabled(true);
   now = 0;
   tracker.feed(200, 200, 0);
-  // Fast flick across the screen (0.15s), then rest 1s, then wiggle.
+  // Fast flick across the screen (0.15s), then rest 1s, then wiggle +-12px
+  // (the +-20px floor moved with the 2 px/deg desktop tuning).
   for (let i = 1; i <= 10; i += 1) { now += 0.015; tracker.feed(200 + i * 40, 200, now); }
   now += 1;
   let fired = false;
   for (let i = 0; i < 20; i += 1) {
     now += step;
-    const s = tracker.feed(600 + (i % 2 === 0 ? 20 : -20), 200, now);
+    const s = tracker.feed(600 + (i % 2 === 0 ? 12 : -12), 200, now);
     fired = fired || detector.feed(s.pitchDeg * D, s.yawDeg * D, now) != null;
   }
   assert.equal(fired, false);
