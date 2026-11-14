@@ -216,6 +216,68 @@ test('no input inside the 6s answer window re-asks the same prompt', async ({
   expect(after?.answerCount).toBe(1);
 });
 
+test('after a no-input line the detector is already armed while the reminder plays', async ({
+  page,
+}) => {
+  test.setTimeout(90000);
+  await page.mouse.click(1100, 320);
+  await waitPhase(page, 'idle');
+  // Fixed 4s silent pacing for every line makes the sequencing observable:
+  // the reminder speaks for ~4s after the no-input line, so an immediate
+  // phase read can only show 'listening' when the arm precedes the reminder.
+  await page.evaluate(() => {
+    (window as unknown as { __labLineReadingMs: number }).__labLineReadingMs =
+      4000;
+  });
+  await page.evaluate(() =>
+    (window as unknown as { __nodLabDebug: { start: () => void } }).__nodLabDebug.start(),
+  );
+  await waitPhase(page, 'listening', 'intro');
+
+  // Say nothing; the no-input line and then the reminder are spoken.
+  await page.waitForFunction(
+    () => {
+      const snapshot = (
+        window as unknown as {
+          __nodLabDebug?: { snapshot: () => Snapshot };
+        }
+      ).__nodLabDebug?.snapshot();
+      return (snapshot?.clipPlays['remind-desktop'] ?? 0) >= 1;
+    },
+    null,
+    { timeout: 30000 },
+  );
+  // Nov 14 desktop retest: the no-input line ends with "try again", which
+  // is the user's cue to move; if the detector re-arms only after the
+  // reminder finishes, every gesture made on that cue is silently dropped.
+  // The reminder is still speaking at this point, so the phase must already
+  // be 'listening'.
+  const duringRemind = await bridge(page);
+  expect(duringRemind?.phase).toBe('listening');
+
+  // And a gesture started on the "try again" cue counts as the answer.
+  await page.evaluate(() =>
+    (async () => {
+      const fire = (x: number, y: number) =>
+        window.dispatchEvent(
+          new PointerEvent('pointermove', { clientX: x, clientY: y }),
+        );
+      for (let i = 1; i <= 6; i += 1) {
+        fire(640, 400 + (110 * i) / 6);
+        await new Promise((r) => setTimeout(r, 30));
+      }
+      for (let i = 5; i >= 0; i -= 1) {
+        fire(640, 400 + (110 * i) / 6);
+        await new Promise((r) => setTimeout(r, 30));
+      }
+    })(),
+  );
+  await waitPhase(page, 'listening', 'q2');
+  const after = await bridge(page);
+  expect(after?.lastAnswer).toBe('yes');
+  expect(after?.answerCount).toBe(1);
+});
+
 test('flat mode: mouse drag gestures answer without buttons (up-down = yes, left-right = no)', async ({
   page,
 }) => {
