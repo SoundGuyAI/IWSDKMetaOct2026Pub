@@ -35,6 +35,32 @@ is Oded's decision first.
   identical. The panel shows live pitch/yaw, detector state and the last
   classification so misreads are visible immediately.
 
+## Flat-mode gesture inputs (added Nov 14)
+
+Owner request (Nov 14): desktop and mobile need real gestures too, not
+only buttons.
+
+- Desktop: a mouse drag that swings up-and-down answers yes, left-right
+  answers no (`src/nod-lab/pointer-gesture.ts`). Pointer positions become
+  baseline-relative degrees (3 px per degree) and feed the SAME detector,
+  configured with `returnToBaselineRad` so a cycle completes only on a
+  true out-and-back swing: a one-way drag toward the buttons never
+  answers. After a pause over 0.6 s the baseline re-anchors at the
+  pointer's resting spot and the detector resets (a stale anchor would
+  otherwise break the return-to-baseline reading); the 0.6 s limit sits
+  inside the 1.4 s gesture window, which assumes roughly frame-rate event
+  delivery - true on real devices, while very slow renderers can stretch
+  a swing past the window.
+- Mobile: the Start tap asks once for motion access where the platform
+  gates it (iOS `DeviceOrientationEvent.requestPermission()`); granted,
+  tilting the phone forward/back answers yes, left/right answers no
+  (deviceorientation beta/gamma, `src/nod-lab/tilt-gesture.ts`). A denial
+  or a device without the API is respected silently - no re-asking, no
+  listener, pointer drag and buttons keep working.
+- Both paths sample sensors only while a lab prompt is listening; nothing
+  is tracked outside the lab. Headset detection is unchanged
+  (`returnToBaselineRad: null`).
+
 ## Voice
 
 Lines are Cypher clips (Kore F / Algenib M, opposite the narrator) specified
@@ -52,8 +78,21 @@ text-only mode.
 - TypeScript, production build, unit tests, e2e suite (flat Chromium):
   menu button wiring, full dialogue tree across both branches and the
   intro retry loop, answer echo order, detector unit behavior (nod, shake,
-  rejection of slow drifts, small wobbles and mixed-axis motion, cooldown).
+  rejection of slow drifts, small wobbles and mixed-axis motion, cooldown,
+  pointer-drag and tilt gesture classification, rejection of one-way
+  drags, rested-spot wiggles and drags that never return to baseline).
 - Preview loads on desktop; the lab opens, runs and returns to the menu.
+- Flat-mode pointer gestures e2e: a scripted down-up pointer swing answers
+  yes and a left-right swing answers no on the live dialogue (real window
+  pointermove path).
+
+## NOT verified - needs Oded's pass
+
+- Phone tilt on real iOS/Android hardware: the permission prompt copy,
+  axis feel (beta/gamma, portrait only) and sensitivity. Everything
+  sensor-side was verified by unit test only; no real device run yet.
+- Mouse-drag gesture feel on a real desktop browser (event rate, swing
+  size): e2e proves the path, not the ergonomics.
 
 ## NOT verified - needs Oded's headset pass
 
