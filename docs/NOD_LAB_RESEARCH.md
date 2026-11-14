@@ -76,8 +76,14 @@ only buttons.
   that nothing came through and asks to try again, then the SAME prompt
   is re-armed (retry variations do not rotate, no answer cue, no advance
   in the tree). The timer runs only during the listening phase and pauses
-  while the tab is hidden. The acknowledgment line's wording is a draft
-  pending owner approval and plays in silent text-preview until then.
+  while the tab is hidden. The acknowledgment lines were approved
+  verbatim by the owner Nov 14 and their clips are live.
+  The prompt re-arms BEFORE the short device reminder plays, not after:
+  the acknowledgment ends with "try again", the user's natural cue to
+  move, and an arm that waited for the reminder to finish dropped every
+  gesture made on that cue (owner's Nov 14 desktop retest). The no-input
+  clock restarts when the reminder finishes, so the full timeout still
+  runs from the end of speech.
 - Both paths sample sensors only while a lab prompt is listening; nothing
   is tracked outside the lab. Headset detection is unchanged
   (`returnToBaselineRad: null`).
