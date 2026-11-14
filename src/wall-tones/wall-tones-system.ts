@@ -154,6 +154,7 @@ import {
   nextOpenThreshold,
 } from './economy.js';
 import { storeChipGlyphSrc, storeTileSrc, type TileState as StoreTileState } from './store-icons.js';
+import { SCROLL_DEBUG, attachStoreScrollDebug, scrollDebugCounts, scrollDebugText } from './store-scroll-debug.js';
 import { STORE_SCROLL_STEP, clampStoreScroll, storeScrollEnabled } from './store-scroll.js';
 import { SAVER_PRICE_BARS, saverRetryPlan, saverUnitsForStreak } from './consumable-values.js';
 import {
@@ -641,6 +642,7 @@ this.bindPanelIfNeeded();
 // early-out inside.
 if (this.storeOpen) {
 this.syncStoreScrollButtons();
+if (SCROLL_DEBUG) this.updateScrollDebugLine();
 }
 if (!this.useDesktopPath()) {
 this.noteDominantHandFromInput();
@@ -4279,6 +4281,21 @@ list.scrollPosition.value = [0, next];
 this.syncStoreScrollButtons();
 }
 
+/** TEMP (?scrollDebug=1): live pointer/drag counters under the store tree. */
+private scrollDebugText: UIKit.Text | null = null;
+private updateScrollDebugLine(): void {
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+const list = panel?.getElementById<UIKit.Container>('store-tree-list');
+const host = panel?.getElementById<UIKit.Container>('store-popup-card');
+if (list == null || host == null) return;
+if (this.scrollDebugText == null || this.scrollDebugText.parent == null) {
+this.scrollDebugText = new UIKit.Text({ fontSize: 13, color: 0xffe040, text: '' });
+this.scrollDebugText.name = 'store-scroll-debug';
+host.add(this.scrollDebugText);
+}
+this.scrollDebugText.setProperties({ text: scrollDebugText(list) });
+}
+
 /** Dim the chevron that cannot scroll further; reads the live position so
  * drag/wheel/programmatic scrolls all update the same state. */
 private syncStoreScrollButtons(): void {
@@ -4311,6 +4328,7 @@ panel
 private reconcileStore(panel: UIKitMLAsset): void {
 const list = panel.getElementById<UIKit.Container>('store-tree-list');
 if (list == null) return;
+if (SCROLL_DEBUG) attachStoreScrollDebug(list as never);
 while (list.children.length > 0) {
 list.remove(list.children[0]!);
 }
@@ -5051,7 +5069,7 @@ setSel(true);
 list.add(tile);
 }
 list.add(popup);
-list.setProperties({ overflow: 'scroll', onScroll: () => { hide(); } });
+list.setProperties({ overflow: 'scroll', onScroll: () => { scrollDebugCounts.scroll++; hide(); } });
 }
 
 /** Achievement unlock celebration (item 54): visual-only flare; voice stays
