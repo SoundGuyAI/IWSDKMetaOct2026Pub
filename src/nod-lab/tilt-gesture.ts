@@ -42,14 +42,41 @@ export async function requestTiltPermission(): Promise<TiltPermission> {
   return 'unneeded';
 }
 
-/** Baseline-relative device orientation (beta = pitch, gamma = roll). */
+/** Angular speed (deg per ~60 Hz event) below which the phone reads as
+ * held still. A deliberate nod runs ~1 deg/event; hand settling runs well
+ * under this, so stillness tracking never absorbs a real gesture. */
+export const TILT_STILL_DEG_PER_EVENT = 0.17;
+/** Still events before the baseline starts tracking the resting pose (~0.2 s). */
+export const TILT_STILL_EVENTS_TO_TRACK = 12;
+/** Per-event convergence toward the resting pose while still. */
+export const TILT_REST_TRACK_ALPHA = 0.2;
+/**
+ * Baseline-relative device orientation (beta = pitch, gamma = roll).
+ *
+ * The baseline is not frozen at arm time: a phone handed around or used
+ * while cooking rarely sits at the same pose twice, and an anchor grabbed
+ * mid-motion makes the detector's return-to-baseline requirement
+ * unachievable (every later gesture expires undetected - the owner's
+ * Nov 14 iPhone failure). While the phone is still the baseline tracks
+ * the resting pose instead, so a gesture always reads as out-and-back
+ * from where the phone actually rests. A committed cycle whose return
+ * stroke was swallowed by the stale anchor then completes as the anchor
+ * converges; the detector is deliberately not reset on anchor movement
+ * (that reset is what killed those returns).
+ */
 export class TiltBaselineTracker {
   private baseBeta: number | null = null;
   private baseGamma: number | null = null;
+  private lastBeta: number | null = null;
+  private lastGamma: number | null = null;
+  private stillEvents = 0;
 
   reset(): void {
     this.baseBeta = null;
     this.baseGamma = null;
+    this.lastBeta = null;
+    this.lastGamma = null;
+    this.stillEvents = 0;
   }
 
   /** Null angles (desktop laptops, some browsers) produce no sample. */
@@ -60,7 +87,20 @@ export class TiltBaselineTracker {
     if (this.baseBeta == null || this.baseGamma == null) {
       this.baseBeta = betaDeg;
       this.baseGamma = gammaDeg;
+    } else if (this.lastBeta != null && this.lastGamma != null) {
+      const speed = Math.hypot(betaDeg - this.lastBeta, gammaDeg - this.lastGamma);
+      if (speed <= TILT_STILL_DEG_PER_EVENT) {
+        this.stillEvents += 1;
+        if (this.stillEvents >= TILT_STILL_EVENTS_TO_TRACK) {
+          this.baseBeta += (betaDeg - this.baseBeta) * TILT_REST_TRACK_ALPHA;
+          this.baseGamma += (gammaDeg - this.baseGamma) * TILT_REST_TRACK_ALPHA;
+        }
+      } else {
+        this.stillEvents = 0;
+      }
     }
+    this.lastBeta = betaDeg;
+    this.lastGamma = gammaDeg;
     return {
       pitchDeg: betaDeg - this.baseBeta,
       yawDeg: gammaDeg - this.baseGamma,
@@ -69,9 +109,11 @@ export class TiltBaselineTracker {
 }
 
 /**
- * Attach a deviceorientation feed. The handler only samples while `armed()`
- * is true (a lab prompt listening in flat mode), so orientation is never
- * tracked outside the lab. Returns the detach function.
+ * Attach a deviceorientation feed. Events feed the tracker even while
+ * `armed()` is false, so the resting-pose baseline already tracks the
+ * phone when a prompt arms; samples are reported only while armed (a lab
+ * prompt listening in flat mode), so orientation is never tracked for
+ * answers outside the lab. Returns the detach function.
  */
 export function attachTiltTracker(
   target: Pick<Window, 'addEventListener' | 'removeEventListener'>,
@@ -80,14 +122,12 @@ export function attachTiltTracker(
   onSample: (sample: GestureAngleSample, nowSec: number) => void,
 ): () => void {
   const onOrientation = (event: Event) => {
-    if (!armed()) {
-      return;
-    }
     const orientation = event as DeviceOrientationEvent;
     const sample = tracker.feed(orientation.beta, orientation.gamma);
-    if (sample != null) {
-      onSample(sample, performance.now() / 1000);
+    if (sample == null || !armed()) {
+      return;
     }
+    onSample(sample, performance.now() / 1000);
   };
   target.addEventListener('deviceorientation', onOrientation);
   return () => target.removeEventListener('deviceorientation', onOrientation);
