@@ -14,6 +14,8 @@ const FILL: Record<string, [string, string]> = {
   listen: ['#38bdf8', '#1d6f96'],
   hint: ['#f2c14e', '#91732e'],
   autoplay: ['#4cc38a', '#2d7552'],
+  play: ['#f472b6', '#a03d75'],
+  index: ['#eab308', '#8a6d14'],
   replay: ['#4a90e2', '#2c5687'],
   saver: ['#e5534b', '#89312d'],
   secret: ['#a78bfa', '#645396'],
@@ -42,6 +44,22 @@ function glyphPath(ctx: CanvasRenderingContext2D, id: string): void {
   } else if (id === 'autoplay') {
     // Play triangle.
     P('M24 14l26 18-26 18z');
+  } else if (id === 'index') {
+    // Pointer arrow over a pattern dot row (item 36/69).
+    P('M22 12l20 16-10 2 5 10-5 3-5-10-10 7z');
+    for (const x of [18, 32, 46]) {
+      ctx.beginPath();
+      ctx.arc(x, 54, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (id === 'play') {
+    // Play triangle over a row of tone dots: tones on demand (item 66).
+    P('M24 10l24 15-24 15z');
+    for (const x of [23, 32, 41]) {
+      ctx.beginPath();
+      ctx.arc(x, 52, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
   } else if (id === 'replay') {
     // Circular arrow.
     ctx.beginPath();

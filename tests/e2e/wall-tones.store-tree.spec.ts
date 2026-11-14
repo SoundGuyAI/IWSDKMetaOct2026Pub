@@ -18,6 +18,7 @@ interface DebugSnap {
   hintLevel: number;
   ownsListen: boolean;
   autoplayLevel: number;
+  playLevel: number;
   replaysFree: number;
   replaysPaid: number;
   replaysTotal: number;
@@ -41,6 +42,7 @@ const readState = (page: Page): Promise<DebugSnap> =>
       hintLevel: d.hintLevel,
       ownsListen: d.ownsListen,
       autoplayLevel: d.autoplayLevel,
+      playLevel: d.playLevel,
       replaysFree: d.replaysFree,
       replaysPaid: d.replaysPaid,
       replaysTotal: d.replaysTotal,
@@ -75,6 +77,15 @@ const grantBars = (page: Page, amount: number): Promise<unknown> =>
         __wallTonesDebug: { grantBars(a: number): void };
       }).__wallTonesDebug.grantBars(n),
     amount,
+  );
+
+const grantPlayLevel = (page: Page, level: number): Promise<unknown> =>
+  page.evaluate(
+    (n) =>
+      (window as unknown as {
+        __wallTonesDebug: { grantPlayLevel(l: number): void };
+      }).__wallTonesDebug.grantPlayLevel(n),
+    level,
   );
 
 /** Fail every clip fast; the game treats the lines as settled. */
@@ -162,14 +173,14 @@ test.describe('Wall Tones store skill tree', () => {
       .toBe('shown');
   });
 
-  test('Autoplay unlocks at Hint L4 and plays the pattern prefix, capped one short', async ({
+  test('Autoplay unlocks at Play L4 (after Hint L4) and plays the pattern prefix, capped one short', async ({
     page,
   }) => {
     test.slow();
     await abortSpeech(page);
     await bootWallTones(page, true);
     // Listen 30 + Hint 25+50+100+200 + Autoplay L1 250 = 655.
-    await grantBars(page, 660);
+    await grantBars(page, 5410);
     await dbg(page, 'toggleStore');
     await dbg(page, 'buyListen');
     await dbg(page, 'buyAutoplay');
@@ -177,9 +188,15 @@ test.describe('Wall Tones store skill tree', () => {
     for (let i = 0; i < 4; i += 1) {
       await dbg(page, 'buyHint');
     }
+    // Gate chain (owner voice 2026-11-13): Hint L4 unlocks Play L1, and
+    // only Play L4 unlocks Autoplay - Hint L4 alone is no longer enough.
+    await dbg(page, 'buyAutoplay');
+    expect((await readState(page)).autoplayLevel).toBe(0);
+    await grantPlayLevel(page, 4);
     await dbg(page, 'buyAutoplay');
     let snap = await readState(page);
     expect(snap.hintLevel).toBe(4);
+    expect(snap.playLevel).toBe(4);
     expect(snap.autoplayLevel).toBe(1);
     expect(snap.bars).toBe(5);
 
@@ -314,6 +331,127 @@ test.describe('Wall Tones store skill tree', () => {
     expect(snap.savers).toBe(1);
     expect(snap.demoBoost).toBe(0);
     expect(snap.bars).toBe(0);
+  });
+  test('Play: Buy is denied while locked and the greyed control button opens the Store at the Play tile', async ({
+    page,
+  }) => {
+    test.slow();
+    await abortSpeech(page);
+    await bootWallTones(page, true, '?demoBars=800');
+    await dbg(page, 'toggleStore');
+    // Locked (Hint L4 not reached): Buy is refused, no Bars move.
+    await dbg(page, 'buyPlay');
+    expect((await readState(page)).playLevel).toBe(0);
+    // The greyed control-row Play button is a Store shortcut to its tile.
+    await dbg(page, 'pressPlay');
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => (window as any).__wallTonesDebug.storeSelected,
+        ),
+      )
+      .toBe('play');
+    expect((await readState(page)).storeOpen).toBe(true);
+  });
+
+  test('Play: enters the next 5 x level tones, once per pattern, may enter the final note', async ({
+    page,
+  }) => {
+    test.slow();
+    await abortSpeech(page);
+    await bootWallTones(page, true);
+    await grantPlayLevel(page, 1);
+    expect((await readState(page)).playLevel).toBe(1);
+    await submitPad(page, 0); // start tap
+    // Round 1 is a single note: Play enters it and the round completes.
+    await expect
+      .poll(async () => (await readState(page)).phase, { timeout: 90_000 })
+      .toBe('input');
+    await dbg(page, 'pressPlay');
+    await expect
+      .poll(async () => (await readState(page)).streak, { timeout: 90_000 })
+      .toBe(1);
+
+    // Reach the 6-note round manually.
+    await playToStreak(page, 5);
+    await expect
+      .poll(
+        async () => {
+          const s = await readState(page);
+          return s.phase === 'input' && s.sequence.length >= 6
+            ? `input:${s.inputStep}`
+            : `${s.phase}:${s.inputStep}`;
+        },
+        { timeout: 120_000 },
+      )
+      .toBe('input:0');
+    // Play enters 5 tones from the current position, one short of the end.
+    await dbg(page, 'pressPlay');
+    await expect
+      .poll(
+        async () => {
+          const s = await readState(page);
+          return s.phase === 'input' ? `input:${s.inputStep}` : s.phase;
+        },
+        { timeout: 90_000 },
+      )
+      .toBe('input:5');
+    // Once per pattern: a second press in the same round is refused.
+    await dbg(page, 'pressPlay');
+    await page.waitForTimeout(1500);
+    let snap = await readState(page);
+    expect(snap.phase).toBe('input');
+    expect(snap.inputStep).toBe(5);
+    // The final note is still playable by hand afterwards.
+    await submitPad(page, snap.sequence[snap.inputStep]!);
+    await expect
+      .poll(async () => (await readState(page)).streak, { timeout: 90_000 })
+      .toBe(6);
+
+  });
+
+  test('Index: tile sits beside Play, Buy refused while locked, debug grant owns it', async ({
+    page,
+  }) => {
+    test.slow();
+    await abortSpeech(page);
+    await bootWallTones(page, true, '?demoBars=800');
+    await dbg(page, 'toggleStore');
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            () =>
+              (window as any).__wallTonesDebug.storePointerTargets[
+                'store-tile-index'
+              ]?.x,
+          ),
+      )
+      .toBeGreaterThan(0);
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            () =>
+              (window as any).__wallTonesDebug.storePointerTargets[
+                'store-tile-play'
+              ]?.x,
+          ),
+      )
+      .toBeGreaterThan(0);
+    // Gated behind Hint level 3: the Buy is refused while locked.
+    await dbg(page, 'buyIndex');
+    expect(
+      await page.evaluate(
+        () => (window as any).__wallTonesDebug.ownsIndex,
+      ),
+    ).toBe(false);
+    await dbg(page, 'grantIndex');
+    expect(
+      await page.evaluate(
+        () => (window as any).__wallTonesDebug.ownsIndex,
+      ),
+    ).toBe(true);
   });
 });
 

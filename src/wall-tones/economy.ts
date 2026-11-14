@@ -22,6 +22,8 @@ const AUTOPLAY_LEVEL_KEY = 'wall-tones-autoplay-level';
 const REPLAY_FREE_KEY = 'wall-tones-replays-free';
 const REPLAY_PAID_KEY = 'wall-tones-replays-paid';
 const SAVERS_KEY = 'wall-tones-savers';
+const PLAY_LEVEL_KEY = 'wall-tones-play-level';
+const INDEX_OWNED_KEY = 'wall-tones-index-owned';
 
 // Skill-tree store prices (owner-approved 2026-11-11 as starting balance for
 // testing, not final). Hint: 25/50/100 Bars then doubling. Open-ended by
@@ -42,10 +44,38 @@ export const LISTEN_COST = 30;
 // Provisional test value (Oded 2026-11-12 11:49: "or maybe no. like 250. we'll
 // balance it later." - supersedes his 500 a minute earlier; balancing comes after
 // testing, so later levels keep the existing doubling for now).
-export const AUTOPLAY_BASE_COSTS: readonly number[] = [250];
+export const AUTOPLAY_BASE_COSTS: readonly number[] = [5000];
 export const AUTOPLAY_COST_GROWTH = 2;
 export const AUTOPLAY_NOTES_PER_LEVEL = 5;
-export const AUTOPLAY_UNLOCK_HINT_LEVEL = 4;
+/** Gate chain (owner voice 2026-11-13): Hint L4 unlocks Play L1; Play L4
+ * unlocks Autoplay; Hint levels keep increasing independently. */
+export const PLAY_UNLOCK_HINT_LEVEL = 4;
+/** Autoplay unlocks at Play level 4 (= PLAY_MAX_LEVEL, declared below). */
+export const AUTOPLAY_UNLOCK_PLAY_LEVEL = 4;
+
+/** Play (owner request 2026-11-12, backlog 66, verbatim): "another modifier
+ * called "Play" and then after 4 levels it will enable autoplay. Each level
+ * of play will play 5 tones for you when you press a button in the game
+ * menu." Four levels, five tones per level. Whether level 4 REPLACES the
+ * Hint L4 Autoplay gate or joins it as a second path is the owner's pending
+ * decision (asked 2026-11-12 11:42, unanswered; re-asked 2026-11-13), so
+ * autoplayUnlocked() stays unchanged until then.
+ * TEST PRICES (owner approved 2026-11-14 ~10:00, "Yeah we can do with them
+ * and balance later", replying to: Index 500 one-off, Play levels 1-4 at
+ * 500 / 1,000 / 2,000 / 4,000). They are test values for the balance pass. */
+export const PLAY_MAX_LEVEL = 4;
+export const PLAY_TONES_PER_LEVEL = 5;
+export const PLAY_PRICING_SET = true;
+export const PLAY_COSTS: readonly number[] = [500, 1000, 2000, 4000];
+
+/** Index pointer (owner 2026-11-12: "same row as play, unlocking after hint
+ * level 3"; added to this PR by his 2026-11-13 ask). An indicator for where
+ * the player is in the pattern; its exact display/behavior is still to
+ * confirm with him, so this PR ships the gated tile and the purchase only.
+ * One-off test price 500 (owner approved 2026-11-14, balance later). */
+export const INDEX_UNLOCK_HINT_LEVEL = 3;
+export const INDEX_PRICING_SET = true;
+export const INDEX_COST = 500;
 
 /** Replay (owner-approved 2026-11-11): a consumable re-hear of the current
  * pattern. Paid Replays cost 20 Bars, no purchase limit for now. Free Replays
@@ -58,7 +88,7 @@ export const REPLAY_EARN_STEP = 5;
 
 /** One-time Top Secret store item price (user-settled Nov 7): grants the
  * hidden Secret Revealed achievement and nothing else. */
-export const TOP_SECRET_COST = 1000;
+export const TOP_SECRET_COST = 10000;
 
 /** Bars per correct pad press (provisional value, user to calibrate). */
 export const PRESS_BARS = 1;
@@ -182,6 +212,8 @@ AUTOPLAY_LEVEL_KEY,
 REPLAY_FREE_KEY,
 REPLAY_PAID_KEY,
 SAVERS_KEY,
+PLAY_LEVEL_KEY,
+INDEX_OWNED_KEY,
 CYPHER_PROGRESS_KEY,
 BACKGROUND_PROGRESS_KEY,
 ]) {
@@ -203,6 +235,8 @@ export class WallTonesEconomy {
   private replaysFree = readNumber(REPLAY_FREE_KEY);
   private replaysPaid = readNumber(REPLAY_PAID_KEY);
   private savers = readNumber(SAVERS_KEY);
+  private playLevel = readNumber(PLAY_LEVEL_KEY);
+  private indexOwned = readNumber(INDEX_OWNED_KEY) === 1;
   /** In-memory test Bars from the ?demoBars URL flag. Never persisted, never
    * counted in lifetime totals, and always spent before real Bars so the
    * saved balance stays untouched (owner-approved preview aid 2026-11-11). */
@@ -419,11 +453,11 @@ export class WallTonesEconomy {
     return this.listenOwned;
   }
 
-  /** Skill-tree gate: Autoplay unlocks at Hint level 4 (owner 2026-11-11).
-   * Listen ownership required too (bug report 2026-11-12): legacy saves could
-   * carry Hint L4+ without Listen and unlock Autoplay out of the box. */
+  /** Skill-tree gate: Autoplay unlocks at Play level 4 (owner voice
+   * 2026-11-13). Listen ownership required too (bug report 2026-11-12):
+   * legacy saves could carry levels without Listen. */
   autoplayUnlocked(): boolean {
-    return this.listenOwned && this.hintLevel >= AUTOPLAY_UNLOCK_HINT_LEVEL;
+    return this.listenOwned && this.playLevel >= AUTOPLAY_UNLOCK_PLAY_LEVEL;
   }
 
   /** Buy the next hint level. Returns true when the purchase landed. */
@@ -464,6 +498,76 @@ export class WallTonesEconomy {
     if (!this.spend(cost)) return false;
     this.autoplayLevel += 1;
     writeNumber(AUTOPLAY_LEVEL_KEY, this.autoplayLevel);
+    this.countPurchase();
+    return true;
+  }
+
+  /** Owned Play level (0 = not owned). */
+  getPlayLevel(): number {
+    return this.playLevel;
+  }
+
+  /** Tones Play plays for the player at the owned level (5 per level). */
+  getPlayNoteCount(): number {
+    return this.playLevel * PLAY_TONES_PER_LEVEL;
+  }
+
+  /** Cost of Play level `level` (1-based), once prices are set. */
+  playCost(level: number): number {
+    return PLAY_COSTS[Math.min(Math.max(level, 1), PLAY_MAX_LEVEL) - 1]!;
+  }
+
+  /** Play unlocks at Hint level 4 (owner voice 2026-11-13: only then can
+   * Play level one be opened). Listen ownership required too. */
+  playUnlocked(): boolean {
+    return this.listenOwned && this.hintLevel >= PLAY_UNLOCK_HINT_LEVEL;
+  }
+
+  /** Buy the next Play level. REFUSES while locked, and while
+   * PLAY_PRICING_SET is false; four levels max. */
+  buyNextPlayLevel(): boolean {
+    if (!this.playUnlocked()) return false;
+    if (!PLAY_PRICING_SET) return false;
+    if (this.playLevel >= PLAY_MAX_LEVEL) return false;
+    const cost = this.playCost(this.playLevel + 1);
+    if (!this.spend(cost)) return false;
+    this.playLevel += 1;
+    writeNumber(PLAY_LEVEL_KEY, this.playLevel);
+    this.countPurchase();
+    return true;
+  }
+
+  /** Test-only: seed the Play level without a purchase. */
+  debugGrantPlayLevel(level: number): void {
+    this.playLevel = Math.min(Math.max(Math.floor(level), 0), PLAY_MAX_LEVEL);
+    writeNumber(PLAY_LEVEL_KEY, this.playLevel);
+  }
+
+  /** Test-only: grant the Index pointer without a purchase. */
+  debugGrantIndex(): void {
+    this.indexOwned = true;
+    writeNumber(INDEX_OWNED_KEY, 1);
+  }
+
+  /** Index pointer owned (one-time item). */
+  ownsIndex(): boolean {
+    return this.indexOwned;
+  }
+
+  /** Skill-tree gate: Index unlocks at Hint level 3 (owner 2026-11-12).
+   * Listen ownership required too, same legacy-save lesson as Autoplay. */
+  indexUnlocked(): boolean {
+    return this.listenOwned && this.hintLevel >= INDEX_UNLOCK_HINT_LEVEL;
+  }
+
+  /** Buy the Index pointer: one-off, needs Hint level 3, test price 500. */
+  buyIndex(): boolean {
+    if (!INDEX_PRICING_SET || !this.indexUnlocked() || this.indexOwned) {
+      return false;
+    }
+    if (!this.spend(INDEX_COST)) return false;
+    this.indexOwned = true;
+    writeNumber(INDEX_OWNED_KEY, 1);
     this.countPurchase();
     return true;
   }

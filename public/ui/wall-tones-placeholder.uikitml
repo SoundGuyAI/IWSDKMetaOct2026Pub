@@ -9,6 +9,7 @@
     flex-direction: column;
     gap: 8px;
     padding: 16px;
+    padding-bottom: 12px;
   }
 
   .eyebrow {
@@ -86,6 +87,32 @@
     margin-bottom: 24px;
   }
 
+  .control-row {
+    flex-direction: row;
+    justify-content: center;
+    gap: 4px;
+    margin-left: 24px;
+    margin-right: 24px;
+    margin-top: 0px;
+    margin-bottom: 12px;
+  }
+
+  .control-button {
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    flex-grow: 1;
+    gap: 2px;
+    min-width: 0px;
+    height: 52px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+    padding-left: 2px;
+    padding-right: 2px;
+    margin-left: 0px;
+    margin-right: 0px;
+  }
+
   .popup-overlay {
     flex-direction: column;
     align-items: center;
@@ -155,7 +182,7 @@
     <div style="flex-direction: row; gap: 8px">
       <Button id="store-button" class="button" style="flex-grow: 1">
         <ButtonIcon><ShoppingBag></ShoppingBag></ButtonIcon>
-        <ButtonLabel id="store-button-label">Store</ButtonLabel>
+        <ButtonLabel id="store-button-label">Modifiers</ButtonLabel>
       </Button>
       <Button id="achievements-button" class="button" style="flex-grow: 1">
         <ButtonIcon><Trophy></Trophy></ButtonIcon>
@@ -201,10 +228,31 @@
     <ButtonIcon><Search></Search></ButtonIcon>
     <ButtonLabel>Rescan room</ButtonLabel>
   </Button>
-  <Button id="repeat-pattern-button" class="button" style="display: none">
-    <ButtonIcon><RefreshCw></RefreshCw></ButtonIcon>
-    <ButtonLabel id="repeat-pattern-label">Repeat pattern</ButtonLabel>
-  </Button>
+  <!-- Seeded initial text: an empty element compiles no Text child and the
+       setter silently no-ops (same pattern as the spoken caption). -->
+  <div id="index-indicator" class="status" style="display: none; margin-left: 24px; margin-right: 24px">...</div>
+  <div id="control-row" class="control-row">
+    <Button id="repeat-pattern-button" class="button control-button" size="sm">
+      <ButtonIcon><RefreshCw></RefreshCw></ButtonIcon>
+      <ButtonLabel id="repeat-pattern-label">Repeat</ButtonLabel>
+    </Button>
+    <Button id="control-play-button" class="button control-button" size="sm">
+      <ButtonIcon><Play></Play></ButtonIcon>
+      <ButtonLabel>Play</ButtonLabel>
+    </Button>
+    <Button id="control-autoplay-button" class="button control-button" size="sm">
+      <ButtonIcon><FastForward></FastForward></ButtonIcon>
+      <ButtonLabel>Auto</ButtonLabel>
+    </Button>
+    <Button id="control-speed-button" class="button control-button" size="sm">
+      <ButtonIcon><Gauge></Gauge></ButtonIcon>
+      <ButtonLabel>Speed</ButtonLabel>
+    </Button>
+    <Button id="control-multiplier-button" class="button control-button" size="sm">
+      <ButtonIcon><Zap></Zap></ButtonIcon>
+      <ButtonLabel>X2</ButtonLabel>
+    </Button>
+  </div>
   <Button id="skip-voice-button" class="button" style="display: none">
     <ButtonIcon><SkipForward></SkipForward></ButtonIcon>
     <ButtonLabel>Skip voice</ButtonLabel>
@@ -216,7 +264,7 @@
   </div>
   <div id="store-popup" class="popup-overlay" style="display: none; padding: 12px">
     <div id="store-popup-card" class="popup-card" style="gap: 6px; padding: 12px">
-      <div id="store-heading" class="heading" style="font-size: 22px; line-height: 26px">Store</div>
+      <div id="store-heading" class="heading" style="font-size: 22px; line-height: 26px">Modifiers</div>
       <div id="store-tree-list" style="flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 8px; width: 308px; height: 296px"></div>
       <div id="store-detail-status" class="status">Prices are test values.</div>
       <Button id="store-close-button" class="button">
