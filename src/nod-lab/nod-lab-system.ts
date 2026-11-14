@@ -71,6 +71,15 @@ const NO_INPUT_LINE: LabScriptLine = {
   text: 'Nothing came through. I saw no movement. Let us try again.',
 };
 
+/**
+ * Desktop-only caption for the intro line (owner, Nov 14: on desktop the
+ * text must say to move the mouse, not your head). Display-only: the
+ * approved recorded line is unchanged, so on desktop the caption and the
+ * audio intentionally differ until/unless the owner approves a new take.
+ */
+const DESKTOP_INTRO_CAPTION =
+  'Connection check. This channel only goes one way. I can see you through the link, but I cannot hear you. So move your mouse up or down for yes, left or right for no. First question. Can you hear me?';
+
 const NOD_LAB_SCRIPT: GestureLabScript = buildGestureLabScript(
   {
     clipId: 'intro-nod',
@@ -548,6 +557,21 @@ export class NodLabSystem extends createSystem({}) {
     }
   }
 
+  /** Caption shown for a line: the desktop intro swap, else the line text. */
+  private displayCaption(line: LabScriptLine | null): string {
+    if (line == null) {
+      return '';
+    }
+    if (
+      line.clipId === 'intro-nod' &&
+      !this.isImmersive() &&
+      this.tiltState !== 'on'
+    ) {
+      return DESKTOP_INTRO_CAPTION;
+    }
+    return line.text;
+  }
+
   private renderPanel(overrideLine?: string): void {
     if (!this.active) {
       return;
@@ -568,7 +592,7 @@ export class NodLabSystem extends createSystem({}) {
       text: overrideLine ?? statusByPhase[this.phase],
     });
     this.lineText?.setProperties({
-      text: this.currentLine?.text ?? '',
+      text: this.displayCaption(this.currentLine),
     });
     const amp =
       this.lastAmplitudeDeg == null
