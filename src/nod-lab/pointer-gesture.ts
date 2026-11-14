@@ -17,8 +17,13 @@ export interface GestureAngleSample {
   readonly yawDeg: number;
 }
 
-/** Pixels of pointer travel that read as one degree of head pitch/yaw. */
-export const POINTER_PX_PER_DEG = 3;
+/** Pixels of pointer travel that read as one degree of head pitch/yaw.
+ * 2 px/deg keeps the detector's degree thresholds but halves the drag
+ * distance: a nod/shake peaks at ~28 px of travel instead of ~42 px, which
+ * is what desktop testers asked for. The out-and-back, dominance and
+ * cooldown guards are unchanged, so casual one-way mouse travel to a button
+ * still never answers. */
+export const POINTER_PX_PER_DEG = 2;
 
 /**
  * A feed gap longer than this re-anchors the baseline at the pointer's
