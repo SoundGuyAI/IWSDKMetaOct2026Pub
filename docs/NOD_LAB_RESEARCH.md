@@ -140,3 +140,11 @@ text-only mode.
   expected to move after headset testing.
 - Baseline is the head pose at the moment the prompt arms; large posture
   shifts mid-answer degrade the reading. Re-baseline happens per prompt.
+- Phone tilt: iOS reflects gamma when the phone pitches past vertical
+  (beta across +-90) and wraps beta at +-180. The tracker absorbs those
+  single-event jumps into the baseline (Nov 14 iPhone failure: a forward
+  nod across vertical read as a 76 deg "no"), but a gesture HELD past
+  vertical still reads with mirrored roll until the phone comes back.
+- Phone tilt clip probes: a transient fetch failure used to mute that clip
+  (voice and static) for the rest of the session; only successful probes
+  stay cached, so a failed clip re-probes on its next line.
