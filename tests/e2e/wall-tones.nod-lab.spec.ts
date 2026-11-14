@@ -170,3 +170,64 @@ test('keyboard fallback answers work in flat mode (Y/N keys)', async ({
   await page.keyboard.press('y');
   await waitPhase(page, 'listening', 'q2');
 });
+
+test('flat mode: mouse drag gestures answer without buttons (up-down = yes, left-right = no)', async ({
+  page,
+}) => {
+  await page.mouse.click(1100, 320);
+  await waitPhase(page, 'idle');
+  await page.evaluate(() =>
+    (window as unknown as { __nodLabDebug: { start: () => void } }).__nodLabDebug.start(),
+  );
+  await waitPhase(page, 'listening', 'intro');
+
+  // Rest the pointer so the tracker re-anchors, then swing down and back up.
+  // The moves are dispatched in-page: CDP mouse.move costs ~400ms per step in
+  // headless Chromium, which would stretch the out-and-back past the
+  // detector's 1.4s gesture window. The real window pointermove listener,
+  // tracker, detector and submitAnswer path are all exercised.
+  const swing = (dx: number, dy: number) =>
+    page.evaluate(
+      ([sx, sy]) =>
+        (async () => {
+          const fire = (x: number, y: number) =>
+            window.dispatchEvent(
+              new PointerEvent('pointermove', { clientX: x, clientY: y }),
+            );
+          for (let i = 1; i <= 6; i += 1) {
+            fire(640 + (sx * i) / 6, 400 + (sy * i) / 6);
+            await new Promise((r) => setTimeout(r, 30));
+          }
+          for (let i = 5; i >= 0; i -= 1) {
+            fire(640 + (sx * i) / 6, 400 + (sy * i) / 6);
+            await new Promise((r) => setTimeout(r, 30));
+          }
+        })(),
+      [dx, dy],
+    );
+  await page.mouse.move(640, 400, { steps: 5 });
+  await page.waitForTimeout(800);
+  await swing(0, 110);
+  await waitPhase(page, 'listening', 'q2');
+  let snapshot = await bridge(page);
+  expect(snapshot?.lastAnswer).toBe('yes');
+  expect(snapshot?.answerCount).toBe(1);
+  expect(snapshot?.cueCount).toBe(1);
+
+  // Swing left and back for no on the q2 prompt. The wait covers the
+  // detector cooldown (1.2s) and re-anchors the pointer baseline.
+  await page.waitForTimeout(1500);
+  await swing(-110, 0);
+  await page.waitForFunction(
+    () => {
+      const s = (
+        window as unknown as { __nodLabDebug?: { snapshot: () => Snapshot } }
+      ).__nodLabDebug?.snapshot();
+      return s?.lastAnswer === 'no' && s?.answerCount === 2;
+    },
+    null,
+    { timeout: 15000 },
+  );
+  snapshot = await bridge(page);
+  expect(snapshot?.cueCount).toBe(2);
+});
