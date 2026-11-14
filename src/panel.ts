@@ -87,6 +87,7 @@ export class PanelSystem extends createSystem({}) {
    * look-away threshold, eased snap). Flat layouts are untouched.
    */
   update(delta: number): void {
+    this.publishMenuFacingTest();
     const entity = this.world.getSceneEntity('main-menu-panel');
     const immersive =
       this.world.xrEnabled &&
@@ -261,6 +262,41 @@ export class PanelSystem extends createSystem({}) {
           display: !is2D && this.world.xrEnabled ? 'flex' : 'none',
         });
     }
+  }
+
+  private menuFacingTestPublished = false;
+
+  /**
+   * Test-only (needs ?menuFacingTest=1): lets the XR re-entry spec turn the
+   * main menu and read its yaw back, to prove the flat layout restores the
+   * authored facing after a session ends. Inert without the URL flag.
+   */
+  private publishMenuFacingTest(): void {
+    if (
+      this.menuFacingTestPublished ||
+      typeof window === 'undefined' ||
+      !window.location.search.includes('menuFacingTest=1')
+    ) {
+      return;
+    }
+    this.menuFacingTestPublished = true;
+    const yawOf = (q: ArrayLike<number>): number =>
+      (2 * Math.atan2(q[1]!, q[3]!) * 180) / Math.PI;
+    (window as unknown as Record<string, unknown>).__menuFacingTest = {
+      turn: (deg: number) => {
+        const e = this.world.getSceneEntity('main-menu-panel');
+        const o = e?.getVectorView(Transform, 'orientation');
+        if (o == null) return false;
+        const h = (deg * Math.PI) / 360;
+        o.set([0, Math.sin(h), 0, Math.cos(h)]);
+        return true;
+      },
+      yaw: () => {
+        const e = this.world.getSceneEntity('main-menu-panel');
+        const o = e?.getVectorView(Transform, 'orientation');
+        return o == null ? null : yawOf(o);
+      },
+    };
   }
 
   private applyMainMenuFlatLayout(): void {
