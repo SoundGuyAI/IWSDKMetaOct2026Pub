@@ -2978,7 +2978,7 @@ this.economy.getAutoplayNoteCount(),
 this.game.sequence.length - 1,
 );
 if (autoCount > 0) {
-this.statusText = `Auto play: first $${autoCount}`;
+this.statusText = `Auto play: first ${autoCount}`;
 this.playbackKind = 'autoplay';
 this.renderPanel();
 for (let index = 0; index < autoCount; index += 1) {
@@ -4209,7 +4209,7 @@ this.lastInputAt = performance.now() / 1000;
 this.idleReplayQueued = false;
 this.game.phase = 'playback';
 this.inputNeedsClear = true;
-this.statusText = `Play: $${playCount} tones`;
+this.statusText = `Play: ${playCount} tones`;
 this.playbackKind = 'play';
 this.renderPanel();
 this.playbackQueue = this.playbackQueue.then(async () => {
