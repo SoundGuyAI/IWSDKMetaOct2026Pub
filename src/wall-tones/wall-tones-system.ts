@@ -147,6 +147,8 @@ import {
   ACHIEVEMENT_CATEGORIES,
   AUTOPLAY_UNLOCK_PLAY_LEVEL,
   PLAY_UNLOCK_HINT_LEVEL,
+  PLAY_MAX_LEVEL,
+  INDEX_COST,
   LISTEN_COST,
   REPLAY_FREE_CAP,
   REPLAY_PRICE_BARS,
@@ -4469,24 +4471,27 @@ price: eco.autoplayUnlocked()
 : 'Locked',
 icon: eco.autoplayUnlocked(),
 },
-// Play (item 66): prices are deferred to the owner's balance pass, so the
-// tile shows TBD and its detail card carries no Buy row until then.
+// Play (item 66): test prices 500/1000/2000/4000 (owner approved 2026-11-14).
 {
 id: 'play',
 name: 'Play',
 badge: playLevel > 0 ? String(playLevel) : '',
 state: playLevel > 0 ? 'on' : 'off',
-price: !eco.playUnlocked() ? 'Locked' : playLevel > 0 ? `L${playLevel}` : 'TBD',
+price: !eco.playUnlocked()
+? 'Locked'
+: playLevel >= PLAY_MAX_LEVEL
+? 'Max'
+: `L${playLevel + 1} - ${eco.playCost(playLevel + 1)}`,
 icon: eco.playUnlocked(),
 },
 // Index pointer (owner add 2026-11-13): same row as Play, gated at Hint
-// level 3 (owner 2026-11-12). Prices deferred like Play.
+// level 3 (owner 2026-11-12). One-off test price 500 (approved 2026-11-14).
 {
 id: 'index',
 name: 'Index',
 badge: eco.ownsIndex() ? '\u2713' : '',
 state: eco.ownsIndex() ? 'on' : 'off',
-price: eco.ownsIndex() ? 'Owned' : eco.indexUnlocked() ? 'TBD' : 'Locked',
+price: eco.ownsIndex() ? 'Owned' : eco.indexUnlocked() ? `${INDEX_COST}` : 'Locked',
 icon: false,
 },
 {
@@ -4779,13 +4784,23 @@ case 'play':
 titleText = `Play - Level ${playLevel}`;
 bodyText = !eco.playUnlocked()
 ? `Locked: reach Hint level ${PLAY_UNLOCK_HINT_LEVEL} (now level ${hintLevel}).`
-: 'Press its game-menu button and it plays the next 5 tones per level from where you are. Four levels; level 4 unlocks Autoplay. Prices land with the balance pass.';
+: 'Press its game-menu button and it plays the next 5 tones per level from where you are. Four levels; level 4 unlocks Autoplay. Test prices.';
+if (eco.playUnlocked() && playLevel < PLAY_MAX_LEVEL) {
+cost = eco.playCost(playLevel + 1);
+buyText = `Play L${playLevel + 1} - ${cost}`;
+}
 break;
 case 'index':
 titleText = 'Index';
 bodyText = !eco.indexUnlocked()
 ? `Locked: reach Hint level ${3} first.`
-: 'Shows which note of the pattern you are on. Prices land with the balance pass.';
+: eco.ownsIndex()
+? 'Owned. Shows which note of the pattern you are on.'
+: 'Shows which note of the pattern you are on. One-off, test price.';
+if (eco.indexUnlocked() && !eco.ownsIndex()) {
+cost = INDEX_COST;
+buyText = `Index - ${INDEX_COST}`;
+}
 break;
 case 'replay':
 titleText = 'Replay';
@@ -5506,15 +5521,24 @@ deny(
 );
 return;
 }
-if (id === 'play' || id === 'index') {
-// Prices are the owner's balance-pass decision; nothing is sold as a price.
-deny(id === 'play' ? 'Play prices land with the balance pass.' : 'Index prices land with the balance pass.');
+if (id === 'index' && !this.economy.indexUnlocked()) {
+deny(!this.economy.ownsListen() ? 'Locked: buy Listen first.' : 'Locked: reach Hint level 3 first.');
+return;
+}
+if (id === 'index' && this.economy.ownsIndex()) {
+deny('Index is already owned.');
+return;
+}
+if (id === 'play' && this.economy.getPlayLevel() >= PLAY_MAX_LEVEL) {
+deny('Play is at its top level.');
 return;
 }
 const ok =
 id === 'listen' ? this.economy.buyListen()
 : id === 'hint' ? this.economy.buyNextHintLevel()
 : id === 'autoplay' ? this.economy.buyNextAutoplayLevel()
+: id === 'play' ? this.economy.buyNextPlayLevel()
+: id === 'index' ? this.economy.buyIndex()
 : id === 'replay' ? this.economy.buyReplay()
 : id === 'saver' ? this.economy.buySaver(SAVER_PRICE_BARS)
 : id === 'secret' ? this.economy.buyTopSecret()
