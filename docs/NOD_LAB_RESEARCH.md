@@ -40,9 +40,12 @@ is Oded's decision first.
 Owner request (Nov 14): desktop and mobile need real gestures too, not
 only buttons.
 
-- Desktop: a mouse drag that swings up-and-down answers yes, left-right
-  answers no (`src/nod-lab/pointer-gesture.ts`). Pointer positions become
-  baseline-relative degrees (3 px per degree) and feed the SAME detector,
+- Desktop: moving the mouse up-and-down answers yes, left-right answers
+  no (`src/nod-lab/pointer-gesture.ts`). Pointer positions become
+  baseline-relative degrees (2 px per degree - tuned down from 3 on the
+  owner's Nov 14 desktop pass, so a gesture peaks at ~28 px of travel
+  instead of ~42 px; the jitter guard floor moved from +-20 px to +-12 px
+  wiggles) and feed the SAME detector,
   configured with `returnToBaselineRad` so a cycle completes only on a
   true out-and-back swing: a one-way drag toward the buttons never
   answers. After a pause over 0.6 s the baseline re-anchors at the
@@ -57,6 +60,13 @@ only buttons.
   (deviceorientation beta/gamma, `src/nod-lab/tilt-gesture.ts`). A denial
   or a device without the API is respected silently - no re-asking, no
   listener, pointer drag and buttons keep working.
+- No-input timeout (owner, Nov 14): about 6 s with no answer while a
+  prompt is listening counts as another no-case - Cypher acknowledges
+  that nothing came through and asks to try again, then the SAME prompt
+  is re-armed (retry variations do not rotate, no answer cue, no advance
+  in the tree). The timer runs only during the listening phase and pauses
+  while the tab is hidden. The acknowledgment line's wording is a draft
+  pending owner approval and plays in silent text-preview until then.
 - Both paths sample sensors only while a lab prompt is listening; nothing
   is tracked outside the lab. Headset detection is unchanged
   (`returnToBaselineRad: null`).
