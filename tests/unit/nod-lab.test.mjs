@@ -269,3 +269,171 @@ test('clip spec covers every clip id used by both labs, in both voices', () => {
   assert.ok(spec.includes('Kore'));
   assert.ok(spec.includes('Algenib'));
 });
+
+// --- Flat-mode input trackers (pointer drag + phone tilt) -----------------
+
+const pointerMod = await load('../../src/nod-lab/pointer-gesture.ts');
+const { PointerGestureTracker, POINTER_PX_PER_DEG } = pointerMod;
+const tiltMod = await load('../../src/nod-lab/tilt-gesture.ts');
+const { TiltBaselineTracker } = tiltMod;
+
+/** Drive a detector through a pointer swing: out to delta px and back. */
+function pointerSwing(detector, tracker, dx, dy, seconds) {
+  let t = now;
+  const half = Math.max(2, Math.round((seconds / 2) / step));
+  let event = null;
+  const feedTo = (fx, fy) => {
+    // Swings are deltas from the primed resting spot (500, 300).
+    const s = tracker.feed(500 + fx, 300 + fy, t);
+    event = event ?? detector.feed(s.pitchDeg * D, s.yawDeg * D, t);
+  };
+  for (let i = 1; i <= half; i += 1) { t += step; feedTo((dx * i) / half, (dy * i) / half); }
+  for (let i = half - 1; i >= 0; i -= 1) { t += step; feedTo((dx * i) / half, (dy * i) / half); }
+  now = t;
+  return event;
+}
+
+test('pointer drag down-up answers yes, left-right answers no', () => {
+  const detector = new HeadNodShakeDetector({
+    ...DEFAULT_HEAD_GESTURE_CONFIG,
+    returnToBaselineRad: DEFAULT_HEAD_GESTURE_CONFIG.activationRad,
+  });
+  const tracker = new PointerGestureTracker();
+  detector.setEnabled(true);
+  now = 0;
+  tracker.feed(500, 300, 0);
+  const yes = pointerSwing(detector, tracker, 0, 110, 0.7);
+  assert.equal(yes?.answer, 'yes');
+
+  detector.setEnabled(true);
+  tracker.reset();
+  now += 2;
+  tracker.feed(500, 300, now);
+  const no = pointerSwing(detector, tracker, 110, 0, 0.7);
+  assert.equal(no?.answer, 'no');
+});
+
+test('a one-way pointer drag (toward a button) never answers', () => {
+  const detector = new HeadNodShakeDetector({
+    ...DEFAULT_HEAD_GESTURE_CONFIG,
+    returnToBaselineRad: DEFAULT_HEAD_GESTURE_CONFIG.activationRad,
+  });
+  const tracker = new PointerGestureTracker();
+  detector.setEnabled(true);
+  now = 0;
+  tracker.feed(500, 300, 0);
+  let fired = false;
+  for (let i = 1; i <= 40; i += 1) {
+    now += step;
+    const s = tracker.feed(500 + i * 10, 300 + i * 5, now);
+    fired = fired || detector.feed(s.pitchDeg * D, s.yawDeg * D, now) != null;
+  }
+  assert.equal(fired, false);
+});
+
+test('a small pointer wiggle around a rested spot does not fire', () => {
+  const detector = new HeadNodShakeDetector({
+    ...DEFAULT_HEAD_GESTURE_CONFIG,
+    returnToBaselineRad: DEFAULT_HEAD_GESTURE_CONFIG.activationRad,
+  });
+  const tracker = new PointerGestureTracker();
+  detector.setEnabled(true);
+  now = 0;
+  tracker.feed(200, 200, 0);
+  // Move far away slowly (no cycle), rest (a real resting pointer emits no
+  // events), then wiggle +-20px around the new spot.
+  for (let i = 1; i <= 30; i += 1) { now += 0.1; tracker.feed(200 + i * 12, 200, now); }
+  now += 4;
+  let fired = false;
+  for (let i = 0; i < 20; i += 1) {
+    now += step;
+    const s = tracker.feed(560 + (i % 2 === 0 ? 20 : -20), 200, now);
+    fired = fired || detector.feed(s.pitchDeg * D, s.yawDeg * D, now) != null;
+  }
+  assert.equal(fired, false);
+});
+
+test('a drag out that never returns to baseline does not fire', () => {
+  const detector = new HeadNodShakeDetector({
+    ...DEFAULT_HEAD_GESTURE_CONFIG,
+    returnToBaselineRad: DEFAULT_HEAD_GESTURE_CONFIG.activationRad,
+  });
+  const tracker = new PointerGestureTracker();
+  detector.setEnabled(true);
+  now = 0;
+  tracker.feed(500, 300, 0);
+  let fired = false;
+  // Out 150px and wiggle there: reversals happen, but the angle never
+  // returns near baseline, so no cycle completes.
+  for (let i = 1; i <= 15; i += 1) {
+    now += step;
+    const s = tracker.feed(500, 300 + i * 10, now);
+    fired = fired || detector.feed(s.pitchDeg * D, s.yawDeg * D, now) != null;
+  }
+  for (let i = 0; i < 20; i += 1) {
+    now += step;
+    const s = tracker.feed(500, 450 + (i % 2 === 0 ? 25 : -25), now);
+    fired = fired || detector.feed(s.pitchDeg * D, s.yawDeg * D, now) != null;
+  }
+  assert.equal(fired, false);
+});
+
+test('tilt forward/back answers yes, left/right answers no', () => {
+  const detector = new HeadNodShakeDetector({
+    ...DEFAULT_HEAD_GESTURE_CONFIG,
+    returnToBaselineRad: DEFAULT_HEAD_GESTURE_CONFIG.activationRad,
+  });
+  const tracker = new TiltBaselineTracker();
+  detector.setEnabled(true);
+  now = 0;
+  tracker.feed(45, 0);
+  let event = null;
+  swing((deg) => {
+    const s = tracker.feed(45 + deg, 0);
+    event = event ?? detector.feed(s.pitchDeg * D, s.yawDeg * D, now);
+  }, 22, 0.7);
+  assert.equal(event?.answer, 'yes');
+
+  detector.setEnabled(true);
+  tracker.reset();
+  now += 2;
+  tracker.feed(45, 0);
+  event = null;
+  swing((deg) => {
+    const s = tracker.feed(45, deg);
+    event = event ?? detector.feed(s.pitchDeg * D, s.yawDeg * D, now);
+  }, 22, 0.7);
+  assert.equal(event?.answer, 'no');
+});
+
+test('null tilt angles (unsupported sensor) produce no sample', () => {
+  const tracker = new TiltBaselineTracker();
+  assert.equal(tracker.feed(null, null), null);
+  assert.equal(tracker.feed(45, null), null);
+});
+
+test('pointer scale keeps a deliberate flick above the peak threshold', () => {
+  // A 90px flick must read as at least the 14 deg peak the detector needs.
+  assert.ok(45 / POINTER_PX_PER_DEG >= 14); // 45px flick now clears the peak threshold
+});
+
+test('a fast move, a pause, then a wiggle does not fire (idle re-prime)', () => {
+  const detector = new HeadNodShakeDetector({
+    ...DEFAULT_HEAD_GESTURE_CONFIG,
+    returnToBaselineRad: DEFAULT_HEAD_GESTURE_CONFIG.activationRad,
+  });
+  const tracker = new PointerGestureTracker();
+  detector.setEnabled(true);
+  now = 0;
+  tracker.feed(200, 200, 0);
+  // Fast flick across the screen (0.15s), then rest 1s, then wiggle.
+  for (let i = 1; i <= 10; i += 1) { now += 0.015; tracker.feed(200 + i * 40, 200, now); }
+  now += 1;
+  let fired = false;
+  for (let i = 0; i < 20; i += 1) {
+    now += step;
+    const s = tracker.feed(600 + (i % 2 === 0 ? 20 : -20), 200, now);
+    fired = fired || detector.feed(s.pitchDeg * D, s.yawDeg * D, now) != null;
+  }
+  assert.equal(fired, false);
+});
