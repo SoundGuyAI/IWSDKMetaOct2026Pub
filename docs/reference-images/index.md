@@ -9,6 +9,52 @@ How to read this file:
 - Concept art and mockups show direction only. Where an image and the live build differ, ask Oded before copying the image.
 - Images that exist only as WhatsApp attachments we could not recover are listed in section 5 with their comments. No image was regenerated to replace them.
 
+## Stored file names
+
+The upload tool added a number prefix (`N-`) to every image file name. In this index, a file is listed without that prefix. Stored names:
+
+| Name used in this index | Stored file name |
+|---|---|
+| rift-layout-pc.png | 1-rift-layout-pc.png |
+| rift-concept-1c-hands-4color.png | 2-rift-concept-1c-hands-4color.png |
+| rift-concept-2b-beam-4color.png | 3-rift-concept-2b-beam-4color.png |
+| rift-concept-3-rifts-room.png | 4-rift-concept-3-rifts-room.png |
+| rift-layout-mobile-tap.png | 5-rift-layout-mobile-tap.png |
+| rift-layout-mobile-drag.png | 6-rift-layout-mobile-drag.png |
+| rift-layout-mobile-scratch.png | 7-rift-layout-mobile-scratch.png |
+| rift-style-a-glitch-static.png | 8-rift-style-a-glitch-static.png |
+| rift-style-b-terminal-green.png | 9-rift-style-b-terminal-green.png |
+| rift-style-c-waveform-slash.png | 10-rift-style-c-waveform-slash.png |
+| rift-style-d-four-color.png | 11-rift-style-d-four-color.png |
+| rift-style-e-light-crack.png | 12-rift-style-e-light-crack.png |
+| rift-anim-f1-forming.png | 13-rift-anim-f1-forming.png |
+| rift-anim-f2-widening.png | 14-rift-anim-f2-widening.png |
+| rift-anim-f4-sealing.png | 15-rift-anim-f4-sealing.png |
+| rift-anim-f5-sealed.png | 16-rift-anim-f5-sealed.png |
+| rift-anim-pc-sealing.png | 17-rift-anim-pc-sealing.png |
+| rift-anim-pc-sealed.png | 18-rift-anim-pc-sealed.png |
+| rift-anim-mob-sealing.png | 19-rift-anim-mob-sealing.png |
+| rift-anim-mob-sealed.png | 20-rift-anim-mob-sealed.png |
+| rift-motion-mockup.gif | 21-rift-motion-mockup.gif |
+| armband-a-20-notes.png | 22-armband-a-20-notes.png |
+| armband-a-closeup.png | 23-armband-a-closeup.png |
+| armband-projector-v1-rejected.png | 24-armband-projector-v1-rejected.png |
+| armband-projector-v2.png | 25-armband-projector-v2.png |
+| marketing-concept-1-room-is-the-board.png | 26-marketing-concept-1-room-is-the-board.png |
+| marketing-concept-2-touch-the-tone.png | 27-marketing-concept-2-touch-the-tone.png |
+| marketing-concept-3-follow-the-pattern.png | 28-marketing-concept-3-follow-the-pattern.png |
+| marketing-concept-4-the-table-is-the-board.png | 29-marketing-concept-4-the-table-is-the-board.png |
+| marketing-concept-5-tabletop-tones.png | 30-marketing-concept-5-tabletop-tones.png |
+| marketing-concept-6-remember-the-melody.png | 31-marketing-concept-6-remember-the-melody.png |
+| marketing-enhanced-glass-pads.png | 32-marketing-enhanced-glass-pads.png |
+| marketing-g4c-key-image.png | 33-marketing-g4c-key-image.png |
+| marketing-leaderboard-hero.png | 34-marketing-leaderboard-hero.png |
+| marketing-thumbnail-gameplay.png | 35-marketing-thumbnail-gameplay.png |
+| marketing-voice-script-hero.png | 36-marketing-voice-script-hero.png |
+| ui-achievement-unlock-glow.png | 37-ui-achievement-unlock-glow.png |
+
+Cleanup welcome: rename the files to drop the prefix (`git mv`) and delete this table.
+
 ## 1. Armband (wristband) and palm projector (Nov 13-14)
 
 | File | What it is | Status and Oded's words |
