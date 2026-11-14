@@ -525,3 +525,66 @@ test('a fast move, a pause, then a wiggle does not fire (idle re-prime)', () => 
   }
   assert.equal(fired, false);
 });
+
+test('nod across vertical with rolled phone answers yes, not a gamma-flip no (iPhone regression)', () => {
+  // Real failure (Nov 14 iPhone run): held rolled ~38 deg, a forward nod
+  // carried beta across 90 deg; iOS reflects gamma there, so raw gamma
+  // jumped ~76 deg in one event and the flat detector answered "no" at
+  // 76 deg - after which no nod ever read as yes. The tracker now absorbs
+  // the reflection into the baseline instead of the sample.
+  const detector = new HeadNodShakeDetector({
+    ...DEFAULT_HEAD_GESTURE_CONFIG,
+    returnToBaselineRad: DEFAULT_HEAD_GESTURE_CONFIG.activationRad,
+  });
+  const tracker = new TiltBaselineTracker();
+  detector.setEnabled(true);
+  now = 0;
+  const iosGamma = (beta, g) => (Math.abs(beta) > 90 ? -g : g);
+  const events = [];
+  const feed = (beta, g) => {
+    const s = tracker.feed(beta, g);
+    const e = detector.feed(s.pitchDeg * D, s.yawDeg * D, now);
+    if (e) events.push(e);
+  };
+  // Settle at beta 60, gamma 38.
+  for (let i = 0; i < 360; i += 1) { now += 1 / 60; feed(60, 38); }
+  // Nod forward across vertical and back over 0.9 s.
+  for (let i = 0; i < 54; i += 1) {
+    now += 1 / 60;
+    const beta = 60 + 45 * Math.sin(Math.PI * Math.min(1, i / 54));
+    feed(beta, iosGamma(beta, 38));
+  }
+  // Settle back at the rest pose.
+  for (let i = 0; i < 120; i += 1) { now += 1 / 60; feed(60, 38); }
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.answer, 'yes');
+});
+
+test('shallow-roll gamma reflection at the vertical crossing is also absorbed', () => {
+  // Smaller roll (15 deg): the iOS gamma flip is ~30 deg, below the plain
+  // wrap threshold, so it is absorbed only because beta crossed +-90 in
+  // the same event.
+  const detector = new HeadNodShakeDetector({
+    ...DEFAULT_HEAD_GESTURE_CONFIG,
+    returnToBaselineRad: DEFAULT_HEAD_GESTURE_CONFIG.activationRad,
+  });
+  const tracker = new TiltBaselineTracker();
+  detector.setEnabled(true);
+  now = 0;
+  const iosGamma = (beta, g) => (Math.abs(beta) > 90 ? -g : g);
+  const events = [];
+  const feed = (beta, g) => {
+    const s = tracker.feed(beta, g);
+    const e = detector.feed(s.pitchDeg * D, s.yawDeg * D, now);
+    if (e) events.push(e);
+  };
+  for (let i = 0; i < 360; i += 1) { now += 1 / 60; feed(60, 15); }
+  for (let i = 0; i < 54; i += 1) {
+    now += 1 / 60;
+    const beta = 60 + 45 * Math.sin(Math.PI * Math.min(1, i / 54));
+    feed(beta, iosGamma(beta, 15));
+  }
+  for (let i = 0; i < 120; i += 1) { now += 1 / 60; feed(60, 15); }
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.answer, 'yes');
+});
