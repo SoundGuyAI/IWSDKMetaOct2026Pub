@@ -8,11 +8,15 @@
  * with a distinct gentle sound cue (one for yes, one for no, lab only), then
  * the dialogue branches (owner, Nov 14: no spoken "Yes."/"No." echo).
  *
- * Detection: baseline-relative head pitch/yaw oscillation, see head-gesture.ts.
- * Runs only while immersive; flat mode uses the panel's Yes/No buttons (and
- * Y/N keys) so the dialogue flow stays testable everywhere. All telemetry is
- * shown on the panel. This is a research scene: no accuracy claims, headset
- * tuning is the point of the PR.
+ * Detection: baseline-relative pitch/yaw oscillation, see head-gesture.ts.
+ * Immersive runs read the headset; flat mode answers by pointer drag
+ * (up-down = yes, left-right = no) and, after the Start tap grants motion
+ * access on phones, by tilting the phone (forward/back = yes, left/right =
+ * no) - both reuse the same detector, and the panel's Yes/No buttons and
+ * Y/N keys always remain. Sensors are sampled only while a prompt is
+ * listening; nothing is tracked outside the lab. All telemetry is shown on
+ * the panel. This is a research scene: no accuracy claims, tuning is the
+ * point of the PR.
  */
 
 import {
@@ -29,6 +33,16 @@ import {
   type YesNoAnswer,
 } from './head-gesture.js';
 import { playLabAnswerCue } from './lab-cues.js';
+import {
+  attachPointerTracker,
+  PointerGestureTracker,
+  type GestureAngleSample,
+} from './pointer-gesture.js';
+import {
+  attachTiltTracker,
+  requestTiltPermission,
+  TiltBaselineTracker,
+} from './tilt-gesture.js';
 import {
   buildGestureLabScript,
   labAnswerFollowUp,
@@ -71,6 +85,8 @@ export interface NodLabDebugSnapshot {
   pitchDeg: number;
   yawDeg: number;
   detectorArmed: boolean;
+  flatDetectorArmed: boolean;
+  tilt: 'off' | 'on' | 'denied';
   immersive: boolean;
   voiceStatus: string;
   answerCount: number;
@@ -86,12 +102,24 @@ declare global {
       start: () => void;
       answer: (answer: YesNoAnswer) => void;
       feedAngles: (pitchDeg: number, yawDeg: number) => void;
+      feedFlatAngles: (pitchDeg: number, yawDeg: number) => void;
     };
   }
 }
 
 export class NodLabSystem extends createSystem({}) {
   private readonly detector = new HeadNodShakeDetector();
+  // Flat-mode gestures must be true out-and-back swings: a one-way drag
+  // toward the panel buttons never completes a cycle.
+  private readonly flatDetector = new HeadNodShakeDetector({
+    ...DEFAULT_HEAD_GESTURE_CONFIG,
+    returnToBaselineRad: DEFAULT_HEAD_GESTURE_CONFIG.activationRad,
+  });
+  private readonly pointerTracker = new PointerGestureTracker();
+  private readonly tiltTracker = new TiltBaselineTracker();
+  private tiltState: 'off' | 'on' | 'denied' = 'off';
+  private detachPointer: (() => void) | null = null;
+  private detachTilt: (() => void) | null = null;
   private readonly voice = new CypherLabVoice();
   private readonly script = NOD_LAB_SCRIPT;
   private panel: UIKitMLAsset | null = null;
@@ -136,6 +164,10 @@ export class NodLabSystem extends createSystem({}) {
     const startButton = panel.getElementById('nod-lab-start-button');
     startButton?.addEventListener('click', () => {
       unlockSpeechFromGesture();
+      // Phones gate orientation behind a per-gesture permission prompt; the
+      // Start tap is that gesture. A denial is respected silently (the
+      // pointer-drag and button paths keep working) and is never re-asked.
+      void this.setupTilt();
       void this.startRun();
     });
     panel
@@ -162,6 +194,14 @@ export class NodLabSystem extends createSystem({}) {
     };
     window.addEventListener('keydown', onKeyDown);
 
+    this.detachPointer = attachPointerTracker(
+      window,
+      this.pointerTracker,
+      () => this.flatDetector.isEnabled,
+      (sample, now) => this.handleFlatAngles(sample, now, 'pointer'),
+      () => this.flatDetector.reset(),
+    );
+
     const onModeChange = (event: Event) => {
       const mode = (event as CustomEvent<{ mode: string }>).detail.mode;
       this.setActive(mode === 'nodlab');
@@ -173,6 +213,8 @@ export class NodLabSystem extends createSystem({}) {
     );
 
     this.cleanupFuncs.push(() => {
+      this.detachPointer?.();
+      this.detachTilt?.();
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('experience-mode-changed', onModeChange);
       this.setActive(false);
@@ -186,6 +228,12 @@ export class NodLabSystem extends createSystem({}) {
       answer: (answer) => this.submitAnswer(answer, 'debug'),
       feedAngles: (pitchDeg, yawDeg) =>
         this.handleAngles(pitchDeg, yawDeg, performance.now() / 1000),
+      feedFlatAngles: (pitchDeg, yawDeg) =>
+        this.handleFlatAngles(
+          { pitchDeg, yawDeg },
+          performance.now() / 1000,
+          'debug',
+        ),
     };
     this.renderPanel('Open the link when you are ready.');
   }
@@ -197,6 +245,9 @@ export class NodLabSystem extends createSystem({}) {
     this.active = active;
     this.sequence += 1;
     this.detector.setEnabled(false);
+    this.flatDetector.setEnabled(false);
+    this.pointerTracker.reset();
+    this.tiltTracker.reset();
     this.voice.cancel();
     if (active) {
       this.phase = 'idle';
@@ -279,10 +330,38 @@ export class NodLabSystem extends createSystem({}) {
   }
 
   private armListening(): void {
+    const immersive = this.isImmersive();
     this.player.head.getWorldQuaternion(this.baselineQuat);
     this.detector.reset();
-    this.detector.setEnabled(this.isImmersive());
+    this.detector.setEnabled(immersive);
+    this.flatDetector.reset();
+    this.flatDetector.setEnabled(!immersive);
+    this.pointerTracker.reset();
+    this.tiltTracker.reset();
     this.phase = 'listening';
+    this.renderPanel();
+  }
+
+  private async setupTilt(): Promise<void> {
+    if (this.tiltState !== 'off') {
+      return;
+    }
+    const permission = await requestTiltPermission();
+    if (permission === 'denied') {
+      this.tiltState = 'denied';
+      this.renderPanel();
+      return;
+    }
+    if (permission === 'unsupported') {
+      return;
+    }
+    this.tiltState = 'on';
+    this.detachTilt ??= attachTiltTracker(
+      window,
+      this.tiltTracker,
+      () => this.flatDetector.isEnabled,
+      (sample, now) => this.handleFlatAngles(sample, now, 'tilt'),
+    );
     this.renderPanel();
   }
 
@@ -298,7 +377,7 @@ export class NodLabSystem extends createSystem({}) {
 
   private submitAnswer(
     answer: YesNoAnswer,
-    source: 'gesture' | 'button' | 'key' | 'debug',
+    source: 'gesture' | 'button' | 'key' | 'debug' | 'pointer' | 'tilt',
   ): void {
     if (!this.active || this.phase !== 'listening' || this.currentPrompt == null) {
       return;
@@ -370,6 +449,24 @@ export class NodLabSystem extends createSystem({}) {
     }
   }
 
+  private handleFlatAngles(
+    sample: GestureAngleSample,
+    now: number,
+    source: 'pointer' | 'tilt' | 'debug',
+  ): void {
+    this.pitchDeg = sample.pitchDeg;
+    this.yawDeg = sample.yawDeg;
+    const event = this.flatDetector.feed(
+      (sample.pitchDeg * Math.PI) / 180,
+      (sample.yawDeg * Math.PI) / 180,
+      now,
+    );
+    if (event != null) {
+      this.lastAmplitudeDeg = (event.amplitudeRad * 180) / Math.PI;
+      this.submitAnswer(event.answer, source);
+    }
+  }
+
   update(): void {
     if (!this.active) {
       return;
@@ -404,7 +501,9 @@ export class NodLabSystem extends createSystem({}) {
       speaking: 'Cypher is transmitting...',
       listening: this.isImmersive()
         ? 'Listening. Nod for yes, shake for no.'
-        : 'Listening. Head tracking needs XR - use the Yes/No buttons (or Y/N keys).',
+        : this.tiltState === 'on'
+          ? 'Listening. Tilt forward/back for yes, left/right for no - or tap the buttons.'
+          : 'Listening. Drag up-down for yes, left-right for no - or use the buttons (Y/N).',
       responding: 'Answer received.',
       done: 'Link check complete. Cypher out.',
     };
@@ -421,7 +520,7 @@ export class NodLabSystem extends createSystem({}) {
     this.telemetryText?.setProperties({
       text:
         `pitch ${this.pitchDeg.toFixed(1)} deg | yaw ${this.yawDeg.toFixed(1)} deg | ` +
-        `detector ${this.detector.isEnabled ? 'armed' : 'off'} | ` +
+        `detector ${this.isImmersive() ? (this.detector.isEnabled ? 'armed' : 'off') : this.flatDetector.isEnabled ? 'flat-armed' : 'flat-off'} | ` +
         `last answer ${this.lastAnswer ?? '-'} (${amp}) | ` +
         `thresholds act ${(DEFAULT_HEAD_GESTURE_CONFIG.activationRad * 180 / Math.PI).toFixed(0)} deg ` +
         `peak ${(DEFAULT_HEAD_GESTURE_CONFIG.minPeakRad * 180 / Math.PI).toFixed(0)} deg`,
@@ -446,6 +545,8 @@ export class NodLabSystem extends createSystem({}) {
       pitchDeg: this.pitchDeg,
       yawDeg: this.yawDeg,
       detectorArmed: this.detector.isEnabled,
+      flatDetectorArmed: this.flatDetector.isEnabled,
+      tilt: this.tiltState,
       immersive: this.isImmersive(),
       voiceStatus: this.voiceStatusLine(),
       answerCount: this.answerCount,
