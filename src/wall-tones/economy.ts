@@ -60,23 +60,22 @@ export const AUTOPLAY_UNLOCK_PLAY_LEVEL = 4;
  * Hint L4 Autoplay gate or joins it as a second path is the owner's pending
  * decision (asked 2026-11-12 11:42, unanswered; re-asked 2026-11-13), so
  * autoplayUnlocked() stays unchanged until then.
- * PRICES UNSET: Play pricing is deferred to the owner's economy balance
- * pass (2026-11-12: "we'll balance it later"). PLAY_PRICING_SET stays false
- * until he sets real numbers; while false the store tile shows no Buy row
- * and buyNextPlayLevel() refuses, so no invented number is ever sold as a
- * price. PLAY_COSTS is a structural placeholder, not a proposal. */
+ * TEST PRICES (owner approved 2026-11-14 ~10:00, "Yeah we can do with them
+ * and balance later", replying to: Index 500 one-off, Play levels 1-4 at
+ * 500 / 1,000 / 2,000 / 4,000). They are test values for the balance pass. */
 export const PLAY_MAX_LEVEL = 4;
 export const PLAY_TONES_PER_LEVEL = 5;
-export const PLAY_PRICING_SET = false;
-export const PLAY_COSTS: readonly number[] = [0, 0, 0, 0];
+export const PLAY_PRICING_SET = true;
+export const PLAY_COSTS: readonly number[] = [500, 1000, 2000, 4000];
 
 /** Index pointer (owner 2026-11-12: "same row as play, unlocking after hint
  * level 3"; added to this PR by his 2026-11-13 ask). An indicator for where
  * the player is in the pattern; its exact display/behavior is still to
- * confirm with him, so this PR ships the gated tile only. Prices unset,
- * same balance-pass rule as Play. */
+ * confirm with him, so this PR ships the gated tile and the purchase only.
+ * One-off test price 500 (owner approved 2026-11-14, balance later). */
 export const INDEX_UNLOCK_HINT_LEVEL = 3;
-export const INDEX_PRICING_SET = false;
+export const INDEX_PRICING_SET = true;
+export const INDEX_COST = 500;
 
 /** Replay (owner-approved 2026-11-11): a consumable re-hear of the current
  * pattern. Paid Replays cost 20 Bars, no purchase limit for now. Free Replays
@@ -525,8 +524,7 @@ export class WallTonesEconomy {
   }
 
   /** Buy the next Play level. REFUSES while locked, and while
-   * PLAY_PRICING_SET is false (owner deferred pricing to the balance
-   * pass); four levels max. */
+   * PLAY_PRICING_SET is false; four levels max. */
   buyNextPlayLevel(): boolean {
     if (!this.playUnlocked()) return false;
     if (!PLAY_PRICING_SET) return false;
@@ -539,19 +537,19 @@ export class WallTonesEconomy {
     return true;
   }
 
-  /** Test-only: seed the Play level without a purchase (prices unset). */
+  /** Test-only: seed the Play level without a purchase. */
   debugGrantPlayLevel(level: number): void {
     this.playLevel = Math.min(Math.max(Math.floor(level), 0), PLAY_MAX_LEVEL);
     writeNumber(PLAY_LEVEL_KEY, this.playLevel);
   }
 
-  /** Test-only: grant the Index pointer while its price is unset. */
+  /** Test-only: grant the Index pointer without a purchase. */
   debugGrantIndex(): void {
     this.indexOwned = true;
     writeNumber(INDEX_OWNED_KEY, 1);
   }
 
-  /** Index pointer owned (one-time item; prices unset). */
+  /** Index pointer owned (one-time item). */
   ownsIndex(): boolean {
     return this.indexOwned;
   }
@@ -562,12 +560,16 @@ export class WallTonesEconomy {
     return this.listenOwned && this.hintLevel >= INDEX_UNLOCK_HINT_LEVEL;
   }
 
-  /** Buy the Index pointer. REFUSES while INDEX_PRICING_SET is false. */
+  /** Buy the Index pointer: one-off, needs Hint level 3, test price 500. */
   buyIndex(): boolean {
     if (!INDEX_PRICING_SET || !this.indexUnlocked() || this.indexOwned) {
       return false;
     }
-    return false; // No price exists yet; unreachable until the balance pass.
+    if (!this.spend(INDEX_COST)) return false;
+    this.indexOwned = true;
+    writeNumber(INDEX_OWNED_KEY, 1);
+    this.countPurchase();
+    return true;
   }
 
   /** Free Replays held (cap REPLAY_FREE_CAP; paid ones sit on top). */
