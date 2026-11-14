@@ -47,13 +47,18 @@ headset tuning.
 
 ## Display, persistence and privacy
 
-- The in-game menu shows one line with both session values (`Movement`,
-  `Pad reach`), following the score rows' visibility. MR only: the line
-  never shows in flat desktop/phone play.
+- The in-game menu shows the session values (`Movement`, `Pad reach`) on
+  one line plus a `Total movement` line with the lifetime total, following
+  the score rows' visibility. MR only: the lines never show in flat
+  desktop/phone play. (Owner Nov 14: show this session and total.)
 - Device visibility (user Nov 14: "Movement on pc - there is none but there
-  is on mobile and XR"): the Movement achievement tile is hidden on desktop
-  PCs in flat mode (`movementUiVisible`); XR sessions and mobile devices
-  keep it. Phone movement collection itself is still out of scope here.
+  is on mobile and XR"; later Nov 14: hide it on iPhone too, until iPhone
+  movement is implemented): the Movement achievement tile is hidden on
+  desktop PCs and iOS devices in flat mode (`movementUiVisible`); XR
+  sessions and Android devices keep it. Phone movement collection itself is
+  still out of scope here.
+- The Movement achievement's progress is the lifetime total
+  (headset + pad reach), not the session (owner Nov 14).
 - Two running lifetime totals persist in localStorage
   (`wall-tones-move-head-m`, `wall-tones-move-pad-m`), same pattern as the
   economy. They are per browser/device, have no sync, and clearing browser
