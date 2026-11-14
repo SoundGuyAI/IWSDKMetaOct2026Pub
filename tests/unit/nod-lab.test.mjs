@@ -289,7 +289,41 @@ test('clip spec covers every clip id used by both labs, in both voices', () => {
 // --- Flat-mode input trackers (pointer drag + phone tilt) -----------------
 
 const pointerMod = await load('../../src/nod-lab/pointer-gesture.ts');
-const { PointerGestureTracker, POINTER_PX_PER_DEG } = pointerMod;
+const { PointerGestureTracker, POINTER_PX_PER_DEG, attachPointerTracker } = pointerMod;
+
+test('pointer baseline follows the resting pointer while not armed, so a swing spanning the arm commits', () => {
+  // Regression (Nov 14): a user who starts swinging while Cypher is still
+  // speaking used to anchor the baseline mid-swing at the first post-arm
+  // event; the rest of the swing read one-way and never committed.
+  const listeners = new Map();
+  const target = {
+    addEventListener: (type, fn) => listeners.set(type, fn),
+    removeEventListener: (type) => listeners.delete(type),
+  };
+  const tracker = new PointerGestureTracker();
+  let armed = false;
+  const samples = [];
+  attachPointerTracker(target, tracker, () => armed, (sample) => samples.push(sample));
+  const move = (x, y, t) => listeners.get('pointermove')({ clientX: x, clientY: y });
+  // Park at (640,400) while not armed: baseline must anchor here even
+  // though no sample is reported.
+  move(640, 400, 0);
+  assert.equal(samples.length, 0);
+  // Start the swing while still not armed (Cypher still speaking).
+  move(655, 400, 0.1);
+  assert.equal(samples.length, 0);
+  // The prompt arms mid-swing; the peak and the return happen while armed.
+  armed = true;
+  move(670, 400, 0.2);
+  move(655, 400, 0.3);
+  move(640, 400, 0.4);
+  // Samples are measured from the parked baseline, not the mid-swing spot:
+  // the swing peaks at +15 deg (30 px at 2 px/deg) and returns to ~0.
+  const peaks = samples.map((s) => s.yawDeg);
+  assert.ok(Math.max(...peaks) >= 14, 'full swing measured');
+  assert.ok(Math.abs(peaks.at(-1)) < 2, 'returned to baseline');
+});
+
 const tiltMod = await load('../../src/nod-lab/tilt-gesture.ts');
 const { TiltBaselineTracker } = tiltMod;
 
