@@ -180,7 +180,7 @@ test.describe('Wall Tones store skill tree', () => {
     await abortSpeech(page);
     await bootWallTones(page, true);
     // Listen 30 + Hint 25+50+100+200 + Autoplay L1 250 = 655.
-    await grantBars(page, 660);
+    await grantBars(page, 5410);
     await dbg(page, 'toggleStore');
     await dbg(page, 'buyListen');
     await dbg(page, 'buyAutoplay');

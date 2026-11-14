@@ -4525,7 +4525,7 @@ icon: !eco.ownsTopSecret(),
 // phrasing is just "Locked" (owner ask 2026-11-12).
 { id: 'multiplier', name: 'x2', badge: '?', state: 'off', price: 'Locked', icon: false },
 { id: 'speed', name: 'Speed', badge: '?', state: 'off', price: 'Locked', icon: false },
-{ id: 'pads56', name: 'Pads 5-6', badge: '?', state: 'off', price: 'Locked', icon: false },
+{ id: 'pads56', name: 'Pad 5', badge: '?', state: 'off', price: 'Locked', icon: false },
 { id: 'narrator', name: 'Hack', badge: '?', state: 'off', price: 'Locked', icon: false },
 ];
 // Skill-tree layout (owner-approved concept 2026-11-11; the lost mockup's
@@ -4831,9 +4831,9 @@ default:
 titleText =
 sel === 'multiplier' ? 'Multiplier x2'
 : sel === 'speed' ? 'Speed'
-: sel === 'pads56' ? 'Pads 5-6'
+: sel === 'pads56' ? 'Pad 5'
 : 'Hack';
-bodyText = 'Locked.';
+bodyText = sel === 'pads56' ? 'Locked. Pad 6 is bought after Pad 5.' : 'Locked.';
 break;
 }
 }

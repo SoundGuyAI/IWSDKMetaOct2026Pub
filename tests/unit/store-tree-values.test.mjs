@@ -35,7 +35,8 @@ test('skill tree wiring: store popup ids, glyphs, gates and repeat label exist',
     'useReplay',
     'ui/bars-icon.png',
     "name: 'Hack'",
-    "bodyText = 'Locked.'",
+    "name: 'Pad 5',
+    "Locked. Pad 6 is bought after Pad 5.",
   ]) {
     assert.ok(sys.includes(snippet), `system missing ${snippet}`);
   }
@@ -90,20 +91,20 @@ function ecoWith(bars) {
   return eco;
 }
 
-test('approved test prices: Listen 30, Hint 25/50/100 then doubling, Autoplay 250 then doubling (provisional, Oded 2026-11-12), Replay 20', () => {
+test('approved test prices: Listen 30, Hint 25/50/100 then doubling, Autoplay 5,000 then doubling (provisional, Oded 2026-11-12), Replay 20', () => {
   assert.equal(LISTEN_COST, 30);
   assert.equal(REPLAY_PRICE_BARS, 20);
   const eco = ecoWith(0);
   assert.deepEqual([1, 2, 3, 4, 5].map((l) => eco.hintCost(l)), [25, 50, 100, 200, 400]);
-  assert.deepEqual([1, 2, 3, 4, 5].map((l) => eco.autoplayCost(l)), [250, 500, 1000, 2000, 4000]);
+  assert.deepEqual([1, 2, 3, 4, 5].map((l) => eco.autoplayCost(l)), [5000, 10000, 20000, 40000, 80000]);
 });
 
 test('gates: Hint L1 needs Listen, Play L1 needs Hint L4, Autoplay needs Play L4 (owner voice 2026-11-13)', () => {
-  const eco = ecoWith(1000);
+  const eco = ecoWith(10000);
   assert.equal(eco.hintUnlocked(), false);
   assert.equal(eco.buyNextHintLevel(), false, 'hint refused before Listen');
   assert.equal(eco.buyListen(), true);
-  assert.equal(eco.getBars(), 970);
+  assert.equal(eco.getBars(), 9970);
   assert.equal(eco.buyListen(), false, 'Listen is one-time');
   assert.equal(eco.hintUnlocked(), true);
   assert.equal(eco.playUnlocked(), false);
@@ -122,7 +123,7 @@ test('gates: Hint L1 needs Listen, Play L1 needs Hint L4, Autoplay needs Play L4
   assert.equal(eco.getAutoplayLevel(), 1);
   assert.equal(eco.getAutoplayNoteCount(), 5);
   // 1000 - 30 - 25 - 50 - 100 - 200 - 250 = 345
-  assert.equal(eco.getBars(), 345);
+  assert.equal(eco.getBars(), 4595);
 });
 
 test('legacy saves: hint levels without Listen reveal nothing and unlock no Autoplay (bug report 2026-11-12)', () => {

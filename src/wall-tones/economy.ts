@@ -44,7 +44,7 @@ export const LISTEN_COST = 30;
 // Provisional test value (Oded 2026-11-12 11:49: "or maybe no. like 250. we'll
 // balance it later." - supersedes his 500 a minute earlier; balancing comes after
 // testing, so later levels keep the existing doubling for now).
-export const AUTOPLAY_BASE_COSTS: readonly number[] = [250];
+export const AUTOPLAY_BASE_COSTS: readonly number[] = [5000];
 export const AUTOPLAY_COST_GROWTH = 2;
 export const AUTOPLAY_NOTES_PER_LEVEL = 5;
 /** Gate chain (owner voice 2026-11-13): Hint L4 unlocks Play L1; Play L4
@@ -88,7 +88,7 @@ export const REPLAY_EARN_STEP = 5;
 
 /** One-time Top Secret store item price (user-settled Nov 7): grants the
  * hidden Secret Revealed achievement and nothing else. */
-export const TOP_SECRET_COST = 1000;
+export const TOP_SECRET_COST = 10000;
 
 /** Bars per correct pad press (provisional value, user to calibrate). */
 export const PRESS_BARS = 1;

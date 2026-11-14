@@ -9,6 +9,7 @@
     flex-direction: column;
     gap: 8px;
     padding: 16px;
+    padding-bottom: 12px;
   }
 
   .eyebrow {
@@ -92,8 +93,8 @@
     gap: 4px;
     margin-left: 24px;
     margin-right: 24px;
-    margin-top: 4px;
-    margin-bottom: 4px;
+    margin-top: 0px;
+    margin-bottom: 12px;
   }
 
   .control-button {
@@ -249,7 +250,7 @@
     </Button>
     <Button id="control-multiplier-button" class="button control-button" size="sm">
       <ButtonIcon><Zap></Zap></ButtonIcon>
-      <ButtonLabel>Multi</ButtonLabel>
+      <ButtonLabel>X2</ButtonLabel>
     </Button>
   </div>
   <Button id="skip-voice-button" class="button" style="display: none">

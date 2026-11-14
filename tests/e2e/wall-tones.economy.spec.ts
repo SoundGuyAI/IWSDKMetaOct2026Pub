@@ -269,12 +269,12 @@ test.describe('Wall Tones economy: Bars, store, hints, achievements', () => {
     await bootWallTones(page, true);
 
     // Refusal path: 999 Bars is not enough - no charge, no unlock.
-    await grantBars(page, 999);
+    await grantBars(page, 9999);
     await dbg(page, 'toggleStore');
     expect((await readState(page)).storeOpen).toBe(true);
     await dbg(page, 'buyTopSecret');
     let snap = await readState(page);
-    expect(snap.bars).toBe(999);
+    expect(snap.bars).toBe(9999);
     expect(snap.ownsTopSecret).toBe(false);
     expect(snap.unlockedAchievements).not.toContain('secret-1');
 
