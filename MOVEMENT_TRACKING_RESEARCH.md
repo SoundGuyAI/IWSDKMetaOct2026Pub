@@ -50,6 +50,10 @@ headset tuning.
 - The in-game menu shows one line with both session values (`Movement`,
   `Pad reach`), following the score rows' visibility. MR only: the line
   never shows in flat desktop/phone play.
+- Device visibility (user Nov 14: "Movement on pc - there is none but there
+  is on mobile and XR"): the Movement achievement tile is hidden on desktop
+  PCs in flat mode (`movementUiVisible`); XR sessions and mobile devices
+  keep it. Phone movement collection itself is still out of scope here.
 - Two running lifetime totals persist in localStorage
   (`wall-tones-move-head-m`, `wall-tones-move-pad-m`), same pattern as the
   economy. They are per browser/device, have no sync, and clearing browser
