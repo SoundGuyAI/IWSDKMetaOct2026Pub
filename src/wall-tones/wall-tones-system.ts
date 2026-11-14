@@ -354,6 +354,7 @@ private readonly economy = withDemoBarsFlag(new WallTonesEconomy());
 private readonly movement = new MovementTracker();
 private movementRowHeadDm = -1;
 private movementRowPadDm = -1;
+private movementRowTotalDm = -1;
 private movementAchvWholeMeters = -1;
 /** Last display state pushed to the menu movement row, exposed for e2e. */
 public lastMovementRowVisible = false;
@@ -4126,19 +4127,25 @@ this.player.head.getWorldPosition(this.viewer);
 this.movement.noteHeadPosition(this.viewer.x, this.viewer.y, this.viewer.z, immersive, performance.now() / 1000);
 const headDm = Math.round(this.movement.getSessionHeadMeters() * 10);
 const padDm = Math.round(this.movement.getSessionPadMeters() * 10);
+const totalDm = Math.round((this.movement.getLifetimeHeadMeters() + this.movement.getLifetimePadMeters()) * 10);
 // Owner scoping (Nov 11): the movement line is MR-only and follows the
 // score rows' visibility (hidden during placement setup).
 const rowVisible = immersive && this.experienceActive && this.lastScoreInfoVisible;
 if (
 headDm !== this.movementRowHeadDm ||
 padDm !== this.movementRowPadDm ||
+totalDm !== this.movementRowTotalDm ||
 rowVisible !== this.lastMovementRowVisible
 ) {
 this.movementRowHeadDm = headDm;
 this.movementRowPadDm = padDm;
+this.movementRowTotalDm = totalDm;
 this.lastMovementRowVisible = rowVisible;
 const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
 panel?.getElementById('wall-tones-movement-row')?.setProperties({
+display: rowVisible ? 'flex' : 'none',
+});
+panel?.getElementById('wall-tones-movement-total-row')?.setProperties({
 display: rowVisible ? 'flex' : 'none',
 });
 if (rowVisible) {
@@ -4147,6 +4154,9 @@ text: formatMetersNumber(headDm / 10),
 });
 panel?.getElementById<UIKit.Text>('wall-tones-movement-pad')?.setProperties({
 text: formatMetersNumber(padDm / 10),
+});
+panel?.getElementById<UIKit.Text>('wall-tones-movement-total')?.setProperties({
+text: formatMetersNumber(totalDm / 10),
 });
 }
 }
