@@ -200,7 +200,7 @@ test('no input inside the 6s answer window re-asks the same prompt', async ({
   const silent = await bridge(page);
   expect(silent?.answerCount).toBe(0);
   expect(silent?.cueCount).toBe(0);
-  expect(silent?.clipPlays['no-input-nod']).toBe(1);
+  expect(silent?.clipPlays['no-input-1']).toBe(1);
   await waitPhase(page, 'listening', 'intro');
 
   // The dialogue still answers normally afterwards.
