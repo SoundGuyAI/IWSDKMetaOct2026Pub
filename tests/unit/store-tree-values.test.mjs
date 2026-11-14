@@ -35,7 +35,7 @@ test('skill tree wiring: store popup ids, glyphs, gates and repeat label exist',
     'useReplay',
     'ui/bars-icon.png',
     "name: 'Hack'",
-    "name: 'Pad 5',
+    "name: 'Pad 5'",
     "Locked. Pad 6 is bought after Pad 5.",
   ]) {
     assert.ok(sys.includes(snippet), `system missing ${snippet}`);

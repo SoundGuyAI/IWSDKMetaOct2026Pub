@@ -4453,7 +4453,8 @@ icon: !eco.ownsListen(),
 },
 {
 id: 'hint',
-name: 'Hint',
+// Owner 2026-11-14: show the owned level's note count in the label.
+name: hintLevel > 0 ? 'Hint (Notes: ' + eco.getHintRevealCount() + ')' : 'Hint',
 badge: hintLevel > 0 ? String(hintLevel) : '',
 state: hintLevel > 0 ? 'on' : 'off',
 price: eco.hintUnlocked()
@@ -4463,7 +4464,7 @@ icon: eco.hintUnlocked(),
 },
 {
 id: 'autoplay',
-name: 'Autoplay',
+name: autoplayLevel > 0 ? 'Autoplay (Notes: ' + eco.getAutoplayNoteCount() + ')' : 'Autoplay',
 badge: autoplayLevel > 0 ? String(autoplayLevel) : '',
 state: autoplayLevel > 0 ? 'on' : 'off',
 price: eco.autoplayUnlocked()
@@ -4474,7 +4475,7 @@ icon: eco.autoplayUnlocked(),
 // Play (item 66): test prices 500/1000/2000/4000 (owner approved 2026-11-14).
 {
 id: 'play',
-name: 'Play',
+name: playLevel > 0 ? 'Play (Notes: ' + eco.getPlayNoteCount() + ')' : 'Play',
 badge: playLevel > 0 ? String(playLevel) : '',
 state: playLevel > 0 ? 'on' : 'off',
 price: !eco.playUnlocked()
