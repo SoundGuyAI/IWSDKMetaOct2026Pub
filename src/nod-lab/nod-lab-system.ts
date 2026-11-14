@@ -87,13 +87,34 @@ const NO_INPUT_LINES: readonly LabScriptLine[] = [
 ];
 
 /**
- * Desktop-only caption for the intro line (owner, Nov 14: on desktop the
- * text must say to move the mouse, not your head). Display-only: the
- * approved recorded line is unchanged, so on desktop the caption and the
- * audio intentionally differ until/unless the owner approves a new take.
+ * Intro and reminder lines per device (Nov 14): the intro names the
+ * device's input (headset keeps the script's recorded head-gesture line;
+ * desktop asks for mouse movement; phones ask for a tilt). After a
+ * no-input line, Cypher appends only the short device-specific reminder
+ * instead of repeating the full prompt.
  */
-const DESKTOP_INTRO_CAPTION =
-  'Connection check. This channel only goes one way. I can see you through the link, but I cannot hear you. So move your mouse up or down for yes, left or right for no. First question. Can you hear me?';
+const INTRO_DESKTOP_LINE: LabScriptLine = {
+  clipId: 'intro-nod-desktop',
+  text: 'Connection check. This channel only goes one way. I can see you through the link, but I cannot hear you. So move your mouse up or down for yes, left or right for no. First question. Can you hear me?',
+};
+const INTRO_TILT_LINE: LabScriptLine = {
+  clipId: 'intro-nod-tilt',
+  text: 'Connection check. This channel only goes one way. I can see you through the link, but I cannot hear you. So tilt your phone forward or back for yes, left or right for no. First question. Can you hear me?',
+};
+const REMIND_LINES: Record<'desktop' | 'headset' | 'tilt', LabScriptLine> = {
+  desktop: {
+    clipId: 'remind-desktop',
+    text: 'Move your mouse up or down for yes, left or right for no.',
+  },
+  headset: {
+    clipId: 'remind-headset',
+    text: 'Nod your head for yes. Shake it for no.',
+  },
+  tilt: {
+    clipId: 'remind-tilt',
+    text: 'Tilt your phone forward or back for yes, left or right for no.',
+  },
+};
 
 const NOD_LAB_SCRIPT: GestureLabScript = buildGestureLabScript(
   {
@@ -343,6 +364,9 @@ export class NodLabSystem extends createSystem({}) {
     for (const key of Object.keys(this.clipPlays)) {
       delete this.clipPlays[key];
     }
+    // Settle the tilt permission (started on the Start tap) before the
+    // intro line is chosen, so phones hear the tilt wording.
+    await this.setupTilt();
     await this.playPrompt('intro');
   }
 
@@ -353,6 +377,14 @@ export class NodLabSystem extends createSystem({}) {
     const seq = ++this.sequence;
     const prompt = labPromptById(this.script, promptId);
     let line: LabScriptLine = prompt.line;
+    if (promptId === 'intro') {
+      const kind = this.deviceKind();
+      if (kind === 'desktop') {
+        line = INTRO_DESKTOP_LINE;
+      } else if (kind === 'tilt') {
+        line = INTRO_TILT_LINE;
+      }
+    }
     if (prompt.loopVariations != null && prompt.loopVariations.length > 0) {
       // Approved Nov 14: each retry loop speaks the next variation.
       const index = advanceLoop
@@ -429,7 +461,6 @@ export class NodLabSystem extends createSystem({}) {
     if (!this.active || this.phase !== 'listening' || this.currentPrompt == null) {
       return;
     }
-    const prompt = this.currentPrompt;
     const seq = ++this.sequence;
     this.phase = 'responding';
     this.detector.setEnabled(false);
@@ -443,7 +474,22 @@ export class NodLabSystem extends createSystem({}) {
     if (seq !== this.sequence || !this.active) {
       return;
     }
-    await this.playPrompt(prompt.id, false);
+    await this.speakLine(this.remindLine());
+    if (seq !== this.sequence || !this.active) {
+      return;
+    }
+    this.armListening();
+  }
+
+  private deviceKind(): 'desktop' | 'headset' | 'tilt' {
+    if (this.isImmersive()) {
+      return 'headset';
+    }
+    return this.tiltState === 'on' ? 'tilt' : 'desktop';
+  }
+
+  private remindLine(): LabScriptLine {
+    return REMIND_LINES[this.deviceKind()];
   }
 
   private submitAnswer(
@@ -575,19 +621,9 @@ export class NodLabSystem extends createSystem({}) {
     }
   }
 
-  /** Caption shown for a line: the desktop intro swap, else the line text. */
+  /** Caption shown for a line: always the spoken line's own text. */
   private displayCaption(line: LabScriptLine | null): string {
-    if (line == null) {
-      return '';
-    }
-    if (
-      line.clipId === 'intro-nod' &&
-      !this.isImmersive() &&
-      this.tiltState !== 'on'
-    ) {
-      return DESKTOP_INTRO_CAPTION;
-    }
-    return line.text;
+    return line?.text ?? '';
   }
 
   private renderPanel(overrideLine?: string): void {
