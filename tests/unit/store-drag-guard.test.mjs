@@ -20,5 +20,6 @@ test('small jitter stays a tap, a real drag does not', () => {
 test('store tile click handler consults the guard', () => {
   const sys = readFileSync(new URL('../../src/wall-tones/wall-tones-system.ts', import.meta.url), 'utf8');
   assert.match(sys, /if \(storePressWasDrag\(\)\) return;\s*\n\s*this\.selectStoreTile\(t\.id\)/);
+  assert.match(sys, /onScroll: storeListOnScroll/);
   assert.match(sys, /attachStoreDragGuard\(list as never\)/);
 });
