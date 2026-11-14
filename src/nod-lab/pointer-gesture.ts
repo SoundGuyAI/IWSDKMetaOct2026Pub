@@ -80,9 +80,13 @@ export class PointerGestureTracker {
 }
 
 /**
- * Attach a pointermove feed to a target (the lab's window). The handler
- * only samples while `armed()` is true, so the pointer is never tracked
- * outside a listening prompt. Returns the detach function.
+ * Attach a pointermove feed to a target (the lab's window). Positions are
+ * fed to the tracker even while `armed()` is false so the baseline stays
+ * anchored at the resting pointer: a gesture already in progress when a
+ * prompt arms (the user started swinging while Cypher was still speaking)
+ * then measures its full swing instead of anchoring mid-gesture. Samples
+ * are only reported for detection while armed, so answers still come only
+ * from a listening prompt. Returns the detach function.
  */
 export function attachPointerTracker(
   target: Pick<Window, 'addEventListener' | 'removeEventListener'>,
@@ -92,12 +96,12 @@ export function attachPointerTracker(
   onReprime?: () => void,
 ): () => void {
   const onMove = (event: Event) => {
-    if (!armed()) {
-      return;
-    }
     const pointer = event as PointerEvent;
     const nowSec = performance.now() / 1000;
     const sample = tracker.feed(pointer.clientX, pointer.clientY, nowSec);
+    if (!armed()) {
+      return;
+    }
     if (tracker.consumeReprime()) {
       onReprime?.();
     }
