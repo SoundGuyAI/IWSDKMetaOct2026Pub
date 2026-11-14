@@ -137,12 +137,19 @@ const intro = { clipId: 'intro-nod', text: 'intro line' };
 const retry = { clipId: 'retry-nod', text: 'retry line' };
 const tree = buildGestureLabScript(intro, retry);
 
-test('script builder carries the optional no-input line', () => {
-  const withNoInput = buildGestureLabScript(intro, retry, {
-    clipId: 'no-input-nod',
-    text: 'Nothing came through. I saw no movement. Let us try again.',
+test('script builder carries the optional no-input lines', () => {
+  const lines = [
+    { clipId: 'no-input-1', text: 'Nothing. Try again.' },
+    { clipId: 'no-input-2', text: 'I saw nothing. Again.' },
+  ];
+  const withNoInput = buildGestureLabScript(intro, retry, lines);
+  assert.equal(withNoInput.noInput?.length, 2);
+  assert.equal(withNoInput.noInput?.[0].clipId, 'no-input-1');
+  const single = buildGestureLabScript(intro, retry, {
+    clipId: 'no-input-1',
+    text: 'Nothing. Try again.',
   });
-  assert.equal(withNoInput.noInput?.clipId, 'no-input-nod');
+  assert.equal(single.noInput?.length, 1);
   assert.equal(buildGestureLabScript(intro, retry).noInput, undefined);
 });
 
