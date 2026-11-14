@@ -1,0 +1,131 @@
+<!--
+  Nod Yes/No research lab panel (backlog item 52, head-gesture half).
+  Isolated Cypher dialogue scene: one-way channel, answers by nod/shake.
+-->
+<style>
+  .nod-lab-root {
+    flex-direction: column;
+    width: 560px;
+  }
+
+  .nod-lab-content {
+    flex-direction: column;
+    gap: 10px;
+    padding: 24px;
+  }
+
+  .nod-lab-eyebrow {
+    color: #6b5a00;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+  }
+
+  .nod-lab-eyebrow:dark {
+    color: #f5d90a;
+  }
+
+  .nod-lab-heading {
+    color: #1c1d20;
+    font-size: 30px;
+    font-weight: 700;
+    line-height: 36px;
+  }
+
+  .nod-lab-heading:dark {
+    color: #fafaf7;
+  }
+
+  .nod-lab-body {
+    color: #3a3b40;
+    font-size: 17px;
+    line-height: 24px;
+  }
+
+  .nod-lab-body:dark {
+    color: #dddfe3;
+  }
+
+  .nod-lab-line {
+    color: #1c1d20;
+    font-size: 19px;
+    font-weight: 700;
+    line-height: 26px;
+    margin-top: 4px;
+    margin-bottom: 4px;
+  }
+
+  .nod-lab-line:dark {
+    color: #fafaf7;
+  }
+
+  .nod-lab-telemetry {
+    color: #6a6c72;
+    font-size: 13px;
+    line-height: 18px;
+  }
+
+  .nod-lab-telemetry:dark {
+    color: #9a9ea6;
+  }
+
+  .nod-lab-button {
+    justify-content: center;
+    height: 56px;
+    margin-left: 24px;
+    margin-right: 24px;
+    margin-bottom: 10px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+
+  .nod-lab-button-label {
+    font-size: 20px;
+    font-weight: 700;
+    transform-translate-y: 1px;
+  }
+
+  .nod-lab-answer-row {
+    flex-direction: row;
+    gap: 12px;
+    margin-left: 24px;
+    margin-right: 24px;
+    margin-bottom: 10px;
+  }
+
+  .nod-lab-answer-button {
+    justify-content: center;
+    flex-grow: 1;
+    height: 56px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+</style>
+<Panel id="nod-lab-root" class="nod-lab-root">
+  <div class="nod-lab-content">
+    <div id="nod-lab-eyebrow" class="nod-lab-eyebrow">RESEARCH LAB</div>
+    <div id="nod-lab-heading" class="nod-lab-heading">Nod Yes / No</div>
+    <div id="nod-lab-intro" class="nod-lab-body">Cypher's channel is one-way: he can see you through the link, but he can't hear you. Answer by nodding (yes) or shaking your head (no). Enter XR first for head tracking; on desktop use the buttons.</div>
+    <div id="nod-lab-status" class="nod-lab-body">...</div>
+    <div id="nod-lab-line" class="nod-lab-line">...</div>
+    <div id="nod-lab-voice" class="nod-lab-telemetry">Cypher voice: checking...</div>
+    <div id="nod-lab-telemetry" class="nod-lab-telemetry">telemetry starts with the link</div>
+  </div>
+  <Button id="nod-lab-start-button" class="nod-lab-button">
+    <ButtonLabel id="nod-lab-start-label" class="nod-lab-button-label">Open the link</ButtonLabel>
+  </Button>
+  <div class="nod-lab-answer-row">
+    <Button id="nod-lab-yes-button" class="nod-lab-answer-button">
+      <ButtonLabel class="nod-lab-button-label">Yes</ButtonLabel>
+    </Button>
+    <Button id="nod-lab-no-button" class="nod-lab-answer-button">
+      <ButtonLabel class="nod-lab-button-label">No</ButtonLabel>
+    </Button>
+  </div>
+  <Button id="nod-lab-repeat-button" class="nod-lab-button">
+    <ButtonLabel class="nod-lab-button-label">Repeat the line</ButtonLabel>
+  </Button>
+  <Button id="nod-lab-back-button" class="nod-lab-button" style="margin-bottom: 24px">
+    <ButtonLabel class="nod-lab-button-label">Back to menu</ButtonLabel>
+  </Button>
+</Panel>

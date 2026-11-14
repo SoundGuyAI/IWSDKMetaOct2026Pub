@@ -16,6 +16,8 @@ import {
 const RAY_TOGGLED_PANEL_IDS: ReadonlySet<string> = new Set([
   'main-menu-panel',
   'wall-tones-panel',
+  'nod-lab-panel',
+  'nod-lab-entry-panel',
 ]);
 import { primeWallTonesAudioFromGesture } from './wall-tones/audio.js';
 import { resetWallTonesStats } from './wall-tones/economy.js';
@@ -28,7 +30,7 @@ import {
   type WallTonesVoiceGender,
 } from './wall-tones/speech.js';
 
-export type ExperienceMode = 'menu' | 'demo' | 'meditation' | 'walltones';
+export type ExperienceMode = 'menu' | 'demo' | 'meditation' | 'walltones' | 'nodlab';
 
 const MODE_STORAGE_KEY = 'iwsdk-experience-mode';
 
@@ -51,6 +53,7 @@ function readStoredMode(): ExperienceMode {
     stored === 'demo' ||
     stored === 'meditation' ||
     stored === 'walltones' ||
+    stored === 'nodlab' ||
     stored === 'menu'
   ) {
     return stored;
@@ -176,9 +179,13 @@ export class AppModeSystem extends createSystem({}) {
     const showDemo = mode === 'demo';
     const showMeditation = mode === 'meditation';
     const showWallTones = mode === 'walltones';
+    const showNodLab = mode === 'nodlab';
 
     this.setNodeVisible('main-menu-panel', showMenu);
     this.setNodeVisible('wall-tones-panel', showWallTones);
+    this.setNodeVisible('nod-lab-panel', showNodLab);
+    // Lab entry floats under the menu: visible exactly when the menu is.
+    this.setNodeVisible('nod-lab-entry-panel', showMenu);
 
     for (const nodeId of DEMO_NODE_IDS) {
       this.setNodeVisible(nodeId, showDemo);
@@ -240,6 +247,8 @@ export class AppModeSystem extends createSystem({}) {
     const xrButton = panel.getElementById('xr-button');
     wallTonesButton?.addEventListener('click', () => this.startWallTonesFlat());
     xrButton?.addEventListener('click', () => this.enterXrIntoWallTones());
+    this.bindNodLabEntry();
+    this.bindNodLabBack();
     this.bindSettingsMenu(panel);
     if (wallTonesButton != null) {
       wallTonesButton.name = 'Btn_ModeWallTones';
@@ -248,6 +257,32 @@ export class AppModeSystem extends createSystem({}) {
       xrButton.name = 'Btn_EnterXrWallTones';
     }
     return panel;
+  }
+
+  // The lab entry is its own compact panel under the main menu, NOT a button
+  // inside main-menu.uikitml: the desktop e2e specs click the menu buttons at
+  // calibrated pixel coordinates and the centre-anchored panel would shift
+  // them if another in-flow button were added.
+  private bindNodLabEntry(): void {
+    const panel = this.world.getSceneObject<UIKitMLAsset>('nod-lab-entry-panel');
+    const nodLabButton = panel?.getElementById('nod-lab-button');
+    nodLabButton?.addEventListener('click', () => {
+      primeWallTonesAudioFromGesture();
+      unlockSpeechFromGesture();
+      this.setMode('nodlab');
+    });
+    if (nodLabButton != null) {
+      nodLabButton.name = 'Btn_NodLab';
+    }
+  }
+
+  private bindNodLabBack(): void {
+    const panel = this.world.getSceneObject<UIKitMLAsset>('nod-lab-panel');
+    const back = panel?.getElementById('nod-lab-back-button');
+    back?.addEventListener('click', () => this.setMode('menu'));
+    if (back != null) {
+      back.name = 'Btn_NodLabBackToMenu';
+    }
   }
 
   /**
@@ -400,6 +435,7 @@ export class AppModeSystem extends createSystem({}) {
       demo: 'Starter demo',
       meditation: 'Breath & gaze rest',
       walltones: 'Wall Tones 2: too fast to wall',
+      nodlab: 'Wall Tones 2: nod yes/no lab',
     };
     document.title = titles[mode];
 
