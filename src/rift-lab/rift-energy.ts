@@ -246,6 +246,18 @@ export class RiftLabGame {
   }
 
   /**
+   * Drop an opening or open rift without sealing it (flat viewport too small for any
+   * safe spot). Not a seal: nothing is cleared or rewarded. Returns whether a
+   * rift was removed.
+   */
+  discardRift(riftId: number): boolean {
+    const i = this.rifts.findIndex((r) => r.id === riftId && (r.state === 'open' || r.state === 'opening'));
+    if (i < 0) return false;
+    this.rifts.splice(i, 1);
+    return true;
+  }
+
+  /**
    * His settled rule: while any rift is open the negative modifier applies;
    * it lifts only when the rift is cleared. The effect is UNRESOLVED and
    * stays a no-op (OPEN_RIFT_MODIFIER_EFFECT) until Oded picks it.
