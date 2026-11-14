@@ -332,14 +332,14 @@ test.describe('Wall Tones store skill tree', () => {
     expect(snap.demoBoost).toBe(0);
     expect(snap.bars).toBe(0);
   });
-  test('Play: unpriced Buy is denied and the greyed control button opens the Store at the Play tile', async ({
+  test('Play: Buy is denied while locked and the greyed control button opens the Store at the Play tile', async ({
     page,
   }) => {
     test.slow();
     await abortSpeech(page);
     await bootWallTones(page, true, '?demoBars=800');
     await dbg(page, 'toggleStore');
-    // Prices are deferred to the owner's balance pass: nothing sells yet.
+    // Locked (Hint L4 not reached): Buy is refused, no Bars move.
     await dbg(page, 'buyPlay');
     expect((await readState(page)).playLevel).toBe(0);
     // The greyed control-row Play button is a Store shortcut to its tile.
@@ -410,7 +410,7 @@ test.describe('Wall Tones store skill tree', () => {
 
   });
 
-  test('Index: tile sits beside Play, unpurchasable while prices are unset, debug grant owns it', async ({
+  test('Index: tile sits beside Play, Buy refused while locked, debug grant owns it', async ({
     page,
   }) => {
     test.slow();
@@ -439,7 +439,7 @@ test.describe('Wall Tones store skill tree', () => {
           ),
       )
       .toBeGreaterThan(0);
-    // Gated + unpriced: the Buy is always refused for now.
+    // Gated behind Hint level 3: the Buy is refused while locked.
     await dbg(page, 'buyIndex');
     expect(
       await page.evaluate(
