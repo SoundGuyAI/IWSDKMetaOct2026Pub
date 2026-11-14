@@ -45,6 +45,14 @@ async function probeClip(url: string): Promise<boolean> {
       }
     })();
     availabilityCache.set(url, cached);
+    // A transient failure (offline hiccup, interrupted fetch) must not mute
+    // the clip for the rest of the session: only successes stay cached, so
+    // a failure re-probes the next time the line is spoken.
+    void cached.then((ok) => {
+      if (!ok) {
+        availabilityCache.delete(url);
+      }
+    });
   }
   return cached;
 }
