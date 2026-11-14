@@ -77,7 +77,7 @@ Oded tested the merged main build and reported that everything looks fine. The a
 ### Remaining MR polish
 
 - [ ] 29. MR achievement for playing standing at walls, or on a mixed wall+table layout.
-- [ ] 30. Research: can the SDK track how much a player moves (fitness-style) in wall or mixed wall+table modes? If not, estimate from the distances between the placed pads. For later score use; no health or calorie claims. Update 2026-11-12 00:34 (Oded): start the movement-tracking research PR now. In preparation, not ready.
+- [ ] 30. Research: can the SDK track how much a player moves (fitness-style) in wall or mixed wall+table modes? If not, estimate from the distances between the placed pads. For later score use; no health or calorie claims. Update 2026-11-12 00:34 (Oded): start the movement-tracking research PR now. In preparation, not ready. Update 2026-11-12 00:56: research prototype opened as PR #72 (branch movement-tracking-research, not merged) - MovementTracker module (XZ-plane head movement with 5cm dead-zone and speed cap, pad-reach distance between correct presses), one-line Movement/Pad reach stat row, provisional Movement achievement (10/25/50 m, targets placeholders), totals-only localStorage, unit+e2e tests wired into CI, and MOVEMENT_TRACKING_RESEARCH.md with the headset validation checklist. Combined-score formula and achievement targets stay open; awaiting CI, preview check and Oded's headset validation.
 ## In progress
 
 

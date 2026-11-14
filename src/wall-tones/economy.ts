@@ -5,6 +5,7 @@
  * accessibility settings.
  */
 
+import { MOVEMENT_STORAGE_KEYS, readLifetimeMovementMeters } from './movement.js';
 import { BACKGROUND_PROGRESS_KEY } from './cypher-background.js';
 import { CYPHER_PROGRESS_KEY } from './cypher-progress.js';
 
@@ -123,6 +124,10 @@ export const ACHIEVEMENT_CATEGORIES: readonly AchievementCategory[] = [
   { id: 'score', label: 'Total Score', description: 'Lifetime score: one point per Bar earned.', levels: [50, 100, 250] },
   { id: 'store', label: 'Store', description: 'Store purchases (provisional levels).', levels: [1, 3, 5, 10, 25] },
   { id: 'presses', label: 'Pad presses', description: 'Pad presses in the game, lifetime (provisional levels).', levels: [50, 100, 250, 500, 1000] },
+  // Backlog 30 research: combined MR movement estimate (headset + pad reach,
+  // meter totals from movement.ts). Levels are placeholders until headset
+  // testing settles the scoring (owner Nov 11).
+  { id: 'movement', label: 'Movement', description: 'Meters moved in MR: headset movement plus pad reach (research, provisional levels).', levels: [10, 25, 50] },
   { id: 'secret', label: 'Secret Revealed', description: 'A secret. It stays secret.', levels: [1], hidden: true },
 ];
 
@@ -182,6 +187,9 @@ AUTOPLAY_LEVEL_KEY,
 REPLAY_FREE_KEY,
 REPLAY_PAID_KEY,
 SAVERS_KEY,
+// Backlog 30 research totals (fractional meters; economy's number helpers
+// do not own them).
+...MOVEMENT_STORAGE_KEYS,
 CYPHER_PROGRESS_KEY,
 BACKGROUND_PROGRESS_KEY,
 ]) {
@@ -383,6 +391,9 @@ export class WallTonesEconomy {
         return this.purchases;
       case 'presses':
         return this.presses;
+      case 'movement':
+        // Backlog 30 research: owned by movement.ts storage, not a counter here.
+        return readLifetimeMovementMeters();
       default:
         // secret: the Top Secret purchase (user-settled Nov 7, backlog 13).
         return this.topSecretOwned ? 1 : 0;
@@ -546,6 +557,13 @@ export class WallTonesEconomy {
     this.unlocked.add(id);
     writeStringArray(ACHIEVEMENTS_KEY, [...this.unlocked]);
     this.pendingToasts.push({ id, label, description });
+  }
+
+  /** Movement totals change in movement.ts outside the economy's own
+   * counters; re-run the threshold check when the tracker reports a new
+   * whole meter so Movement achievements unlock during play (backlog 30). */
+  noteExternalProgress(liveStreak: number): void {
+    this.checkAchievements(liveStreak);
   }
 
   /** Achievement unlocks not yet shown; clears the queue. */

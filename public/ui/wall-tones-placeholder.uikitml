@@ -59,6 +59,25 @@
     color: #fafaf7;
   }
 
+  .stat-number-field {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 3px;
+    flex-shrink: 0;
+    min-width: 96px;
+  }
+
+  .stat-unit {
+    color: #3a3b40;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .stat-unit:dark {
+    color: #c8ccd2;
+  }
+
   .status {
     color: #3a3b40;
     font-size: 17px;
@@ -138,6 +157,39 @@
       <div style="flex-direction: row; align-items: center; gap: 6px">
         <div class="stat-label">Total Score</div>
         <div id="wall-tones-total-score" class="stat-value">0</div>
+      </div>
+    </div>
+    <!-- Backlog 30 research: both movement fields on one line, no developer
+         labels, MR only (owner layout call Nov 11). Seeded text so the
+         setProperties text update cannot no-op (empty-div compile trap).
+         Number and unit are separate elements in a fixed-width field so the
+         "m" can never wrap onto its own line (Quest feedback Nov 14). -->
+    <div id="wall-tones-movement-row" class="stat-row" style="display: none">
+      <div style="flex-direction: row; align-items: center; gap: 6px">
+        <div class="stat-label">Movement</div>
+        <div class="stat-number-field">
+          <div id="wall-tones-movement-head" class="stat-value">0.0</div>
+          <div class="stat-unit">m</div>
+        </div>
+      </div>
+      <div style="flex-direction: row; align-items: center; gap: 6px">
+        <div class="stat-label">Pad reach</div>
+        <div class="stat-number-field">
+          <div id="wall-tones-movement-pad" class="stat-value">0.0</div>
+          <div class="stat-unit">m</div>
+        </div>
+      </div>
+    </div>
+    <!-- Lifetime movement total (headset + pad reach): the number the
+         Movement achievement tracks. Same fixed-width field so the unit
+         cannot wrap (owner Nov 14: show this session and total). -->
+    <div id="wall-tones-movement-total-row" class="stat-row" style="display: none">
+      <div style="flex-direction: row; align-items: center; gap: 6px">
+        <div class="stat-label">Total movement</div>
+        <div class="stat-number-field">
+          <div id="wall-tones-movement-total" class="stat-value">0.0</div>
+          <div class="stat-unit">m</div>
+        </div>
       </div>
     </div>
     <div id="wall-tones-round-card" class="stat-row">
