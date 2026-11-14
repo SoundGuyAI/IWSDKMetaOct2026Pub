@@ -71,6 +71,7 @@ import {
   SRGBColorSpace,
   Vector2,
   Vector3,
+  Vector4,
   type Texture,
 } from 'three';
 import {
@@ -100,6 +101,11 @@ const RIFT_POSITIONS = [
   new Vector3(0, 2.7, -2.4), // above the panel, outside the click guard
 ];
 const RIFT_PLANE_M = 1.8;
+/** Visible fracture radius at full size (the quad has transparent margin). */
+const RIFT_VISIBLE_RADIUS_M = 0.62;
+/** Flat mode tries these radii in order: shrink before overlapping the menu. */
+const FLAT_RIFT_RADII_M = [0.62, 0.48, 0.36];
+const FLAT_SPACING_PER_RADIUS = 2.25;
 const RIFT_SPAWN_INTERVAL_MS = 6000;
 const MAX_OPEN_RIFTS = 3;
 /** Beam hit test: ray-to-rift distance under this counts as contact. */
@@ -110,7 +116,7 @@ const NOTE_SIZE_M = 0.034;
 const WALL_RIFT_BAND_BELOW_M = 0.55;
 const WALL_RIFT_BAND_ABOVE_M = 0.5;
 const WALL_RIFT_INSET_M = 0.3;
-const WALL_RIFT_SPACING_M = 1.2;
+const WALL_RIFT_SPACING_M = 1.4;
 const WALL_RIFT_OFFSET_M = 0.03;
 
 const noteGlyphTextureCache = new Map<string, Texture>();
@@ -120,6 +126,28 @@ const noteGlyphTextureCache = new Map<string, Texture>();
  * colorful musical notes); a per-color glyph texture with normal blending
  * stays readable.
  */
+let glowDotTextureCache: Texture | null = null;
+/** Soft round dot: hot core, halo, tinted by vertex color. */
+function glowDotTexture(): Texture {
+  if (glowDotTextureCache == null) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    if (ctx != null) {
+      const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+      g.addColorStop(0, 'rgba(255,255,255,1)');
+      g.addColorStop(0.18, 'rgba(255,255,255,0.95)');
+      g.addColorStop(0.4, 'rgba(255,255,255,0.35)');
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 64, 64);
+    }
+    glowDotTextureCache = new CanvasTexture(canvas);
+  }
+  return glowDotTextureCache;
+}
+
 function noteGlyphTexture(color: PadColorName): Texture {
   let tex = noteGlyphTextureCache.get(color);
   if (tex == null) {
@@ -323,6 +351,10 @@ export class RiftLabSystem extends createSystem({
 }) {
   private readonly game = new RiftLabGame();
   private panel: UIKitMLAsset | null = null;
+  private readonly panelScale = new Vector3();
+  private readonly panelCorner = new Vector3();
+  private readonly panelRect = new Vector4();
+  private flatCheckAt = 0;
   private statusText: UIKit.Text | null = null;
   private energyText: UIKit.Text | null = null;
   private telemetryText: UIKit.Text | null = null;
@@ -679,6 +711,107 @@ export class RiftLabSystem extends createSystem({
       : `Charge: ${Math.round(this.game.getEnergy())}/${SEAL_ENERGY_REQUIRED}.`);
   }
 
+  /** Lab panel screen rect in NDC (approximate, from its scale). */
+  private panelNdcRect(out: Vector4): boolean {
+    const obj = this.panel as unknown as import('three').Object3D | null;
+    if (obj == null) return false;
+    obj.updateWorldMatrix(true, false);
+    const sc = obj.getWorldScale(this.panelScale).x;
+    const hw = 2.9 * sc;
+    const hh = 2.79 * sc;
+    let minX = 9, minY = 9, maxX = -9, maxY = -9;
+    for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const) {
+      this.panelCorner.set((sx * hw) / sc, (sy * hh) / sc, 0).applyMatrix4(obj.matrixWorld).project(this.world.camera);
+      minX = Math.min(minX, this.panelCorner.x);
+      maxX = Math.max(maxX, this.panelCorner.x);
+      minY = Math.min(minY, this.panelCorner.y);
+      maxY = Math.max(maxY, this.panelCorner.y);
+    }
+    out.set(minX, minY, maxX, maxY);
+    return true;
+  }
+
+  /** True if a rift of this radius at pos would leave the screen or touch the menu. */
+  private flatSpotBlocked(pos: Vector3, radius: number, hasPanel: boolean): boolean {
+    const cam = this.world.camera;
+    const a = new Vector3().copy(pos).project(cam);
+    if (a.z > 1) return true;
+    const b = new Vector3(pos.x + radius, pos.y + radius, pos.z).project(cam);
+    const rx = Math.abs(b.x - a.x);
+    const ry = Math.abs(b.y - a.y);
+    if (a.x - rx < -0.95 || a.x + rx > 0.95 || a.y - ry < -0.95 || a.y + ry > 0.95) return true;
+    if (hasPanel) {
+      const r = this.panelRect;
+      const M = 0.06;
+      const dx = Math.max(r.x - M - (a.x + rx), a.x - rx - (r.z + M), 0);
+      const dy = Math.max(r.y - M - (a.y + ry), a.y - ry - (r.w + M), 0);
+      if (dx <= 0 && dy <= 0) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Desktop rift placement for the CURRENT camera/viewport: biggest radius
+   * first, on screen, clear of the Lab panel and of other open rifts. Returns
+   * null when nothing fits (caller defers).
+   */
+  private pickFlatSpot(
+    excludeId: number | null,
+  ): { pos: Vector3; radius: number } | null {
+    const depth = RIFT_POSITIONS[0]!.z;
+    this.world.camera.updateMatrixWorld();
+    const hasPanel = this.panelNdcRect(this.panelRect);
+    const others: { pos: Vector3; radius: number }[] = [];
+    for (const [id, v] of this.riftViews) {
+      if (id === excludeId) continue;
+      others.push({ pos: v.position, radius: v.group.scale.x * RIFT_VISIBLE_RADIUS_M });
+    }
+    for (const radius of FLAT_RIFT_RADII_M) {
+      const good: { pos: Vector3; score: number }[] = [];
+      for (let x = -3.2; x <= 3.201; x += 0.2) {
+        for (let y = 0.6; y <= 3.5; y += 0.2) {
+          const pos = new Vector3(x, y, depth);
+          if (this.flatSpotBlocked(pos, radius, hasPanel)) continue;
+          let near = Infinity;
+          let ok = true;
+          for (const o of others) {
+            const d = o.pos.distanceTo(pos);
+            if (d < (radius + o.radius) * 1.1) { ok = false; break; }
+            near = Math.min(near, d);
+          }
+          if (!ok) continue;
+          good.push({ pos, score: Math.min(near, 3) });
+        }
+      }
+      if (good.length > 0) {
+        good.sort((m, n) => n.score - m.score);
+        const top = good.slice(0, Math.max(1, Math.ceil(good.length / 4)));
+        return { pos: top[Math.floor(Math.random() * top.length)]!.pos.clone(), radius };
+      }
+    }
+    return null;
+  }
+
+  /** Flat mode: if a resize or menu move put an open rift over the menu or off
+   * screen, move or shrink it; if nothing fits it stays and is reported. */
+  private reflowFlatRifts(): void {
+    if (this.isImmersive() || this.riftViews.size === 0) return;
+    const now = performance.now();
+    if (now - this.flatCheckAt < 400) return;
+    this.flatCheckAt = now;
+    this.world.camera.updateMatrixWorld();
+    const hasPanel = this.panelNdcRect(this.panelRect);
+    for (const [id, v] of this.riftViews) {
+      const radius = v.group.scale.x * RIFT_VISIBLE_RADIUS_M;
+      if (!this.flatSpotBlocked(v.position, radius, hasPanel)) continue;
+      const spot = this.pickFlatSpot(id);
+      if (spot == null) continue;
+      v.position.copy(spot.pos);
+      v.group.position.copy(spot.pos);
+      v.group.scale.setScalar(spot.radius / RIFT_VISIBLE_RADIUS_M);
+    }
+  }
+
   private spawnRift(): void {
     if (this.riftViews.size >= MAX_OPEN_RIFTS) return;
     let wallSpot: { position: Vector3; normal: Vector3 } | null = null;
@@ -688,11 +821,12 @@ export class RiftLabSystem extends createSystem({
       wallSpot = this.isMixedReality() ? this.pickWallSpot() : null;
       if (wallSpot == null) return;
     }
+    // Flat mode: a spot clear of the menu and of other rifts, or defer (the
+    // spawn timer retries). Never place a rift over the menu or another rift.
+    const flatSpot = wallSpot == null ? this.pickFlatSpot(null) : null;
+    if (wallSpot == null && flatSpot == null) return;
     const rift = this.game.spawnRift();
-    const position =
-      wallSpot != null
-        ? wallSpot.position
-        : RIFT_POSITIONS[(rift.id - 1) % RIFT_POSITIONS.length].clone();
+    const position = wallSpot != null ? wallSpot.position : flatSpot!.pos;
     const lookTarget: Vector3 | null =
       wallSpot != null ? wallSpot.position.clone().add(wallSpot.normal) : null;
     void playRiftOpen();
@@ -716,7 +850,8 @@ export class RiftLabSystem extends createSystem({
     const sparks = new Points(
       sparkGeo,
       new PointsMaterial({
-        size: 0.016,
+        size: 0.075,
+        map: glowDotTexture(),
         vertexColors: true,
         transparent: true,
         depthWrite: false,
@@ -767,6 +902,7 @@ export class RiftLabSystem extends createSystem({
       });
     }
     group.position.copy(position);
+    if (flatSpot != null) group.scale.setScalar(flatSpot.radius / RIFT_VISIBLE_RADIUS_M);
     if (lookTarget != null) {
       group.lookAt(lookTarget);
     }
@@ -1031,6 +1167,7 @@ export class RiftLabSystem extends createSystem({
       }
     }
 
+    this.reflowFlatRifts();
     // Animate the fractures and publish target positions for the panel dodge.
     const nowMs = performance.now();
     riftAimRays.length = 0;
