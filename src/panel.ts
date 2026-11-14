@@ -69,6 +69,7 @@ export class PanelSystem extends createSystem({}) {
   /** When true, flat (non-immersive) layout should be applied. */
   private flatLayoutActive = false;
   private menuAnchored = false;
+  private followedMenuId = 'main-menu-panel';
   private menuSnapping = false;
   private readonly menuViewer = new Vector3();
   private readonly menuForward = new Vector3();
@@ -86,7 +87,17 @@ export class PanelSystem extends createSystem({}) {
    * look-away threshold, eased snap). Flat layouts are untouched.
    */
   update(delta: number): void {
-    const entity = this.world.getSceneEntity('main-menu-panel');
+    // The Lab menu replaces the main menu in place, so it follows the player
+    // with the same rules. Switching menus re-anchors it in front of the viewer.
+    const labVisible =
+      this.world.getSceneEntity('lab-menu-panel')?.getValue(Visibility, 'isVisible') === true;
+    const followId = labVisible ? 'lab-menu-panel' : 'main-menu-panel';
+    if (followId !== this.followedMenuId) {
+      this.followedMenuId = followId;
+      this.menuAnchored = false;
+      this.menuSnapping = false;
+    }
+    const entity = this.world.getSceneEntity(followId);
     const immersive =
       this.world.xrEnabled &&
       this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
@@ -303,5 +314,33 @@ export class PanelSystem extends createSystem({}) {
     scale[0] = flatScale;
     scale[1] = flatScale;
     scale[2] = flatScale;
+
+    // The Lab menu replaces the main menu in place, so it shares its flat layout.
+    const labMenu = this.world.getSceneEntity('lab-menu-panel');
+    if (labMenu != null) {
+      const lPos = labMenu.getVectorView(Transform, 'position');
+      const lScale = labMenu.getVectorView(Transform, 'scale');
+      lPos[0] = layout.position[0];
+      lPos[1] = layout.position[1];
+      lPos[2] = layout.position[2];
+      lScale[0] = flatScale;
+      lScale[1] = flatScale;
+      lScale[2] = flatScale;
+    }
+
+    // Lab entry placement per flat layout: desktop has free space to the right
+    // of the hub; compact phone viewports width-fill the hub, so the entry
+    // moves above it to stay on-screen. XR keeps the scene default.
+    const labEntry = this.world.getSceneEntity('lab-entry-panel');
+    if (labEntry != null) {
+      const ePos = labEntry.getVectorView(Transform, 'position');
+      if (isCompactFlatViewport()) {
+        ePos[0] = 0;
+        ePos[1] = 3.55;
+      } else {
+        ePos[0] = 4.15;
+        ePos[1] = 0;
+      }
+    }
   }
 }
