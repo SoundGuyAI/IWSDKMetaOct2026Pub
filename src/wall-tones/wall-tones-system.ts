@@ -482,7 +482,7 @@ private readonly sequenceCueSquares: UIKit.Container[] = [];
 private readonly sequenceCueNames: UIKit.Text[] = [];
 /** Small '▼' markers: one per square, shown only on the current/last
  * auto-entered note (owner 2026-11-14 dim + arrow pick). */
-private readonly sequenceCueArrows: UIKit.Text[] = [];
+private readonly sequenceCueArrows: UIKit.Container[] = [];
 private readonly flushSequenceIcons = () => {
 this.sequenceIconUpdateQueued = false;
 const panel = this.sequenceIconPendingPanel;
@@ -5653,7 +5653,8 @@ row.setProperties({ display: visible ? 'flex' : 'none' });
 this.lastSequenceRowVisible = visible;
 for (let i = 0; i < this.game.sequence.length; i++) {
 if (!this.sequenceCueSquares[i]) {
-const arrow = new UIKit.Text({fontSize: 15, color: 0xffffff});
+const arrow = new UIKit.Container({width: 12, height: 7, flexShrink: 0});
+arrow.add(new UIKit.Image({src: storeChipGlyphSrc('arrow', '#ffffff'), width: 12, height: 7}));
 const square = new UIKit.Container({width: 16, height: 16, borderRadius: 2, flexShrink: 0});
 const name = new UIKit.Text({fontSize: 15, color: 0xffffff});
 this.sequenceCueArrows.push(arrow);
@@ -5684,7 +5685,6 @@ backgroundColor: id == null ? 0 : unknown ? 0x8a8f98
 });
 this.sequenceCueArrows[i]!.setProperties({
 display: i === arrowAt && id != null && !notYetPlayed ? 'flex' : 'none',
-text: '\u25BA',
 });
 this.sequenceCueNames[i]!.setProperties({
 display: id != null && !notYetPlayed && ((names && !beyondHint) || unknown) ? 'flex' : 'none',
