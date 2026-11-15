@@ -695,3 +695,79 @@ test('flat-mode head shakes still report no with the wider dominance ratio', () 
   assert.ok(events.length >= 1, 'at least one shake reported');
   assert.equal(events[0]?.answer, 'no');
 });
+
+// --- Nov 16 iPhone retest regression: gamma slide across vertical ---------
+
+test('a nod through vertical with a gradual gamma slide reports yes, not no (Nov 16 retest)', () => {
+  // Owner's Nov 16 iPhone retest: resting pose beta ~75 / gamma ~75, two
+  // nods tilting back across vertical (beta 75 -> 105 -> 75). iOS's gamma
+  // reflection arrived as a multi-event slide (each step < 10 deg), which
+  // the jump absorbers let through: the deployed build read yaw 108-158 deg
+  // for seconds and answered "no" (81.7 deg). The gimbal-zone freeze must
+  // keep yawDeg bounded and let the pitch nods through.
+  const detector = new HeadNodShakeDetector(FLAT_HEAD_GESTURE_CONFIG);
+  const tracker = new TiltBaselineTracker();
+  detector.setEnabled(true);
+  now = 0;
+  const events = [];
+  let maxAbsYaw = 0;
+  // Raw iOS gamma: reflected (sign-flipped) while beta > 90, and the flip
+  // slides over ~6 events instead of jumping.
+  let slideFrom = null;
+  let slideSteps = 0;
+  let gammaShown = 75;
+  const feed = (beta) => {
+    const reflected = Math.abs(beta) > 90;
+    const target = reflected ? -75 : 75;
+    if (gammaShown !== target) {
+      if (slideFrom == null) { slideFrom = gammaShown; slideSteps = 0; }
+      slideSteps += 1;
+      const f = Math.min(1, slideSteps / 6);
+      gammaShown = slideFrom + (target - slideFrom) * f;
+      if (f >= 1) slideFrom = null;
+    }
+    const s = tracker.feed(beta, gammaShown);
+    maxAbsYaw = Math.max(maxAbsYaw, Math.abs(s.yawDeg));
+    const e = detector.feed(s.pitchDeg * D, s.yawDeg * D, now);
+    if (e) events.push(e);
+  };
+  // Rest at the holding pose.
+  for (let i = 0; i < 360; i += 1) { now += 1 / 60; feed(75); }
+  // Two nods through vertical: beta 75 -> 105 -> 75, ~0.9 s each.
+  for (let n = 0; n < 2; n += 1) {
+    for (let i = 0; i < 54; i += 1) {
+      now += 1 / 60;
+      feed(75 + 30 * Math.sin(Math.PI * Math.min(1, i / 54)));
+    }
+    for (let i = 0; i < 30; i += 1) { now += 1 / 60; feed(75); }
+  }
+  for (let i = 0; i < 120; i += 1) { now += 1 / 60; feed(75); }
+  assert.ok(maxAbsYaw <= 10, `yaw stayed bounded (max ${maxAbsYaw.toFixed(1)} deg)`);
+  assert.ok(events.length >= 1, 'at least one nod reported');
+  assert.equal(events[0]?.answer, 'yes');
+});
+
+test('a real left-right roll at a normal holding pose still reports no', () => {
+  // The gimbal-zone freeze must not swallow actual shakes: beta stays ~60
+  // (below the zone) while gamma rolls +-20 deg.
+  const detector = new HeadNodShakeDetector(FLAT_HEAD_GESTURE_CONFIG);
+  const tracker = new TiltBaselineTracker();
+  detector.setEnabled(true);
+  now = 0;
+  const events = [];
+  const feed = (beta, gamma) => {
+    const s = tracker.feed(beta, gamma);
+    const e = detector.feed(s.pitchDeg * D, s.yawDeg * D, now);
+    if (e) events.push(e);
+  };
+  for (let i = 0; i < 360; i += 1) { now += 1 / 60; feed(60, 0); }
+  for (let n = 0; n < 2; n += 1) {
+    for (let i = 0; i < 54; i += 1) {
+      now += 1 / 60;
+      feed(60, 20 * Math.sin(2 * Math.PI * Math.min(1, i / 54)));
+    }
+    for (let i = 0; i < 30; i += 1) { now += 1 / 60; feed(60, 0); }
+  }
+  assert.ok(events.length >= 1, 'at least one shake reported');
+  assert.equal(events[0]?.answer, 'no');
+});
