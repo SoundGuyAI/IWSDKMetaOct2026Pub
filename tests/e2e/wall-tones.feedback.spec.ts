@@ -107,19 +107,19 @@ for (const improvedBest of [false, true]) {
     await page.screenshot({ path: testInfo.outputPath(`missed-hit-line-${improvedBest ? 'best' : 'first'}.png`) });
     await expect.poll(() => page.evaluate(() => (window as any).__wallTonesDebug.gameOverOpen), { timeout: 30000 }).toBe(true);
     expect(await page.evaluate(() => (window as any).__wallTonesDebug.wrongHitRowVisible)).toBe(true);
-    // Owner 2026-11-15 18:35: in Game Over the Expected and Hit groups share
-    // one compact line, Hit after Expected.
+    // Owner 2026-11-15 19:01: in Game Over the Hit row sits on its own line
+    // below the Expected row, both sharing a left edge.
     const rowTops = await page.evaluate(() => (window as any).__wallTonesDebug.wrongHitPopupRowTops);
     expect(rowTops).not.toBeNull();
-    expect(Math.abs(rowTops.hitTop - rowTops.expectedTop)).toBeLessThanOrEqual(1);
-    expect(rowTops.hitLeft).toBeGreaterThan(rowTops.expectedLeft);
+    expect(rowTops.hitTop).toBeGreaterThan(rowTops.expectedTop);
+    expect(Math.abs(rowTops.hitLeft - rowTops.expectedLeft)).toBeLessThanOrEqual(1);
     const failureClips = clips.slice(beforeFailure);
     expect(failureClips.some(url => /\/wrong-[1-5]\.mp3/.test(url))).toBe(true);
     expect(failureClips.some(url => /\/(cheer|new-best|milestone)/.test(url))).toBe(false);
     if (improvedBest) {
-      // One comparison line: an Expected group and a Hit group, each with its
-      // lead-in plus the differing final note (owner 2026-11-15 18:35). No
-      // history/pattern row after a failure.
+      // Two comparison lines - Expected above Hit, each with its lead-in plus
+      // the differing final note (owner 2026-11-15 19:01). No history/pattern
+      // row after a failure.
       await expect(page.locator('#wall-tones-flat-subtitles [data-wronghit]')).toHaveCount((expectedLeadIn.length + 1) * 2);
       await expect(page.locator('#wall-tones-flat-subtitles')).toContainText('Expected:');
       await expect(page.locator('#wall-tones-flat-subtitles')).toContainText('Hit:');
@@ -144,8 +144,8 @@ for (const improvedBest of [false, true]) {
       // No ellipsis: the compact failure line has no prefix slots.
       await expect(page.locator('#wall-tones-flat-subtitles')).not.toContainText('…');
       expect(await page.evaluate(() => (window as any).__wallTonesDebug.wrongHitTruncated)).toBe(false);
-      // Longer captured chains render the same single comparison line - no
-      // history row, no ellipsis (owner 2026-11-15 18:35).
+      // Longer captured chains render the same two comparison lines - no
+      // history row, no ellipsis (owner 2026-11-15 19:01).
       await page.evaluate(() => {
         const d = (window as any).__wallTonesDebug;
         d.debugSetWrongHit({ hit: d.wrongHitHit, expected: d.wrongHitExpected, preceding: [0, 1, 2, 3, 0, 1, 2, 3, 0, 1], truncated: true });
