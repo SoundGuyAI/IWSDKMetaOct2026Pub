@@ -21,7 +21,7 @@ export interface LabEntry {
 
 export const LAB_ENTRIES: readonly LabEntry[] = [
   { id: 'nod', label: 'Nod Yes/No Lab', available: false },
-  { id: 'thumbs', label: 'Thumbs Yes/No Lab', available: false },
+  { id: 'thumbs', label: 'Thumbs Yes/No Lab', mode: 'thumbslab', available: true },
 ];
 
 export const LAB_STATUS_UNAVAILABLE = 'not connected';
