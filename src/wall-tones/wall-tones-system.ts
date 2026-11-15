@@ -4002,7 +4002,7 @@ this.world
 // start (locked ones greyed) and are not added when a run begins - the
 // run-start paths below all pass true. Owner 2026-11-15: they must NOT
 // appear on the room-setup panel (choose-mode / scanning / wall-picking /
-// air-placement), so the false callers here stay honored.)
+// air-placement), so the false callers here stay honored.
 ?.setProperties({ display: visible ? 'flex' : 'none' });
 }
 
