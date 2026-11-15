@@ -211,6 +211,8 @@ bestStreak: number;
 savedBestStreak: number;
 bars: number;
 barsTotal: number;
+/** Lifetime Bars AutoPlay earned (never human achievement progress). */
+autoplayBarsTotal: number;
 hintLevel: number;
 hintRevealCount: number;
 unlockedAchievements: string[];
@@ -1645,6 +1647,9 @@ return system.economy.getBars();
 },
 get barsTotal() {
 return system.economy.getBarsTotal();
+},
+get autoplayBarsTotal() {
+return system.economy.getAutoplayBarsTotal();
 },
 get hintLevel() {
 return system.economy.getHintLevel();
@@ -3659,9 +3664,11 @@ this.finishCompletedPattern(padIndex, previousBest);
 /** Shared pattern-completion path: a manual final press and a Play-entered
  * final note (owner-approved 2026-11-13) both land here. `creditHuman`
  * false (AutoPlay-entered completion, owner rule 2026-11-15) keeps the
- * round paying its normal completion award but credits no human record:
- * no record announcement, no record bonus, and streak achievements check
- * against the saved human best instead of the in-run streak. */
+ * round paying its normal completion award but credits no human progress:
+ * no record announcement, no record bonus, streak achievements check
+ * against the saved human best instead of the in-run streak, and the
+ * completion Bars stay out of the human lifetime Bars/Total Score
+ * counters so AutoPlay never unlocks human achievements. */
 private finishCompletedPattern(padIndex: number, previousBest: number, creditHuman = true): void {
 {
 if (this.cypherSeam) this.setCypherSeam(false);
@@ -3690,6 +3697,7 @@ const { completion, bonus } = this.economy.completePattern(
 streak,
 this.recordBeatenThisAttempt,
 creditHuman ? streak : this.economy.getBestStreak(),
+creditHuman,
 );
 this.recordBeatenThisAttempt = false;
 if (completion > 0) {
@@ -5959,4 +5967,4 @@ return new Promise((resolve) => {
 window.setTimeout(resolve, seconds * 1000);
 });
 }
-        }
+  }
