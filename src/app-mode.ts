@@ -1,5 +1,6 @@
 import { captureCypherCast } from './wall-tones/cypher-voice.js';
-import { hearingSubtitlesEnabled, colorNamesEnabled, setHearingSubtitles, setColorNames, voicesOffEnabled, setVoicesOff } from './wall-tones/accessibility.js';
+import { hearingSubtitlesEnabled, colorNamesEnabled, setHearingSubtitles, setColorNames, voicesOffEnabled, setVoicesOff, headGazePinchEnabled, setHeadGazePinch, nativeGazePinchEnabled, setNativeGazePinch } from './wall-tones/accessibility.js';
+import { GAZE_SOURCE_EVENT, gazeSourceStatusText, type GazeSourceStatus } from './wall-tones/gaze-source.js';
 /**
  * Switches between the main menu and experience modes by toggling authored
  * scene node visibility. Mode selection lives on spatial UIKitML panels.
@@ -402,18 +403,53 @@ export class AppModeSystem extends createSystem({}) {
       setDisplay('accessibility-dialog', 'none');
       setDisplay('settings-dialog', 'flex');
     });
-    panel.getElementById('hearing-subtitles-checkbox')?.setProperties({
-      checked: hearingSubtitlesEnabled(),
-      onCheckedChange: setHearingSubtitles,
-    } as never);
-    panel.getElementById('color-names-checkbox')?.setProperties({
-      checked: colorNamesEnabled(),
-      onCheckedChange: setColorNames,
-    } as never);
-    panel.getElementById('voices-off-checkbox')?.setProperties({
-      checked: voicesOffEnabled(),
-      onCheckedChange: setVoicesOff,
-    } as never);
+    // Backlog 78: the whole settings row toggles, not just the checkbox.
+    // The checkbox keeps its own click (controlled: it only calls
+    // onCheckedChange) and stops the bubble so the row handler below does
+    // not toggle a second time.
+    const bindToggleRow = (
+      rowId: string,
+      checkboxId: string,
+      isEnabled: () => boolean,
+      set: (value: boolean) => void,
+    ) => {
+      const checkbox = panel.getElementById(checkboxId);
+      checkbox?.setProperties({
+        checked: isEnabled(),
+        onCheckedChange: set,
+      } as never);
+      checkbox?.addEventListener('click', (event) => {
+        event.stopPropagation?.();
+      });
+      panel
+        .getElementById(rowId)
+        ?.addEventListener('click', () => set(!isEnabled()));
+    };
+    bindToggleRow(
+      'hearing-subtitles-row',
+      'hearing-subtitles-checkbox',
+      hearingSubtitlesEnabled,
+      setHearingSubtitles,
+    );
+    bindToggleRow(
+      'color-names-row',
+      'color-names-checkbox',
+      colorNamesEnabled,
+      setColorNames,
+    );
+    bindToggleRow('voices-off-row', 'voices-off-checkbox', voicesOffEnabled, setVoicesOff);
+    bindToggleRow(
+      'head-gaze-pinch-row',
+      'head-gaze-pinch-checkbox',
+      headGazePinchEnabled,
+      setHeadGazePinch,
+    );
+    bindToggleRow(
+      'native-gaze-pinch-row',
+      'native-gaze-pinch-checkbox',
+      nativeGazePinchEnabled,
+      setNativeGazePinch,
+    );
     // Debug stat reset: two-step confirm, clears progression stats only.
     let resetArmed = false;
     let resetDisarm: number | undefined;
@@ -437,9 +473,22 @@ export class AppModeSystem extends createSystem({}) {
       panel.getElementById('hearing-subtitles-checkbox')?.setProperties({ checked: hearingSubtitlesEnabled() } as never);
       panel.getElementById('color-names-checkbox')?.setProperties({ checked: colorNamesEnabled() } as never);
       panel.getElementById('voices-off-checkbox')?.setProperties({ checked: voicesOffEnabled() } as never);
+      panel.getElementById('head-gaze-pinch-checkbox')?.setProperties({ checked: headGazePinchEnabled() } as never);
+      panel.getElementById('native-gaze-pinch-checkbox')?.setProperties({ checked: nativeGazePinchEnabled() } as never);
     };
     window.addEventListener('wall-tones-accessibility-change', syncAccessibility);
     this.cleanupFuncs.push(() => window.removeEventListener('wall-tones-accessibility-change', syncAccessibility));
+    // Native eye-gaze availability verdict, reported by WallTonesSystem so
+    // the experimental mode names its source accurately (no silent head
+    // fallback - the player sees what the headset really supplies).
+    const syncGazeSource = (event: Event) => {
+      const status = (event as CustomEvent<GazeSourceStatus>).detail;
+      panel
+        .getElementById<UIKit.Text>('native-gaze-status')
+        ?.setProperties({ text: `Eye gaze + pinch (experimental) - ${gazeSourceStatusText(status)}` });
+    };
+    window.addEventListener(GAZE_SOURCE_EVENT, syncGazeSource);
+    this.cleanupFuncs.push(() => window.removeEventListener(GAZE_SOURCE_EVENT, syncGazeSource));
     syncVoiceLabels();
   }
 
@@ -487,4 +536,4 @@ export class AppModeSystem extends createSystem({}) {
       display: mode === 'meditation' ? 'flex' : 'none',
     });
   }
-}
+            }
