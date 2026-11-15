@@ -1,3 +1,4 @@
+import { captureCypherCast } from './wall-tones/cypher-voice.js';
 import { hearingSubtitlesEnabled, colorNamesEnabled, setHearingSubtitles, setColorNames, voicesOffEnabled, setVoicesOff } from './wall-tones/accessibility.js';
 /**
  * Switches between the main menu and experience modes by toggling authored
@@ -16,7 +17,15 @@ import {
 const RAY_TOGGLED_PANEL_IDS: ReadonlySet<string> = new Set([
   'main-menu-panel',
   'wall-tones-panel',
+  'lab-menu-panel',
+  'lab-entry-panel',
 ]);
+import {
+  LAB_ENTRIES,
+  labRowButtonId,
+  labRowLabel,
+  labRowTarget,
+} from './lab-menu/lab-registry.js';
 import { primeWallTonesAudioFromGesture } from './wall-tones/audio.js';
 import { resetWallTonesStats } from './wall-tones/economy.js';
 import { WALL_TONES_BUILD_LABEL } from './build-info.js';
@@ -28,7 +37,7 @@ import {
   type WallTonesVoiceGender,
 } from './wall-tones/speech.js';
 
-export type ExperienceMode = 'menu' | 'demo' | 'meditation' | 'walltones';
+export type ExperienceMode = 'menu' | 'demo' | 'meditation' | 'walltones' | 'lab';
 
 const MODE_STORAGE_KEY = 'iwsdk-experience-mode';
 
@@ -51,6 +60,7 @@ function readStoredMode(): ExperienceMode {
     stored === 'demo' ||
     stored === 'meditation' ||
     stored === 'walltones' ||
+    stored === 'lab' ||
     stored === 'menu'
   ) {
     return stored;
@@ -65,6 +75,17 @@ function persistMode(mode: ExperienceMode): void {
 export class AppModeSystem extends createSystem({}) {
   private mode: ExperienceMode = 'menu';
   private readonly voicePreview = new WallTonesSpeech();
+  private readonly labSpeech = new WallTonesSpeech();
+  private playLabIntro(): void {
+    this.voicePreview.cancel();
+    this.labSpeech.cancel();
+    const cast = captureCypherCast(getVoiceGender());
+    // Queue the whole window now: leaving Lab cancels all remaining lines.
+    void this.labSpeech.speakLabLine('narrator', cast);
+    void this.labSpeech.speakBackgroundEffect('open');
+    void this.labSpeech.speakLabLine('cypher', cast);
+    void this.labSpeech.speakBackgroundEffect('close');
+  }
 
   init(): void {
     this.mode = readStoredMode();
@@ -88,10 +109,15 @@ export class AppModeSystem extends createSystem({}) {
     }
     this.loadingStage('menu', 'Scene and renderer loaded. Wiring the menu controls.');
     const menuPanel = this.bindMainMenu();
+    this.bindLabMenu();
     this.bindWallTonesPlaceholder();
     this.bindDemoNav();
     this.bindWelcomeBack();
     this.applyMode(this.mode, false);
+    this.cleanupFuncs.push(() => this.labSpeech.cancel());
+    const muteLab = () => { if (voicesOffEnabled()) this.labSpeech.cancel(); };
+    window.addEventListener('wall-tones-accessibility-change', muteLab);
+    this.cleanupFuncs.push(() => window.removeEventListener('wall-tones-accessibility-change', muteLab));
     // Static splash in index.html stays up until the menu is usable: buttons
     // are wired (above) AND the menu text can actually render. Panel text
     // waits on the Inter MSDF font chunk, which can arrive seconds after
@@ -169,6 +195,7 @@ export class AppModeSystem extends createSystem({}) {
   }
 
   private applyMode(mode: ExperienceMode, dispatchEvent: boolean): void {
+    this.labSpeech.cancel();
     this.mode = mode;
     persistMode(mode);
 
@@ -176,9 +203,13 @@ export class AppModeSystem extends createSystem({}) {
     const showDemo = mode === 'demo';
     const showMeditation = mode === 'meditation';
     const showWallTones = mode === 'walltones';
+    const showLab = mode === 'lab';
 
     this.setNodeVisible('main-menu-panel', showMenu);
     this.setNodeVisible('wall-tones-panel', showWallTones);
+    this.setNodeVisible('lab-menu-panel', showLab);
+    // The Lab entry floats beside the menu: visible exactly when the menu is.
+    this.setNodeVisible('lab-entry-panel', showMenu);
 
     for (const nodeId of DEMO_NODE_IDS) {
       this.setNodeVisible(nodeId, showDemo);
@@ -229,6 +260,51 @@ export class AppModeSystem extends createSystem({}) {
       console.error('[wall-tones] XR preparation failed', error);
       // No game state was selected. Keep the menu available for another try.
     });
+  }
+
+  /** Lab entry button, Lab menu rows and Back. Rows come from the registry. */
+  private bindLabMenu(): void {
+    const entry = this.world.getSceneObject<UIKitMLAsset>('lab-entry-panel');
+    const entryButton = entry?.getElementById('lab-entry-button');
+    entryButton?.addEventListener('click', () => {
+      primeWallTonesAudioFromGesture();
+      unlockSpeechFromGesture();
+      this.setMode('lab');
+      this.playLabIntro();
+    });
+    if (entryButton != null) {
+      entryButton.name = 'Btn_Lab';
+    }
+
+    const menu = this.world.getSceneObject<UIKitMLAsset>('lab-menu-panel');
+    if (menu == null) {
+      return;
+    }
+    for (const lab of LAB_ENTRIES) {
+      const button = menu.getElementById(labRowButtonId(lab));
+      menu
+        .getElementById(`lab-row-${lab.id}-label`)
+        ?.setProperties({ text: labRowLabel(lab) } as never);
+      const target = labRowTarget(lab);
+      if (button == null) {
+        continue;
+      }
+      button.name = `Btn_Lab_${lab.id}`;
+      if (target == null) {
+        button.setProperties({ disabled: true } as never);
+        continue;
+      }
+      button.addEventListener('click', () => {
+        primeWallTonesAudioFromGesture();
+        unlockSpeechFromGesture();
+        this.setMode(target as ExperienceMode);
+      });
+    }
+    const back = menu.getElementById('lab-menu-back-button');
+    back?.addEventListener('click', () => this.setMode('menu'));
+    if (back != null) {
+      back.name = 'Btn_LabBackToMenu';
+    }
   }
 
   private bindMainMenu(): UIKitMLAsset | null {
@@ -400,6 +476,7 @@ export class AppModeSystem extends createSystem({}) {
       demo: 'Starter demo',
       meditation: 'Breath & gaze rest',
       walltones: 'Wall Tones 2: too fast to wall',
+      lab: 'Wall Tones 2: Lab',
     };
     document.title = titles[mode];
 
