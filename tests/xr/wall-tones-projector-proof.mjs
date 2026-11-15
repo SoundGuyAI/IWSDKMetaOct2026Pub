@@ -13,7 +13,7 @@ page.on('pageerror',e=>console.log('PAGEERROR',e.message));
 await page.addInitScript(()=>{sessionStorage.setItem('iwsdk-experience-mode','walltones');localStorage.setItem('wall-tones-voices-off','true');localStorage.setItem('wall-tones-armband-mode','projector');});
 await page.route(/\/src\/wall-tones\/wall-tones-system\.ts(?:\?.*)?$/, async route => {
  const response=await route.fetch();
- const body=(await response.text()).replace('const system = this;', 'const system = this; window.__armbandHarness = {world:this.world,system:this};');
+ let body=(await response.text()).replace('const system = this;', 'const system = this; window.__armbandHarness = {world:this.world,system:this};');
  await route.fulfill({response,body});
 });
 await page.goto(process.env.XR_URL || 'https://localhost:8081');
@@ -81,6 +81,53 @@ await page.waitForTimeout(1500);
 const lag2=await page.evaluate(()=>{const s=window.__armbandHarness.system;return Math.hypot(s.armbandPanelPos.x-s.armbandSmoothPos.x,s.armbandPanelPos.y-s.armbandSmoothPos.y,s.armbandPanelPos.z-s.armbandSmoothPos.z);});
 console.log('STABILIZATION settled(m):',lag2);
 assert.ok(lag2<0.01,'panel catches up after motion stops');
+// Placement: panel floats higher above the palm and farther from the head.
+const placement=await page.evaluate(()=>{
+ const s=window.__armbandHarness.system;
+ const panel=s.armbandSmoothPos;
+ const palmMid=s.armbandGlow.position; // beam base = mid palm
+ const head=new panel.constructor(); s.player.head.getWorldPosition(head);
+ const h=(p)=>Math.hypot(p.x-head.x,p.z-head.z);
+ return {rise:panel.y-palmMid.y,awayGain:h(panel)-h(palmMid),awayApplied:s.armbandLastAwayOffset.length()};
+});
+console.log('PLACEMENT',placement);
+assert.ok(placement.rise>0.12,'panel floats higher above the palm');
+assert.ok(Math.abs(placement.awayApplied-0.06)<0.01,'head-away offset applied in full');
+assert.ok(placement.awayGain>0.015,'panel sits farther from the head than the palm');
+// Jitter: physical tracking noise (~+-5 mm at ~8 Hz) must not shake the panel
+// or flap the open gate. Return to the jitter base pose and settle first.
+await page.evaluate(async()=>await window.IWER_DEVICE.remote.runSequence({device:'hand-left',idleHand:'keep',body:'fixed',gaze:'fixed',steps:[{position:{x:-.12,y:1.32,z:-.42},anchor:'wrist',orientation:{fingers:'forward',palm:'up'},duration:.2}]}));
+await page.waitForTimeout(1500);
+await page.evaluate(()=>{
+ window.__jitterSamples=[];
+ const s=window.__armbandHarness.system;
+ const rec=()=>{window.__jitterSamples.push([s.armbandSmoothPos.x,s.armbandSmoothPos.y,s.armbandSmoothPos.z,s.armbandPanelPos.x,s.armbandPanelPos.y,s.armbandPanelPos.z,s.armband.position.x,s.armband.position.y,s.armband.position.z]);if(!window.__jitterStop)requestAnimationFrame(rec);};
+ requestAnimationFrame(rec);
+});
+await page.evaluate(async()=>{
+ const base={x:-.12,y:1.32,z:-.42};const steps=[];
+ for(let i=0;i<10;i++){const s=i%2?0.005:-0.005;steps.push({position:{x:base.x+s,y:base.y+(i%4<2?s:-s),z:base.z},anchor:'wrist',orientation:{fingers:'forward',palm:'up'},duration:.15});}
+ await window.IWER_DEVICE.remote.runSequence({device:'hand-left',idleHand:'keep',body:'fixed',gaze:'fixed',steps});
+});
+const jitter=await page.evaluate(()=>{
+ window.__jitterStop=true;
+ const a=window.__jitterSamples.slice(3);
+ const rng=(k)=>Math.max(...a.map(p=>p[k]))-Math.min(...a.map(p=>p[k]));
+ return {range:Math.max(rng(0),rng(1),rng(2)),targetRange:Math.max(rng(3),rng(4),rng(5)),wristRange:Math.max(rng(6),rng(7),rng(8)),samples:a.length,
+   open:window.__armbandHarness.system.armbandProjectorOpen,
+   visible:window.__armbandHarness.world.getSceneObject('wall-tones-armband').visible};
+});
+console.log('JITTER',jitter);
+assert.ok(jitter.samples>10,'jitter sampler captured frames');
+// NOTE: the headless emulator ticks at only ~5-20 fps, so the per-frame
+// alternation lands near its Nyquist limit and the filter can only damp, not
+// eliminate, it; the quantitative jitter-kill proof at real 90 fps rates is in
+// tests/unit/palm-projector.test.mjs (OneEuro suite: 11 Hz +-3 mm -> <1 mm).
+assert.ok(jitter.range<jitter.wristRange*0.65,'panel motion clearly damped versus raw hand jitter');
+assert.ok(jitter.range<0.008,'panel jitter bounded in absolute terms');
+assert.ok(jitter.open>0.95,'open gate does not flap under jitter');
+assert.equal(jitter.visible,true,'panel stays visible under jitter');
+await page.screenshot({path:join(evidenceDir,'armband-projector-jitter.png')});
 await page.evaluate(async()=>await window.IWER_DEVICE.remote.runSequence({device:'hand-left',idleHand:'keep',body:'fixed',gaze:'fixed',steps:[{position:{x:-.12,y:1.32,z:-.42},anchor:'wrist',orientation:{fingers:'up',palm:'forward'},duration:.25}]}));
 await page.waitForTimeout(1200);
 assert.equal(await page.evaluate(()=>window.__armbandHarness.world.getSceneObject('wall-tones-armband').visible),false,'panel folded when tilted');
