@@ -30,6 +30,7 @@ interface DebugSnap {
   flatAwaitingStart: boolean;
   presses: number;
   savedBestStreak: number;
+  autoplayBarsTotal: number;
   unlockedAchievements: string[];
 }
 
@@ -57,6 +58,7 @@ const readState = (page: Page): Promise<DebugSnap> =>
       flatAwaitingStart: d.flatAwaitingStart,
       presses: d.presses,
       savedBestStreak: d.savedBestStreak,
+      autoplayBarsTotal: d.autoplayBarsTotal,
       unlockedAchievements: [...d.unlockedAchievements],
     };
   });
@@ -207,6 +209,7 @@ test.describe('Wall Tones store skill tree', () => {
     expect(snap.autoplayLevel).toBe(1);
     expect(snap.bars).toBe(5);
 
+    const barsTotalBeforeAutoplay = (await readState(page)).barsTotal;
     await submitPad(page, 0); // start tap
     // Owner feedback 2026-11-15 ("auto play doesn't play the pattern all
     // the way"): with Autoplay L1 (5 notes) every round of 1-5 notes is
@@ -223,6 +226,16 @@ test.describe('Wall Tones store skill tree', () => {
     expect(snap.savedBestStreak).toBe(0);
     expect(
       snap.unlockedAchievements.some((id) => id.startsWith('streak-')),
+    ).toBe(false);
+    // AutoPlay completion Bars are spendable but never human progress:
+    // the human lifetime counter does not move, so Bars/Total Score
+    // achievements cannot unlock from AutoPlay (owner rule 2026-11-15).
+    expect(snap.barsTotal).toBe(barsTotalBeforeAutoplay);
+    expect(snap.autoplayBarsTotal).toBeGreaterThan(0);
+    expect(
+      snap.unlockedAchievements.some(
+        (id) => id.startsWith('bars-') || id.startsWith('score-'),
+      ),
     ).toBe(false);
     // The 6-note round: Listen plays, then Autoplay enters notes 1-5, so
     // Your Turn starts expecting note 6 (inputStep 5).
