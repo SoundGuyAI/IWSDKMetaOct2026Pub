@@ -52,6 +52,29 @@ export const DEFAULT_HEAD_GESTURE_CONFIG: HeadGestureConfig = {
   returnToBaselineRad: null,
 };
 
+/**
+ * Flat-mode (pointer drag + phone tilt) tuning, from the owner's Nov 15
+ * iPhone screen recording: deliberate tilt nods peaked 10-22 deg of pitch
+ * with 4-13 deg of yaw wobble, so the headset-tuned 14 deg peak and 1.6x
+ * dominance made real nods nearly impossible. Activation/peak/reversal sit
+ * lower and dominance relaxes to 1.25; the return-to-baseline guard still
+ * blocks one-way pointer drags, and the wrap/flip absorption in
+ * tilt-gesture.ts keeps sensor artifacts out of the samples.
+ */
+export const FLAT_HEAD_GESTURE_CONFIG: HeadGestureConfig = {
+  ...DEFAULT_HEAD_GESTURE_CONFIG,
+  activationRad: (6 * Math.PI) / 180,
+  reversalRad: (4 * Math.PI) / 180,
+  minPeakRad: (10 * Math.PI) / 180,
+  // Flat mode needs a wider dominance gap than the headset: the owner's
+  // Nov 15 iPhone recording shows real nods carry 10-12 deg yaw wobble
+  // whose accumulated excursion beats pitch early in the trace, so 1.25
+  // misreports the first cycle as 'no'. 2.0 rejects that wobble while
+  // genuine shakes (yaw-dominant by a wide margin) still pass.
+  axisDominanceRatio: 2.0,
+  returnToBaselineRad: (6 * Math.PI) / 180,
+};
+
 interface CommittedExtreme {
   readonly amplitude: number;
   readonly startedAt: number;
@@ -124,19 +147,27 @@ export class AxisOscillationTracker {
       };
       const withinWindow =
         committed.committedAt - committed.startedAt <= this.config.windowSec;
-      if (
-        committed.amplitude >= this.config.minPeakRad &&
-        withinWindow &&
-        this.lastCommitted == null
-      ) {
-        if (this.config.returnToBaselineRad == null) {
+      const qualifies =
+        committed.amplitude >= this.config.minPeakRad && withinWindow;
+      if (this.config.returnToBaselineRad == null) {
+        // Headset path: unchanged anti-double-count guard (no hardware
+        // evidence against it; headset testing is still pending).
+        if (qualifies && this.lastCommitted == null) {
           completed = committed.amplitude;
-        } else {
-          // Wait for the return stroke before completing (see config doc).
+        }
+        this.lastCommitted = committed;
+      } else {
+        // Flat path: a committed cycle completes when its return stroke
+        // reaches baseline, so the only thing to guard is the awaiting
+        // cycle itself - ignore new commits until it completes or
+        // expires. The old lastCommitted guard blocked every later stroke
+        // for a full window: in the owner's Nov 15 iPhone recording a
+        // 13.4 deg first stroke and each following 22 deg nod poisoned
+        // the next, so natural multi-stroke nodding never reported.
+        if (qualifies && this.pendingCycle == null) {
           this.pendingCycle = committed;
         }
       }
-      this.lastCommitted = committed;
       // Re-arm from the current angle so the return stroke does not
       // immediately register as a new opposite extreme.
       this.direction = 0;
