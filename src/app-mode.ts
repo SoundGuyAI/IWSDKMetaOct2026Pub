@@ -19,6 +19,7 @@ const RAY_TOGGLED_PANEL_IDS: ReadonlySet<string> = new Set([
   'wall-tones-panel',
   'lab-menu-panel',
   'lab-entry-panel',
+  'rift-lab-panel',
 ]);
 import {
   LAB_ENTRIES,
@@ -37,7 +38,13 @@ import {
   type WallTonesVoiceGender,
 } from './wall-tones/speech.js';
 
-export type ExperienceMode = 'menu' | 'demo' | 'meditation' | 'walltones' | 'lab';
+export type ExperienceMode =
+  | 'menu'
+  | 'demo'
+  | 'meditation'
+  | 'walltones'
+  | 'lab'
+  | 'riftlab';
 
 const MODE_STORAGE_KEY = 'iwsdk-experience-mode';
 
@@ -61,6 +68,7 @@ function readStoredMode(): ExperienceMode {
     stored === 'meditation' ||
     stored === 'walltones' ||
     stored === 'lab' ||
+    stored === 'riftlab' ||
     stored === 'menu'
   ) {
     return stored;
@@ -204,10 +212,12 @@ export class AppModeSystem extends createSystem({}) {
     const showMeditation = mode === 'meditation';
     const showWallTones = mode === 'walltones';
     const showLab = mode === 'lab';
+    const showRiftLab = mode === 'riftlab';
 
     this.setNodeVisible('main-menu-panel', showMenu);
     this.setNodeVisible('wall-tones-panel', showWallTones);
     this.setNodeVisible('lab-menu-panel', showLab);
+    this.setNodeVisible('rift-lab-panel', showRiftLab);
     // The Lab entry floats beside the menu: visible exactly when the menu is.
     this.setNodeVisible('lab-entry-panel', showMenu);
 
@@ -300,6 +310,11 @@ export class AppModeSystem extends createSystem({}) {
         this.setMode(target as ExperienceMode);
       });
     }
+    // Rift Lab Back returns to the Lab menu (it only stopped the run before).
+    this.world
+      .getSceneObject<UIKitMLAsset>('rift-lab-panel')
+      ?.getElementById('rift-lab-back-button')
+      ?.addEventListener('click', () => this.setMode('lab'));
     const back = menu.getElementById('lab-menu-back-button');
     back?.addEventListener('click', () => this.setMode('menu'));
     if (back != null) {
@@ -402,18 +417,41 @@ export class AppModeSystem extends createSystem({}) {
       setDisplay('accessibility-dialog', 'none');
       setDisplay('settings-dialog', 'flex');
     });
-    panel.getElementById('hearing-subtitles-checkbox')?.setProperties({
-      checked: hearingSubtitlesEnabled(),
-      onCheckedChange: setHearingSubtitles,
-    } as never);
-    panel.getElementById('color-names-checkbox')?.setProperties({
-      checked: colorNamesEnabled(),
-      onCheckedChange: setColorNames,
-    } as never);
-    panel.getElementById('voices-off-checkbox')?.setProperties({
-      checked: voicesOffEnabled(),
-      onCheckedChange: setVoicesOff,
-    } as never);
+    // Backlog 78: the whole settings row toggles, not just the checkbox.
+    // The checkbox keeps its own click (controlled: it only calls
+    // onCheckedChange) and stops the bubble so the row handler below does
+    // not toggle a second time.
+    const bindToggleRow = (
+      rowId: string,
+      checkboxId: string,
+      isEnabled: () => boolean,
+      set: (value: boolean) => void,
+    ) => {
+      const checkbox = panel.getElementById(checkboxId);
+      checkbox?.setProperties({
+        checked: isEnabled(),
+        onCheckedChange: set,
+      } as never);
+      checkbox?.addEventListener('click', (event) => {
+        event.stopPropagation?.();
+      });
+      panel
+        .getElementById(rowId)
+        ?.addEventListener('click', () => set(!isEnabled()));
+    };
+    bindToggleRow(
+      'hearing-subtitles-row',
+      'hearing-subtitles-checkbox',
+      hearingSubtitlesEnabled,
+      setHearingSubtitles,
+    );
+    bindToggleRow(
+      'color-names-row',
+      'color-names-checkbox',
+      colorNamesEnabled,
+      setColorNames,
+    );
+    bindToggleRow('voices-off-row', 'voices-off-checkbox', voicesOffEnabled, setVoicesOff);
     // Debug stat reset: two-step confirm, clears progression stats only.
     let resetArmed = false;
     let resetDisarm: number | undefined;
@@ -477,6 +515,7 @@ export class AppModeSystem extends createSystem({}) {
       meditation: 'Breath & gaze rest',
       walltones: 'Wall Tones 2: too fast to wall',
       lab: 'Wall Tones 2: Lab',
+      riftlab: 'Wall Tones 2: Rift Sealing Lab',
     };
     document.title = titles[mode];
 
