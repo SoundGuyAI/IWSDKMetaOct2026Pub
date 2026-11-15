@@ -226,6 +226,35 @@ export function achievementTileSrc(id: string, state: TileState, level = 0): str
   return tileArt(id, state, level);
 }
 
+/**
+ * Bare category glyph on transparent, for surfaces that draw their own badge
+ * behind the art (the unlock celebration's dark disc). White glowing outline,
+ * matching the unlocked tile glyph. This is the fallback for categories that
+ * have no embedded PNG art in achievement-icon-art.ts.
+ */
+export function achievementGlyphSrc(id: string): string {
+  const key = `glyph:${id}`;
+  const hit = cache.get(key);
+  if (hit !== undefined) return hit;
+  const c = document.createElement('canvas');
+  c.width = 64 * ART_PX;
+  c.height = 64 * ART_PX;
+  const ctx = c.getContext('2d');
+  if (ctx == null) return '';
+  ctx.scale(ART_PX, ART_PX);
+  ctx.lineWidth = 4;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#ffffff';
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowColor = 'rgba(255,255,255,0.65)';
+  ctx.shadowBlur = 5;
+  glyphPath(ctx, id);
+  const url = c.toDataURL('image/png');
+  cache.set(key, url);
+  return url;
+}
+
 export function achievementIconSrc(id: string): string {
   if (id in FILL) return tileArt(id, 'on', 0);
   const hit = cache.get(id);
@@ -309,4 +338,4 @@ export function achievementIconSrc(id: string): string {
   const url = canvas.toDataURL('image/png');
   cache.set(id, url);
   return url;
-      }
+}
