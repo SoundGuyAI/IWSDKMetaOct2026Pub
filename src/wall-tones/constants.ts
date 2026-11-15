@@ -142,6 +142,8 @@ export const TABLE_PAD_SIZE_LADDER_M = [
 ];
 export const SCAN_WAIT_S = 3;
 export const WRONG_RESET_DELAY_S = 0.9;
+/** Missed-hit line: how many notes leading up to the miss are shown as squares. */
+export const WRONG_HIT_PRECEDING_MAX = 10;
 /** Silence after the start intro finishes, before the first pad tone. */
 export const POST_INTRO_DELAY_S = 0.85;
 /** Short beat after a successful round before the next sequence plays. */
