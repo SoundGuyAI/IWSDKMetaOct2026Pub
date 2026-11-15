@@ -87,10 +87,11 @@ for (const improvedBest of [false, true]) {
       return { expected, hit: (expected + 1) % 4, inputStep: d.inputStep, sequence: [...d.sequence] };
     });
     const names = ['green', 'red', 'blue', 'yellow'];
-    // Owner 2026-11-15: squares instead of words; two comparison rows (Expected
-    // vs Hit) of up to 5 notes, the final position differing - e.g. right RRRBG
-    // vs played RRRBY.
-    const expectedPreceding = mismatch.sequence.slice(Math.max(0, mismatch.inputStep - 4), mismatch.inputStep);
+    // Owner 2026-11-15: squares instead of words; a history row of up to the
+    // last 10 notes, then two comparison rows (Expected vs Hit) of up to 5
+    // notes, the final position differing - e.g. right RRRBG vs played RRRBY.
+    const expectedPreceding = mismatch.sequence.slice(Math.max(0, mismatch.inputStep - 10), mismatch.inputStep);
+    const expectedLeadIn = expectedPreceding.slice(-4);
     const beforeFailure = clips.length;
     await page.evaluate(hit => (window as any).__wallTonesDebug.submitPad(hit), mismatch.hit);
     await expect.poll(() => page.evaluate(() => (window as any).__wallTonesDebug.wrongHitRowVisible)).toBe(true);
@@ -114,15 +115,19 @@ for (const improvedBest of [false, true]) {
     expect(failureClips.some(url => /\/wrong-[1-5]\.mp3/.test(url))).toBe(true);
     expect(failureClips.some(url => /\/(cheer|new-best|milestone)/.test(url))).toBe(false);
     if (improvedBest) {
-      await expect(page.locator('#wall-tones-flat-subtitles [data-wronghit]')).toHaveCount((expectedPreceding.length + 1) * 2);
+      // History row plus the two comparison rows.
+      await expect(page.locator('#wall-tones-flat-subtitles [data-wronghit]')).toHaveCount(expectedPreceding.length + (expectedLeadIn.length + 1) * 2);
       await expect(page.locator('#wall-tones-flat-subtitles')).toContainText('Expected:');
       await expect(page.locator('#wall-tones-flat-subtitles')).toContainText('Hit:');
+      const historyRow = page.locator('#wall-tones-flat-subtitles [data-wronghit-row="history"]');
+      await expect(historyRow).toHaveCount(1);
+      await expect(historyRow.locator('[data-wronghit]')).toHaveCount(expectedPreceding.length);
       // Two comparison rows, each with its lead-in plus the differing final
       // note (owner 2026-11-15: right pattern vs what was played).
       for (const rowName of ['expected', 'hit']) {
         const row = page.locator(`#wall-tones-flat-subtitles [data-wronghit-row="${rowName}"]`);
         await expect(row).toHaveCount(1);
-        await expect(row.locator('[data-wronghit]')).toHaveCount(expectedPreceding.length + 1);
+        await expect(row.locator('[data-wronghit]')).toHaveCount(expectedLeadIn.length + 1);
       }
       // The user's exact example (owner 2026-11-15): right RRRBG, played RRRBY
       // - injected, since replaying that exact pattern is disproportionate.
@@ -134,21 +139,24 @@ for (const improvedBest of [false, true]) {
         page.locator(`#wall-tones-flat-subtitles [data-wronghit-row="${rowName}"] [data-wronghit]`).evaluateAll(
           squares => squares.map(square => square.getAttribute('aria-label')),
         );
+      await expect.poll(() => rowLabels('history')).toEqual(['red', 'red', 'red', 'blue']);
       await expect.poll(() => rowLabels('expected')).toEqual(['red', 'red', 'red', 'blue', 'green']);
       await expect.poll(() => rowLabels('hit')).toEqual(['red', 'red', 'red', 'blue', 'yellow']);
       // No ellipsis when no earlier notes are hidden.
       await expect(page.locator('#wall-tones-flat-subtitles')).not.toContainText('…');
       expect(await page.evaluate(() => (window as any).__wallTonesDebug.wrongHitTruncated)).toBe(false);
       // Truncated rendering, injected: the rows read the same captured-miss
-      // state. Owner 2026-11-15: a leading "…" marks hidden earlier notes
-      // (the 5 vs 10 window and its exact prefix policy are still open).
+      // state. Owner 2026-11-15: the history row takes a leading "…" only when
+      // the full chain is longer than 10; the comparison rows prefix their
+      // note sequence when earlier notes are hidden (5 vs 10 and its exact
+      // prefix policy are still open).
       await page.evaluate(() => {
         const d = (window as any).__wallTonesDebug;
-        d.debugSetWrongHit({ hit: d.wrongHitHit, expected: d.wrongHitExpected, preceding: [0, 1, 2, 3], truncated: true });
+        d.debugSetWrongHit({ hit: d.wrongHitHit, expected: d.wrongHitExpected, preceding: [0, 1, 2, 3, 0, 1, 2, 3, 0, 1], truncated: true });
       });
       await expect.poll(() => page.evaluate(() => (window as any).__wallTonesDebug.wrongHitTruncated)).toBe(true);
       await expect(page.locator('#wall-tones-flat-subtitles')).toContainText('…');
-      await expect(page.locator('#wall-tones-flat-subtitles [data-wronghit]')).toHaveCount(10);
+      await expect(page.locator('#wall-tones-flat-subtitles [data-wronghit]')).toHaveCount(10 + 5 * 2);
       await page.evaluate((preceding) => {
         const d = (window as any).__wallTonesDebug;
         d.debugSetWrongHit({ hit: d.wrongHitHit, expected: d.wrongHitExpected, preceding, truncated: false });
