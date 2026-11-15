@@ -574,4 +574,4 @@ export function defaultDesktopPadSize(): number {
 
 export function defaultHeadsetPadSize(): number {
   return HEADSET_PAD_SIZE_M;
-    }
+}
