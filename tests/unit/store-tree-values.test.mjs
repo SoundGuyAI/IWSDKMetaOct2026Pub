@@ -91,12 +91,12 @@ function ecoWith(bars) {
   return eco;
 }
 
-test('approved test prices: Listen 30, Hint 25/50/100 then doubling, Autoplay 5,000 then doubling (provisional, Oded 2026-11-12), Replay 20', () => {
+test('approved test prices: Listen 30, Hint 25/50/100 then doubling, Autoplay 2,500 then doubling (temporary, Oded 2026-11-15 23:44-23:51, supersedes his 5,000 of 2026-11-12), Replay 20', () => {
   assert.equal(LISTEN_COST, 30);
   assert.equal(REPLAY_PRICE_BARS, 20);
   const eco = ecoWith(0);
   assert.deepEqual([1, 2, 3, 4, 5].map((l) => eco.hintCost(l)), [25, 50, 100, 200, 400]);
-  assert.deepEqual([1, 2, 3, 4, 5].map((l) => eco.autoplayCost(l)), [5000, 10000, 20000, 40000, 80000]);
+  assert.deepEqual([1, 2, 3, 4, 5].map((l) => eco.autoplayCost(l)), [2500, 5000, 10000, 20000, 40000]);
 });
 
 test('gates: Hint L1 needs Listen, Play L1 needs Hint L4, Autoplay needs Play L4 (owner voice 2026-11-13)', () => {
@@ -122,8 +122,8 @@ test('gates: Hint L1 needs Listen, Play L1 needs Hint L4, Autoplay needs Play L4
   assert.equal(eco.buyNextAutoplayLevel(), true);
   assert.equal(eco.getAutoplayLevel(), 1);
   assert.equal(eco.getAutoplayNoteCount(), 5);
-  // 1000 - 30 - 25 - 50 - 100 - 200 - 250 = 345
-  assert.equal(eco.getBars(), 4595);
+  // 10000 - 30 - 25 - 50 - 100 - 200 - 2500 = 7095
+  assert.equal(eco.getBars(), 7095);
 });
 
 test('legacy saves: hint levels without Listen reveal nothing and unlock no Autoplay (bug report 2026-11-12)', () => {
