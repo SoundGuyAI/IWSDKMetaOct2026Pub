@@ -580,3 +580,118 @@ test('shallow-roll gamma reflection at the vertical crossing is also absorbed', 
   assert.equal(events.length, 1);
   assert.equal(events[0]?.answer, 'yes');
 });
+
+
+// --- Nov 15 iPhone recording regressions (flat-mode guard + tuning) -------
+
+const { FLAT_HEAD_GESTURE_CONFIG } = gesture;
+
+/** Feed a piecewise-linear angle track through a detector at 60 Hz. */
+function feedTrack(detector, anchors, yawAnchors) {
+  const events = [];
+  const dt = 1 / 60;
+  for (let i = 0; i < anchors.length - 1; i += 1) {
+    const [t0, p0] = anchors[i];
+    const [t1, p1] = anchors[i + 1];
+    const [, y0] = yawAnchors[i];
+    const [, y1] = yawAnchors[i + 1];
+    const steps = Math.max(1, Math.round((t1 - t0) / dt));
+    for (let s = 0; s < steps; s += 1) {
+      const f = s / steps;
+      now += dt;
+      const e = detector.feed((p0 + (p1 - p0) * f) * D, (y0 + (y1 - y0) * f) * D, now);
+      if (e) events.push(e);
+    }
+  }
+  return events;
+}
+
+test('iPhone recording trace reports yes with the flat config (Nov 15 regression)', () => {
+  // Anchors read off the owner's screen-recording telemetry at 4 fps: real
+  // tilt nods with 13-22 deg pitch swings and 4-13 deg yaw wobble. The old
+  // guard reported nothing for this trace.
+  const pitch = [[0, 2.1], [0.25, -7.0], [0.5, 13.4], [0.75, -7.4], [1.0, 22.0],
+    [1.25, -9.8], [1.5, 17.1], [1.75, 22.4], [2.0, -11.3], [2.25, -6.5], [2.5, -5.1]];
+  const yaw = [[0, 10.5], [0.25, 6.8], [0.5, -1.8], [0.75, 9.3], [1.0, 7.8],
+    [1.25, 6.4], [1.5, 0.2], [1.75, 12.4], [2.0, 7.2], [2.25, 4.2], [2.5, 2.0]];
+  const detector = new HeadNodShakeDetector(FLAT_HEAD_GESTURE_CONFIG);
+  detector.setEnabled(true);
+  now = 0;
+  const events = feedTrack(detector, pitch, yaw);
+  assert.ok(events.length >= 1, 'at least one nod reported');
+  assert.equal(events[0]?.answer, 'yes');
+});
+
+test('a sub-threshold first stroke does not block the nods behind it', () => {
+  // Guard regression with the recording's shape: first stroke 13.4 deg is
+  // under a 14 deg peak, then two full 22 deg nods. The old lastCommitted
+  // guard reported zero events here.
+  const config = { ...FLAT_HEAD_GESTURE_CONFIG, minPeakRad: 14 * D };
+  const pitch = [[0, 0], [0.3, 13.4], [0.6, -4], [0.9, 22.0], [1.2, -6],
+    [1.5, 22.4], [1.8, -6], [2.1, 0]];
+  const yaw = pitch.map(([t]) => [t, 4]);
+  const detector = new HeadNodShakeDetector(config);
+  detector.setEnabled(true);
+  now = 0;
+  const events = feedTrack(detector, pitch, yaw);
+  assert.ok(events.length >= 1, 'a real nod behind the small stroke reports');
+  assert.equal(events[0]?.answer, 'yes');
+});
+
+test('gentle 11 deg phone nods report yes with the flat config', () => {
+  const detector = new HeadNodShakeDetector(FLAT_HEAD_GESTURE_CONFIG);
+  detector.setEnabled(true);
+  now = 0;
+  let event = null;
+  swing((deg) => {
+    event = event ?? detector.feed(deg * D, 0, now);
+  }, 11, 0.7);
+  assert.equal(event?.answer, 'yes');
+});
+
+test('8 deg wobble at nod cadence never fires with the flat config', () => {
+  const detector = new HeadNodShakeDetector(FLAT_HEAD_GESTURE_CONFIG);
+  detector.setEnabled(true);
+  now = 0;
+  let fired = false;
+  for (let k = 0; k < 5; k += 1) {
+    swing((deg) => {
+      fired = fired || detector.feed(deg * D, 2 * D, now) != null;
+    }, 8, 0.6);
+    now += 0.3;
+  }
+  assert.equal(fired, false);
+});
+
+test('a second qualifying commit cannot overwrite an awaiting cycle', () => {
+  const tracker = new AxisOscillationTracker(FLAT_HEAD_GESTURE_CONFIG);
+  now = 0;
+  const step60 = 1 / 60;
+  const feed = (deg) => {
+    now += step60;
+    return tracker.feed(deg * D, now);
+  };
+  // Out to +20, reverse (commits, awaits return), kick to +24 before the
+  // return finishes (ignored, no overwrite), then return to baseline: the
+  // original cycle completes exactly once.
+  let completions = 0;
+  for (const deg of [5, 10, 15, 20, 18, 14, 20, 24, 22, 10, 4, 0]) {
+    if (feed(deg) != null) completions += 1;
+  }
+  assert.equal(completions, 1);
+});
+
+test('flat-mode head shakes still report no with the wider dominance ratio', () => {
+  // Yaw-led shakes with pitch wobble mirroring the recording's ratios,
+  // inverted: yaw swings 18-22 deg, pitch wobbles 8-11 deg.
+  const yawA = [[0, 2.0], [0.25, -6.5], [0.5, 18.0], [0.75, -8.0], [1.0, 22.0],
+    [1.25, -9.0], [1.5, 19.5], [1.75, 21.0], [2.0, -10.0], [2.25, -5.0], [2.5, -3.0]];
+  const pitchA = [[0, 9.0], [0.25, 5.0], [0.5, -2.0], [0.75, 8.0], [1.0, 6.5],
+    [1.25, 5.0], [1.5, 1.0], [1.75, 11.0], [2.0, 6.0], [2.25, 3.5], [2.5, 2.0]];
+  const detector = new HeadNodShakeDetector(FLAT_HEAD_GESTURE_CONFIG);
+  detector.setEnabled(true);
+  now = 0;
+  const events = feedTrack(detector, pitchA, yawA);
+  assert.ok(events.length >= 1, 'at least one shake reported');
+  assert.equal(events[0]?.answer, 'no');
+});
