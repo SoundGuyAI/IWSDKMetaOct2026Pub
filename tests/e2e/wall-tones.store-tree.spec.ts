@@ -28,6 +28,9 @@ interface DebugSnap {
   sequenceRowVisible: boolean;
   sequenceBoxesShown: number;
   flatAwaitingStart: boolean;
+  presses: number;
+  savedBestStreak: number;
+  unlockedAchievements: string[];
 }
 
 const readState = (page: Page): Promise<DebugSnap> =>
@@ -52,6 +55,9 @@ const readState = (page: Page): Promise<DebugSnap> =>
       sequenceRowVisible: d.sequenceRowVisible,
       sequenceBoxesShown: d.sequenceBoxesShown,
       flatAwaitingStart: d.flatAwaitingStart,
+      presses: d.presses,
+      savedBestStreak: d.savedBestStreak,
+      unlockedAchievements: [...d.unlockedAchievements],
     };
   });
 
@@ -209,6 +215,15 @@ test.describe('Wall Tones store skill tree', () => {
     await expect
       .poll(async () => (await readState(page)).streak, { timeout: 180_000 })
       .toBe(5);
+    // Owner rule 2026-11-15: AutoPlay is not the human player. Five fully
+    // auto-played rounds advance the run but must not count presses, set
+    // the saved best-streak record, or unlock streak achievements.
+    snap = await readState(page);
+    expect(snap.presses).toBe(0);
+    expect(snap.savedBestStreak).toBe(0);
+    expect(
+      snap.unlockedAchievements.some((id) => id.startsWith('streak-')),
+    ).toBe(false);
     // The 6-note round: Listen plays, then Autoplay enters notes 1-5, so
     // Your Turn starts expecting note 6 (inputStep 5).
     await expect
