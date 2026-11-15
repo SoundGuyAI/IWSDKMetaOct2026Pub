@@ -1672,6 +1672,9 @@ return system.wrongHit?.truncated ?? false;
 // exercisable without replaying 11 rounds.
 debugSetWrongHit(state: { hit: number; expected: number; preceding: number[]; truncated: boolean }) {
 system.wrongHit = state;
+// renderPanel is event-driven, so push a render for the injected state to
+// become visible without waiting for the next game event.
+(system as unknown as { renderPanel(): void }).renderPanel();
 },
 // Yoga-computed line positions inside the Game Over wrong-hit row (test-only):
 // proves the Hit row sits on its own line below the Expected row
