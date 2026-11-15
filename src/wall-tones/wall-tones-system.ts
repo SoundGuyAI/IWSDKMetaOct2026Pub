@@ -35,7 +35,7 @@ type Entity,
 } from '@iwsdk/core';
 import { XRHandVisualAdapter } from '@iwsdk/xr-input';
 import type { ExperienceMode } from '../app-mode.js';
-import { playAutoplayCue, playErrorTone, playPadTone, playPadToneFromUserAction, primeWallTonesAudioFromGesture, suspendAudioContext, needsExplicitMobileSoundUnlock, isHtmlAudioPoolUnlocked } from './audio.js';
+import { playAutoplayDisengagedCue, playAutoplayEngagedCue, playAutoplayRoundCue, playErrorTone, playPadTone, playPadToneFromUserAction, primeWallTonesAudioFromGesture, suspendAudioContext, needsExplicitMobileSoundUnlock, isHtmlAudioPoolUnlocked } from './audio.js';
 import {
 AIR_GHOST_HAND_OFFSET_M,
 AIR_GHOST_MIN_HEAD_DISTANCE_M,
@@ -209,6 +209,8 @@ streak: number;
 bestStreak: number;
 /** Persisted human record (never set by AutoPlay, owner rule 2026-11-15). */
 savedBestStreak: number;
+/** AutoPlay owned and switched on. */
+autoplayEnabled: boolean;
 bars: number;
 barsTotal: number;
 /** Lifetime Bars AutoPlay earned (never human achievement progress). */
@@ -294,6 +296,8 @@ grantSavers: (units: number) => void;
 grantPlayLevel: (level: number) => void;
 /** Test-only: grant the Index pointer while its price is unset. */
 grantIndex: () => void;
+/** Test-only: press the control-row Autoplay button (toggle when owned). */
+pressAutoplayControl: () => void;
 ownsIndex: boolean;
 buyIndex: () => void;
 /** Test-only streak seeding for e2e Game Over cost checks. */
@@ -768,7 +772,7 @@ panel
 ?.addEventListener('click', () => void this.onPlayControl());
 panel
 .getElementById('control-autoplay-button')
-?.addEventListener('click', () => this.openStoreAtTile('autoplay'));
+?.addEventListener('click', () => void this.onAutoplayControl());
 panel
 .getElementById('control-speed-button')
 ?.addEventListener('click', () => this.openStoreAtTile('speed'));
@@ -1642,6 +1646,9 @@ return system.game.bestStreak;
 get savedBestStreak() {
 return system.economy.getBestStreak();
 },
+get autoplayEnabled() {
+return system.economy.isAutoplayEnabled();
+},
 get bars() {
 return system.economy.getBars();
 },
@@ -1917,6 +1924,9 @@ system.debugGrantPlayLevel(level);
 },
 grantIndex: () => {
 system.economy.debugGrantIndex();
+},
+pressAutoplayControl: () => {
+void system.onAutoplayControl();
 },
 setStreak: (streak: number) => {
 system.debugSetStreak(streak);
@@ -2987,18 +2997,21 @@ await this.wait(NOTE_GAP_S);
 // note count covers the whole pattern the round completes through the
 // exact manual-finish path, matching the Play modifier. Auto-entered
 // notes pay no per-press Bars (no player press).
-const autoCount = Math.min(
+const autoCount = this.economy.isAutoplayEnabled()
+? Math.min(
 this.economy.getAutoplayNoteCount(),
 this.game.sequence.length,
-);
+)
+: 0;
 if (autoCount > 0) {
 this.statusText = `Auto play: first ${autoCount}`;
 this.playbackKind = 'autoplay';
 this.renderPanel();
-// Owner-picked cue (audition File option 5, 2026-11-15): the robot chirp
-// sounds right before AutoPlay enters its notes.
-await playAutoplayCue();
-await this.wait(0.7);
+// Owner-picked cue set (2026-11-15): the robot chirp plus the next
+// rotating gravelly-voice phrase sound right before AutoPlay enters its
+// notes.
+await playAutoplayRoundCue();
+await this.wait(1.2);
 if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
 }
@@ -4183,7 +4196,16 @@ panel
 ?.setProperties({ opacity: this.economy.getPlayLevel() > 0 ? 1 : greyed });
 panel
 .getElementById('control-autoplay-button')
-?.setProperties({ opacity: this.economy.getAutoplayLevel() > 0 ? 1 : greyed });
+?.setProperties({
+// Unowned: greyed like the other locked modifiers. Owned but switched off:
+// mid opacity so it reads as owned-but-idle, not locked.
+opacity:
+this.economy.getAutoplayLevel() < 1
+? greyed
+: this.economy.isAutoplayEnabled()
+? 1
+: 0.6,
+});
 panel
 .getElementById('control-speed-button')
 ?.setProperties({ opacity: greyed });
@@ -4201,6 +4223,31 @@ this.onToggleStore();
 }
 if (this.storeSelected !== id) {
 this.selectStoreTile(id);
+}
+}
+
+/** Control-row Autoplay button (owner 2026-11-15): unowned -> Store
+ * shortcut; owned -> toggles AutoPlay on/off. Switching on plays the
+ * "Autoplay engaged" voice notice, switching off "Autoplay disengaged";
+ * the round cue (chirp + rotating phrase) only plays on actual AutoPlay
+ * rounds, never on the toggle itself. */
+private async onAutoplayControl(): Promise<void> {
+if (this.economy.getAutoplayLevel() < 1) {
+this.openStoreAtTile('autoplay');
+return;
+}
+const disabled = this.economy.isAutoplayEnabled();
+this.economy.setAutoplayDisabled(disabled);
+this.statusText = disabled ? 'Auto play engaged' : 'Auto play disengaged';
+this.renderPanel();
+const panel = this.world.getSceneObject<UIKitMLAsset>('game-menu-panel');
+if (panel != null) {
+this.syncControlRow(panel);
+}
+if (disabled) {
+await playAutoplayEngagedCue();
+} else {
+await playAutoplayDisengagedCue();
 }
 }
 
@@ -5967,4 +6014,4 @@ return new Promise((resolve) => {
 window.setTimeout(resolve, seconds * 1000);
 });
 }
-  }
+        }
