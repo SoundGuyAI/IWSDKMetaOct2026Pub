@@ -1683,7 +1683,7 @@ system.wrongHit = state;
 get wrongHitPopupRowTops() {
 const cache = system.wrongHitPopupCache;
 const expectedLabelIndex = 0;
-const hitLabelIndex = WRONG_HIT_ROW_NOTES * 2 + 2;
+const hitLabelIndex = WRONG_HIT_ROW_NOTES * 2 + 3;
 if (cache.children.length <= hitLabelIndex) return null;
 const layoutOf = (child: unknown): { top: number; left: number } | null => {
 const yoga = (child as { node?: Record<string, { getComputedLayout?: () => { top: number; left: number } }> } | undefined)?.node?.['yogaNode'];
@@ -5410,16 +5410,20 @@ this.lastWrongHitRowVisible = this.wrongHitVisible();
 /** Child kinds at fixed plan indices, identical for the panel info row and the
  * Game Over popup. Owner 2026-11-15 19:01: two stacked lines that do not grow
  * the panel - the pattern (history) row stays hidden after a failure, so the
- * Expected and Hit lines fit in the freed space. Plan: Expected label,
+ * Expected and Hit lines fit in the freed space. Plan: Expected label, a
+ * leading ellipsis (owner 2026-11-15 23:23: a "..." prefix on each five-note
+ * row when earlier notes are hidden, so a long chain reads as a tail),
  * up to WRONG_HIT_ROW_NOTES square/name pairs whose final square is the note
- * the game expected, a full-width break, then the Hit label and pairs whose
- * final square is the pad actually hit (right RRRBG vs played RRRBY). Fixed
- * label width lines up the square columns of the two rows. */
+ * the game expected, a full-width break, then the Hit label, its ellipsis,
+ * and pairs whose final square is the pad actually hit (right RRRBG vs
+ * played RRRBY). Fixed label width lines up the square columns of the two
+ * rows; the ellipsis is the same text in both rows, so alignment holds
+ * whether it shows or not. */
 private wrongHitChildKind(index: number): 'label' | 'square' | 'text' | 'break' {
-const hitBreak = WRONG_HIT_ROW_NOTES * 2 + 1;
+const hitBreak = WRONG_HIT_ROW_NOTES * 2 + 2;
 if (index === hitBreak) return 'break';
 if (index === 0 || index === hitBreak + 1) return 'label';
-const offset = index < hitBreak ? index - 1 : index - hitBreak - 2;
+const offset = index < hitBreak ? index - 2 : index - hitBreak - 3;
 return offset % 2 === 0 ? 'square' : 'text';
 }
 
@@ -5469,16 +5473,23 @@ cache.children.length = 0;
 cache.key = key;
 row.setProperties({ display: wrong != null ? 'flex' : 'none' });
 const leadIn = wrong ? wrong.preceding.slice(-(WRONG_HIT_ROW_NOTES - 1)) : [];
-const hitBreak = WRONG_HIT_ROW_NOTES * 2 + 1;
+// Owner 2026-11-15 23:23: when the captured chain has more notes than the
+// row shows, a leading "..." marks it as the tail of a longer run.
+const tail = wrong != null && wrong.preceding.length > WRONG_HIT_ROW_NOTES - 1;
+const hitBreak = WRONG_HIT_ROW_NOTES * 2 + 2;
 this.wrongHitChild(cache, row, hitBreak);
 const groups = [
-{ label: 0, pairs: 1, text: 'Expected:', finalId: wrong?.expected },
-{ label: hitBreak + 1, pairs: hitBreak + 2, text: 'Hit:', finalId: wrong?.hit },
+{ label: 0, dots: 1, pairs: 2, text: 'Expected:', finalId: wrong?.expected },
+{ label: hitBreak + 1, dots: hitBreak + 2, pairs: hitBreak + 3, text: 'Hit:', finalId: wrong?.hit },
 ];
 for (const plan of groups) {
 this.wrongHitChild(cache, row, plan.label).setProperties({
 display: wrong == null ? 'none' : 'flex',
 text: plan.text,
+});
+this.wrongHitChild(cache, row, plan.dots).setProperties({
+display: tail ? 'flex' : 'none',
+text: '...',
 });
 for (let i = 0; i < WRONG_HIT_ROW_NOTES; i++) {
 const id = i < WRONG_HIT_ROW_NOTES - 1 ? leadIn[i] : plan.finalId;
@@ -5715,6 +5726,9 @@ if (captionWrong) {
 // RRRBY). The pattern (history) row stays hidden after a failure.
 const namesOn = colorNamesEnabled();
 const leadIn = captionWrong.preceding.slice(-(WRONG_HIT_ROW_NOTES - 1));
+// Owner 2026-11-15 23:23: a leading "..." on each row when the captured
+// chain has more notes than the row shows, marking it as a tail.
+const tailHidden = captionWrong.preceding.length > WRONG_HIT_ROW_NOTES - 1;
 const appendSquares = (rowEl: HTMLElement, ids: number[]) => {
 for (const id of ids) {
 const square = document.createElement('span');
@@ -5737,6 +5751,12 @@ const groupLabel = document.createElement('span');
 Object.assign(groupLabel.style, { display: 'inline-block', width: '72px', textAlign: 'left' });
 groupLabel.textContent = labelText;
 group.append(groupLabel);
+if (tailHidden) {
+const dots = document.createElement('span');
+dots.textContent = '...';
+dots.setAttribute('data-wronghit-tail', '1');
+group.append(dots);
+}
 appendSquares(group, [...leadIn, finalId]);
 line.append(group);
 };
