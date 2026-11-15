@@ -234,6 +234,7 @@ idleReplaySpent: boolean;
 /** Status line text currently shown (test-only). */
 statusLineText: string;
 sequenceRowVisible: boolean;
+controlRowVisible: boolean;
 sequenceBoxesShown: number;
 sequenceUnknownShown: number;
 roundCardText: string;
@@ -488,6 +489,7 @@ private sequenceIconPendingPanel: UIKitMLAsset | null = null;
 private sequenceIconUpdateQueued = false;
 private readonly sequenceCueSquares: UIKit.Container[] = [];
 private readonly sequenceCueNames: UIKit.Text[] = [];
+private readonly sequenceCueUnknownMarks: UIKit.Text[] = [];
 /** Small '▼' markers: one per square, shown only on the current/last
  * auto-entered note (owner 2026-11-14 dim + arrow pick). */
 private readonly sequenceCueArrows: UIKit.Container[] = [];
@@ -982,7 +984,10 @@ this.startPromptSpoken = true;
 }
 }
 this.spawnDesktopPads();
-this.setRepeatUiVisible(false);
+// Owner 2026-11-15 (physical preview, evening): the modifier row is part of
+// the full game window and must be visible before the first input, not only
+// once the game loop starts. MR still shows it only after setup completes.
+this.setRepeatUiVisible(true);
 if (needsExplicitMobileSoundUnlock() && !isHtmlAudioPoolUnlocked()) {
 this.statusText = 'Tap "Sound on" below, then any pad';
 this.showMobileSoundOverlay();
@@ -1701,6 +1706,9 @@ return String(system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel')
 },
 get sequenceRowVisible() {
 return system.lastSequenceRowVisible;
+},
+get controlRowVisible() {
+return system.lastControlRowVisible;
 },
 get sequenceBoxesShown() {
 return system.lastSequenceBoxesShown;
@@ -4055,6 +4063,7 @@ this.world
 // appear on the room-setup panel (choose-mode / scanning / wall-picking /
 // air-placement), so the false callers here stay honored.
 ?.setProperties({ display: visible ? 'flex' : 'none' });
+this.lastControlRowVisible = visible;
 }
 
 private setRescanUiVisible(visible: boolean): void {
@@ -5145,6 +5154,7 @@ list.scrollPosition.value = [0, 0];
 
 /** Last values pushed to the pattern row, exposed for e2e assertions. */
 private lastSequenceRowVisible = false;
+private lastControlRowVisible = false;
 private lastSequenceBoxesShown = 0;
 private lastSequenceUnknownShown = 0;
 /** Last text shown on the round-results card ('' while hidden). */
@@ -5723,6 +5733,7 @@ if (this.sequenceIconRow === row && this.sequenceIconKey === key) return;
 if (this.sequenceIconRow !== row) {
 this.sequenceCueSquares.length = 0;
 this.sequenceCueNames.length = 0;
+this.sequenceCueUnknownMarks.length = 0;
 this.sequenceIconRow = row;
 }
 this.sequenceIconKey = key;
@@ -5737,7 +5748,13 @@ if (!this.sequenceCueSquares[i]) {
 const arrowSlot = new UIKit.Container({width: 12, height: 7, flexShrink: 0});
 const arrowImg = new UIKit.Image({src: storeChipGlyphSrc('arrow', '#ffffff'), width: 12, height: 7}) as UIKit.Image;
 arrowSlot.add(arrowImg);
-const square = new UIKit.Container({width: 16, height: 16, borderRadius: 2, flexShrink: 0});
+// Owner 2026-11-15 (physical preview, evening): an unrevealed tail note
+// shows its "?" ON the grey square itself, not beside it. The square is a
+// centered flex parent so the mark sits in its middle.
+const square = new UIKit.Container({width: 16, height: 16, borderRadius: 2, flexShrink: 0, justifyContent: 'center', alignItems: 'center'});
+const unknownMark = new UIKit.Text({fontSize: 12, color: 0xffffff, text: '?'});
+unknownMark.setProperties({ display: 'none' });
+square.add(unknownMark);
 const name = new UIKit.Text({fontSize: 15, color: 0xffffff});
 const note = new UIKit.Container({flexDirection: 'column', alignItems: 'center', flexShrink: 0});
 note.add(arrowSlot); note.add(square);
@@ -5745,6 +5762,7 @@ this.sequenceCueArrows.push(arrowSlot);
 this.sequenceCueArrowImgs.push(arrowImg);
 this.sequenceCueSquares.push(square);
 this.sequenceCueNames.push(name);
+this.sequenceCueUnknownMarks.push(unknownMark);
 row.add(note); row.add(name);
 }
 }
@@ -5772,8 +5790,11 @@ this.sequenceCueArrowImgs[i]!.setProperties({
 display: i === arrowAt && id != null && !notYetPlayed ? 'flex' : 'none',
 });
 this.sequenceCueNames[i]!.setProperties({
-display: id != null && !notYetPlayed && ((names && !beyondHint) || unknown) ? 'flex' : 'none',
-text: id == null ? '' : unknown ? '?' : WALL_TONE_PADS[id].name,
+display: id != null && !notYetPlayed && names && !beyondHint ? 'flex' : 'none',
+text: id == null ? '' : unknown ? '' : WALL_TONE_PADS[id].name,
+});
+this.sequenceCueUnknownMarks[i]!.setProperties({
+display: id != null && !notYetPlayed && unknown ? 'flex' : 'none',
 });
 }
 this.lastSequenceBoxesShown = shown;
@@ -6014,4 +6035,4 @@ return new Promise((resolve) => {
 window.setTimeout(resolve, seconds * 1000);
 });
 }
-        }
+  }
