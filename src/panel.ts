@@ -62,6 +62,12 @@ function isCompactFlatViewport(): boolean {
   return false;
 }
 
+function thumbsVisibleForFollow(world: {
+  getSceneEntity: (id: string) => { getValue: (c: typeof Visibility, k: 'isVisible') => unknown } | undefined;
+}): boolean {
+  return world.getSceneEntity('thumbs-lab-panel')?.getValue(Visibility, 'isVisible') === true;
+}
+
 export class PanelSystem extends createSystem({}) {
   private readonly savedMainMenuPosition = new Float32Array(3);
   private readonly savedMainMenuScale = new Float32Array(3);
@@ -93,7 +99,10 @@ export class PanelSystem extends createSystem({}) {
     // with the same rules. Switching menus re-anchors it in front of the viewer.
     const labVisible =
       this.world.getSceneEntity('lab-menu-panel')?.getValue(Visibility, 'isVisible') === true;
-    const followId = labVisible ? 'lab-menu-panel' : 'main-menu-panel';
+    const baseId = labVisible ? 'lab-menu-panel' : 'main-menu-panel';
+    // The Thumbs Lab panel replaces the Lab menu in place, so it follows the
+    // player with the same rules as the menus and the other lab windows.
+    const followId = thumbsVisibleForFollow(this.world) ? 'thumbs-lab-panel' : baseId;
     if (followId !== this.followedMenuId) {
       this.followedMenuId = followId;
       this.menuAnchored = false;
@@ -387,4 +396,4 @@ export class PanelSystem extends createSystem({}) {
       }
     }
   }
-}
+      }
