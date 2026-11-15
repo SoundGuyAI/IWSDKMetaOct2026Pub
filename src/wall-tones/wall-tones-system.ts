@@ -235,6 +235,7 @@ idleReplaySpent: boolean;
 statusLineText: string;
 sequenceRowVisible: boolean;
 controlRowVisible: boolean;
+sequenceArrowAt: number;
 sequenceBoxesShown: number;
 sequenceUnknownShown: number;
 roundCardText: string;
@@ -1709,6 +1710,9 @@ return system.lastSequenceRowVisible;
 },
 get controlRowVisible() {
 return system.lastControlRowVisible;
+},
+get sequenceArrowAt() {
+return system.lastSequenceArrowAt;
 },
 get sequenceBoxesShown() {
 return system.lastSequenceBoxesShown;
@@ -5155,6 +5159,7 @@ list.scrollPosition.value = [0, 0];
 /** Last values pushed to the pattern row, exposed for e2e assertions. */
 private lastSequenceRowVisible = false;
 private lastControlRowVisible = false;
+private lastSequenceArrowAt = -1;
 private lastSequenceBoxesShown = 0;
 private lastSequenceUnknownShown = 0;
 /** Last text shown on the round-results card ('' while hidden). */
@@ -5723,7 +5728,17 @@ const visible =
 (listening && this.economy.ownsListen()) ||
 modifying ||
 (this.game.phase === 'input' && rowReveal > 0);
-const arrowAt = modifying ? this.playbackCursor : yourTurn ? this.arrowSeqIndex : -1;
+// Owner 2026-11-15 (physical preview, 23:27): the owned Index pointer must
+// also mark the player's position in a REGULAR run's Your Turn, not only
+// during Play/Autoplay. Unowned runs keep the modifier-only arrow.
+const arrowAt = modifying
+? this.playbackCursor
+: yourTurn
+? this.economy.ownsIndex()
+? this.game.inputStep
+: this.arrowSeqIndex
+: -1;
+this.lastSequenceArrowAt = arrowAt;
 const blinkOn = modifying && Math.floor(performance.now() / 320) % 2 === 0;
 const names = colorNamesEnabled();
 // yourTurn must key the cache: after Listen of a longer-than-owned pattern the
