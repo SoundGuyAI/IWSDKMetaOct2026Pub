@@ -27,6 +27,7 @@ interface DebugSnap {
   demoBoost: number;
   storeOpen: boolean;
   sequenceRowVisible: boolean;
+  controlRowVisible: boolean;
   sequenceBoxesShown: number;
   flatAwaitingStart: boolean;
   presses: number;
@@ -57,6 +58,7 @@ const readState = (page: Page): Promise<DebugSnap> =>
       demoBoost: d.demoBoost,
       storeOpen: d.storeOpen,
       sequenceRowVisible: d.sequenceRowVisible,
+      controlRowVisible: d.controlRowVisible,
       sequenceBoxesShown: d.sequenceBoxesShown,
       flatAwaitingStart: d.flatAwaitingStart,
       presses: d.presses,
@@ -157,7 +159,11 @@ test.describe('Wall Tones store skill tree', () => {
     test.slow();
     await abortSpeech(page);
     await bootWallTones(page, true);
+    // Owner 2026-11-15: the modifier row is visible as soon as the full game
+    // window opens, before the first input starts the game loop.
+    expect((await readState(page)).controlRowVisible).toBe(true);
     await submitPad(page, 0); // start tap
+    expect((await readState(page)).controlRowVisible).toBe(true);
     // Catch the first Listen playback: no Listen item, no listen line.
     await expect
       .poll(async () => (await readState(page)).phase, { timeout: 90_000 })
