@@ -1,6 +1,6 @@
 import { hintWindowStart, HINT_WINDOW_SIZE } from './hint-window.js';
 import { armbandHand, armbandDisplayMode, ArmbandDisplay, ARMBAND_SCALE } from './armband.js';
-import { BAND_JOINT_ROTATION, PALM_PANEL_LIFT, palmPanelPose, type PalmJoints, type PalmVec } from './palm-projector.js';
+import { BAND_JOINT_ROTATION, PALM_PANEL_HEAD_AWAY, PALM_PANEL_LIFT, PalmJointsSmoother, palmOpenState, palmPanelPose, type PalmJoints, type PalmVec } from './palm-projector.js';
 import { BackgroundProgress } from './cypher-background.js';
 import { getVoiceGender } from './speech.js';
 import { CypherProgress, type CypherWindow } from './cypher-progress.js';
@@ -565,15 +565,21 @@ if (session) for (const candidate of session.inputSources) {
       tracked = true;
       // Projector mode: the panel leaves the wrist and floats above the open flat palm.
       if (armbandDisplayMode() === 'projector') {
-        const joints = frame && reference ? this.readPalmJoints(source.hand, frame, reference) : null;
-        if (joints) {
+        const rawJoints = frame && reference ? this.readPalmJoints(source.hand, frame, reference) : null;
+        if (rawJoints) {
+          // Filter the raw joints first (One Euro per joint): physical hand
+          // tracking carries mm-scale per-frame noise, which otherwise flaps
+          // the open-palm gate and shakes the panel pose.
+          const joints = this.armbandJointSmoother.filter(rawJoints, Math.max(delta, 1e-4));
           const panel = palmPanelPose(joints, hand);
-          const target = panel.openFlat ? 1 : 0;
-          const step = target > this.armbandProjectorOpen ? 0.09 : -0.14;
-          this.armbandProjectorOpen = Math.min(1, Math.max(0, this.armbandProjectorOpen + step));
+          const isOpen = palmOpenState(joints, hand, this.armbandProjectorOpen > 0.5);
+          const rate = isOpen ? 8 : 12; // unfold ~0.13s, fold ~0.08s, frame-rate independent
+          this.armbandProjectorOpen = Math.min(1, Math.max(0,
+            this.armbandProjectorOpen + (isOpen ? 1 : -1) * rate * Math.max(delta, 1e-4)));
           floating = { open: this.armbandProjectorOpen, center: panel.center, normal: panel.normal, along: panel.along };
         } else {
           this.armbandProjectorOpen = 0;
+          this.armbandJointSmoother.reset();
         }
       } else {
         // Band mode: derive the pose from hand anatomy instead of the raw wrist
@@ -610,6 +616,7 @@ if (session) for (const candidate of session.inputSources) {
           this.armband.applyPose(joints.wrist, this.armbandJointQuat);
         }
         this.armbandProjectorOpen = 0;
+        this.armbandJointSmoother.reset();
       }
     }
   } else if (source?.gripSpace) {
@@ -654,15 +661,33 @@ if (floating) {
   this.armbandPanelX.crossVectors(this.armbandPanelY, this.armbandPanelZ);
   this.armbandPanelBasis.makeBasis(this.armbandPanelX, this.armbandPanelY, this.armbandPanelZ);
   this.armbandPanelQuat.setFromRotationMatrix(this.armbandPanelBasis);
-  this.armbandPanelPos.set(floating.center.x + floating.normal.x * 0.04 * e,
-    floating.center.y + floating.normal.y * 0.04 * e, floating.center.z + floating.normal.z * 0.04 * e);
-  // Movement stabilization: soft-follow so small hand jitters don't jerk the
-  // panel. Snaps while (re)opening so it grows out of the palm, then lags.
+  // Placement: above the palm along its normal, and pushed a little farther
+  // from the head along the horizontal head-to-panel line.
+  const awayX = floating.center.x - this.viewer.x;
+  const awayZ = floating.center.z - this.viewer.z;
+  const awayLen = Math.hypot(awayX, awayZ);
+  const awayScale = awayLen > 1e-3 ? PALM_PANEL_HEAD_AWAY / awayLen : 0;
+  this.armbandLastAwayOffset.set(awayX * awayScale, 0, awayZ * awayScale);
+  this.armbandPanelPos.set(
+    floating.center.x + floating.normal.x * 0.04 * e + awayX * awayScale,
+    floating.center.y + floating.normal.y * 0.04 * e,
+    floating.center.z + floating.normal.z * 0.04 * e + awayZ * awayScale);
+  // Movement stabilization: soft-follow with a speed-adaptive rate - heavy at
+  // rest so residual jitter dies in the filter, quick once the hand really
+  // moves so the panel keeps up. Snaps while (re)opening.
   if (floating.open < 0.06) {
     this.armbandSmoothPos.copy(this.armbandPanelPos);
     this.armbandSmoothQuat.copy(this.armbandPanelQuat);
+    this.armbandFollowPrevPos.copy(this.armbandPanelPos);
+    this.armbandFollowSpeed = 0;
   } else {
-    const follow = 1 - Math.exp(-Math.max(delta, 1 / 120) * 6);
+    const dt = Math.max(delta, 1e-4);
+    const speed = this.armbandPanelPos.distanceTo(this.armbandFollowPrevPos) / dt;
+    this.armbandFollowPrevPos.copy(this.armbandPanelPos);
+    const speedAlpha = 1 - Math.exp(-dt * 2);
+    this.armbandFollowSpeed += (speed - this.armbandFollowSpeed) * speedAlpha;
+    const followRate = Math.min(45, Math.max(3, 3 + 25 * this.armbandFollowSpeed));
+    const follow = 1 - Math.exp(-dt * followRate);
     this.armbandSmoothPos.lerp(this.armbandPanelPos, follow);
     this.armbandSmoothQuat.slerp(this.armbandPanelQuat, follow);
   }
@@ -705,6 +730,11 @@ private readonly armbandPanelPos = new Vector3();
 private readonly armbandPanelQuat = new Quaternion();
 private readonly armbandSmoothPos = new Vector3();
 private readonly armbandSmoothQuat = new Quaternion();
+private readonly armbandJointSmoother = new PalmJointsSmoother();
+private readonly armbandFollowPrevPos = new Vector3();
+private armbandFollowSpeed = 0;
+/** Last applied head-away offset (test evidence for the placement tuning). */
+private readonly armbandLastAwayOffset = new Vector3();
 private readonly armbandBasisA = new Vector3();
 private readonly armbandBasisN = new Vector3();
 private readonly armbandBasisX = new Vector3();
