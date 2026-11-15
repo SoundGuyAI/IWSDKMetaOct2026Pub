@@ -236,6 +236,7 @@ wrongHitRowVisible: boolean;
 wrongHitPreceding: number[] | null;
 wrongHitExpected: number | null;
 wrongHitHit: number | null;
+wrongHitPopupGroupTops: { firstSquareTop: number; expectedTop: number; hitTop: number } | null;
 sequenceRowVisible: boolean;
 sequenceBoxesShown: number;
 sequenceUnknownShown: number;
@@ -1661,6 +1662,24 @@ return system.wrongHit?.expected ?? null;
 },
 get wrongHitHit() {
 return system.wrongHit?.hit ?? null;
+},
+// Yoga-computed line positions inside the Game Over wrong-hit row (test-only):
+// proves Expected:/Hit: sit on their own line below the history squares
+// (owner 2026-11-15). null until the popup row is laid out.
+get wrongHitPopupGroupTops() {
+const cache = system.wrongHitPopupCache;
+const base = WRONG_HIT_PRECEDING_MAX * 2;
+if (cache.children.length < base + 3) return null;
+const topOf = (child: unknown): number | null => {
+const yoga = (child as { node?: Record<string, { getComputedLayout?: () => { top: number } }> } | undefined)?.node?.['yogaNode'];
+return yoga?.getComputedLayout?.().top ?? null;
+};
+const firstSquareTop = topOf(cache.children[0]);
+const expectedTop = topOf(cache.children[base + 1]);
+const hitTop = topOf(cache.children[base + 2]);
+return firstSquareTop == null || expectedTop == null || hitTop == null
+? null
+: { firstSquareTop, expectedTop, hitTop };
 },
 get sequenceRowVisible() {
 return system.lastSequenceRowVisible;
@@ -5360,9 +5379,12 @@ this.lastWrongHitRowVisible = this.wrongHitVisible();
 
 /** Child kinds at fixed plan indices: preceding square/name pairs, then one
  * non-breaking group container each for Expected: and Hit: (label+square+name
- * never wrap apart - reviewer pass 2026-11-15). */
-private wrongHitChildKind(index: number): 'square' | 'text' | 'group' {
+ * never wrap apart - reviewer pass 2026-11-15). The Game Over popup inserts a
+ * full-width break before the Expected group so Expected:/Hit: sit together on
+ * their own line below the history squares (owner 2026-11-15). */
+private wrongHitChildKind(index: number, gameOverBreak: boolean): 'square' | 'text' | 'break' | 'group' {
 if (index < WRONG_HIT_PRECEDING_MAX * 2) return index % 2 === 0 ? 'square' : 'text';
+if (gameOverBreak && index === WRONG_HIT_PRECEDING_MAX * 2) return 'break';
 return 'group';
 }
 
@@ -5372,12 +5394,15 @@ private wrongHitChild(
 cache: WrongHitRowCache,
 row: UIKit.Container,
 index: number,
+gameOverBreak: boolean,
 ): UIKit.Container | UIKit.Text {
 while (cache.children.length <= index) {
-const kind = this.wrongHitChildKind(cache.children.length);
+const kind = this.wrongHitChildKind(cache.children.length, gameOverBreak);
 const child =
 kind === 'square'
 ? new UIKit.Container({ width: 16, height: 16, borderRadius: 2, flexShrink: 0 })
+: kind === 'break'
+? new UIKit.Container({ width: '100%', height: 0, flexShrink: 0 })
 : kind === 'group'
 ? new UIKit.Container({ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 })
 : new UIKit.Text({ fontSize: 15, color: 0xffffff });
@@ -5396,6 +5421,7 @@ const row = panel.getElementById<UIKit.Container>(rowId);
 if (row == null) return;
 const wrong = this.wrongHitVisible() ? this.wrongHit : null;
 const names = colorNamesEnabled();
+const gameOverBreak = rowId === 'gameover-wronghit-row';
 const key =
 wrong == null
 ? 'hidden'
@@ -5410,11 +5436,11 @@ cache.key = key;
 row.setProperties({ display: wrong != null ? 'flex' : 'none' });
 for (let i = 0; i < WRONG_HIT_PRECEDING_MAX; i++) {
 const id = wrong?.preceding[i];
-this.wrongHitChild(cache, row, i * 2).setProperties({
+this.wrongHitChild(cache, row, i * 2, gameOverBreak).setProperties({
 display: id == null ? 'none' : 'flex',
 backgroundColor: id == null ? 0 : WALL_TONE_PADS[id].color,
 });
-this.wrongHitChild(cache, row, i * 2 + 1).setProperties({
+this.wrongHitChild(cache, row, i * 2 + 1, gameOverBreak).setProperties({
 display: id != null && names ? 'flex' : 'none',
 text: id == null ? '' : WALL_TONE_PADS[id].name,
 });
@@ -5423,8 +5449,9 @@ const groups = [
 { label: 'Expected:', id: wrong?.expected },
 { label: 'Hit:', id: wrong?.hit },
 ];
+const groupBase = WRONG_HIT_PRECEDING_MAX * 2 + (gameOverBreak ? 1 : 0);
 groups.forEach((group, g) => {
-const container = this.wrongHitChild(cache, row, WRONG_HIT_PRECEDING_MAX * 2 + g) as UIKit.Container;
+const container = this.wrongHitChild(cache, row, groupBase + g, gameOverBreak) as UIKit.Container;
 container.setProperties({ display: group.id == null ? 'none' : 'flex' });
 if (cache.groupChildren.length <= g) {
 const label = new UIKit.Text({ fontSize: 15, color: 0xffffff });
