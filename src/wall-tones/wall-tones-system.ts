@@ -631,7 +631,9 @@ if (session) for (const candidate of session.inputSources) {
 }
 const panelShown = !floating || floating.open > 0.02;
 entity.object3D.visible = tracked && panelShown;
-if (housing?.object3D) housing.object3D.visible = tracked;
+// The wrist cuff belongs to the wristband display, which is hidden for now
+// (Nov 16 user feedback); the palm projector floats the bare panel.
+if (housing?.object3D) housing.object3D.visible = tracked && armbandDisplayMode() === 'band';
 if (!tracked || !panelShown) {
   if (this.armbandBeam) this.armbandBeam.visible = false;
   if (this.armbandGlow) this.armbandGlow.visible = false;
@@ -699,6 +701,9 @@ if (floating) {
   this.armband.position.toArray(position);
   this.armband.orientation.toArray(orientation);
   scale[0] = scale[1] = scale[2] = ARMBAND_SCALE;
+  // Band mode has no beam; hide it if the session flipped from projector.
+  if (this.armbandBeam) this.armbandBeam.visible = false;
+  if (this.armbandGlow) this.armbandGlow.visible = false;
 }
 if (housing) {
   this.armband.position.toArray(housing.getVectorView(Transform, 'position'));
@@ -776,12 +781,17 @@ private ensureArmbandBeam(): void {
   });
   this.armbandBeam = new Mesh(geo, this.armbandBeamMat);
   this.armbandBeam.visible = false;
+  // Both the beam and the UIKitML panel are transparent; drawing the beam
+  // first lets the panel composite over it, so the panel always obscures the
+  // cone where they overlap (Nov 16 user feedback).
+  this.armbandBeam.renderOrder = -1;
   this.world.scene.add(this.armbandBeam);
   this.armbandGlow = new Mesh(
     new SphereGeometry(0.011, 12, 8),
     new MeshBasicMaterial({ color: 0x9dffc9, transparent: true, opacity: 0.9, blending: AdditiveBlending, depthWrite: false }),
   );
   this.armbandGlow.visible = false;
+  this.armbandGlow.renderOrder = -1;
   this.world.scene.add(this.armbandGlow);
 }
 
@@ -796,9 +806,21 @@ private updateArmbandBeam(floating: { open: number; center: PalmVec; normal: Pal
     floating.center.y - floating.normal.y * PALM_PANEL_LIFT,
     floating.center.z - floating.normal.z * PALM_PANEL_LIFT);
   this.armbandBeamDir.copy(this.armbandSmoothPos).sub(this.armbandBeamBase);
-  const len = Math.max(this.armbandBeamDir.length(), 0.001);
-  beam.position.copy(this.armbandBeamBase).addScaledVector(this.armbandBeamDir, 0.5);
-  beam.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), this.armbandBeamDir.normalize());
+  const fullLen = Math.max(this.armbandBeamDir.length(), 0.001);
+  this.armbandBeamDir.normalize();
+  // Stop the cone just under the panel. Its wide top disc (radius 0.055) is
+  // tilted against the head-facing panel plane, so ending exactly at the
+  // panel center let the rim poke through to the head side and draw over the
+  // buttons (Nov 16 user feedback). Gap = r*tan(theta) + margin/cos(theta)
+  // keeps every rim point on the palm side of the plane.
+  const cosTheta = this.armbandBeamDir.dot(this.armbandPanelZ);
+  let len = fullLen;
+  if (cosTheta > 1e-3) {
+    const sinTheta = Math.sqrt(Math.max(0, 1 - cosTheta * cosTheta));
+    len = Math.max(0.02, fullLen - (0.055 * sinTheta + 0.006) / cosTheta);
+  }
+  beam.position.copy(this.armbandBeamBase).addScaledVector(this.armbandBeamDir, len * 0.5);
+  beam.quaternion.setFromUnitVectors(this.handUp, this.armbandBeamDir);
   beam.scale.set(1, len, 1);
   this.armbandBeamMat!.uniforms.uTime!.value = this.armbandBeamTime;
   this.armbandBeamMat!.uniforms.uStrength!.value = e;
