@@ -793,7 +793,7 @@ export class RiftLabSystem extends createSystem({
     for (const radius of FLAT_RIFT_RADII_M) {
       const good: { pos: Vector3; score: number }[] = [];
       for (let x = -3.2; x <= 3.201; x += 0.2) {
-        for (let y = radius * 1.5 + 0.1; y <= 3.5; y += 0.2) {
+        for (let y = radius * 1.15 + 0.05; y <= 3.5; y += 0.1) {
           const pos = new Vector3(x, y, depth);
           if (this.flatSpotBlocked(pos, radius, hasPanel)) continue;
           let near = Infinity;
