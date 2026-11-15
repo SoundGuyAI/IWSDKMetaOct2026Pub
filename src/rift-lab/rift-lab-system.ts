@@ -100,6 +100,17 @@ const CHARGE_SPOT_X_TOL_FRAC = 0.25;
  * bottom-right. Screen NDC of the resting orb. */
 const TOUCH_ORB_NDC = { x: -0.72, y: -0.74 };
 const TOUCH_ORB_ZONE = { maxXFrac: 0.4, minYFrac: 0.72 };
+/** A touch drag starts only when the finger lands on the resting orb: within
+ * this many CSS px of its on-screen center (~10 mm radius on an iPhone 15 Pro,
+ * which is 393 pt over 65.1 mm = ~6.0 px/mm; NN/g minimum touch target 1 cm). */
+const TOUCH_ORB_GRAB_RADIUS_PX = 64;
+/** Fingertip glow sizing (his 22:59 note: the finger hid the particles).
+ * Adult index finger is 16-20 mm wide (MIT Touch Lab, 2003); the dragged
+ * cloud is 50% wider than the 20 mm upper end, at ~6.0 CSS px/mm on an
+ * iPhone 15 Pro: radius = 20 * 1.5 / 2 * 6.0 = 90 px. */
+const FINGERTIP_MM = 20;
+const CSS_PX_PER_MM = 6.0;
+const TOUCH_GLOW_RADIUS_PX = (FINGERTIP_MM * 1.5 * CSS_PX_PER_MM) / 2;
 /** Resting touch orb hovers this high: just above the floor, cloud radius
  * included, so the corner ray drops it into the visible bottom-left corner
  * instead of floating it mid-screen. */
@@ -196,6 +207,8 @@ export interface RiftLabDebugSnapshot {
   palms: Record<'left' | 'right', PalmPose | null>;
   targets: { id: number; position: number[]; ndc: number[] }[];
   noteOriginNdc: number[];
+  /** On-screen radius (CSS px) the dragged note cloud is sized to. */
+  noteCloudRadiusPx: number;
   /** Viewer pose, for QA placement of synthetic hands. */
   cameraPos: number[];
   cameraDir: number[];
@@ -378,6 +391,7 @@ export class RiftLabSystem extends createSystem({
   private flatTouchInput = false;
   private fingerDown = false;
   private readonly touchOrbPoint = new Vector3();
+  private readonly glowCamPos = new Vector3();
   private readonly pointerNotePlane = new Plane(new Vector3(0, 0, 1), 1.4);
   /** Low horizontal shelf the resting touch orb hovers on (y = shelf). */
   private readonly touchOrbShelfPlane = new Plane(
@@ -452,7 +466,7 @@ export class RiftLabSystem extends createSystem({
     const onPointerDown = (event: PointerEvent) => {
       if (!this.active || !this.running) return;
       this.flatTouchInput = event.pointerType === 'touch';
-      this.fingerDown = this.flatTouchInput;
+      this.fingerDown = false;
       const bounds = canvas.getBoundingClientRect();
       this.aimNdc = {
         x: ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
@@ -460,10 +474,24 @@ export class RiftLabSystem extends createSystem({
       };
       const fracX = event.clientX / window.innerWidth;
       const fracY = event.clientY / window.innerHeight;
-      const nearChargeSpot = this.flatTouchInput
-        ? fracY >= TOUCH_ORB_ZONE.minYFrac && fracX <= TOUCH_ORB_ZONE.maxXFrac
-        : fracY >= CHARGE_SPOT_Y_FRAC - 0.08 &&
+      let nearChargeSpot: boolean;
+      if (this.flatTouchInput) {
+        // Touch: only a press that lands on the visible resting orb starts the
+        // drag. Anywhere else must not move the orb or its glow.
+        this.world.camera.updateMatrixWorld();
+        const orb = this.restingOrbPoint(this.touchOrbPoint.clone()).project(
+          this.world.camera,
+        );
+        const orbX = bounds.left + ((orb.x + 1) / 2) * bounds.width;
+        const orbY = bounds.top + ((1 - orb.y) / 2) * bounds.height;
+        nearChargeSpot =
+          Math.hypot(event.clientX - orbX, event.clientY - orbY) <=
+          TOUCH_ORB_GRAB_RADIUS_PX;
+        this.fingerDown = nearChargeSpot;
+      } else {
+        nearChargeSpot = fracY >= CHARGE_SPOT_Y_FRAC - 0.08 &&
           Math.abs(fracX - 0.5) <= CHARGE_SPOT_X_TOL_FRAC;
+      }
       if (nearChargeSpot) {
         // Mobile/flat: drag from the fixed charge spot aims and fires.
         this.dragging = true;
@@ -1053,6 +1081,26 @@ export class RiftLabSystem extends createSystem({
     }
   }
 
+  private pxPerMeterAt(anchor: Vector3): number {
+    const cam = this.world.camera as unknown as { fov?: number };
+    const fov = ((cam.fov ?? 60) * Math.PI) / 180;
+    const dist = anchor.distanceTo(this.world.camera.getWorldPosition(this.glowCamPos));
+    return window.innerHeight / (2 * dist * Math.tan(fov / 2));
+  }
+
+  /** While a finger drags the orb on a touch screen, grow the note cloud so
+   * its on-screen radius is TOUCH_GLOW_RADIUS_PX (fingertip + 50%) and the
+   * finger no longer hides it. 1 otherwise (XR, desktop, resting orb). */
+  private fingertipGlowScale(anchor: Vector3): number {
+    if (this.isImmersive() || !this.flatTouchInput || !this.fingerDown) return 1;
+    const cam = this.world.camera as unknown as { fov?: number };
+    const fov = ((cam.fov ?? 60) * Math.PI) / 180;
+    const dist = anchor.distanceTo(this.world.camera.getWorldPosition(this.glowCamPos));
+    const worldPerPx = (2 * dist * Math.tan(fov / 2)) / window.innerHeight;
+    const target = TOUCH_GLOW_RADIUS_PX * worldPerPx;
+    return Math.max(1, target / (CLOUD_MAX_RADIUS_M * 1.12));
+  }
+
   /** World point of the resting touch orb: the bottom-left corner ray
    * dropped onto a low shelf just above the floor, so the visible orb sits
    * in the corner where the drag starts (clamping it on the note plane
@@ -1192,13 +1240,14 @@ export class RiftLabSystem extends createSystem({
         this.root.add(mesh);
       }
       const anchor = this.handAnchor(note.hand);
+      const glowScale = this.fingertipGlowScale(anchor);
       // Default: volumetric sphere shell around the palm (desktop, touch,
       // untracked hands), with a slow breathing wobble.
       const wobble = 1 + 0.12 * Math.sin(note.angle * 3 + note.id);
       const sinPhi = Math.sin(note.phi);
-      let ox = anchor.x + Math.cos(note.angle) * sinPhi * note.radius * wobble;
-      let oy = anchor.y + Math.cos(note.phi) * note.radius * wobble;
-      let oz = anchor.z + Math.sin(note.angle) * sinPhi * note.radius * wobble;
+      let ox = anchor.x + Math.cos(note.angle) * sinPhi * note.radius * wobble * glowScale;
+      let oy = anchor.y + Math.cos(note.phi) * note.radius * wobble * glowScale;
+      let oz = anchor.z + Math.sin(note.angle) * sinPhi * note.radius * wobble * glowScale;
       const joints = this.palms[note.hand]?.joints;
       if (joints != null) {
         // Tracked hand: ride the actual hand shape. Each note sits on a bone
@@ -1258,7 +1307,7 @@ export class RiftLabSystem extends createSystem({
       } else {
         mesh.position.set(ox, oy, oz);
       }
-      mesh.scale.setScalar(noteScale);
+      mesh.scale.setScalar(noteScale * (1 + (glowScale - 1) * 0.3));
       // Notes face the viewer (billboard), in XR and flat alike.
       mesh.quaternion.copy(this.world.camera.quaternion);
     }
@@ -1462,6 +1511,11 @@ export class RiftLabSystem extends createSystem({
       beamActive: this.game.isBeamActive(),
       status: this.statusMessage,
       noteOriginNdc: this.handAnchor('right').clone().project(this.world.camera).toArray(),
+      noteCloudRadiusPx: Math.min(
+        CLOUD_MAX_RADIUS_M * 1.12 * this.fingertipGlowScale(this.handAnchor('right')) *
+          this.pxPerMeterAt(this.handAnchor('right')),
+        9999,
+      ),
       cameraPos: this.world.camera.getWorldPosition(new Vector3()).toArray(),
       cameraDir: this.world.camera.getWorldDirection(new Vector3()).toArray(),
       palms: this.palms,
