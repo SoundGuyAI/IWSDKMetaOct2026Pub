@@ -245,4 +245,55 @@ test.describe('Wall Tones achievement unlock celebration (item 54)', () => {
       (await readCelebration(page)).unlockedAchievements,
     ).toContain('streak-5');
   });
+
+  test('a Movement unlock celebration shows the drawn glyph (the category has no PNG art)', async ({
+    page,
+  }) => {
+    await abortSpeech(page);
+    // Seed lifetime movement past the first Movement threshold (10 m); the
+    // economy's boot-time achievement check then queues Movement 10. Custom
+    // boot instead of bootWallTones: the seed must survive the storage clear.
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem('iwsdk-experience-mode', 'walltones');
+      window.localStorage.clear();
+      window.localStorage.setItem('wall-tones-move-head-m', '12');
+    });
+    await page.goto('/');
+    await page.waitForFunction(
+      () =>
+        Boolean(
+          (window as unknown as { __wallTonesDebug?: unknown }).__wallTonesDebug,
+        ),
+      undefined,
+      { timeout: 60_000 },
+    );
+
+    await expect
+      .poll(async () => (await readCelebration(page)).celebrationText, {
+        timeout: 15_000,
+      })
+      .toBe('ACHIEVEMENT UNLOCKED|Movement 10');
+
+    const overlay = page.locator('.wt-achv-celebration');
+    await expect(overlay).toBeVisible();
+    await expect(overlay.locator('.wt-achv-name')).toHaveText('Movement 10');
+    // Regression (owner report, Nov 15): the badge disc stayed empty because
+    // Movement has no embedded PNG art; it must show the drawn glyph, really
+    // loaded (naturalWidth > 0), not a broken image.
+    const icon = overlay.locator('.wt-achv-badge-disc img');
+    await expect(icon).toBeAttached();
+    await expect
+      .poll(async () =>
+        icon.evaluate((el) => (el as HTMLImageElement).naturalWidth),
+      )
+      .toBeGreaterThan(0);
+
+    // The show completes and the queue empties.
+    await expect
+      .poll(async () => (await readCelebration(page)).celebrationActive, {
+        timeout: 15_000,
+      })
+      .toBe(false);
+    await expect(page.locator('.wt-achv-celebration')).toHaveCount(0);
+  });
 });
