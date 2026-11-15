@@ -32,18 +32,26 @@ test('portrait touch: Start opens a rift and a corner drag seals it', async ({ p
   });
   const snap = await page.evaluate(() => window.__riftLabDebug!.snapshot());
   expect(snap.energy).toBe(120);
+  // The resting orb must render inside the bottom-left touch zone it is
+  // dragged from (regression: it used to float mid-screen, so pressing the
+  // visible dots never started the drag).
+  const [onx, ony] = snap.noteOriginNdc;
+  expect((onx + 1) / 2).toBeLessThanOrEqual(0.4);
+  expect((1 - ony) / 2).toBeGreaterThanOrEqual(0.72);
+  const orbX = ((onx + 1) / 2) * 390;
+  const orbY = ((1 - ony) / 2) * 664;
   const [nx, ny] = snap.targets[0].ndc;
   const tx = ((nx + 1) / 2) * 390;
   const ty = ((1 - ny) / 2) * 664;
 
   const cdp = await page.context().newCDPSession(page);
   const at = (x: number, y: number) => [{ x, y }];
-  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at(30, 600) });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at(orbX, orbY) });
   for (let i = 1; i <= 12; i++) {
     await page.waitForTimeout(40);
     await cdp.send('Input.dispatchTouchEvent', {
       type: 'touchMove',
-      touchPoints: at(30 + ((tx - 30) * i) / 12, 600 + ((ty - 600) * i) / 12),
+      touchPoints: at(orbX + ((tx - orbX) * i) / 12, orbY + ((ty - orbY) * i) / 12),
     });
   }
   await expect
