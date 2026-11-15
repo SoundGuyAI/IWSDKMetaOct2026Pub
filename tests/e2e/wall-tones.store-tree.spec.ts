@@ -16,6 +16,7 @@ interface DebugSnap {
   inputStep: number;
   streak: number;
   bars: number;
+  barsTotal: number;
   hintLevel: number;
   ownsListen: boolean;
   autoplayLevel: number;
@@ -45,6 +46,7 @@ const readState = (page: Page): Promise<DebugSnap> =>
       inputStep: d.inputStep,
       streak: d.streak,
       bars: d.bars,
+      barsTotal: d.barsTotal,
       hintLevel: d.hintLevel,
       ownsListen: d.ownsListen,
       autoplayLevel: d.autoplayLevel,
@@ -265,10 +267,25 @@ test.describe('Wall Tones store skill tree', () => {
       .toBe('input:5');
     // The player finishes the round with the one manual note.
     snap = await readState(page);
+    const autoBarsAfterAutoRounds = snap.autoplayBarsTotal;
+    const humanBarsAfterAutoRounds = snap.barsTotal;
     await submitPad(page, snap.sequence[snap.inputStep]!);
     await expect
       .poll(async () => (await readState(page)).streak, { timeout: 90_000 })
       .toBe(6);
+    // Boundary: a HUMAN-completed round after AutoPlay rounds credits the
+    // human lifetime counter and leaves the AutoPlay pool untouched, and
+    // spending afterwards never dips into or erases the AutoPlay record.
+    snap = await readState(page);
+    expect(snap.autoplayBarsTotal).toBe(autoBarsAfterAutoRounds);
+    expect(snap.barsTotal).toBeGreaterThan(humanBarsAfterAutoRounds);
+    await grantBars(page, 30); // ensure the 20-Bar Replay is affordable
+    const balanceBeforeSpend = (await readState(page)).bars;
+    await dbg(page, 'toggleStore');
+    await dbg(page, 'buyReplay');
+    snap = await readState(page);
+    expect(snap.bars).toBe(balanceBeforeSpend - 20);
+    expect(snap.autoplayBarsTotal).toBe(autoBarsAfterAutoRounds);
   });
 
   test('Replay: buy for 20 Bars, Repeat spends it, free earn at the 5-note milestone', async ({
