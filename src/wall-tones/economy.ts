@@ -382,25 +382,29 @@ export class WallTonesEconomy {
    * achievement; when the completed pattern set a new best streak, also
    * pays the record bonus of rate x streak (exponential: 5 -> +5,
    * 10 -> +20, 15 -> +60, 20 -> +160). Returns both parts for the round
-   * summary breakdown. */
+   * summary breakdown. `achievementStreak` is the streak the achievement
+   * check may credit: the live streak for a human-completed round, the
+   * saved human best for an AutoPlay-completed round (owner rule
+   * 2026-11-15: AutoPlay never advances streak achievements). */
   completePattern(
     streak: number,
     recordBeaten: boolean,
+    achievementStreak: number = streak,
   ): { completion: number; bonus: number } {
-    const completion = this.award(barsForStreak(streak), streak);
+    const completion = this.award(barsForStreak(streak), streak, achievementStreak);
     const bonus = recordBeaten
-      ? this.award(barsForStreak(streak) * streak, streak)
+      ? this.award(barsForStreak(streak) * streak, streak, achievementStreak)
       : 0;
     return { completion, bonus };
   }
 
-  private award(amount: number, streak: number): number {
+  private award(amount: number, streak: number, achievementStreak?: number): number {
     if (amount <= 0) return 0;
     this.bars += amount;
     this.barsTotal += amount;
     writeNumber(BARS_KEY, this.bars);
     writeNumber(BARS_TOTAL_KEY, this.barsTotal);
-    this.checkAchievements(streak);
+    this.checkAchievements(achievementStreak ?? streak);
     return amount;
   }
 
