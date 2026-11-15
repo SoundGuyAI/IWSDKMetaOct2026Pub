@@ -58,7 +58,7 @@ async function bootFeedbackGame(page: Page, subtitles: boolean): Promise<string[
 }
 
 for (const improvedBest of [false, true]) {
-  test(`miss feedback and failure-only speech after ${improvedBest ? 'a new best' : 'an immediate miss'}`, async ({ page }) => {
+  test(`miss feedback and failure-only speech after ${improvedBest ? 'a new best' : 'an immediate miss'}`, async ({ page }, testInfo) => {
     const clips = await bootFeedbackGame(page, improvedBest);
     if (improvedBest) {
       await page.evaluate(() => {
@@ -83,14 +83,14 @@ for (const improvedBest of [false, true]) {
     await expect.poll(() => page.evaluate(() => (window as any).__wallTonesDebug.statusLineText)).toBe(label);
     // No Store purchase is needed, and the optional full-pattern reveal is not added.
     expect(await page.evaluate(() => (window as any).__wallTonesDebug.sequenceRowVisible)).toBe(false);
-    await page.screenshot({ path: `/downloads/missed-hit-line-${improvedBest ? 'best' : 'first'}.png` });
+    await page.screenshot({ path: testInfo.outputPath(`missed-hit-line-${improvedBest ? 'best' : 'first'}.png`) });
     await expect.poll(() => page.evaluate(() => (window as any).__wallTonesDebug.gameOverOpen), { timeout: 30000 }).toBe(true);
     expect(await page.evaluate(() => (window as any).__wallTonesDebug.statusLineText)).toBe(label);
     const failureClips = clips.slice(beforeFailure);
     expect(failureClips.some(url => /\/wrong-[1-5]\.mp3/.test(url))).toBe(true);
     expect(failureClips.some(url => /\/(cheer|new-best|milestone)/.test(url))).toBe(false);
     if (improvedBest) await expect(page.locator('#wall-tones-flat-subtitles')).toContainText(label);
-    await page.screenshot({ path: `/downloads/missed-hit-${improvedBest ? 'best' : 'first'}.png` });
+    await page.screenshot({ path: testInfo.outputPath(`missed-hit-${improvedBest ? 'best' : 'first'}.png`) });
     await page.evaluate((retry) => {
       const d = (window as any).__wallTonesDebug;
       if (retry) { d.grantSavers(1); d.gameOverUseSaver(); }
