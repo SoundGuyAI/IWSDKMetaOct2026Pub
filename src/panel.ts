@@ -65,6 +65,7 @@ function isCompactFlatViewport(): boolean {
 export class PanelSystem extends createSystem({}) {
   private readonly savedMainMenuPosition = new Float32Array(3);
   private readonly savedMainMenuScale = new Float32Array(3);
+  private readonly savedMainMenuOrientation = new Float32Array(4);
   private mainMenuLayoutSaved = false;
   /** When true, flat (non-immersive) layout should be applied. */
   private flatLayoutActive = false;
@@ -86,6 +87,7 @@ export class PanelSystem extends createSystem({}) {
    * look-away threshold, eased snap). Flat layouts are untouched.
    */
   update(delta: number): void {
+    this.publishMenuFacingTest();
     const entity = this.world.getSceneEntity('main-menu-panel');
     const immersive =
       this.world.xrEnabled &&
@@ -262,6 +264,41 @@ export class PanelSystem extends createSystem({}) {
     }
   }
 
+  private menuFacingTestPublished = false;
+
+  /**
+   * Test-only (needs ?menuFacingTest=1): lets the XR re-entry spec turn the
+   * main menu and read its yaw back, to prove the flat layout restores the
+   * authored facing after a session ends. Inert without the URL flag.
+   */
+  private publishMenuFacingTest(): void {
+    if (
+      this.menuFacingTestPublished ||
+      typeof window === 'undefined' ||
+      !window.location.search.includes('menuFacingTest=1')
+    ) {
+      return;
+    }
+    this.menuFacingTestPublished = true;
+    const yawOf = (q: ArrayLike<number>): number =>
+      (2 * Math.atan2(q[1]!, q[3]!) * 180) / Math.PI;
+    (window as unknown as Record<string, unknown>).__menuFacingTest = {
+      turn: (deg: number) => {
+        const e = this.world.getSceneEntity('main-menu-panel');
+        const o = e?.getVectorView(Transform, 'orientation');
+        if (o == null) return false;
+        const h = (deg * Math.PI) / 360;
+        o.set([0, Math.sin(h), 0, Math.cos(h)]);
+        return true;
+      },
+      yaw: () => {
+        const e = this.world.getSceneEntity('main-menu-panel');
+        const o = e?.getVectorView(Transform, 'orientation');
+        return o == null ? null : yawOf(o);
+      },
+    };
+  }
+
   private applyMainMenuFlatLayout(): void {
     const entity = this.world.getSceneEntity('main-menu-panel');
     if (entity == null) {
@@ -269,11 +306,18 @@ export class PanelSystem extends createSystem({}) {
     }
     const position = entity.getVectorView(Transform, 'position');
     const scale = entity.getVectorView(Transform, 'scale');
+    const orientation = entity.getVectorView(Transform, 'orientation');
     if (!this.mainMenuLayoutSaved) {
       this.savedMainMenuPosition.set(position);
       this.savedMainMenuScale.set(scale);
+      this.savedMainMenuOrientation.set(orientation);
       this.mainMenuLayoutSaved = true;
     }
+    // The immersive follow (update) rotates the menu to face the headset.
+    // Coming back to the flat page must restore the authored facing too, or
+    // the menu stays turned toward wherever the player stood in XR and is
+    // only visible from some angles (Quest report 2026-11-14).
+    orientation.set(this.savedMainMenuOrientation);
     if (!this.flatLayoutActive) {
       position[0] = this.savedMainMenuPosition[0]!;
       position[1] = this.savedMainMenuPosition[1]!;
