@@ -1678,12 +1678,12 @@ system.wrongHit = state;
 (system as unknown as { renderPanel(): void }).renderPanel();
 },
 // Yoga-computed positions inside the Game Over wrong-hit row (test-only):
-// proves Expected and Hit share one compact line, Hit after Expected
-// (owner 2026-11-15 18:35). null until the popup row is laid out.
+// proves the Hit row sits on its own line below the Expected row, both
+// sharing a left edge (owner 2026-11-15 19:01). null until laid out.
 get wrongHitPopupRowTops() {
 const cache = system.wrongHitPopupCache;
 const expectedLabelIndex = 0;
-const hitLabelIndex = WRONG_HIT_ROW_NOTES * 2 + 1;
+const hitLabelIndex = WRONG_HIT_ROW_NOTES * 2 + 2;
 if (cache.children.length <= hitLabelIndex) return null;
 const layoutOf = (child: unknown): { top: number; left: number } | null => {
 const yoga = (child as { node?: Record<string, { getComputedLayout?: () => { top: number; left: number } }> } | undefined)?.node?.['yogaNode'];
@@ -3819,11 +3819,12 @@ this.hideRoundBarsCard();
 this.game.phase = 'resetting';
 this.inputNeedsClear = true;
 // Capture the actual mismatch before any reset, shown as color squares (owner
-// 2026-11-15: squares instead of words; one compact row - Expected and Hit
-// side by side, each up to WRONG_HIT_ROW_NOTES notes with the final position
-// differing, e.g. right RRRBG vs played RRRBY) in the info row and Game Over
+// 2026-11-15: squares instead of words; two stacked lines - Expected above
+// Hit, each up to WRONG_HIT_ROW_NOTES notes with the final position
+// differing, e.g. right RRRBG vs played RRRBY - that do not grow the panel;
+// the pattern row stays hidden after a failure) in the info row and Game Over
 // popup, even without a purchased hint or subtitles (item 75). The status text
-// element stays blank while the row shows.
+// element stays blank while the rows show.
 const missStep = this.game.inputStep;
 this.wrongHit = {
 hit,
@@ -5407,16 +5408,18 @@ this.lastWrongHitRowVisible = this.wrongHitVisible();
 }
 
 /** Child kinds at fixed plan indices, identical for the panel info row and the
- * Game Over popup. Owner 2026-11-15 18:35: one compact line after a failure -
- * both five-note comparisons share a single row and the pattern (history/hint)
- * row is no longer shown, so the panel stays small on a phone. Plan:
- * Expected label, up to WRONG_HIT_ROW_NOTES square/name pairs whose final
- * square is the note the game expected, then the Hit label and pairs whose
- * final square is the pad actually hit (right RRRBG vs played RRRBY). */
-private wrongHitChildKind(index: number): 'label' | 'square' | 'text' {
-const hitLabel = WRONG_HIT_ROW_NOTES * 2 + 1;
-if (index === 0 || index === hitLabel) return 'label';
-const offset = index < hitLabel ? index - 1 : index - hitLabel - 1;
+ * Game Over popup. Owner 2026-11-15 19:01: two stacked lines that do not grow
+ * the panel - the pattern (history) row stays hidden after a failure, so the
+ * Expected and Hit lines fit in the freed space. Plan: Expected label,
+ * up to WRONG_HIT_ROW_NOTES square/name pairs whose final square is the note
+ * the game expected, a full-width break, then the Hit label and pairs whose
+ * final square is the pad actually hit (right RRRBG vs played RRRBY). Fixed
+ * label width lines up the square columns of the two rows. */
+private wrongHitChildKind(index: number): 'label' | 'square' | 'text' | 'break' {
+const hitBreak = WRONG_HIT_ROW_NOTES * 2 + 1;
+if (index === hitBreak) return 'break';
+if (index === 0 || index === hitBreak + 1) return 'label';
+const offset = index < hitBreak ? index - 1 : index - hitBreak - 2;
 return offset % 2 === 0 ? 'square' : 'text';
 }
 
@@ -5430,14 +5433,15 @@ index: number,
 while (cache.children.length <= index) {
 const index = cache.children.length;
 const kind = this.wrongHitChildKind(index);
-// 14px squares keep Expected + Hit on one line inside the phone panel.
 const child =
 kind === 'square'
-? new UIKit.Container({ width: 14, height: 14, borderRadius: 2, flexShrink: 0 })
+? new UIKit.Container({ width: 16, height: 16, borderRadius: 2, flexShrink: 0 })
+: kind === 'break'
+? new UIKit.Container({ width: '100%', height: 0, flexShrink: 0 })
 : kind === 'label'
-? // A small left margin separates the Hit group from the Expected group.
-new UIKit.Text({ fontSize: 14, color: 0xffffff, flexShrink: 0, marginLeft: index === 0 ? 0 : 10 })
-: new UIKit.Text({ fontSize: 14, color: 0xffffff });
+? // Fixed label width lines up the square columns of the two rows.
+new UIKit.Text({ fontSize: 15, color: 0xffffff, width: 72, flexShrink: 0 })
+: new UIKit.Text({ fontSize: 15, color: 0xffffff });
 row.add(child);
 cache.children.push(child);
 }
@@ -5465,10 +5469,11 @@ cache.children.length = 0;
 cache.key = key;
 row.setProperties({ display: wrong != null ? 'flex' : 'none' });
 const leadIn = wrong ? wrong.preceding.slice(-(WRONG_HIT_ROW_NOTES - 1)) : [];
-const hitLabel = WRONG_HIT_ROW_NOTES * 2 + 1;
+const hitBreak = WRONG_HIT_ROW_NOTES * 2 + 1;
+this.wrongHitChild(cache, row, hitBreak);
 const groups = [
 { label: 0, pairs: 1, text: 'Expected:', finalId: wrong?.expected },
-{ label: hitLabel, pairs: hitLabel + 1, text: 'Hit:', finalId: wrong?.hit },
+{ label: hitBreak + 1, pairs: hitBreak + 2, text: 'Hit:', finalId: wrong?.hit },
 ];
 for (const plan of groups) {
 this.wrongHitChild(cache, row, plan.label).setProperties({
@@ -5704,16 +5709,16 @@ const line = document.createElement('div');
 Object.assign(line.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexWrap: 'wrap' });
 const label = document.createElement('span'); label.textContent = info; line.append(label);
 if (captionWrong) {
-// Owner 2026-11-15 18:35: one compact line - the right pattern (Expected)
-// and what was played (Hit) side by side, each up to WRONG_HIT_ROW_NOTES
-// notes with the final one differing (e.g. RRRBG vs RRRBY). The pattern
-// (history) row is no longer shown after a failure.
+// Owner 2026-11-15 19:01: two stacked lines that do not grow the panel - the
+// right pattern (Expected) above what was played (Hit), each up to
+// WRONG_HIT_ROW_NOTES notes with the final one differing (e.g. RRRBG vs
+// RRRBY). The pattern (history) row stays hidden after a failure.
 const namesOn = colorNamesEnabled();
 const leadIn = captionWrong.preceding.slice(-(WRONG_HIT_ROW_NOTES - 1));
 const appendSquares = (rowEl: HTMLElement, ids: number[]) => {
 for (const id of ids) {
 const square = document.createElement('span');
-Object.assign(square.style, { width: '14px', height: '14px', borderRadius: '2px', background: `#${WALL_TONE_PADS[id].color.toString(16).padStart(6, '0')}`, display: 'inline-block', flexShrink: '0' });
+Object.assign(square.style, { width: '16px', height: '16px', borderRadius: '2px', background: `#${WALL_TONE_PADS[id].color.toString(16).padStart(6, '0')}`, display: 'inline-block', flexShrink: '0' });
 square.setAttribute('aria-label', WALL_TONE_PADS[id].name);
 square.setAttribute('data-wronghit', '1');
 rowEl.append(square);
@@ -5725,10 +5730,11 @@ rowEl.append(word);
 }
 };
 const appendGroup = (labelText: string, finalId: number, rowName: string) => {
-const group = document.createElement('span');
-Object.assign(group.style, { display: 'inline-flex', alignItems: 'center', gap: '6px', flexShrink: '0' });
+const group = document.createElement('div');
+Object.assign(group.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexBasis: '100%' });
 group.setAttribute('data-wronghit-row', rowName);
 const groupLabel = document.createElement('span');
+Object.assign(groupLabel.style, { display: 'inline-block', width: '72px', textAlign: 'left' });
 groupLabel.textContent = labelText;
 group.append(groupLabel);
 appendSquares(group, [...leadIn, finalId]);
