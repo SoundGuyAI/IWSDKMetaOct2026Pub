@@ -36,6 +36,21 @@ const bridge = (page: import('@playwright/test').Page) =>
     return debug?.snapshot() ?? null;
   });
 
+async function enterNodLab(page: import('@playwright/test').Page) {
+  // Entry goes through the shared Lab foundation: the Lab entry (floating
+  // right of the menu at 1280x800) opens the Lab menu, then the Nod Yes/No
+  // Lab row (first row, centred near y=343) enters the nod lab.
+  await page.mouse.click(1100, 320);
+  await page.waitForFunction(
+    () => sessionStorage.getItem('iwsdk-experience-mode') === 'lab',
+    null,
+    { timeout: 15000 },
+  );
+  // Let the Lab menu take the flat layout and render before clicking the row.
+  await page.waitForTimeout(2000);
+  await page.mouse.click(640, 343);
+}
+
 async function answer(page: import('@playwright/test').Page, value: 'yes' | 'no') {
   await page.evaluate((a) => {
     (
@@ -79,11 +94,7 @@ test.beforeEach(async ({ page }) => {
 test('main menu carries a working Nod Yes/No Lab button (real canvas click)', async ({
   page,
 }) => {
-  // Lab entry is a compact panel floating to the right of the menu (a
-  // child node of main-menu-panel, so in-flow menu geometry and its
-  // calibrated click targets stay untouched); position verified against a
-  // local screenshot (1280x800 viewport).
-  await page.mouse.click(1100, 320);
+  await enterNodLab(page);
   await page.waitForFunction(
     () =>
       (window as unknown as { __nodLabDebug?: unknown }).__nodLabDebug != null &&
@@ -101,7 +112,7 @@ test('main menu carries a working Nod Yes/No Lab button (real canvas click)', as
 test('full dialogue: yes path walks intro -> q2 -> q3 -> done with answer cues', async ({
   page,
 }) => {
-  await page.mouse.click(1100, 320);
+  await enterNodLab(page);
   await waitPhase(page, 'idle');
   await page.evaluate(() =>
     (window as unknown as { __nodLabDebug: { start: () => void } }).__nodLabDebug.start(),
@@ -130,7 +141,7 @@ test('full dialogue: yes path walks intro -> q2 -> q3 -> done with answer cues',
 });
 
 test('intro no loops through the retry line until a yes', async ({ page }) => {
-  await page.mouse.click(1100, 320);
+  await enterNodLab(page);
   await waitPhase(page, 'idle');
   await page.evaluate(() =>
     (window as unknown as { __nodLabDebug: { start: () => void } }).__nodLabDebug.start(),
@@ -155,7 +166,7 @@ test('intro no loops through the retry line until a yes', async ({ page }) => {
 test('keyboard fallback answers work in flat mode (Y/N keys)', async ({
   page,
 }) => {
-  await page.mouse.click(1100, 320);
+  await enterNodLab(page);
   await waitPhase(page, 'idle');
   await page.evaluate(() =>
     (window as unknown as { __nodLabDebug: { start: () => void } }).__nodLabDebug.start(),
@@ -176,7 +187,7 @@ test('no input inside the 6s answer window re-asks the same prompt', async ({
   page,
 }) => {
   test.setTimeout(90000);
-  await page.mouse.click(1100, 320);
+  await enterNodLab(page);
   await waitPhase(page, 'idle');
   await page.evaluate(() =>
     (window as unknown as { __nodLabDebug: { start: () => void } }).__nodLabDebug.start(),
@@ -220,7 +231,7 @@ test('after a no-input line the detector is already armed while the reminder pla
   page,
 }) => {
   test.setTimeout(90000);
-  await page.mouse.click(1100, 320);
+  await enterNodLab(page);
   await waitPhase(page, 'idle');
   // Fixed 4s silent pacing for every line makes the sequencing observable:
   // the reminder speaks for ~4s after the no-input line, so an immediate
@@ -281,7 +292,7 @@ test('after a no-input line the detector is already armed while the reminder pla
 test('flat mode: mouse drag gestures answer without buttons (up-down = yes, left-right = no)', async ({
   page,
 }) => {
-  await page.mouse.click(1100, 320);
+  await enterNodLab(page);
   await waitPhase(page, 'idle');
   await page.evaluate(() =>
     (window as unknown as { __nodLabDebug: { start: () => void } }).__nodLabDebug.start(),
