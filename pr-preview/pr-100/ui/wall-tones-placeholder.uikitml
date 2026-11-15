@@ -239,7 +239,8 @@
   <div id="gameover-popup" class="popup-overlay" style="display: none">
     <div class="popup-card">
       <div class="heading" style="font-size: 22px">Game Over</div>
-      <div id="gameover-wronghit-row" style="display: none; flex-direction: row; flex-wrap: wrap; gap: 5px; align-items: center; justify-content: center"></div>
+      <!-- No justify-content here: centering would give each wrapped line its own center, breaking the column alignment between the history/Expected/Hit lines (reviewer pixel pass 2026-11-15). -->
+      <div id="gameover-wronghit-row" style="display: none; flex-direction: row; flex-wrap: wrap; gap: 5px; align-items: center"></div>
       <div id="gameover-summary" class="status">You reached 0. Best 0.</div>
       <div id="gameover-saver-status" class="status">Streak savers: 0</div>
       <Button id="gameover-use-saver-button" class="button">
