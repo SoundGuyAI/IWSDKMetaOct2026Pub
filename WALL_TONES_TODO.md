@@ -300,7 +300,3 @@ Review found and fixed: (1) `buySaver` ignored `?demoBars` / `spend()` while Sto
 - Follow-up ~02:40: five more discussed items found on the PR #87 branch (its 87-91) added as 95-99: Cypher line overlap with long Play/Autoplay (95), Speed modifier four levels (96 - deferred to the NEXT PR after PR #87 by his choice), Multiplier x2 implementation (97 - the PR after Speed), Autoplay enable/disable toggle inside Modifiers (98 - his tentative idea), 3D celebration treatment beyond Streak (99). New items now start at 100.
 - Status annotations the same pass: item 56 marked partially implemented (visual label rename in PR #87; voice lines and full wording remain separate and undecided), items 66/67/69 annotated as implemented in PR #87 (unmerged, in retest).
 - New item 100 (his 02:32 ask): a stable UI for the board Hint/Listen/Index row - design proposals for his review first, no redesign implementation yet. The arrow-position complaint itself stays a PR #87 fix. Next free item number: 101.
-
-## Review update - 2026-11-15, 02:05 Asia/Jerusalem
-
-- New item 83 (his 01:51 voice note, verbatim in the item): Store + Achievements contextual narration as its own todo and new separate PR, not part of PR #87. Draft narrator lines sent for his review first; no generation or implementation before his word approval.
