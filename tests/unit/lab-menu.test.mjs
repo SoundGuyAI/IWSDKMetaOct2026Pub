@@ -12,12 +12,13 @@ const js = ts.transpileModule(source, {
 }).outputText;
 const lab = await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
 
-test('foundation ships the two known demos as not connected', () => {
+test('lab ships the two known demos; thumbs is connected, nod is not yet', () => {
   assert.deepEqual(lab.LAB_ENTRIES.map((e) => e.id), ['nod', 'thumbs']);
-  for (const entry of lab.LAB_ENTRIES) {
-    assert.equal(lab.labRowTarget(entry), null);
-    assert.match(lab.labRowLabel(entry), /not connected/);
-  }
+  const [nod, thumbs] = lab.LAB_ENTRIES;
+  assert.equal(lab.labRowTarget(nod), null);
+  assert.match(lab.labRowLabel(nod), /not connected/);
+  assert.equal(lab.labRowTarget(thumbs), 'thumbslab');
+  assert.doesNotMatch(lab.labRowLabel(thumbs), /not connected/);
 });
 
 test('a connected entry opens its mode and drops the status suffix', () => {
