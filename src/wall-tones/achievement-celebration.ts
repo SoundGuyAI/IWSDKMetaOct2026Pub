@@ -49,6 +49,7 @@ import {
 import type { AchievementDef } from './economy.js';
 import { playAchievementCelebrationSfx } from './audio.js';
 import { ACHIEVEMENT_ICON_PNG } from './achievement-icon-art.js';
+import { achievementGlyphSrc } from './achievement-icons.js';
 
 /* Timing (seconds), shared by the flat DOM choreography and the MR canvas
  * drawing so both stay in lockstep with the approved prototype. */
@@ -850,8 +851,12 @@ export class AchievementCelebration {
   private iconFor(catId: string): HTMLImageElement | null {
     const cached = this.icons.get(catId);
     if (cached != null) return cached;
-    const src = ACHIEVEMENT_ICON_PNG[catId];
-    if (src == null) return null;
+    // Categories without embedded PNG art (Movement, future ones) fall back
+    // to the drawn glyph, per achievement-icon-art's documented contract;
+    // without it the celebration badge disc stayed empty (owner report,
+    // Nov 15: the Movement celebration shows no icon).
+    const src = ACHIEVEMENT_ICON_PNG[catId] ?? achievementGlyphSrc(catId);
+    if (src == null || src === '') return null;
     const img = new Image();
     img.src = src;
     this.icons.set(catId, img);
@@ -1149,4 +1154,4 @@ export class AchievementCelebration {
     }
     void scene;
   }
-}
+    }
