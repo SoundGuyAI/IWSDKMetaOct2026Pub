@@ -19,6 +19,9 @@ test('open flat palm up reads openFlat with normal up and panel above mid-palm',
   assert.ok(Math.abs(p.center.z - 0.045) < 1e-9, `center.z ${p.center.z}`);
   assert.ok(p.along.z > 0.95);
 });
+test('panel lift keeps the hand and its outline clear when looking up (Nov 16 feedback)',()=>{
+  assert.ok(PALM_PANEL_LIFT >= 0.17, `lift ${PALM_PANEL_LIFT} too low`);
+});
 test('same geometry on the right hand also reads palm up (winding flip)',()=>{
   const mirrored = Object.fromEntries(Object.entries(openLeftUp).map(([k,v])=>[k,{x:-v.x,y:v.y,z:v.z}]));
   const p = palmPanelPose(mirrored,'right');
