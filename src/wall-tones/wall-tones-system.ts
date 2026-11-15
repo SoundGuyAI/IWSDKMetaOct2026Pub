@@ -3515,7 +3515,7 @@ void playPadTone(padIndex);
 window.setTimeout(() => flashPad(pad, false), 350);
 }
 if (padIndex !== expected) {
-void this.onWrongInput();
+void this.onWrongInput(padIndex, expected);
 return;
 }
 // Any instruction still finishing is obsolete once a correct pad is hit.
@@ -3733,12 +3733,7 @@ this.welcomeSpoken = true;
 this.beginRoundWithIntro(leadIn);
 }
 
-/** Praise a failed run only if it beat the best from before that run. */
-private runEarnedCheer(): boolean {
-return this.game.runImprovedBest;
-}
-
-private async onWrongInput(): Promise<void> {
+private async onWrongInput(hit: number, expected: number): Promise<void> {
 this.setCypherSeam(false);
 this.firstRun = false;
 this.roundBarsEarned = 0;
@@ -3749,17 +3744,19 @@ this.barsFirstEarnedPending = false;
 this.hideRoundBarsCard();
 this.game.phase = 'resetting';
 this.inputNeedsClear = true;
-const cheer = this.runEarnedCheer();
-await playErrorTone();
-this.statusText = 'Try again';
+// Capture the actual mismatch before any reset, and show it in the existing
+// Hint/Listen status line even without a purchased hint or subtitles (item 75).
+this.statusText = `Hit ${WALL_TONE_PADS[hit].name}; expected ${WALL_TONE_PADS[expected].name}.`;
 this.renderPanel();
+this.speech.cancel();
+await playErrorTone();
 // Codex P2: a wrong press can cross a Pad presses threshold; announce the
 // unlock on this path too, not only on the reward path.
 this.showAchievementToasts();
 this.playbackQueue = this.playbackQueue.then(async () => {
-await this.speech.speakAsync(
-cheer ? randomCheerClip() : randomWrongClip(),
-);
+// A personal best does not turn a missed note into a success (item 60a).
+// Keep the existing failure recordings; the full wording review is separate.
+await this.speech.speakAsync(randomWrongClip());
 await this.wait(WRONG_RESET_DELAY_S);
 if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
@@ -3769,7 +3766,7 @@ return;
 this.storeOpen = false;
 this.achievementsOpen = false;
 this.gameOverOpen = true;
-this.statusText = 'Game Over';
+// Keep hit-versus-expected visible while the Game Over popup is open.
 this.syncMenuPopupVisibility();
 this.renderGameOverSummary();
 this.renderPanel();
@@ -3781,7 +3778,7 @@ const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
 panel
 ?.getElementById<UIKit.Text>('gameover-summary')
 ?.setProperties({
-text: `You reached ${this.game.streak}. Best ${this.game.bestStreak}.`,
+text: `${this.statusText}\nYou reached ${this.game.streak}. Best ${this.game.bestStreak}.`,
 });
 const need = saverUnitsForStreak(this.game.streak);
 const have = this.economy.getSavers();
@@ -3846,6 +3843,7 @@ this.gameOverOpen = false;
 this.syncMenuPopupVisibility();
 this.game.inputStep = 0;
 this.game.phase = 'playback';
+this.statusText = 'Replaying pattern...';
 this.idleReplayQueued = false;
 this.renderPanel();
 this.playbackQueue = this.playbackQueue.then(async () => {
@@ -3861,6 +3859,7 @@ return;
 this.gameOverOpen = false;
 this.syncMenuPopupVisibility();
 this.game.onWrongInput();
+this.statusText = 'Get ready...';
 this.renderPanel();
 this.playbackQueue = this.playbackQueue.then(async () => {
 if (!this.experienceActive || this.flowPhase !== 'playing') {
