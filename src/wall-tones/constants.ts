@@ -147,6 +147,10 @@ export const WRONG_RESET_DELAY_S = 0.9;
  * notes, e.g. right RRRBG vs played RRRBY; a 5 vs 10 window is still being
  * weighed). */
 export const WRONG_HIT_ROW_NOTES = 5;
+/** Missed-hit history row: notes leading up to the miss shown above the
+ * Expected/Hit comparison rows; a leading "…" prefixes it only when the full
+ * chain is longer than this, never for 10 or fewer (owner 2026-11-15). */
+export const WRONG_HIT_HISTORY_MAX = 10;
 /** Silence after the start intro finishes, before the first pad tone. */
 export const POST_INTRO_DELAY_S = 0.85;
 /** Short beat after a successful round before the next sequence plays. */
