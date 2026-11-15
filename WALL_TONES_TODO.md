@@ -269,3 +269,7 @@ Review found and fixed: (1) `buySaver` ignored `?demoBars` / `spend()` while Sto
 ## Review update - 2026-11-14, 03:35 Asia/Jerusalem
 
 - Item 80 deferral confirmed 2026-11-14 03:34 (verbatim in the item): the table pad color layout stays on the list but he does not want it worked on yet. Recorded, not started.
+
+### Lab welcome review update - 2026-11-14
+
+- PR90 remains in progress, not merged. Owner approved narrator welcome plus indirect Cypher nudge and asked to keep them in PR90. Four cast recordings and entry/cancellation code are implemented for PR90 preview review. The 114 unit tests and focused Lab e2e tests pass locally; full regression will run in CI. Preview review and fresh owner go-ahead remain required before product merge. No production promotion.
