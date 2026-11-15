@@ -75,6 +75,14 @@ test.beforeEach(async ({ page }) => {
   await page.locator('#wt-loading').waitFor({ state: 'detached', timeout: 60000 });
 });
 
+/** Lab entry (floating button) -> Capability demos -> Thumbs Yes/No row. */
+async function enterThumbsLab(page: import('@playwright/test').Page): Promise<void> {
+  await page.mouse.click(1100, 320);
+  await page.waitForTimeout(2000);
+  await page.mouse.move(640, 416);
+  await page.mouse.click(640, 416);
+}
+
 test('main menu carries a working Thumbs Yes/No Lab button (real canvas click)', async ({
   page,
 }) => {
@@ -82,7 +90,7 @@ test('main menu carries a working Thumbs Yes/No Lab button (real canvas click)',
   // child node of main-menu-panel, so in-flow menu geometry and its
   // calibrated click targets stay untouched); position verified against a
   // local screenshot (1280x800 viewport).
-  await page.mouse.click(1100, 320);
+  await enterThumbsLab(page);
   await page.waitForFunction(
     () =>
       (window as unknown as { __thumbsLabDebug?: unknown }).__thumbsLabDebug != null &&
@@ -100,7 +108,7 @@ test('main menu carries a working Thumbs Yes/No Lab button (real canvas click)',
 test('full dialogue: yes path walks intro -> q2 -> q3 -> done with answer cues', async ({
   page,
 }) => {
-  await page.mouse.click(1100, 320);
+  await enterThumbsLab(page);
   await waitPhase(page, 'idle');
   await page.evaluate(() =>
     (window as unknown as { __thumbsLabDebug: { start: () => void } }).__thumbsLabDebug.start(),
@@ -129,7 +137,7 @@ test('full dialogue: yes path walks intro -> q2 -> q3 -> done with answer cues',
 });
 
 test('intro no loops through the retry line until a yes', async ({ page }) => {
-  await page.mouse.click(1100, 320);
+  await enterThumbsLab(page);
   await waitPhase(page, 'idle');
   await page.evaluate(() =>
     (window as unknown as { __thumbsLabDebug: { start: () => void } }).__thumbsLabDebug.start(),
@@ -154,7 +162,7 @@ test('intro no loops through the retry line until a yes', async ({ page }) => {
 test('keyboard fallback answers work in flat mode (Y/N keys)', async ({
   page,
 }) => {
-  await page.mouse.click(1100, 320);
+  await enterThumbsLab(page);
   await waitPhase(page, 'idle');
   await page.evaluate(() =>
     (window as unknown as { __thumbsLabDebug: { start: () => void } }).__thumbsLabDebug.start(),
