@@ -1,4 +1,4 @@
-import { armbandHand, setArmbandHand, armbandDisplayMode, setArmbandDisplayMode } from './wall-tones/armband.js';
+import { armbandHand, setArmbandHand } from './wall-tones/armband.js';
 import { hearingSubtitlesEnabled, colorNamesEnabled, setHearingSubtitles, setColorNames, voicesOffEnabled, setVoicesOff } from './wall-tones/accessibility.js';
 /**
  * Switches between the main menu and experience modes by toggling authored
@@ -350,17 +350,10 @@ export class AppModeSystem extends createSystem({}) {
     handButton?.addEventListener('click', toggleArmbandHand);
     this.cleanupFuncs.push(() => handButton?.removeEventListener('click', toggleArmbandHand));
     syncArmbandHand();
-    const syncArmbandMode = () => panel.getElementById('armband-mode-setting-label')?.setProperties({
-      text: `Wrist display: ${armbandDisplayMode() === 'band' ? 'Wristband' : 'Palm projector'}`,
-    });
-    const modeButton = panel.getElementById('armband-mode-button');
-    const toggleArmbandMode = () => {
-      setArmbandDisplayMode(armbandDisplayMode() === 'band' ? 'projector' : 'band');
-      syncArmbandMode();
-    };
-    modeButton?.addEventListener('click', toggleArmbandMode);
-    this.cleanupFuncs.push(() => modeButton?.removeEventListener('click', toggleArmbandMode));
-    syncArmbandMode();
+    // Wristband display hidden for now (Nov 16 user feedback): the palm
+    // projector is the armband display, so the mode row is hidden, not
+    // removed; armbandDisplayMode() forces 'projector' meanwhile.
+    panel.getElementById('armband-mode-button')?.setProperties({ display: 'none' } as never);
     // Debug stat reset: two-step confirm, clears progression stats only.
     let resetArmed = false;
     let resetDisarm: number | undefined;
@@ -434,4 +427,4 @@ export class AppModeSystem extends createSystem({}) {
       display: mode === 'meditation' ? 'flex' : 'none',
     });
   }
-}
+      }
