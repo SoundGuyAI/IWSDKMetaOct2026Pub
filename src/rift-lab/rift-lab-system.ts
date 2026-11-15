@@ -94,6 +94,11 @@ const FLAT_LEFT_HAND = new Vector3(-0.45, 1.35, -1.9);
 /** Fixed mobile charge spot (his settled mobile input): bottom-center drag. */
 const CHARGE_SPOT_Y_FRAC = 0.82;
 const CHARGE_SPOT_X_TOL_FRAC = 0.25;
+/** Touch layout (mockup 6-rift-layout-mobile-drag, chosen "go with drag"):
+ * the energy orb rests in the bottom-LEFT corner; the rift sits near the
+ * bottom-right. Screen NDC of the resting orb. */
+const TOUCH_ORB_NDC = { x: -0.72, y: -0.74 };
+const TOUCH_ORB_ZONE = { maxXFrac: 0.4, minYFrac: 0.72 };
 /** Placeholder rift ring placement in front of the panel area. */
 const RIFT_POSITIONS = [
   new Vector3(1.1, 1.7, -2.4),
@@ -104,7 +109,7 @@ const RIFT_PLANE_M = 1.8;
 /** Visible fracture radius at full size (the quad has transparent margin). */
 const RIFT_VISIBLE_RADIUS_M = 0.62;
 /** Flat mode tries these radii in order: shrink before overlapping the menu. */
-const FLAT_RIFT_RADII_M = [0.62, 0.48, 0.36];
+const FLAT_RIFT_RADII_M = [0.62, 0.48, 0.36, 0.28];
 const FLAT_SPACING_PER_RADIUS = 2.25;
 const RIFT_SPAWN_INTERVAL_MS = 6000;
 const MAX_OPEN_RIFTS = 3;
@@ -366,6 +371,8 @@ export class RiftLabSystem extends createSystem({
   private readonly riftViews = new Map<number, RiftView>();
   private dragging = false;
   private flatTouchInput = false;
+  private fingerDown = false;
+  private readonly touchOrbPoint = new Vector3();
   private readonly pointerNotePlane = new Plane(new Vector3(0, 0, 1), 1.4);
   private readonly pointerNoteAnchor = new Vector3();
   private dragStart = { x: 0, y: 0 };
@@ -435,6 +442,7 @@ export class RiftLabSystem extends createSystem({
     const onPointerDown = (event: PointerEvent) => {
       if (!this.active || !this.running) return;
       this.flatTouchInput = event.pointerType === 'touch';
+      this.fingerDown = this.flatTouchInput;
       const bounds = canvas.getBoundingClientRect();
       this.aimNdc = {
         x: ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
@@ -442,9 +450,10 @@ export class RiftLabSystem extends createSystem({
       };
       const fracX = event.clientX / window.innerWidth;
       const fracY = event.clientY / window.innerHeight;
-      const nearChargeSpot =
-        fracY >= CHARGE_SPOT_Y_FRAC - 0.08 &&
-        Math.abs(fracX - 0.5) <= CHARGE_SPOT_X_TOL_FRAC;
+      const nearChargeSpot = this.flatTouchInput
+        ? fracY >= TOUCH_ORB_ZONE.minYFrac && fracX <= TOUCH_ORB_ZONE.maxXFrac
+        : fracY >= CHARGE_SPOT_Y_FRAC - 0.08 &&
+          Math.abs(fracX - 0.5) <= CHARGE_SPOT_X_TOL_FRAC;
       if (nearChargeSpot) {
         // Mobile/flat: drag from the fixed charge spot aims and fires.
         this.dragging = true;
@@ -496,6 +505,7 @@ export class RiftLabSystem extends createSystem({
       };
     };
     const onPointerUp = () => {
+      this.fingerDown = false;
       if (this.dragging) {
         this.dragging = false;
         this.game.stopBeam();
@@ -573,6 +583,14 @@ export class RiftLabSystem extends createSystem({
     return collectVerticalWalls(this.planeScratch, this.headPos);
   }
 
+  /** Coarse-pointer phone/tablet: touch layout even before the first touch. */
+  private touchDevice(): boolean {
+    return (
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(pointer: coarse)').matches
+    );
+  }
+
   private startRun(): void {
     if (this.isImmersive() && !this.isMixedReality()) {
       // A passthrough-free VR session cannot show rifts on real walls.
@@ -591,7 +609,11 @@ export class RiftLabSystem extends createSystem({
       return;
     }
     this.spawnRift();
-    this.renderPanel('A rift is open. Charge up and seal it.');
+    this.renderPanel(
+      this.riftViews.size > 0
+        ? 'A rift is open. Charge up and seal it.'
+        : 'Making room for a rift...',
+    );
   }
 
   /** MR: rifts only open on detected real walls. Ask Quest for room capture
@@ -707,7 +729,9 @@ export class RiftLabSystem extends createSystem({
     this.game.addNoteEnergy(picked, hand);
     void playNoteChime(picked);
     this.renderPanel(this.game.canFireBeam()
-      ? 'Ready. Click a rift, or aim an open palm in XR.'
+      ? this.flatTouchInput || this.touchDevice()
+        ? 'Ready. Tap a rift, or drag the orb from the corner to a rift.'
+        : 'Ready. Click a rift, or aim an open palm in XR.'
       : `Charge: ${Math.round(this.game.getEnergy())}/${SEAL_ENERGY_REQUIRED}.`);
   }
 
@@ -769,7 +793,7 @@ export class RiftLabSystem extends createSystem({
     for (const radius of FLAT_RIFT_RADII_M) {
       const good: { pos: Vector3; score: number }[] = [];
       for (let x = -3.2; x <= 3.201; x += 0.2) {
-        for (let y = 0.6; y <= 3.5; y += 0.2) {
+        for (let y = radius * 1.5 + 0.1; y <= 3.5; y += 0.2) {
           const pos = new Vector3(x, y, depth);
           if (this.flatSpotBlocked(pos, radius, hasPanel)) continue;
           let near = Infinity;
@@ -780,7 +804,14 @@ export class RiftLabSystem extends createSystem({
             near = Math.min(near, d);
           }
           if (!ok) continue;
-          good.push({ pos, score: Math.min(near, 3) });
+          // Portrait/touch layout: prefer the bottom-right, away from the
+          // bottom-left orb (mockup 6).
+          const ndcP = new Vector3().copy(pos).project(this.world.camera);
+          const portrait = this.world.camera.aspect < 1;
+          const bias = portrait
+            ? -Math.hypot(ndcP.x - 0.55, ndcP.y + 0.55) * 1.5
+            : 0;
+          good.push({ pos, score: Math.min(near, 3) + bias });
         }
       }
       if (good.length > 0) {
@@ -1010,6 +1041,19 @@ export class RiftLabSystem extends createSystem({
         hand === 'right' ? this.palmAnchorRight : this.palmAnchorLeft;
       return scratch.set(palm.center[0], palm.center[1], palm.center[2]);
     }
+    if (!this.isImmersive() && (this.flatTouchInput || this.touchDevice())) {
+      // Touch: notes rest around the bottom-left orb corner and follow the
+      // finger while it is down, like the desktop notes follow the mouse.
+      const ndc = this.fingerDown ? this.aimNdc : TOUCH_ORB_NDC;
+      this.desktopNdc.set(ndc.x, ndc.y);
+      this.world.camera.updateMatrixWorld();
+      this.desktopRay.setFromCamera(this.desktopNdc, this.world.camera);
+      if (this.desktopRay.ray.intersectPlane(this.pointerNotePlane, this.touchOrbPoint)) {
+        // Resting orb stays above the ground plane (below it the floor hides it).
+        if (!this.fingerDown && this.touchOrbPoint.y < 0.35) this.touchOrbPoint.y = 0.35;
+        return this.touchOrbPoint;
+      }
+    }
     if (!this.isImmersive() && !this.flatTouchInput && !this.dragging) {
       // Desktop notes orbit the actual cursor and depart from it, while
       // touch keeps the fixed charge origin and XR keeps the live palms.
@@ -1027,6 +1071,15 @@ export class RiftLabSystem extends createSystem({
    * otherwise. */
   private beamRay(out: { origin: Vector3; direction: Vector3 }): void {
     out.origin.copy(this.handAnchor(this.game.getFiringHand()));
+    if (!this.isImmersive() && this.flatTouchInput && this.dragging) {
+      // The dragged orb leaves from its corner toward the finger.
+      this.desktopNdc.set(TOUCH_ORB_NDC.x, TOUCH_ORB_NDC.y);
+      this.world.camera.updateMatrixWorld();
+      this.desktopRay.setFromCamera(this.desktopNdc, this.world.camera);
+      if (this.desktopRay.ray.intersectPlane(this.pointerNotePlane, this.touchOrbPoint)) {
+        out.origin.copy(this.touchOrbPoint);
+      }
+    }
     if (this.xrBeamActive) {
       const palm = this.palms[this.game.getFiringHand()];
       if (palm != null) {
