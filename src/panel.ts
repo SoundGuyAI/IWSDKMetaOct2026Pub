@@ -89,11 +89,18 @@ export class PanelSystem extends createSystem({}) {
    */
   update(delta: number): void {
     this.publishMenuFacingTest();
-    // The Lab menu replaces the main menu in place, so it follows the player
-    // with the same rules. Switching menus re-anchors it in front of the viewer.
-    const labVisible =
-      this.world.getSceneEntity('lab-menu-panel')?.getValue(Visibility, 'isVisible') === true;
-    const followId = labVisible ? 'lab-menu-panel' : 'main-menu-panel';
+    // Lab panels replace the main menu in place, so they follow the player
+    // with the same rules. Switching menus re-anchors it in front of the
+    // viewer. The nod lab's window follows too (owner, Nov 16: in MR it
+    // stayed world-locked while the other labs' windows followed the head).
+    const panelVisible = (id: string) =>
+      this.world.getSceneEntity(id)?.getValue(Visibility, 'isVisible') ===
+      true;
+    const followId = panelVisible('nod-lab-panel')
+      ? 'nod-lab-panel'
+      : panelVisible('lab-menu-panel')
+        ? 'lab-menu-panel'
+        : 'main-menu-panel';
     if (followId !== this.followedMenuId) {
       this.followedMenuId = followId;
       this.menuAnchored = false;
