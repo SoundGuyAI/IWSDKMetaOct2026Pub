@@ -1,5 +1,10 @@
 import { WALL_TONE_PADS, NOTE_DURATION_S } from './constants.js';
-import { AUTOPLAY_CUE_MP3_BASE64 } from './autoplay-cue.js';
+import {
+  AUTOPLAY_CHIRP_MP3_BASE64,
+  AUTOPLAY_DISENGAGED_MP3_BASE64,
+  AUTOPLAY_ENGAGED_MP3_BASE64,
+  nextAutoplayPhraseBase64,
+} from './autoplay-cue.js';
 
 let sharedContext: AudioContext | null = null;
 const htmlToneCache = new Map<number, string>();
@@ -397,26 +402,24 @@ export function suspendAudioContext(): void {
   htmlErrorAudio = null;
   htmlPoolUnlocked = false;
   webAudioPrimed = false;
-  autoplayCueBuffer = null;
-  autoplayCuePromise = null;
+  autoplayCueCache.clear();
 }
 
-// Auto Play cue: the robot chirp the owner picked from the audition File
-// (option 5, 2026-11-15). Ships as public/audio/autoplay-cue.mp3 - the exact
-// clip reviewed - and plays right before AutoPlay enters its notes. The cue
-// is decorative: any failure stays silent and never blocks playback.
-let autoplayCueBuffer: AudioBuffer | null = null;
-let autoplayCuePromise: Promise<AudioBuffer | null> | null = null;
+// Auto Play cues (owner picks 2026-11-15): the robot chirp (audition
+// option 5) plus the gravelly android voice rotating five round phrases,
+// and the engaged/disengaged notices for the AutoPlay toggle. Ship as
+// embedded base64 - the exact clips reviewed - decoded in memory, so no
+// network fetch and no CSP connect-src path. The cues are decorative: any
+// failure stays silent and never blocks playback.
+const autoplayCueCache = new Map<string, Promise<AudioBuffer | null>>();
 
-function loadAutoplayCue(context: AudioContext): Promise<AudioBuffer | null> {
-  if (autoplayCueBuffer != null) {
-    return Promise.resolve(autoplayCueBuffer);
-  }
-  if (autoplayCuePromise == null) {
+function loadAutoplayCue(context: AudioContext, base64: string): Promise<AudioBuffer | null> {
+  let cached = autoplayCueCache.get(base64);
+  if (cached == null) {
     // Manual base64 decode: no network fetch, so no CSP connect-src path.
-    autoplayCuePromise = Promise.resolve()
+    cached = Promise.resolve()
       .then(() => {
-        const binary = atob(AUTOPLAY_CUE_MP3_BASE64);
+        const binary = atob(base64);
         const bytes = new Uint8Array(binary.length);
         for (let i = 0; i < binary.length; i += 1) {
           bytes[i] = binary.charCodeAt(i);
@@ -424,24 +427,20 @@ function loadAutoplayCue(context: AudioContext): Promise<AudioBuffer | null> {
         return bytes.buffer;
       })
       .then((buffer) => context.decodeAudioData(buffer))
-      .then((buffer) => {
-        autoplayCueBuffer = buffer;
-        return buffer;
-      })
       .catch(() => null);
+    autoplayCueCache.set(base64, cached);
   }
-  return autoplayCuePromise;
+  return cached;
 }
 
-/** Play the Auto Play cue once. Resolves when the cue has started (or after
- * a silent fallback); never rejects. */
-export async function playAutoplayCue(): Promise<void> {
+/** Start one decoded cue clip. Never rejects. */
+async function startAutoplayClip(base64: string): Promise<void> {
   try {
     const context = await ensureAudioRunning();
     if (context == null) {
       return;
     }
-    const buffer = await loadAutoplayCue(context);
+    const buffer = await loadAutoplayCue(context, base64);
     if (buffer == null) {
       return;
     }
@@ -454,4 +453,25 @@ export async function playAutoplayCue(): Promise<void> {
   } catch {
     // A silent cue must never interrupt the pattern.
   }
+}
+
+/** AutoPlay round cue (owner 2026-11-15): the robot chirp plus the next
+ * rotating gravelly-voice phrase, started together. Resolves when the cues
+ * have started (or after a silent fallback); never rejects. */
+export async function playAutoplayRoundCue(): Promise<void> {
+  const phrase = nextAutoplayPhraseBase64();
+  await Promise.all([
+    startAutoplayClip(AUTOPLAY_CHIRP_MP3_BASE64),
+    startAutoplayClip(phrase),
+  ]);
+}
+
+/** Played once when the player switches AutoPlay on (owner 2026-11-15). */
+export async function playAutoplayEngagedCue(): Promise<void> {
+  await startAutoplayClip(AUTOPLAY_ENGAGED_MP3_BASE64);
+}
+
+/** Played once when the player switches AutoPlay off (owner 2026-11-15). */
+export async function playAutoplayDisengagedCue(): Promise<void> {
+  await startAutoplayClip(AUTOPLAY_DISENGAGED_MP3_BASE64);
 }
