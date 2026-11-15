@@ -24,6 +24,25 @@ export const TOUCH_BOX_DEPTH_M = TOUCH_PRESS_DEPTH_M;
 export const TOUCH_PRESS_SCALE = 1.02;
 /** Outer hover face inflate — wider so you see proximity before a press. */
 export const TOUCH_HOVER_SCALE = 1.42;
+/* Backlog 82: pad fingertip volumes are frusta, not cubes - small face at the
+ * pad, big face toward the player (Oded 2026-11-14 00:58: "rectangles with
+ * the faces pointing to the sides away from you smaller and the face pointing
+ * towards the player bigger"). Near face ~ pad outline, so air-placed pads'
+ * volumes no longer overlap at the surface; far face keeps the old reach.
+ * The slab z ranges below reproduce the previous accepted windows exactly:
+ * press [0.0413, 0.1288] m, hover [0.1003, 0.3128] m in front of the face. */
+export const TOUCH_PRESS_NEAR_SCALE = 1.0;
+/** Far (player-side) press face inflate - the old uniform TOUCH_PRESS_SCALE. */
+export const TOUCH_PRESS_FAR_SCALE = TOUCH_PRESS_SCALE;
+/** Near (pad-side) hover face inflate - just past the pad outline. */
+export const TOUCH_HOVER_NEAR_SCALE = 1.05;
+/** Far (player-side) hover face inflate - the old uniform TOUCH_HOVER_SCALE. */
+export const TOUCH_HOVER_FAR_SCALE = TOUCH_HOVER_SCALE;
+/** Frustum slab limits (meters in front of the pad face, local +z). */
+export const TOUCH_PRESS_NEAR_Z_M = TOUCH_PRESS_DEPTH_M * 0.42 - TOUCH_PRESS_DEPTH_M * 0.125;
+export const TOUCH_PRESS_FAR_Z_M = TOUCH_PRESS_DEPTH_M * 0.42 + TOUCH_PRESS_DEPTH_M * 0.5;
+export const TOUCH_HOVER_NEAR_Z_M = TOUCH_HOVER_DEPTH_M * 0.42 - TOUCH_HOVER_DEPTH_M * 0.125;
+export const TOUCH_HOVER_FAR_Z_M = TOUCH_HOVER_DEPTH_M * 0.42 + TOUCH_HOVER_DEPTH_M * 0.5;
 /** @deprecated Prefer TOUCH_PRESS_SCALE. */
 export const TOUCH_SLOP_SCALE = TOUCH_PRESS_SCALE;
 /** Ray/pinch collider face inflate: only a little bigger than the pad itself (owner request 2026-11-11) - not the big fingertip boxes. */
