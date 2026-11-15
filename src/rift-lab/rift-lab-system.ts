@@ -82,6 +82,7 @@ import {
   type Rift,
 } from './rift-energy.js';
 import {
+  CLOUD_MAX_RADIUS_M,
   DESKTOP_NOTES_FLIGHT_MS,
   SEAL_ENERGY_REQUIRED,
   SEAL_HOLD_MS,
@@ -99,6 +100,10 @@ const CHARGE_SPOT_X_TOL_FRAC = 0.25;
  * bottom-right. Screen NDC of the resting orb. */
 const TOUCH_ORB_NDC = { x: -0.72, y: -0.74 };
 const TOUCH_ORB_ZONE = { maxXFrac: 0.4, minYFrac: 0.72 };
+/** Resting touch orb hovers this high: just above the floor, cloud radius
+ * included, so the corner ray drops it into the visible bottom-left corner
+ * instead of floating it mid-screen. */
+const TOUCH_ORB_SHELF_Y_M = CLOUD_MAX_RADIUS_M + 0.02;
 /** Placeholder rift ring placement in front of the panel area. */
 const RIFT_POSITIONS = [
   new Vector3(1.1, 1.7, -2.4),
@@ -374,6 +379,11 @@ export class RiftLabSystem extends createSystem({
   private fingerDown = false;
   private readonly touchOrbPoint = new Vector3();
   private readonly pointerNotePlane = new Plane(new Vector3(0, 0, 1), 1.4);
+  /** Low horizontal shelf the resting touch orb hovers on (y = shelf). */
+  private readonly touchOrbShelfPlane = new Plane(
+    new Vector3(0, 1, 0),
+    -TOUCH_ORB_SHELF_Y_M,
+  );
   private readonly pointerNoteAnchor = new Vector3();
   private dragStart = { x: 0, y: 0 };
   private aimNdc = { x: 0, y: 0 };
@@ -1043,6 +1053,26 @@ export class RiftLabSystem extends createSystem({
     }
   }
 
+  /** World point of the resting touch orb: the bottom-left corner ray
+   * dropped onto a low shelf just above the floor, so the visible orb sits
+   * in the corner where the drag starts (clamping it on the note plane
+   * floated it mid-screen, away from the actual touch zone). */
+  private restingOrbPoint(out: Vector3): Vector3 {
+    this.desktopNdc.set(TOUCH_ORB_NDC.x, TOUCH_ORB_NDC.y);
+    this.world.camera.updateMatrixWorld();
+    this.desktopRay.setFromCamera(this.desktopNdc, this.world.camera);
+    if (this.desktopRay.ray.intersectPlane(this.touchOrbShelfPlane, out)) {
+      return out;
+    }
+    // The corner ray never reaches the shelf (camera pitched up): fall back
+    // to the note plane, kept above the floor.
+    if (this.desktopRay.ray.intersectPlane(this.pointerNotePlane, out)) {
+      if (out.y < TOUCH_ORB_SHELF_Y_M) out.y = TOUCH_ORB_SHELF_Y_M;
+      return out;
+    }
+    return out.set(-0.55, TOUCH_ORB_SHELF_Y_M, -1.2);
+  }
+
   private handAnchor(hand: 'left' | 'right'): Vector3 {
     const palm = this.palms[hand];
     if (palm != null) {
@@ -1051,15 +1081,15 @@ export class RiftLabSystem extends createSystem({
       return scratch.set(palm.center[0], palm.center[1], palm.center[2]);
     }
     if (!this.isImmersive() && (this.flatTouchInput || this.touchDevice())) {
-      // Touch: notes rest around the bottom-left orb corner and follow the
+      // Touch: notes rest on the bottom-left corner orb and follow the
       // finger while it is down, like the desktop notes follow the mouse.
-      const ndc = this.fingerDown ? this.aimNdc : TOUCH_ORB_NDC;
-      this.desktopNdc.set(ndc.x, ndc.y);
+      if (!this.fingerDown) {
+        return this.restingOrbPoint(this.touchOrbPoint);
+      }
+      this.desktopNdc.set(this.aimNdc.x, this.aimNdc.y);
       this.world.camera.updateMatrixWorld();
       this.desktopRay.setFromCamera(this.desktopNdc, this.world.camera);
       if (this.desktopRay.ray.intersectPlane(this.pointerNotePlane, this.touchOrbPoint)) {
-        // Resting orb stays above the ground plane (below it the floor hides it).
-        if (!this.fingerDown && this.touchOrbPoint.y < 0.35) this.touchOrbPoint.y = 0.35;
         return this.touchOrbPoint;
       }
     }
@@ -1081,13 +1111,8 @@ export class RiftLabSystem extends createSystem({
   private beamRay(out: { origin: Vector3; direction: Vector3 }): void {
     out.origin.copy(this.handAnchor(this.game.getFiringHand()));
     if (!this.isImmersive() && this.flatTouchInput && this.dragging) {
-      // The dragged orb leaves from its corner toward the finger.
-      this.desktopNdc.set(TOUCH_ORB_NDC.x, TOUCH_ORB_NDC.y);
-      this.world.camera.updateMatrixWorld();
-      this.desktopRay.setFromCamera(this.desktopNdc, this.world.camera);
-      if (this.desktopRay.ray.intersectPlane(this.pointerNotePlane, this.touchOrbPoint)) {
-        out.origin.copy(this.touchOrbPoint);
-      }
+      // The dragged orb leaves from its resting corner toward the finger.
+      out.origin.copy(this.restingOrbPoint(this.touchOrbPoint));
     }
     if (this.xrBeamActive) {
       const palm = this.palms[this.game.getFiringHand()];
@@ -1447,4 +1472,4 @@ export class RiftLabSystem extends createSystem({
       })),
     };
   }
-}
+  }
