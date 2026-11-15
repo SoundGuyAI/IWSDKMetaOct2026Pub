@@ -147,7 +147,7 @@
     <div id="wall-tones-info-row" style="flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px">
       <div id="wall-tones-status" class="status">Ready</div>
       <div id="wall-tones-sequence-icons" style="display: none; flex-direction: row; flex-wrap: wrap; gap: 5px; align-items: center; max-width: 280px"></div>
-      <div id="wall-tones-wronghit-row" style="display: none; flex-direction: row; flex-wrap: wrap; gap: 5px; align-items: center; max-width: 320px"></div>
+      <div id="wall-tones-wronghit-row" style="display: none; flex-direction: row; flex-wrap: wrap; gap: 5px; align-items: center; max-width: 280px"></div>
     </div>
     <!-- Seeded initial text: without it uikitml compiles no Text child and
          the caption setter silently no-ops (fallback when the head-locked
