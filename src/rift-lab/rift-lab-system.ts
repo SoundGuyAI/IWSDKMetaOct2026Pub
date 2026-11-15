@@ -1472,4 +1472,4 @@ export class RiftLabSystem extends createSystem({
       })),
     };
   }
-  }
+}
