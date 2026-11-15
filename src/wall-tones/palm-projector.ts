@@ -13,8 +13,10 @@ export interface PalmJoints {
 export const PALM_UP_MIN = 0.65;
 /** Tip-to-knuckle distance (meters) beyond which a finger counts as extended. */
 export const FINGER_EXTENDED_MIN = 0.055;
-/** The panel floats this far above mid-palm along the palm normal (meters). */
-export const PALM_PANEL_LIFT = 0.14;
+/** The panel floats this far above mid-palm along the palm normal (meters).
+ * Raised 0.14 -> 0.18 on Nov 16 user feedback: a little more height keeps the
+ * hand and its tracking outline clear of the panel when looking slightly up. */
+export const PALM_PANEL_LIFT = 0.18;
 /** The panel also floats this far horizontally away from the player's head (meters). */
 export const PALM_PANEL_HEAD_AWAY = 0.06;
 /** Hysteresis for the open-palm gate: real hand tracking flaps near a single
