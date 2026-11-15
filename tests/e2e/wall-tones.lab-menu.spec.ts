@@ -45,7 +45,9 @@ for (const gender of ['male', 'female'] as const) {
     expect(durations[2]).toBeGreaterThan(gender === 'male' ? 8 : 10);
     expect(durations[2]).toBeLessThan(gender === 'male' ? 11 : 13);
     expect(durations[3]).toBeCloseTo(0.22, 1);
-    await page.mouse.click(640, 495);
+    // Back is the bottom row, under the connected Rift Sealing Lab row
+    // (same coordinates as the Back test above).
+    await page.mouse.click(640, 532);
     await expect.poll(() => mode(page)).toBe('menu');
   });
 }
@@ -64,8 +66,9 @@ test('leaving Lab during narration cancels the pending Cypher window', async ({ 
   await page.mouse.click(1100, 320);
   await expect.poll(() => page.evaluate(() => (window as any).__labSources.length)).toBe(1);
   await page.waitForTimeout(2000);
-  await page.mouse.move(640, 495);
-  await page.mouse.click(640, 495);
+  // Back is the bottom row, under the connected Rift Sealing Lab row.
+  await page.mouse.move(640, 532);
+  await page.mouse.click(640, 532);
   await expect.poll(() => mode(page)).toBe('menu');
   await page.waitForTimeout(11000);
   expect(await page.evaluate(() => (window as any).__labSources.length)).toBe(1);
