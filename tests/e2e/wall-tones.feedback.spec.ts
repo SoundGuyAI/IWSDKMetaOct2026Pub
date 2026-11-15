@@ -104,6 +104,12 @@ for (const improvedBest of [false, true]) {
     await page.screenshot({ path: testInfo.outputPath(`missed-hit-line-${improvedBest ? 'best' : 'first'}.png`) });
     await expect.poll(() => page.evaluate(() => (window as any).__wallTonesDebug.gameOverOpen), { timeout: 30000 }).toBe(true);
     expect(await page.evaluate(() => (window as any).__wallTonesDebug.wrongHitRowVisible)).toBe(true);
+    // Owner 2026-11-15: in Game Over, Expected:/Hit: sit together on their own
+    // line below the history squares (each label still glued to its square).
+    const popupTops = await page.evaluate(() => (window as any).__wallTonesDebug.wrongHitPopupGroupTops);
+    expect(popupTops).not.toBeNull();
+    expect(popupTops.expectedTop).toBeGreaterThan(popupTops.firstSquareTop);
+    expect(Math.abs(popupTops.hitTop - popupTops.expectedTop)).toBeLessThan(1);
     const failureClips = clips.slice(beforeFailure);
     expect(failureClips.some(url => /\/wrong-[1-5]\.mp3/.test(url))).toBe(true);
     expect(failureClips.some(url => /\/(cheer|new-best|milestone)/.test(url))).toBe(false);
