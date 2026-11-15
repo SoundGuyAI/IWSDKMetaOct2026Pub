@@ -112,3 +112,10 @@ The merge-ready procedure is an enduring rule for every merge, not work in this 
 - [x] Full local `npm run test:e2e` green before PR push (51 passed; pointer first-press retry hardened).
 - [ ] Headset verification called out separately (not claimed by desktop suite).
 
+
+## PR90 Lab welcome update - 2026-11-14
+
+- Owner approved the narrator and Cypher welcome wording and requested adding both to still-open PR90. Implemented for PR90 preview review; product merge remains held for the expanded-preview test and fresh owner go-ahead.
+- Four recordings: Puck/Laomedeia narrator and opposite-gender Kore/Algenib Cypher. Embedded MP3s keep the code and assets atomic. Exact transcript checked.
+- On Lab entry: narrator welcome, radio open, Cypher nudge, radio close. Leaving Lab cancels the queue. Existing voices-off/subtitle settings apply.
+- Local typecheck, build and 114 unit tests pass. Real-click entry plus both cast sequences pass. Full local regression suite and fresh merge-ready CI still required before merge. Expanded version needs owner preview review.

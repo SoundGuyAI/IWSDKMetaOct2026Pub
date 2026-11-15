@@ -65,10 +65,12 @@ function isCompactFlatViewport(): boolean {
 export class PanelSystem extends createSystem({}) {
   private readonly savedMainMenuPosition = new Float32Array(3);
   private readonly savedMainMenuScale = new Float32Array(3);
+  private readonly savedMainMenuOrientation = new Float32Array(4);
   private mainMenuLayoutSaved = false;
   /** When true, flat (non-immersive) layout should be applied. */
   private flatLayoutActive = false;
   private menuAnchored = false;
+  private followedMenuId = 'main-menu-panel';
   private menuSnapping = false;
   private readonly menuViewer = new Vector3();
   private readonly menuForward = new Vector3();
@@ -86,7 +88,18 @@ export class PanelSystem extends createSystem({}) {
    * look-away threshold, eased snap). Flat layouts are untouched.
    */
   update(delta: number): void {
-    const entity = this.world.getSceneEntity('main-menu-panel');
+    this.publishMenuFacingTest();
+    // The Lab menu replaces the main menu in place, so it follows the player
+    // with the same rules. Switching menus re-anchors it in front of the viewer.
+    const labVisible =
+      this.world.getSceneEntity('lab-menu-panel')?.getValue(Visibility, 'isVisible') === true;
+    const followId = labVisible ? 'lab-menu-panel' : 'main-menu-panel';
+    if (followId !== this.followedMenuId) {
+      this.followedMenuId = followId;
+      this.menuAnchored = false;
+      this.menuSnapping = false;
+    }
+    const entity = this.world.getSceneEntity(followId);
     const immersive =
       this.world.xrEnabled &&
       this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
@@ -262,6 +275,41 @@ export class PanelSystem extends createSystem({}) {
     }
   }
 
+  private menuFacingTestPublished = false;
+
+  /**
+   * Test-only (needs ?menuFacingTest=1): lets the XR re-entry spec turn the
+   * main menu and read its yaw back, to prove the flat layout restores the
+   * authored facing after a session ends. Inert without the URL flag.
+   */
+  private publishMenuFacingTest(): void {
+    if (
+      this.menuFacingTestPublished ||
+      typeof window === 'undefined' ||
+      !window.location.search.includes('menuFacingTest=1')
+    ) {
+      return;
+    }
+    this.menuFacingTestPublished = true;
+    const yawOf = (q: ArrayLike<number>): number =>
+      (2 * Math.atan2(q[1]!, q[3]!) * 180) / Math.PI;
+    (window as unknown as Record<string, unknown>).__menuFacingTest = {
+      turn: (deg: number) => {
+        const e = this.world.getSceneEntity('main-menu-panel');
+        const o = e?.getVectorView(Transform, 'orientation');
+        if (o == null) return false;
+        const h = (deg * Math.PI) / 360;
+        o.set([0, Math.sin(h), 0, Math.cos(h)]);
+        return true;
+      },
+      yaw: () => {
+        const e = this.world.getSceneEntity('main-menu-panel');
+        const o = e?.getVectorView(Transform, 'orientation');
+        return o == null ? null : yawOf(o);
+      },
+    };
+  }
+
   private applyMainMenuFlatLayout(): void {
     const entity = this.world.getSceneEntity('main-menu-panel');
     if (entity == null) {
@@ -269,11 +317,18 @@ export class PanelSystem extends createSystem({}) {
     }
     const position = entity.getVectorView(Transform, 'position');
     const scale = entity.getVectorView(Transform, 'scale');
+    const orientation = entity.getVectorView(Transform, 'orientation');
     if (!this.mainMenuLayoutSaved) {
       this.savedMainMenuPosition.set(position);
       this.savedMainMenuScale.set(scale);
+      this.savedMainMenuOrientation.set(orientation);
       this.mainMenuLayoutSaved = true;
     }
+    // The immersive follow (update) rotates the menu to face the headset.
+    // Coming back to the flat page must restore the authored facing too, or
+    // the menu stays turned toward wherever the player stood in XR and is
+    // only visible from some angles (Quest report 2026-11-14).
+    orientation.set(this.savedMainMenuOrientation);
     if (!this.flatLayoutActive) {
       position[0] = this.savedMainMenuPosition[0]!;
       position[1] = this.savedMainMenuPosition[1]!;
@@ -304,12 +359,25 @@ export class PanelSystem extends createSystem({}) {
     scale[1] = flatScale;
     scale[2] = flatScale;
 
-    // Lab entry placement per flat layout: desktop has free space to the
-    // right of the hub; compact phone viewports width-fill the hub, so the
-    // entry moves above it to stay on-screen. XR keeps the scene default.
-    const entry = this.world.getSceneEntity('thumbs-lab-entry-panel');
-    if (entry != null) {
-      const ePos = entry.getVectorView(Transform, 'position');
+    // The Lab menu replaces the main menu in place, so it shares its flat layout.
+    const labMenu = this.world.getSceneEntity('lab-menu-panel');
+    if (labMenu != null) {
+      const lPos = labMenu.getVectorView(Transform, 'position');
+      const lScale = labMenu.getVectorView(Transform, 'scale');
+      lPos[0] = layout.position[0];
+      lPos[1] = layout.position[1];
+      lPos[2] = layout.position[2];
+      lScale[0] = flatScale;
+      lScale[1] = flatScale;
+      lScale[2] = flatScale;
+    }
+
+    // Lab entry placement per flat layout: desktop has free space to the right
+    // of the hub; compact phone viewports width-fill the hub, so the entry
+    // moves above it to stay on-screen. XR keeps the scene default.
+    const labEntry = this.world.getSceneEntity('lab-entry-panel');
+    if (labEntry != null) {
+      const ePos = labEntry.getVectorView(Transform, 'position');
       if (isCompactFlatViewport()) {
         ePos[0] = 0;
         ePos[1] = 3.55;

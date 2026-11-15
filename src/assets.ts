@@ -57,8 +57,9 @@ export default defineAssets({
     priority: 'lazy',
   },
   'main-menu-panel': uikitml('main-menu.uikitml', 'Main Menu'),
+  'lab-menu-panel': uikitml('lab-menu.uikitml', 'Lab Menu'),
+  'lab-entry-panel': uikitml('lab-entry.uikitml', 'Lab Entry'),
   'thumbs-lab-panel': uikitml('thumbs-lab.uikitml', 'Thumbs Lab Panel'),
-  'thumbs-lab-entry-panel': uikitml('thumbs-lab-entry.uikitml', 'Thumbs Lab Entry'),
   'welcome-panel': uikitml('welcome.uikitml', 'Welcome Panel'),
   'gaze-debug-panel': uikitml('gaze-debug.uikitml', 'Gaze Debug Panel'),
   'wall-tones-panel': uikitml(
