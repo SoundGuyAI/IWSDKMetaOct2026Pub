@@ -10,6 +10,11 @@ import { CYPHER_PROGRESS_KEY } from './cypher-progress.js';
 
 const BARS_KEY = 'wall-tones-bars';
 const BARS_TOTAL_KEY = 'wall-tones-bars-total';
+/** AutoPlay-completed rounds still pay their Bars to the spendable balance,
+ * but AutoPlay is not the human player (owner rule 2026-11-15): those Bars
+ * are tracked apart so lifetime Bars/Total Score achievements only count
+ * Bars the human earned. */
+const AUTOPLAY_BARS_TOTAL_KEY = 'wall-tones-autoplay-bars-total';
 const HINT_LEVEL_KEY = 'wall-tones-hint-level';
 const ACHIEVEMENTS_KEY = 'wall-tones-achievements';
 const FIRST_FLAGS_KEY = 'wall-tones-first-flags';
@@ -200,6 +205,7 @@ export function resetWallTonesStats(): void {
 for (const key of [
 BARS_KEY,
 BARS_TOTAL_KEY,
+AUTOPLAY_BARS_TOTAL_KEY,
 HINT_LEVEL_KEY,
 ACHIEVEMENTS_KEY,
 FIRST_FLAGS_KEY,
@@ -224,6 +230,8 @@ try { globalThis.localStorage?.removeItem(key); } catch { /* private mode */ }
 export class WallTonesEconomy {
   private bars = readNumber(BARS_KEY);
   private barsTotal = readNumber(BARS_TOTAL_KEY);
+  /** Lifetime Bars AutoPlay earned (spendable, but never human progress). */
+  private autoplayBarsTotal = readNumber(AUTOPLAY_BARS_TOTAL_KEY);
   private hintLevel = readNumber(HINT_LEVEL_KEY);
   private unlocked = new Set(readStringArray(ACHIEVEMENTS_KEY));
   private firstFlags = new Set(readStringArray(FIRST_FLAGS_KEY));
@@ -280,6 +288,12 @@ export class WallTonesEconomy {
 
   getBarsTotal(): number {
     return this.barsTotal;
+  }
+
+  /** Lifetime Bars AutoPlay earned: spendable but never human achievement
+   * progress (owner rule 2026-11-15). Exposed for the debug bridge/tests. */
+  getAutoplayBarsTotal(): number {
+    return this.autoplayBarsTotal;
   }
 
   /** Streak savers in stock (test-value consumable, see consumable-values). */
@@ -385,25 +399,34 @@ export class WallTonesEconomy {
    * summary breakdown. `achievementStreak` is the streak the achievement
    * check may credit: the live streak for a human-completed round, the
    * saved human best for an AutoPlay-completed round (owner rule
-   * 2026-11-15: AutoPlay never advances streak achievements). */
+   * 2026-11-15: AutoPlay never advances streak achievements).
+   * `creditHuman` false (AutoPlay-completed round) pays the completion Bars
+   * to the spendable balance but keeps them out of the human lifetime
+   * counters, so Bars/Total Score achievements never unlock from AutoPlay. */
   completePattern(
     streak: number,
     recordBeaten: boolean,
     achievementStreak: number = streak,
+    creditHuman: boolean = true,
   ): { completion: number; bonus: number } {
-    const completion = this.award(barsForStreak(streak), streak, achievementStreak);
+    const completion = this.award(barsForStreak(streak), streak, achievementStreak, creditHuman);
     const bonus = recordBeaten
-      ? this.award(barsForStreak(streak) * streak, streak, achievementStreak)
+      ? this.award(barsForStreak(streak) * streak, streak, achievementStreak, creditHuman)
       : 0;
     return { completion, bonus };
   }
 
-  private award(amount: number, streak: number, achievementStreak?: number): number {
+  private award(amount: number, streak: number, achievementStreak?: number, countAsEarned = true): number {
     if (amount <= 0) return 0;
     this.bars += amount;
-    this.barsTotal += amount;
+    if (countAsEarned) {
+      this.barsTotal += amount;
+      writeNumber(BARS_TOTAL_KEY, this.barsTotal);
+    } else {
+      this.autoplayBarsTotal += amount;
+      writeNumber(AUTOPLAY_BARS_TOTAL_KEY, this.autoplayBarsTotal);
+    }
     writeNumber(BARS_KEY, this.bars);
-    writeNumber(BARS_TOTAL_KEY, this.barsTotal);
     this.checkAchievements(achievementStreak ?? streak);
     return amount;
   }
@@ -416,6 +439,8 @@ export class WallTonesEconomy {
       case 'bars':
       case 'score':
         // User-settled: Total Score == lifetime Bars earned, never decreases.
+        // AutoPlay earnings are tracked apart and never count here (owner
+        // rule 2026-11-15: AutoPlay does not earn human achievements).
         return this.barsTotal;
       case 'store':
         return this.purchases;
@@ -693,4 +718,4 @@ export class WallTonesEconomy {
     writeStringArray(FIRST_FLAGS_KEY, [...this.firstFlags]);
     return true;
   }
-}
+      }
