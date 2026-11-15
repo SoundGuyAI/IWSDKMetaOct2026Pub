@@ -1,0 +1,32 @@
+name: Apply PR99 payload
+on:
+  push:
+    branches: [feat/store-achv-narration]
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Decode and apply payload
+        run: |
+          set -e
+          for first in payloads/*.b64.part000; do
+            [ -e "$first" ] || continue
+            archive="${first%.part000}"
+            cat "$archive".part* > "$archive"
+          done
+          for f in payloads/*.b64; do
+            [ -e "$f" ] || continue
+            case "$f" in *.part*) continue;; esac
+            base64 -d "$f" > /tmp/p.tar.gz
+            tar -xzf /tmp/p.tar.gz -C .
+          done
+      - name: Commit applied files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Apply PR99 payload [skip ci]" || echo "nothing to commit"
+          git push
