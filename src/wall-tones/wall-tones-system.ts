@@ -35,7 +35,7 @@ type Entity,
 } from '@iwsdk/core';
 import { XRHandVisualAdapter } from '@iwsdk/xr-input';
 import type { ExperienceMode } from '../app-mode.js';
-import { playErrorTone, playPadTone, playPadToneFromUserAction, primeWallTonesAudioFromGesture, suspendAudioContext, needsExplicitMobileSoundUnlock, isHtmlAudioPoolUnlocked } from './audio.js';
+import { playAutoplayCue, playErrorTone, playPadTone, playPadToneFromUserAction, primeWallTonesAudioFromGesture, suspendAudioContext, needsExplicitMobileSoundUnlock, isHtmlAudioPoolUnlocked } from './audio.js';
 import {
 AIR_GHOST_HAND_OFFSET_M,
 AIR_GHOST_MIN_HEAD_DISTANCE_M,
@@ -207,6 +207,8 @@ inputStep: number;
 playbackKindNow: 'listen' | 'play' | 'autoplay' | null;
 streak: number;
 bestStreak: number;
+/** Persisted human record (never set by AutoPlay, owner rule 2026-11-15). */
+savedBestStreak: number;
 bars: number;
 barsTotal: number;
 hintLevel: number;
@@ -1635,6 +1637,9 @@ return system.game.streak;
 get bestStreak() {
 return system.game.bestStreak;
 },
+get savedBestStreak() {
+return system.economy.getBestStreak();
+},
 get bars() {
 return system.economy.getBars();
 },
@@ -2985,6 +2990,13 @@ if (autoCount > 0) {
 this.statusText = `Auto play: first ${autoCount}`;
 this.playbackKind = 'autoplay';
 this.renderPanel();
+// Owner-picked cue (audition File option 5, 2026-11-15): the robot chirp
+// sounds right before AutoPlay enters its notes.
+await playAutoplayCue();
+await this.wait(0.7);
+if (!this.experienceActive || this.flowPhase !== 'playing') {
+return;
+}
 for (let index = 0; index < autoCount; index += 1) {
 if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
@@ -3004,17 +3016,14 @@ this.setBlinkCuePad(null);
 this.enteredByModifier.add(index);
 this.arrowSeqIndex = index;
 this.renderPanel();
-// Each auto-entered note advances the pattern exactly like a correct
-// press (no per-press Bars: there is no player press). Entering the
-// final note completes the round through the exact manual-finish path.
+// Auto-entered notes advance the run but are not the human player
+// (owner rule 2026-11-15): no press count, no saved best-streak record,
+// no record bonus, no streak achievements from AutoPlay. The in-run
+// streak counter still advances so run progression is unchanged.
 const previousBest = this.game.bestStreak;
 const completed = this.game.onCorrectInput();
-if (this.game.bestStreak > previousBest) {
-this.economy.saveBestStreak(this.game.bestStreak);
-this.recordBeatenThisAttempt = true;
-}
 if (completed) {
-this.finishCompletedPattern(padId, previousBest);
+this.finishCompletedPattern(padId, previousBest, false);
 return;
 }
 await this.wait(NOTE_GAP_S);
@@ -3648,8 +3657,12 @@ this.finishCompletedPattern(padIndex, previousBest);
 }
 
 /** Shared pattern-completion path: a manual final press and a Play-entered
- * final note (owner-approved 2026-11-13) both land here. */
-private finishCompletedPattern(padIndex: number, previousBest: number): void {
+ * final note (owner-approved 2026-11-13) both land here. `creditHuman`
+ * false (AutoPlay-entered completion, owner rule 2026-11-15) keeps the
+ * round paying its normal completion award but credits no human record:
+ * no record announcement, no record bonus, and streak achievements check
+ * against the saved human best instead of the in-run streak. */
+private finishCompletedPattern(padIndex: number, previousBest: number, creditHuman = true): void {
 {
 if (this.cypherSeam) this.setCypherSeam(false);
 // Lock input immediately so a held finger/click cannot eat the next round.
@@ -3667,7 +3680,7 @@ replayNote = this.economy.grantFreeReplay()
 this.statusText = `Nice - streak ${this.game.streak}.${replayNote} Next pattern...`;
 this.renderPanel();
 const streak = this.game.streak;
-const increasedRecord = shouldAnnounceRecord(streak, previousBest, this.firstRun);
+const increasedRecord = creditHuman && shouldAnnounceRecord(streak, previousBest, this.firstRun);
 // Pattern completion pays its own extra on top of the presses
 // (user-settled: "each pattern completion is also another reward extra",
 // band rate 1/2/4 as the provisional calibration); a completed pattern
@@ -3676,6 +3689,7 @@ const increasedRecord = shouldAnnounceRecord(streak, previousBest, this.firstRun
 const { completion, bonus } = this.economy.completePattern(
 streak,
 this.recordBeatenThisAttempt,
+creditHuman ? streak : this.economy.getBestStreak(),
 );
 this.recordBeatenThisAttempt = false;
 if (completion > 0) {
@@ -5945,4 +5959,4 @@ return new Promise((resolve) => {
 window.setTimeout(resolve, seconds * 1000);
 });
 }
-  }
+        }
