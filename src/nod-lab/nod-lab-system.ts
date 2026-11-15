@@ -164,6 +164,17 @@ declare global {
       enter: () => void;
       start: () => void;
       answer: (answer: YesNoAnswer) => void;
+      toggleRecording: () => void;
+      getRecording: () => {
+        samples: Array<{ t: number; pitch: number; yaw: number; src: string }>;
+        events: Array<{
+          t: number;
+          answer: YesNoAnswer;
+          amplitudeDeg: number | null;
+          src: string;
+        }>;
+      };
+      recaptureBaseline: () => void;
       feedAngles: (pitchDeg: number, yawDeg: number) => void;
       feedFlatAngles: (pitchDeg: number, yawDeg: number) => void;
     };
@@ -217,6 +228,36 @@ export class NodLabSystem extends createSystem({}) {
   private startLabel: UIKit.Text | null = null;
   private active = false;
   private sequence = 0;
+  // Owner's Nov 16 test-mode request: record gesture samples/answers for
+  // tuning, re-anchor the baseline on demand, and flash the answer buttons
+  // when a detection lands.
+  private recording = false;
+  private recStartedAt = 0;
+  private recSamples: Array<{
+    t: number;
+    pitch: number;
+    yaw: number;
+    src: string;
+  }> = [];
+  private recEvents: Array<{
+    t: number;
+    answer: YesNoAnswer;
+    amplitudeDeg: number | null;
+    src: string;
+  }> = [];
+  private recordLabel: UIKit.Text | null = null;
+  private flashTimeout: ReturnType<typeof setTimeout> | null = null;
+  private transientStatus: { text: string; until: number } | null = null;
+  // Standalone diagnosis while recording (owner, Nov 16): detection must
+  // run without waiting through story questions, so recording feeds shadow
+  // detectors that report answers (flash + recorded event) without
+  // advancing the dialogue. One per tuning because the config differs.
+  private readonly recDetectorHeadset = new HeadNodShakeDetector(
+    DEFAULT_HEAD_GESTURE_CONFIG,
+  );
+  private readonly recDetectorFlat = new HeadNodShakeDetector(
+    FLAT_HEAD_GESTURE_CONFIG,
+  );
 
   init(): void {
     this.panel = this.world.getSceneObject<UIKitMLAsset>('nod-lab-panel') ?? null;
@@ -249,6 +290,19 @@ export class NodLabSystem extends createSystem({}) {
     panel
       .getElementById('nod-lab-repeat-button')
       ?.addEventListener('click', () => void this.repeatLine());
+    this.recordLabel = panel.getElementById<UIKit.Text>('nod-lab-record-label');
+    panel
+      .getElementById('nod-lab-record-button')
+      ?.addEventListener('click', () => {
+        // Phones gate orientation behind a per-gesture permission prompt;
+        // like the Start tap, the Record tap is that gesture.
+        unlockSpeechFromGesture();
+        void this.setupTilt();
+        this.toggleRecording();
+      });
+    panel
+      .getElementById('nod-lab-reset-button')
+      ?.addEventListener('click', () => this.recaptureBaseline());
     // The Back button is bound by AppModeSystem, which owns the mode flip
     // back to 'menu'; the resulting mode event deactivates this lab.
 
@@ -267,10 +321,12 @@ export class NodLabSystem extends createSystem({}) {
     this.detachPointer = attachPointerTracker(
       window,
       this.pointerTracker,
-      () => this.flatDetector.isEnabled,
+      () => this.flatDetector.isEnabled || this.recording,
       (sample, now) => this.handleFlatAngles(sample, now, 'pointer'),
       () => this.flatDetector.reset(),
     );
+    this.recDetectorHeadset.setEnabled(true);
+    this.recDetectorFlat.setEnabled(true);
 
     const onModeChange = (event: Event) => {
       const mode = (event as CustomEvent<{ mode: string }>).detail.mode;
@@ -296,6 +352,12 @@ export class NodLabSystem extends createSystem({}) {
       enter: () => this.setActive(true),
       start: () => void this.startRun(),
       answer: (answer) => this.submitAnswer(answer, 'debug'),
+      toggleRecording: () => this.toggleRecording(),
+      getRecording: () => ({
+        samples: [...this.recSamples],
+        events: [...this.recEvents],
+      }),
+      recaptureBaseline: () => this.recaptureBaseline(),
       feedAngles: (pitchDeg, yawDeg) =>
         this.handleAngles(pitchDeg, yawDeg, performance.now() / 1000),
       feedFlatAngles: (pitchDeg, yawDeg) =>
@@ -326,6 +388,10 @@ export class NodLabSystem extends createSystem({}) {
       this.lastAmplitudeDeg = null;
       this.answerCount = 0;
       this.voiceStatus = null;
+      if (this.recording) {
+        this.recording = false;
+        this.recordLabel?.setProperties({ text: 'Record gestures' });
+      }
       void this.refreshVoiceStatus();
       this.renderPanel('Open the link when you are ready.');
     } else {
@@ -423,6 +489,8 @@ export class NodLabSystem extends createSystem({}) {
     // mid-swing for a user who started gesturing during the line. The tilt
     // tracker now feeds the same way (rest-pose tracking while still), so
     // it is left alone for the same reason.
+    this.recDetectorHeadset.reset();
+    this.recDetectorFlat.reset();
     this.listeningIdleMs = 0;
     this.lastIdleTickAt = performance.now();
     this.phase = 'listening';
@@ -446,7 +514,7 @@ export class NodLabSystem extends createSystem({}) {
     this.detachTilt ??= attachTiltTracker(
       window,
       this.tiltTracker,
-      () => this.flatDetector.isEnabled,
+      () => this.flatDetector.isEnabled || this.recording,
       (sample, now) => this.handleFlatAngles(sample, now, 'tilt'),
     );
     await this.detectTiltSensor();
@@ -551,7 +619,15 @@ export class NodLabSystem extends createSystem({}) {
     if (!this.active || this.phase !== 'listening' || this.currentPrompt == null) {
       return;
     }
-    void source;
+    if (this.recording) {
+      this.recEvents.push({
+        t: performance.now() / 1000 - this.recStartedAt,
+        answer,
+        amplitudeDeg: this.lastAmplitudeDeg,
+        src: source,
+      });
+    }
+    this.flashAnswerButton(answer);
     const prompt = this.currentPrompt;
     const seq = ++this.sequence;
     this.phase = 'responding';
@@ -608,6 +684,10 @@ export class NodLabSystem extends createSystem({}) {
   private handleAngles(pitchDeg: number, yawDeg: number, now: number): void {
     this.pitchDeg = pitchDeg;
     this.yawDeg = yawDeg;
+    if (this.recording) {
+      this.recSamples.push({ t: now - this.recStartedAt, pitch: pitchDeg, yaw: yawDeg, src: 'headset' });
+      this.feedRecordingDetector(pitchDeg, yawDeg, now, 'headset');
+    }
     const event = this.detector.feed(
       (pitchDeg * Math.PI) / 180,
       (yawDeg * Math.PI) / 180,
@@ -626,6 +706,10 @@ export class NodLabSystem extends createSystem({}) {
   ): void {
     this.pitchDeg = sample.pitchDeg;
     this.yawDeg = sample.yawDeg;
+    if (this.recording) {
+      this.recSamples.push({ t: now - this.recStartedAt, pitch: sample.pitchDeg, yaw: sample.yawDeg, src: source });
+      this.feedRecordingDetector(sample.pitchDeg, sample.yawDeg, now, source);
+    }
     const event = this.flatDetector.feed(
       (sample.pitchDeg * Math.PI) / 180,
       (sample.yawDeg * Math.PI) / 180,
@@ -654,7 +738,10 @@ export class NodLabSystem extends createSystem({}) {
         void this.handleNoInput();
       }
     }
-    if (this.phase === 'listening' && this.isImmersive()) {
+    if (
+      (this.phase === 'listening' || this.recording) &&
+      this.isImmersive()
+    ) {
       this.player.head.getWorldQuaternion(this.headQuat);
       this.relativeQuat
         .copy(this.baselineQuat)
@@ -703,8 +790,14 @@ export class NodLabSystem extends createSystem({}) {
         : 'Answer received.',
       done: 'Link check complete. Cypher out.',
     };
+    if (
+      this.transientStatus != null &&
+      performance.now() > this.transientStatus.until
+    ) {
+      this.transientStatus = null;
+    }
     this.statusText?.setProperties({
-      text: overrideLine ?? statusByPhase[this.phase],
+      text: this.transientStatus?.text ?? overrideLine ?? statusByPhase[this.phase],
     });
     this.lineText?.setProperties({
       text: this.displayCaption(this.currentLine),
@@ -719,12 +812,169 @@ export class NodLabSystem extends createSystem({}) {
         `detector ${this.isImmersive() ? (this.detector.isEnabled ? 'armed' : 'off') : this.flatDetector.isEnabled ? 'flat-armed' : 'flat-off'} | ` +
         `last answer ${this.lastAnswer ?? '-'} (${amp}) | ` +
         `thresholds act ${(this.activeGestureConfig().activationRad * 180 / Math.PI).toFixed(0)} deg ` +
-        `peak ${(this.activeGestureConfig().minPeakRad * 180 / Math.PI).toFixed(0)} deg`,
+        `peak ${(this.activeGestureConfig().minPeakRad * 180 / Math.PI).toFixed(0)} deg` +
+        (this.recording
+          ? ` | REC ${this.recSamples.length} samples ${this.recEvents.length} answers`
+          : ''),
     });
     this.voiceText?.setProperties({ text: this.voiceStatusLine() });
     this.startLabel?.setProperties({
       text: this.phase === 'done' ? 'Run link check again' : 'Open the link',
     });
+  }
+
+  /**
+   * Owner's Nov 16 test button: starts/stops capturing angle samples and
+   * detected answers for tuning. The recording lives in memory and on
+   * __nodLabDebug.getRecording(); on stop it is also copied to the clipboard
+   * where the platform allows it, so a phone tester can paste it into a
+   * message.
+   */
+  private toggleRecording(): void {
+    this.recording = !this.recording;
+    if (this.recording) {
+      this.recSamples = [];
+      this.recEvents = [];
+      this.recStartedAt = performance.now() / 1000;
+      this.recDetectorHeadset.reset();
+      this.recDetectorFlat.reset();
+      this.transientStatus = {
+        text: 'Recording gestures. Nod or shake, then stop.',
+        until: performance.now() + 2500,
+      };
+    } else {
+      // The stop summary is always shown on the panel so it is readable on
+      // every platform; the full trace is copied to the clipboard where the
+      // browser allows it (desktop/phone https; XR browsers may refuse, in
+      // which case the panel summary and __nodLabDebug are what we have).
+      const summary =
+        this.recEvents
+          .map(
+            (e) =>
+              `${e.answer} ${e.amplitudeDeg == null ? '-' : e.amplitudeDeg.toFixed(1)} deg`,
+          )
+          .join(', ') || 'no detections';
+      const payload = JSON.stringify({
+        startedAt: this.recStartedAt,
+        samples: this.recSamples,
+        events: this.recEvents,
+      });
+      this.transientStatus = {
+        text: `Recording stopped (${this.recSamples.length} samples): ${summary}`,
+        until: performance.now() + 8000,
+      };
+      try {
+        void navigator.clipboard?.writeText(payload).then(() => {
+          this.transientStatus = {
+            text: `Recording copied to clipboard (${this.recSamples.length} samples, ${this.recEvents.length} answers).`,
+            until: performance.now() + 4000,
+          };
+          this.renderPanel();
+        }, () => {});
+      } catch {
+        // Clipboard unavailable; the panel summary already shows the result.
+      }
+    }
+    this.recordLabel?.setProperties({
+      text: this.recording ? 'Stop recording' : 'Record gestures',
+    });
+    this.renderPanel();
+  }
+
+  /**
+   * Owner's Nov 16 test button: re-anchor every baseline as if the question
+   * had just been asked. Same arm path as a fresh prompt, plus the flat
+   * trackers the arm path deliberately leaves alone (here the explicit ask
+   * is a full re-anchor after the tester moved between questions).
+   */
+  private recaptureBaseline(): void {
+    if (!this.active) {
+      return;
+    }
+    this.player.head.getWorldQuaternion(this.baselineQuat);
+    this.detector.reset();
+    this.flatDetector.reset();
+    this.pointerTracker.reset();
+    this.tiltTracker.reset();
+    this.recDetectorHeadset.reset();
+    this.recDetectorFlat.reset();
+    if (this.currentPrompt != null && this.phase === 'listening') {
+      this.listeningIdleMs = 0;
+      this.lastIdleTickAt = performance.now();
+      this.detector.setEnabled(this.isImmersive());
+      this.flatDetector.setEnabled(!this.isImmersive());
+    }
+    this.transientStatus = {
+      text: 'Position reset. Gestures now measure from here.',
+      until: performance.now() + 2500,
+    };
+    this.renderPanel();
+  }
+
+  /**
+   * While recording outside a live answer window, detection runs on a
+   * shadow detector so gestures register (flash + recorded event) without
+   * needing a story question. While a prompt IS listening the normal path
+   * reports through submitAnswer, so the shadow stays out to avoid
+   * double-counting one gesture.
+   */
+  private feedRecordingDetector(
+    pitchDeg: number,
+    yawDeg: number,
+    now: number,
+    src: string,
+  ): void {
+    if (this.phase === 'listening' && this.currentPrompt != null) {
+      return;
+    }
+    const recDetector = this.isImmersive()
+      ? this.recDetectorHeadset
+      : this.recDetectorFlat;
+    const event = recDetector.feed(
+      (pitchDeg * Math.PI) / 180,
+      (yawDeg * Math.PI) / 180,
+      now,
+    );
+    if (event != null) {
+      this.recEvents.push({
+        t: now - this.recStartedAt,
+        answer: event.answer,
+        amplitudeDeg: (event.amplitudeRad * 180) / Math.PI,
+        src: `rec-${src}`,
+      });
+      this.flashAnswerButton(event.answer);
+    }
+  }
+
+  /** Brief green (yes) / red (no) flash on the answer buttons (owner, Nov 16). */
+  private flashAnswerButton(answer: YesNoAnswer): void {
+    const button = this.panel?.getElementById(
+      answer === 'yes' ? 'nod-lab-yes-button' : 'nod-lab-no-button',
+    );
+    if (button == null) {
+      return;
+    }
+    if (this.flashTimeout != null) {
+      clearTimeout(this.flashTimeout);
+      this.flashTimeout = null;
+      this.restoreAnswerButtons();
+    }
+    button.setProperties({
+      backgroundColor: answer === 'yes' ? 0x2e9e4f : 0xd33f2f,
+    });
+    this.flashTimeout = setTimeout(() => {
+      this.flashTimeout = null;
+      this.restoreAnswerButtons();
+    }, 700);
+  }
+
+  private restoreAnswerButtons(): void {
+    this.panel
+      ?.getElementById('nod-lab-yes-button')
+      ?.setProperties({ backgroundColor: 0xffffff });
+    this.panel
+      ?.getElementById('nod-lab-no-button')
+      ?.setProperties({ backgroundColor: 0xffffff });
   }
 
   private speakLine(line: LabScriptLine): Promise<void> {
@@ -752,4 +1002,4 @@ export class NodLabSystem extends createSystem({}) {
       clipPlays: { ...this.clipPlays },
     };
   }
-}
+                        }
