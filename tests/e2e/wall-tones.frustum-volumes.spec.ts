@@ -33,13 +33,22 @@ const pressSpec: FrustumVolumeSpec = {
   farZ: TOUCH_PRESS_FAR_Z_M,
 };
 
-test('frustum z slabs reproduce the previous accepted box windows exactly', () => {
-  // Old press box: center z = 0.42 * depth, accepted z in [-0.125d, +0.5d]
-  // around it -> [0.295d, 0.92d] in front of the face.
-  expect(TOUCH_PRESS_NEAR_Z_M).toBeCloseTo(TOUCH_PRESS_DEPTH_M * 0.295, 6);
-  expect(TOUCH_PRESS_FAR_Z_M).toBeCloseTo(TOUCH_PRESS_DEPTH_M * 0.92, 6);
-  expect(TOUCH_HOVER_NEAR_Z_M).toBeCloseTo(TOUCH_HOVER_DEPTH_M * 0.295, 6);
-  expect(TOUCH_HOVER_FAR_Z_M).toBeCloseTo(TOUCH_HOVER_DEPTH_M * 0.92, 6);
+test('frustum z slabs straddle the pad plane ~80/20 with the old span', () => {
+  // Oded 2026-11-16 ~01:29: the volumes floated above the button plane; lower
+  // them so ~80% of the depth is above the pad face and ~20% below it. The
+  // old window was [0.295d, 0.92d] in front of the face (span 0.625d).
+  expect(TOUCH_PRESS_NEAR_Z_M).toBeCloseTo(-TOUCH_PRESS_DEPTH_M * 0.125, 6);
+  expect(TOUCH_PRESS_FAR_Z_M).toBeCloseTo(TOUCH_PRESS_DEPTH_M * 0.5, 6);
+  expect(TOUCH_HOVER_NEAR_Z_M).toBeCloseTo(-TOUCH_HOVER_DEPTH_M * 0.125, 6);
+  expect(TOUCH_HOVER_FAR_Z_M).toBeCloseTo(TOUCH_HOVER_DEPTH_M * 0.5, 6);
+  // 80% of each slab above the plane, 20% below; total span unchanged.
+  for (const [nearZ, farZ] of [
+    [TOUCH_PRESS_NEAR_Z_M, TOUCH_PRESS_FAR_Z_M],
+    [TOUCH_HOVER_NEAR_Z_M, TOUCH_HOVER_FAR_Z_M],
+  ]) {
+    expect(farZ / (farZ - nearZ)).toBeCloseTo(0.8, 6);
+    expect(-nearZ / (farZ - nearZ)).toBeCloseTo(0.2, 6);
+  }
   // Far (player-side) faces keep the old uniform box widths.
   expect(TOUCH_PRESS_FAR_SCALE).toBe(TOUCH_PRESS_SCALE);
   expect(TOUCH_HOVER_FAR_SCALE).toBe(TOUCH_HOVER_SCALE);
