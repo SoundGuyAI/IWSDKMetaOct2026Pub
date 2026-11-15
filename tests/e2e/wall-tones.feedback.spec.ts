@@ -141,23 +141,26 @@ for (const improvedBest of [false, true]) {
         );
       await expect.poll(() => rowLabels('expected')).toEqual(['red', 'red', 'red', 'blue', 'green']);
       await expect.poll(() => rowLabels('hit')).toEqual(['red', 'red', 'red', 'blue', 'yellow']);
-      // No ellipsis: the compact failure line has no prefix slots.
-      await expect(page.locator('#wall-tones-flat-subtitles')).not.toContainText('…');
+      // No ellipsis: the four-note lead-in leaves nothing hidden, so the
+      // rows carry no "..." prefix (owner 2026-11-15 23:23).
+      await expect(page.locator('#wall-tones-flat-subtitles')).not.toContainText('...');
       expect(await page.evaluate(() => (window as any).__wallTonesDebug.wrongHitTruncated)).toBe(false);
-      // Longer captured chains render the same two comparison lines - no
-      // history row, no ellipsis (owner 2026-11-15 19:01).
+      // Longer captured chains render the same two comparison lines, now
+      // with a leading "..." on each row to mark the hidden tail (owner
+      // 2026-11-15 23:23) - still no history row.
       await page.evaluate(() => {
         const d = (window as any).__wallTonesDebug;
         d.debugSetWrongHit({ hit: d.wrongHitHit, expected: d.wrongHitExpected, preceding: [0, 1, 2, 3, 0, 1, 2, 3, 0, 1], truncated: true });
       });
       await expect.poll(() => page.evaluate(() => (window as any).__wallTonesDebug.wrongHitTruncated)).toBe(true);
-      await expect(page.locator('#wall-tones-flat-subtitles')).not.toContainText('…');
+      await expect(page.locator('#wall-tones-flat-subtitles')).toContainText('...');
+      await expect(page.locator('#wall-tones-flat-subtitles [data-wronghit-tail]')).toHaveCount(2);
       await expect(page.locator('#wall-tones-flat-subtitles [data-wronghit]')).toHaveCount(5 * 2);
       await page.evaluate((preceding) => {
         const d = (window as any).__wallTonesDebug;
         d.debugSetWrongHit({ hit: d.wrongHitHit, expected: d.wrongHitExpected, preceding, truncated: false });
       }, expectedPreceding);
-      await expect(page.locator('#wall-tones-flat-subtitles')).not.toContainText('…');
+      await expect(page.locator('#wall-tones-flat-subtitles')).not.toContainText('...');
     }
     await page.screenshot({ path: testInfo.outputPath(`missed-hit-${improvedBest ? 'best' : 'first'}.png`) });
     await page.evaluate((retry) => {
