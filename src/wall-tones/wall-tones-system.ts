@@ -235,6 +235,7 @@ idleReplaySpent: boolean;
 statusLineText: string;
 sequenceRowVisible: boolean;
 controlRowVisible: boolean;
+autoplayRowOpacity: number;
 sequenceArrowAt: number;
 sequenceBoxesShown: number;
 sequenceUnknownShown: number;
@@ -1710,6 +1711,9 @@ return system.lastSequenceRowVisible;
 },
 get controlRowVisible() {
 return system.lastControlRowVisible;
+},
+get autoplayRowOpacity() {
+return system.lastAutoplayRowOpacity;
 },
 get sequenceArrowAt() {
 return system.lastSequenceArrowAt;
@@ -4207,18 +4211,17 @@ const greyed = 0.45;
 panel
 .getElementById('control-play-button')
 ?.setProperties({ opacity: this.economy.getPlayLevel() > 0 ? 1 : greyed });
-panel
-.getElementById('control-autoplay-button')
-?.setProperties({
 // Unowned: greyed like the other locked modifiers. Owned but switched off:
 // mid opacity so it reads as owned-but-idle, not locked.
-opacity:
+this.lastAutoplayRowOpacity =
 this.economy.getAutoplayLevel() < 1
 ? greyed
 : this.economy.isAutoplayEnabled()
 ? 1
-: 0.6,
-});
+: 0.6;
+panel
+.getElementById('control-autoplay-button')
+?.setProperties({ opacity: this.lastAutoplayRowOpacity });
 panel
 .getElementById('control-speed-button')
 ?.setProperties({ opacity: greyed });
@@ -4253,7 +4256,7 @@ const disabled = this.economy.isAutoplayEnabled();
 this.economy.setAutoplayDisabled(disabled);
 this.statusText = disabled ? 'Auto play engaged' : 'Auto play disengaged';
 this.renderPanel();
-const panel = this.world.getSceneObject<UIKitMLAsset>('game-menu-panel');
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
 if (panel != null) {
 this.syncControlRow(panel);
 }
@@ -4465,6 +4468,9 @@ private economyRenderPresses = -1;
 private economyRenderSecretOwned = false;
 private economyRenderListenOwned = false;
 private economyRenderAutoplayLevel = -1;
+// The toggle state must be in the key too: it changes without any other
+// economy value moving, and syncControlRow only runs when the key changes.
+private economyRenderAutoplayOn = false;
 private economyRenderPlayLevel = -1;
 private economyRenderReplaysTotal = -1;
 private economyRenderDemoBoost = -1;
@@ -4480,6 +4486,7 @@ const presses = this.economy.getPresses();
 const secretOwned = this.economy.ownsTopSecret();
 const listenOwned = this.economy.ownsListen();
 const autoplayLevel = this.economy.getAutoplayLevel();
+const autoplayOn = this.economy.isAutoplayEnabled();
 const playLevel = this.economy.getPlayLevel();
 const replaysTotal = this.economy.getReplaysTotal();
 const demoBoost = this.economy.getDemoBoost();
@@ -4489,6 +4496,7 @@ open === this.economyRenderStoreOpen && presses === this.economyRenderPresses &&
 secretOwned === this.economyRenderSecretOwned &&
 listenOwned === this.economyRenderListenOwned &&
 autoplayLevel === this.economyRenderAutoplayLevel &&
+autoplayOn === this.economyRenderAutoplayOn &&
 playLevel === this.economyRenderPlayLevel &&
 replaysTotal === this.economyRenderReplaysTotal &&
 demoBoost === this.economyRenderDemoBoost &&
@@ -4500,6 +4508,7 @@ this.economyRenderPresses = presses;
 this.economyRenderSecretOwned = secretOwned;
 this.economyRenderListenOwned = listenOwned;
 this.economyRenderAutoplayLevel = autoplayLevel;
+this.economyRenderAutoplayOn = autoplayOn;
 this.economyRenderPlayLevel = playLevel;
 this.economyRenderReplaysTotal = replaysTotal;
 this.economyRenderDemoBoost = demoBoost;
@@ -5159,6 +5168,7 @@ list.scrollPosition.value = [0, 0];
 /** Last values pushed to the pattern row, exposed for e2e assertions. */
 private lastSequenceRowVisible = false;
 private lastControlRowVisible = false;
+private lastAutoplayRowOpacity = -1;
 private lastSequenceArrowAt = -1;
 private lastSequenceBoxesShown = 0;
 private lastSequenceUnknownShown = 0;
