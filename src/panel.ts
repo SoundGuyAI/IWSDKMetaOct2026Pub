@@ -126,7 +126,6 @@ export class PanelSystem extends createSystem({}) {
    * points at a rift through it (the ray stays clear for the target).
    */
   update(delta: number): void {
-<<<<<<< feat/mr-lab-rift-sealing-lab
     const riftEntity = this.world.getSceneEntity('rift-lab-panel');
     const riftShown =
       riftEntity?.getValue(Visibility, 'isVisible') === true;
@@ -215,19 +214,13 @@ export class PanelSystem extends createSystem({}) {
   }
 
   private updateMenuFollow(delta: number): void {
-=======
     this.publishMenuFacingTest();
->>>>>>> main
     // The Lab menu replaces the main menu in place, so it follows the player
     // with the same rules. Switching menus re-anchors it in front of the viewer.
     const labVisible =
       this.world.getSceneEntity('lab-menu-panel')?.getValue(Visibility, 'isVisible') === true;
-<<<<<<< feat/mr-lab-rift-sealing-lab
     const baseId = labVisible ? 'lab-menu-panel' : 'main-menu-panel';
     const followId = riftVisibleForFollow(this.world) ? 'rift-lab-panel' : baseId;
-=======
-    const followId = labVisible ? 'lab-menu-panel' : 'main-menu-panel';
->>>>>>> main
     if (followId !== this.followedMenuId) {
       this.followedMenuId = followId;
       this.menuAnchored = false;
