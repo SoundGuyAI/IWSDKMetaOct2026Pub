@@ -87,6 +87,7 @@ TOUCH_PRESS_DEPTH_M,
 TOUCH_PRESS_SCALE,
 TOUCH_TIP_GRIP_MAX_M,
 WALL_TONE_PADS,
+WRONG_HIT_PRECEDING_MAX,
 WRONG_RESET_DELAY_S,
 type WallTonePadId,
 } from './constants.js';
@@ -183,6 +184,13 @@ return eco;
 /** Stable hand order — never allocate per XR frame. */
 const XR_HANDS = ['right', 'left'] as const;
 
+/** Reconcile cache for a missed-hit square row (panel info row / Game Over popup). */
+type WrongHitRowCache = {
+row: UIKit.Container | null;
+key: string;
+children: (UIKit.Container | UIKit.Text)[];
+};
+
 const FLAT_BACKDROP_NODE_IDS = [
 'studio-floor',
 'stage',
@@ -223,6 +231,10 @@ gameOverNewRun: () => void;
 idleReplaySpent: boolean;
 /** Status line text currently shown (test-only). */
 statusLineText: string;
+wrongHitRowVisible: boolean;
+wrongHitPreceding: number[] | null;
+wrongHitExpected: number | null;
+wrongHitHit: number | null;
 sequenceRowVisible: boolean;
 sequenceBoxesShown: number;
 sequenceUnknownShown: number;
@@ -457,8 +469,15 @@ const panel = this.sequenceIconPendingPanel;
 if (panel) this.reconcileSequenceIcons(panel);
 };
 private accessibilityPanel: UIKitMLAsset | undefined;
-private accessibilityState: { show: boolean; flat: boolean; active: boolean; caption: string; phase: string; flow: string; status: string; names: boolean; sequence: number[]; reveal: number; shown: number; listen: boolean } | undefined;
+private accessibilityState: { show: boolean; flat: boolean; active: boolean; caption: string; phase: string; flow: string; status: string; names: boolean; sequence: number[]; reveal: number; shown: number; listen: boolean; wrong: string } | undefined;
 private sequenceIconRow: UIKit.Container | null = null;
+/** Item 75 follow-up (owner 2026-11-15): a missed hit is shown as color
+ * squares instead of color words - up to the last 10 notes leading up to the
+ * miss, then Expected:/Hit: with their squares. */
+private wrongHit: { hit: number; expected: number; preceding: number[] } | null = null;
+private readonly wrongHitPanelCache: WrongHitRowCache = { row: null, key: '', children: [] };
+private readonly wrongHitPopupCache: WrongHitRowCache = { row: null, key: '', children: [] };
+private lastWrongHitRowVisible = false;
 /** Setup HUD is world-anchored; look-away past a threshold re-snaps it. */
 private panelWorldAnchored = false;
 private panelSnapActive = false;
@@ -1629,6 +1648,18 @@ return system.idleReplayUsedRunId === system.game.runId;
 get statusLineText() {
 return String(system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel')
 ?.getElementById('wall-tones-status')?.properties.peek().text ?? '');
+},
+get wrongHitRowVisible() {
+return system.lastWrongHitRowVisible;
+},
+get wrongHitPreceding() {
+return system.wrongHit == null ? null : [...system.wrongHit.preceding];
+},
+get wrongHitExpected() {
+return system.wrongHit?.expected ?? null;
+},
+get wrongHitHit() {
+return system.wrongHit?.hit ?? null;
 },
 get sequenceRowVisible() {
 return system.lastSequenceRowVisible;
@@ -3744,9 +3775,17 @@ this.barsFirstEarnedPending = false;
 this.hideRoundBarsCard();
 this.game.phase = 'resetting';
 this.inputNeedsClear = true;
-// Capture the actual mismatch before any reset, and show it in the existing
-// Hint/Listen status line even without a purchased hint or subtitles (item 75).
-this.statusText = `Hit ${WALL_TONE_PADS[hit].name}; expected ${WALL_TONE_PADS[expected].name}.`;
+// Capture the actual mismatch before any reset, shown as color squares (owner
+// 2026-11-15: squares instead of words, plus the notes leading up to the miss)
+// in the info row and Game Over popup, even without a purchased hint or
+// subtitles (item 75). The status text element stays blank while the row shows.
+const missStep = this.game.inputStep;
+this.wrongHit = {
+hit,
+expected,
+preceding: this.game.sequence.slice(Math.max(0, missStep - WRONG_HIT_PRECEDING_MAX), missStep),
+};
+this.statusText = '';
 this.renderPanel();
 this.speech.cancel();
 await playErrorTone();
@@ -3775,10 +3814,11 @@ this.renderPanel();
 
 private renderGameOverSummary(): void {
 const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+if (panel) this.renderWrongHitRows(panel);
 panel
 ?.getElementById<UIKit.Text>('gameover-summary')
 ?.setProperties({
-text: `${this.statusText}\nYou reached ${this.game.streak}. Best ${this.game.bestStreak}.`,
+text: `You reached ${this.game.streak}. Best ${this.game.bestStreak}.`,
 });
 const need = saverUnitsForStreak(this.game.streak);
 const have = this.economy.getSavers();
@@ -3841,6 +3881,7 @@ return;
 }
 this.gameOverOpen = false;
 this.syncMenuPopupVisibility();
+this.wrongHit = null;
 this.game.inputStep = 0;
 this.game.phase = 'playback';
 this.statusText = 'Replaying pattern...';
@@ -3858,6 +3899,7 @@ return;
 }
 this.gameOverOpen = false;
 this.syncMenuPopupVisibility();
+this.wrongHit = null;
 this.game.onWrongInput();
 this.statusText = 'Get ready...';
 this.renderPanel();
@@ -4091,13 +4133,17 @@ panel
 .getElementById<UIKit.Text>('wall-tones-best-streak')
 ?.setProperties({ text: String(this.game.bestStreak) });
 this.renderSequenceIcons(panel);
+this.renderWrongHitRows(panel);
 // Owner ask 2026-11-12 11:40: the Listen/Hint titles stay hidden until the
 // matching store item is owned; a non-breaking space reserves the line so
-// the panel never shrinks.
+// the panel never shrinks. A missed hit blanks the line: the mismatch shows
+// as color squares in the wrong-hit row instead of words (owner 2026-11-15).
 panel
 .getElementById<UIKit.Text>('wall-tones-status')
 ?.setProperties({
-text: this.game.phase === 'input'
+text: this.wrongHitVisible()
+? '\u00a0'
+: this.game.phase === 'input'
 ? (performance.now() < this.idleNudgeUntil
 ? 'Still there?'
 : this.economy.getHintRevealCount() > 0
@@ -5299,6 +5345,96 @@ this.lastSequenceBoxesShown = shown;
 this.lastSequenceUnknownShown = unknownShown;
 }
 
+/** The missed-hit squares stay up from the miss until the run restarts. */
+private wrongHitVisible(): boolean {
+return this.wrongHit != null && (this.gameOverOpen || this.game.phase === 'resetting');
+}
+
+/** Reconcile both missed-hit square rows (panel info row + Game Over popup). */
+private renderWrongHitRows(panel: UIKitMLAsset): void {
+this.reconcileWrongHitRow(this.wrongHitPanelCache, panel, 'wall-tones-wronghit-row');
+this.reconcileWrongHitRow(this.wrongHitPopupCache, panel, 'gameover-wronghit-row');
+this.lastWrongHitRowVisible = this.wrongHitVisible();
+}
+
+/** Child kinds at fixed plan indices: preceding square/name pairs, then the
+ * Expected: and Hit: label/square/name groups. */
+private wrongHitChildKind(index: number): 'square' | 'text' {
+if (index < WRONG_HIT_PRECEDING_MAX * 2) return index % 2 === 0 ? 'square' : 'text';
+const offset = index - WRONG_HIT_PRECEDING_MAX * 2;
+return offset === 1 || offset === 4 ? 'square' : 'text';
+}
+
+/** Children are created once in ascending index order so the row layout order
+ * always matches the fixed plan; later passes only update properties. */
+private wrongHitChild(
+cache: WrongHitRowCache,
+row: UIKit.Container,
+index: number,
+): UIKit.Container | UIKit.Text {
+while (cache.children.length <= index) {
+const child =
+this.wrongHitChildKind(cache.children.length) === 'square'
+? new UIKit.Container({ width: 16, height: 16, borderRadius: 2, flexShrink: 0 })
+: new UIKit.Text({ fontSize: 15, color: 0xffffff });
+row.add(child);
+cache.children.push(child);
+}
+return cache.children[index]!;
+}
+
+private reconcileWrongHitRow(
+cache: WrongHitRowCache,
+panel: UIKitMLAsset,
+rowId: string,
+): void {
+const row = panel.getElementById<UIKit.Container>(rowId);
+if (row == null) return;
+const wrong = this.wrongHitVisible() ? this.wrongHit : null;
+const names = colorNamesEnabled();
+const key =
+wrong == null
+? 'hidden'
+: `${wrong.preceding.join(',')}|${wrong.expected}|${wrong.hit}|${names ? 1 : 0}`;
+if (cache.row === row && cache.key === key) return;
+if (cache.row !== row) {
+cache.row = row;
+cache.children.length = 0;
+}
+cache.key = key;
+row.setProperties({ display: wrong != null ? 'flex' : 'none' });
+for (let i = 0; i < WRONG_HIT_PRECEDING_MAX; i++) {
+const id = wrong?.preceding[i];
+this.wrongHitChild(cache, row, i * 2).setProperties({
+display: id == null ? 'none' : 'flex',
+backgroundColor: id == null ? 0 : WALL_TONE_PADS[id].color,
+});
+this.wrongHitChild(cache, row, i * 2 + 1).setProperties({
+display: id != null && names ? 'flex' : 'none',
+text: id == null ? '' : WALL_TONE_PADS[id].name,
+});
+}
+const groups = [
+{ label: 'Expected:', id: wrong?.expected },
+{ label: 'Hit:', id: wrong?.hit },
+];
+groups.forEach((group, g) => {
+const base = WRONG_HIT_PRECEDING_MAX * 2 + g * 3;
+this.wrongHitChild(cache, row, base).setProperties({
+display: group.id == null ? 'none' : 'flex',
+text: group.label,
+});
+this.wrongHitChild(cache, row, base + 1).setProperties({
+display: group.id == null ? 'none' : 'flex',
+backgroundColor: group.id == null ? 0 : WALL_TONE_PADS[group.id].color,
+});
+this.wrongHitChild(cache, row, base + 2).setProperties({
+display: group.id != null && names ? 'flex' : 'none',
+text: group.id == null ? '' : WALL_TONE_PADS[group.id].name,
+});
+});
+}
+
 private trackFlatLayout(value: number): void {
 const i = this.flatLayoutCursor++;
 if (this.flatLayoutValues[i] !== value) {
@@ -5391,17 +5527,21 @@ for (let i = 0; i < this.game.sequence.length; i++) {
 if (previous.sequence[i] !== this.game.sequence[i]) { sequenceChanged = true; break; }
 }
 }
+const wrongKey = this.wrongHit == null
+? ''
+: `${this.wrongHit.preceding.join(',')}|${this.wrongHit.expected}|${this.wrongHit.hit}`;
 const accessibilityChanged = this.accessibilityPanel !== panel || !previous ||
 previous.show !== show || previous.flat !== flat ||
 previous.active !== this.experienceActive || previous.caption !== caption ||
 previous.phase !== this.game.phase || previous.flow !== this.flowPhase || previous.status !== this.statusText ||
 previous.names !== names || previous.reveal !== this.economy.getHintRevealCount() ||
-previous.shown !== this.playbackShownCount || previous.listen !== this.economy.ownsListen() || sequenceChanged;
+previous.shown !== this.playbackShownCount || previous.listen !== this.economy.ownsListen() ||
+previous.wrong !== wrongKey || sequenceChanged;
 if (accessibilityChanged) {
 this.accessibilityPanel = panel;
 this.accessibilityState = { show, flat, active: this.experienceActive, caption,
 phase: this.game.phase, flow: this.flowPhase, status: this.statusText, names, sequence: [...this.game.sequence],
-reveal: this.economy.getHintRevealCount(), shown: this.playbackShownCount, listen: this.economy.ownsListen() };
+reveal: this.economy.getHintRevealCount(), shown: this.playbackShownCount, listen: this.economy.ownsListen(), wrong: wrongKey };
 if (panel && this.experienceActive) this.renderSequenceIcons(panel);
 // Bug fix (user report): the info row holds the Your Turn hint boxes; it
 // used to be hidden unless subtitles were on AND the session was immersive,
@@ -5492,8 +5632,12 @@ const seqVisible = this.experienceActive &&
 ((captionListening && this.economy.ownsListen()) ||
 (this.game.phase === 'input' && captionReveal > 0));
 // Same owner ask as the panel status: no Listen/Hint title before purchase;
-// the blank line keeps the strip height unchanged.
-const info = !this.experienceActive
+// the blank line keeps the strip height unchanged. A missed hit blanks the
+// label: the mismatch shows as color squares instead of words (owner 2026-11-15).
+const captionWrong = this.wrongHitVisible() ? this.wrongHit : null;
+const info = captionWrong != null
+? '\u00a0'
+: !this.experienceActive
 ? ''
 : this.game.phase === 'input'
 ? (captionReveal > 0 ? 'Hint:' : '\u00a0')
@@ -5505,6 +5649,30 @@ this.flatCaptions.replaceChildren();
 const line = document.createElement('div');
 Object.assign(line.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexWrap: 'wrap' });
 const label = document.createElement('span'); label.textContent = info; line.append(label);
+if (captionWrong) {
+const appendWrongSquare = (id: number) => {
+const square = document.createElement('span');
+Object.assign(square.style, { width: '16px', height: '16px', borderRadius: '2px', background: `#${WALL_TONE_PADS[id].color.toString(16).padStart(6, '0')}`, display: 'inline-block', flexShrink: '0' });
+square.setAttribute('aria-label', WALL_TONE_PADS[id].name);
+square.setAttribute('data-wronghit', '1');
+line.append(square);
+};
+const appendWrongWord = (text: string) => {
+const word = document.createElement('span');
+word.textContent = text;
+line.append(word);
+};
+for (const id of captionWrong.preceding) {
+appendWrongSquare(id);
+if (colorNamesEnabled()) appendWrongWord(WALL_TONE_PADS[id].name);
+}
+appendWrongWord('Expected:');
+appendWrongSquare(captionWrong.expected);
+if (colorNamesEnabled()) appendWrongWord(WALL_TONE_PADS[captionWrong.expected].name);
+appendWrongWord('Hit:');
+appendWrongSquare(captionWrong.hit);
+if (colorNamesEnabled()) appendWrongWord(WALL_TONE_PADS[captionWrong.hit].name);
+}
 if (seqVisible) for (let i = 0; i < this.game.sequence.length; i++) {
 if (captionListening && i >= this.playbackShownCount) break;
 const unknown = captionYourTurn && i >= captionReveal;
