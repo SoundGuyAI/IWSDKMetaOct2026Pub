@@ -29,7 +29,9 @@ import { Euler, Quaternion } from 'three';
 import { unlockSpeechFromGesture } from '../wall-tones/speech.js';
 import {
   DEFAULT_HEAD_GESTURE_CONFIG,
+  FLAT_HEAD_GESTURE_CONFIG,
   HeadNodShakeDetector,
+  type HeadGestureConfig,
   type YesNoAnswer,
 } from './head-gesture.js';
 import { playLabAnswerCue } from './lab-cues.js';
@@ -172,10 +174,9 @@ export class NodLabSystem extends createSystem({}) {
   private readonly detector = new HeadNodShakeDetector();
   // Flat-mode gestures must be true out-and-back swings: a one-way drag
   // toward the panel buttons never completes a cycle.
-  private readonly flatDetector = new HeadNodShakeDetector({
-    ...DEFAULT_HEAD_GESTURE_CONFIG,
-    returnToBaselineRad: DEFAULT_HEAD_GESTURE_CONFIG.activationRad,
-  });
+  private readonly flatDetector = new HeadNodShakeDetector(
+    FLAT_HEAD_GESTURE_CONFIG,
+  );
   private readonly pointerTracker = new PointerGestureTracker();
   private readonly tiltTracker = new TiltBaselineTracker();
   private tiltState: 'off' | 'on' | 'denied' = 'off';
@@ -193,6 +194,7 @@ export class NodLabSystem extends createSystem({}) {
   private currentLine: LabScriptLine | null = null;
   private retryLoopCount = 0;
   private lastAnswer: YesNoAnswer | null = null;
+  private lastResponseWasNoInput = false;
   private lastAmplitudeDeg: number | null = null;
   private answerCount = 0;
   private voiceStatus: LabVoiceStatus | null = null;
@@ -507,6 +509,7 @@ export class NodLabSystem extends createSystem({}) {
     this.detector.setEnabled(false);
     this.flatDetector.setEnabled(false);
     this.noInputCount += 1;
+    this.lastResponseWasNoInput = true;
     this.renderPanel();
     const noInputLines = this.script.noInput ?? NO_INPUT_LINES;
     const line =
@@ -554,6 +557,7 @@ export class NodLabSystem extends createSystem({}) {
     this.phase = 'responding';
     this.detector.setEnabled(false);
     this.lastAnswer = answer;
+    this.lastResponseWasNoInput = false;
     this.answerCount += 1;
     this.renderPanel();
     const { branch, nextPromptId } = labAnswerFollowUp(prompt, answer);
@@ -675,6 +679,12 @@ export class NodLabSystem extends createSystem({}) {
     return line?.text ?? '';
   }
 
+  private activeGestureConfig(): HeadGestureConfig {
+    return this.isImmersive()
+      ? DEFAULT_HEAD_GESTURE_CONFIG
+      : FLAT_HEAD_GESTURE_CONFIG;
+  }
+
   private renderPanel(overrideLine?: string): void {
     if (!this.active) {
       return;
@@ -688,7 +698,9 @@ export class NodLabSystem extends createSystem({}) {
         : this.hasTiltInput()
           ? 'Listening. Tilt forward/back for yes, left/right for no - or tap the buttons.'
           : 'Listening. Move your mouse up or down for yes, left or right for no - or use the buttons (Y/N).',
-      responding: 'Answer received.',
+      responding: this.lastResponseWasNoInput
+        ? 'No movement heard. Trying again.'
+        : 'Answer received.',
       done: 'Link check complete. Cypher out.',
     };
     this.statusText?.setProperties({
@@ -706,8 +718,8 @@ export class NodLabSystem extends createSystem({}) {
         `pitch ${this.pitchDeg.toFixed(1)} deg | yaw ${this.yawDeg.toFixed(1)} deg | ` +
         `detector ${this.isImmersive() ? (this.detector.isEnabled ? 'armed' : 'off') : this.flatDetector.isEnabled ? 'flat-armed' : 'flat-off'} | ` +
         `last answer ${this.lastAnswer ?? '-'} (${amp}) | ` +
-        `thresholds act ${(DEFAULT_HEAD_GESTURE_CONFIG.activationRad * 180 / Math.PI).toFixed(0)} deg ` +
-        `peak ${(DEFAULT_HEAD_GESTURE_CONFIG.minPeakRad * 180 / Math.PI).toFixed(0)} deg`,
+        `thresholds act ${(this.activeGestureConfig().activationRad * 180 / Math.PI).toFixed(0)} deg ` +
+        `peak ${(this.activeGestureConfig().minPeakRad * 180 / Math.PI).toFixed(0)} deg`,
     });
     this.voiceText?.setProperties({ text: this.voiceStatusLine() });
     this.startLabel?.setProperties({
