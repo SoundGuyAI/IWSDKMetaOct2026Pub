@@ -511,7 +511,12 @@ export class RiftLabSystem extends createSystem({
         this.game.stopBeam();
       }
     };
+    // Touch drags must reach us as pointer moves: without touch-action none
+    // the browser claims the gesture and the drag never follows the finger.
+    const prevTouchAction = canvas.style.touchAction;
+    canvas.style.touchAction = 'none';
     canvas.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('pointercancel', onPointerUp);
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
 
@@ -529,6 +534,8 @@ export class RiftLabSystem extends createSystem({
       canvas.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+      canvas.style.touchAction = prevTouchAction;
       window.removeEventListener('experience-mode-changed', onModeChange);
       this.setActive(false);
       this.world.scene.remove(this.root);
@@ -1091,11 +1098,20 @@ export class RiftLabSystem extends createSystem({
         return;
       }
     }
+    // Aim through the rendered camera onto the rift plane so the beam lands
+    // where the finger or cursor actually is (a fixed-extent guess missed
+    // rifts on portrait screens).
     const target = new Vector3(
       this.aimNdc.x * 2.2,
       1.6 + this.aimNdc.y * 1.2,
       -2.5,
     );
+    this.desktopNdc.set(this.aimNdc.x, this.aimNdc.y);
+    this.world.camera.updateMatrixWorld();
+    this.desktopRay.setFromCamera(this.desktopNdc, this.world.camera);
+    if (this.desktopRay.ray.intersectPlane(this.flatInputPlane, this.flatInputPoint)) {
+      target.copy(this.flatInputPoint);
+    }
     out.direction.copy(target.sub(out.origin)).normalize();
   }
 
