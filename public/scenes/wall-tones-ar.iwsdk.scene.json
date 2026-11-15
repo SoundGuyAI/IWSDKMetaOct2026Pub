@@ -24,13 +24,22 @@
       "components": { "RayInteractable": {} },
       "children": [
         {
-          "id": "nod-lab-entry-panel",
-          "name": "Nod Lab Entry",
-          "content": { "type": "asset", "asset": "nod-lab-entry-panel" },
+          "id": "lab-entry-panel",
+          "name": "Lab Entry",
+          "content": { "type": "asset", "asset": "lab-entry-panel" },
+
           "transform": { "position": [4.15, 0, 0.05], "scale": 0.7 },
           "components": { "RayInteractable": {} }
         }
       ]
+    },
+    {
+      "id": "lab-menu-panel",
+      "name": "Lab Menu Panel",
+      "content": { "type": "asset", "asset": "lab-menu-panel" },
+
+      "transform": { "position": [0, 1.78, -2.75], "scale": 0.34 },
+      "components": { "RayInteractable": {} }
     },
     {
       "id": "nod-lab-panel",
