@@ -108,6 +108,8 @@ const TOUCH_ORB_GRAB_RADIUS_PX = 64;
  * Adult index finger is 16-20 mm wide (MIT Touch Lab, 2003); the dragged
  * cloud is 50% wider than the 20 mm upper end, at ~6.0 CSS px/mm on an
  * iPhone 15 Pro: radius = 20 * 1.5 / 2 * 6.0 = 90 px. */
+/** Distance of the dragged cloud from the camera along the finger ray. */
+const TOUCH_CLOUD_DISTANCE_M = 1.2;
 const FINGERTIP_MM = 20;
 const CSS_PX_PER_MM = 6.0;
 const TOUCH_GLOW_RADIUS_PX = (FINGERTIP_MM * 1.5 * CSS_PX_PER_MM) / 2;
@@ -1137,9 +1139,11 @@ export class RiftLabSystem extends createSystem({
       this.desktopNdc.set(this.aimNdc.x, this.aimNdc.y);
       this.world.camera.updateMatrixWorld();
       this.desktopRay.setFromCamera(this.desktopNdc, this.world.camera);
-      if (this.desktopRay.ray.intersectPlane(this.pointerNotePlane, this.touchOrbPoint)) {
-        return this.touchOrbPoint;
-      }
+      // A fixed distance along the finger ray keeps the cloud in front of the
+      // viewer. The far note plane put it under the floor near the screen
+      // bottom (the opaque floor hid it while the finger rested on the orb).
+      this.desktopRay.ray.at(TOUCH_CLOUD_DISTANCE_M, this.touchOrbPoint);
+      return this.touchOrbPoint;
     }
     if (!this.isImmersive() && !this.flatTouchInput && !this.dragging) {
       // Desktop notes orbit the actual cursor and depart from it, while
