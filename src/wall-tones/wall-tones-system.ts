@@ -189,6 +189,7 @@ type WrongHitRowCache = {
 row: UIKit.Container | null;
 key: string;
 children: (UIKit.Container | UIKit.Text)[];
+groupChildren: { label: UIKit.Text; square: UIKit.Container; name: UIKit.Text }[];
 };
 
 const FLAT_BACKDROP_NODE_IDS = [
@@ -475,8 +476,8 @@ private sequenceIconRow: UIKit.Container | null = null;
  * squares instead of color words - up to the last 10 notes leading up to the
  * miss, then Expected:/Hit: with their squares. */
 private wrongHit: { hit: number; expected: number; preceding: number[] } | null = null;
-private readonly wrongHitPanelCache: WrongHitRowCache = { row: null, key: '', children: [] };
-private readonly wrongHitPopupCache: WrongHitRowCache = { row: null, key: '', children: [] };
+private readonly wrongHitPanelCache: WrongHitRowCache = { row: null, key: '', children: [], groupChildren: [] };
+private readonly wrongHitPopupCache: WrongHitRowCache = { row: null, key: '', children: [], groupChildren: [] };
 private lastWrongHitRowVisible = false;
 /** Setup HUD is world-anchored; look-away past a threshold re-snaps it. */
 private panelWorldAnchored = false;
@@ -5357,12 +5358,12 @@ this.reconcileWrongHitRow(this.wrongHitPopupCache, panel, 'gameover-wronghit-row
 this.lastWrongHitRowVisible = this.wrongHitVisible();
 }
 
-/** Child kinds at fixed plan indices: preceding square/name pairs, then the
- * Expected: and Hit: label/square/name groups. */
-private wrongHitChildKind(index: number): 'square' | 'text' {
+/** Child kinds at fixed plan indices: preceding square/name pairs, then one
+ * non-breaking group container each for Expected: and Hit: (label+square+name
+ * never wrap apart - reviewer pass 2026-11-15). */
+private wrongHitChildKind(index: number): 'square' | 'text' | 'group' {
 if (index < WRONG_HIT_PRECEDING_MAX * 2) return index % 2 === 0 ? 'square' : 'text';
-const offset = index - WRONG_HIT_PRECEDING_MAX * 2;
-return offset === 1 || offset === 4 ? 'square' : 'text';
+return 'group';
 }
 
 /** Children are created once in ascending index order so the row layout order
@@ -5373,9 +5374,12 @@ row: UIKit.Container,
 index: number,
 ): UIKit.Container | UIKit.Text {
 while (cache.children.length <= index) {
+const kind = this.wrongHitChildKind(cache.children.length);
 const child =
-this.wrongHitChildKind(cache.children.length) === 'square'
+kind === 'square'
 ? new UIKit.Container({ width: 16, height: 16, borderRadius: 2, flexShrink: 0 })
+: kind === 'group'
+? new UIKit.Container({ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 })
 : new UIKit.Text({ fontSize: 15, color: 0xffffff });
 row.add(child);
 cache.children.push(child);
@@ -5400,6 +5404,7 @@ if (cache.row === row && cache.key === key) return;
 if (cache.row !== row) {
 cache.row = row;
 cache.children.length = 0;
+cache.groupChildren.length = 0;
 }
 cache.key = key;
 row.setProperties({ display: wrong != null ? 'flex' : 'none' });
@@ -5419,16 +5424,23 @@ const groups = [
 { label: 'Hit:', id: wrong?.hit },
 ];
 groups.forEach((group, g) => {
-const base = WRONG_HIT_PRECEDING_MAX * 2 + g * 3;
-this.wrongHitChild(cache, row, base).setProperties({
-display: group.id == null ? 'none' : 'flex',
-text: group.label,
-});
-this.wrongHitChild(cache, row, base + 1).setProperties({
-display: group.id == null ? 'none' : 'flex',
+const container = this.wrongHitChild(cache, row, WRONG_HIT_PRECEDING_MAX * 2 + g) as UIKit.Container;
+container.setProperties({ display: group.id == null ? 'none' : 'flex' });
+if (cache.groupChildren.length <= g) {
+const label = new UIKit.Text({ fontSize: 15, color: 0xffffff });
+const square = new UIKit.Container({ width: 16, height: 16, borderRadius: 2, flexShrink: 0 });
+const name = new UIKit.Text({ fontSize: 15, color: 0xffffff });
+container.add(label);
+container.add(square);
+container.add(name);
+cache.groupChildren.push({ label, square, name });
+}
+const inner = cache.groupChildren[g]!;
+inner.label.setProperties({ text: group.label });
+inner.square.setProperties({
 backgroundColor: group.id == null ? 0 : WALL_TONE_PADS[group.id].color,
 });
-this.wrongHitChild(cache, row, base + 2).setProperties({
+inner.name.setProperties({
 display: group.id != null && names ? 'flex' : 'none',
 text: group.id == null ? '' : WALL_TONE_PADS[group.id].name,
 });
@@ -5666,12 +5678,29 @@ for (const id of captionWrong.preceding) {
 appendWrongSquare(id);
 if (colorNamesEnabled()) appendWrongWord(WALL_TONE_PADS[id].name);
 }
-appendWrongWord('Expected:');
-appendWrongSquare(captionWrong.expected);
-if (colorNamesEnabled()) appendWrongWord(WALL_TONE_PADS[captionWrong.expected].name);
-appendWrongWord('Hit:');
-appendWrongSquare(captionWrong.hit);
-if (colorNamesEnabled()) appendWrongWord(WALL_TONE_PADS[captionWrong.hit].name);
+// Each label+square(+name) is one non-breaking unit so a wrap never
+// separates a label from its square (reviewer pass 2026-11-15).
+const appendWrongGroup = (labelText: string, id: number, groupName: string) => {
+const group = document.createElement('span');
+Object.assign(group.style, { display: 'inline-flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' });
+group.setAttribute('data-wronghit-group', groupName);
+const groupLabel = document.createElement('span');
+groupLabel.textContent = labelText;
+group.append(groupLabel);
+const square = document.createElement('span');
+Object.assign(square.style, { width: '16px', height: '16px', borderRadius: '2px', background: `#${WALL_TONE_PADS[id].color.toString(16).padStart(6, '0')}`, display: 'inline-block', flexShrink: '0' });
+square.setAttribute('aria-label', WALL_TONE_PADS[id].name);
+square.setAttribute('data-wronghit', '1');
+group.append(square);
+if (colorNamesEnabled()) {
+const word = document.createElement('span');
+word.textContent = WALL_TONE_PADS[id].name;
+group.append(word);
+}
+line.append(group);
+};
+appendWrongGroup('Expected:', captionWrong.expected, 'expected');
+appendWrongGroup('Hit:', captionWrong.hit, 'hit');
 }
 if (seqVisible) for (let i = 0; i < this.game.sequence.length; i++) {
 if (captionListening && i >= this.playbackShownCount) break;
