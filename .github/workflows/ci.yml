@@ -125,7 +125,7 @@ jobs:
           - shard: 1
             files: tests/e2e/wall-tones.economy.spec.ts
           - shard: 2
-            files: tests/e2e/wall-tones.desktop.spec.ts tests/e2e/wall-tones.desktop.pointer.spec.ts
+            files: tests/e2e/wall-tones.desktop.spec.ts tests/e2e/wall-tones.desktop.pointer.spec.ts tests/e2e/wall-tones.settings-rows.spec.ts
           - shard: 3
             files: tests/e2e/wall-tones.store-tree.spec.ts
           - shard: 4
@@ -219,6 +219,7 @@ jobs:
             tests/e2e/wall-tones.misc.spec.ts \
             tests/e2e/wall-tones.mute.spec.ts \
             tests/e2e/wall-tones.polish.spec.ts \
+            tests/e2e/wall-tones.settings-rows.spec.ts \
             tests/e2e/wall-tones.store-tree.spec.ts \
             tests/e2e/wall-tones.xr-entry.spec.ts \
             | sort > assigned.txt

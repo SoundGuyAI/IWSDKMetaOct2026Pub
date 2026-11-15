@@ -402,18 +402,41 @@ export class AppModeSystem extends createSystem({}) {
       setDisplay('accessibility-dialog', 'none');
       setDisplay('settings-dialog', 'flex');
     });
-    panel.getElementById('hearing-subtitles-checkbox')?.setProperties({
-      checked: hearingSubtitlesEnabled(),
-      onCheckedChange: setHearingSubtitles,
-    } as never);
-    panel.getElementById('color-names-checkbox')?.setProperties({
-      checked: colorNamesEnabled(),
-      onCheckedChange: setColorNames,
-    } as never);
-    panel.getElementById('voices-off-checkbox')?.setProperties({
-      checked: voicesOffEnabled(),
-      onCheckedChange: setVoicesOff,
-    } as never);
+    // Backlog 78: the whole settings row toggles, not just the checkbox.
+    // The checkbox keeps its own click (controlled: it only calls
+    // onCheckedChange) and stops the bubble so the row handler below does
+    // not toggle a second time.
+    const bindToggleRow = (
+      rowId: string,
+      checkboxId: string,
+      isEnabled: () => boolean,
+      set: (value: boolean) => void,
+    ) => {
+      const checkbox = panel.getElementById(checkboxId);
+      checkbox?.setProperties({
+        checked: isEnabled(),
+        onCheckedChange: set,
+      } as never);
+      checkbox?.addEventListener('click', (event) => {
+        event.stopPropagation?.();
+      });
+      panel
+        .getElementById(rowId)
+        ?.addEventListener('click', () => set(!isEnabled()));
+    };
+    bindToggleRow(
+      'hearing-subtitles-row',
+      'hearing-subtitles-checkbox',
+      hearingSubtitlesEnabled,
+      setHearingSubtitles,
+    );
+    bindToggleRow(
+      'color-names-row',
+      'color-names-checkbox',
+      colorNamesEnabled,
+      setColorNames,
+    );
+    bindToggleRow('voices-off-row', 'voices-off-checkbox', voicesOffEnabled, setVoicesOff);
     // Debug stat reset: two-step confirm, clears progression stats only.
     let resetArmed = false;
     let resetDisarm: number | undefined;
