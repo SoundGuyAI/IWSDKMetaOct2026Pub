@@ -14,6 +14,7 @@ import {
   GAZE_HEAD_DIRECTED_AFTER_S,
   GAZE_SEPARATION_DEG,
 } from '../../src/wall-tones/gaze-source.js';
+import { gazePinchSettingsVisible } from '../../src/enter-xr-visibility.js';
 
 // Backlog 77+79: the head-gaze + pinch pad press path is optional
 // (Settings > Accessibility) and defaults OFF (Oded, 2026-11-15 02:34).
@@ -88,6 +89,35 @@ test('gaze+pinch is one explicit three-way mode, default off, no silent switchin
   } finally {
     Object.assign(globalThis, { window: previousWindow });
   }
+});
+
+test('gaze settings rows are VR-headset only, hidden on PC and phone', () => {
+  // Oded, 2026-11-15: the two gaze options do not belong on PC or iPhone.
+  expect(
+    gazePinchSettingsVisible(
+      'Mozilla/5.0 (Linux; Android 10; Quest 3) AppleWebKit/537.36 OculusBrowser/37.0',
+    ),
+  ).toBe(true);
+  expect(
+    gazePinchSettingsVisible(
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 19_0 like Mac OS X) AppleWebKit/605.1.15 Version/19.0 Safari/604.1',
+    ),
+  ).toBe(false);
+  expect(
+    gazePinchSettingsVisible(
+      'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/131.0 Mobile Safari/537.36',
+    ),
+  ).toBe(false);
+  expect(
+    gazePinchSettingsVisible(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36',
+    ),
+  ).toBe(false);
+  expect(gazePinchSettingsVisible('')).toBe(false);
+  const appMode = readFileSync('src/app-mode.ts', 'utf8');
+  expect(appMode).toContain('gazePinchSettingsVisible');
+  expect(appMode).toContain("setDisplay('head-gaze-pinch-row'");
+  expect(appMode).toContain("setDisplay('native-gaze-pinch-row'");
 });
 
 test('gaze source classification names each real supply state accurately', () => {
