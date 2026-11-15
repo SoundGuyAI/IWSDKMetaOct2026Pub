@@ -28,6 +28,7 @@ interface DebugSnap {
   storeOpen: boolean;
   sequenceRowVisible: boolean;
   controlRowVisible: boolean;
+  autoplayRowOpacity: number;
   sequenceArrowAt: number;
   sequenceBoxesShown: number;
   flatAwaitingStart: boolean;
@@ -60,6 +61,7 @@ const readState = (page: Page): Promise<DebugSnap> =>
       storeOpen: d.storeOpen,
       sequenceRowVisible: d.sequenceRowVisible,
       controlRowVisible: d.controlRowVisible,
+      autoplayRowOpacity: d.autoplayRowOpacity,
       sequenceArrowAt: d.sequenceArrowAt,
       sequenceBoxesShown: d.sequenceBoxesShown,
       flatAwaitingStart: d.flatAwaitingStart,
@@ -200,7 +202,8 @@ test.describe('Wall Tones store skill tree', () => {
     test.slow();
     await abortSpeech(page);
     await bootWallTones(page, true);
-    // Listen 30 + Hint 25+50+100+200 + Autoplay L1 250 = 655.
+    // Listen 30 + Hint 25+50+100+200 + Autoplay L1 2500 (temporary, owner
+    // 2026-11-15 23:49) = 2905.
     await grantBars(page, 5410);
     await dbg(page, 'toggleStore');
     await dbg(page, 'buyListen');
@@ -219,19 +222,25 @@ test.describe('Wall Tones store skill tree', () => {
     expect(snap.hintLevel).toBe(4);
     expect(snap.playLevel).toBe(4);
     expect(snap.autoplayLevel).toBe(1);
-    expect(snap.bars).toBe(5);
+    expect(snap.bars).toBe(2505);
 
     // Owner 2026-11-15: the owned Autoplay control toggles it on/off (with
     // the engaged/disengaged voice notices, silent in tests). Off means no
     // AutoPlay entry; back on resumes it.
     let snap0 = await readState(page);
     expect(snap0.autoplayEnabled).toBe(true);
+    expect(snap0.autoplayRowOpacity).toBe(1);
+    // Regression (user report 2026-11-15 23:35: "grayed out though I hit
+    // AutoPlay enabled"): the toggle changed no economy key field, so the
+    // row never re-synced and the opacity froze. It must follow the toggle.
     await dbg(page, 'pressAutoplayControl');
     snap0 = await readState(page);
     expect(snap0.autoplayEnabled).toBe(false);
+    expect(snap0.autoplayRowOpacity).toBe(0.6);
     await dbg(page, 'pressAutoplayControl');
     snap0 = await readState(page);
     expect(snap0.autoplayEnabled).toBe(true);
+    expect(snap0.autoplayRowOpacity).toBe(1);
     const barsTotalBeforeAutoplay = snap0.barsTotal;
     await submitPad(page, 0); // start tap
     // Owner feedback 2026-11-15 ("auto play doesn't play the pattern all
