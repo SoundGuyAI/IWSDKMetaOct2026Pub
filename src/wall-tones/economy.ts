@@ -52,7 +52,12 @@ export const LISTEN_COST = 30;
 // Provisional test value (Oded 2026-11-12 11:49: "or maybe no. like 250. we'll
 // balance it later." - supersedes his 500 a minute earlier; balancing comes after
 // testing, so later levels keep the existing doubling for now).
-export const AUTOPLAY_BASE_COSTS: readonly number[] = [5000];
+// Temporary repricing (Oded 2026-11-15 23:44 "Can you make auto play cost 2000
+// for now ?", settled 23:51 after his 23:49 "just the first level or maybe ...
+// 2500" and a follow-up ladder readout: asked to confirm 2500/5000/10000/20000
+// he replied "What you just said is correct with the order, not the thing you
+// heard by mistake."): the ladder base drops 5000 -> 2500 and keeps doubling.
+export const AUTOPLAY_BASE_COSTS: readonly number[] = [2500];
 export const AUTOPLAY_COST_GROWTH = 2;
 export const AUTOPLAY_NOTES_PER_LEVEL = 5;
 /** Gate chain (owner voice 2026-11-13): Hint L4 unlocks Play L1; Play L4
@@ -736,4 +741,4 @@ export class WallTonesEconomy {
     writeStringArray(FIRST_FLAGS_KEY, [...this.firstFlags]);
     return true;
   }
-}
+      }
