@@ -2971,12 +2971,15 @@ this.setBlinkCuePad(null);
 await this.wait(NOTE_GAP_S);
 }
 // Autoplay store modifier (store test values, balance TBD): after
-// the Listen playback, the game plays the first level*5 notes for the
-// player, capped one short of the full pattern so at least the last note
-// stays manual. Auto-played notes pay no per-press Bars (no player press).
+// the Listen playback, the game enters the first level*5 notes for the
+// player. Owner feedback 2026-11-15 ("in auto play it doesn't play the
+// pattern all the way"): Autoplay may enter the final note too; when its
+// note count covers the whole pattern the round completes through the
+// exact manual-finish path, matching the Play modifier. Auto-entered
+// notes pay no per-press Bars (no player press).
 const autoCount = Math.min(
 this.economy.getAutoplayNoteCount(),
-this.game.sequence.length - 1,
+this.game.sequence.length,
 );
 if (autoCount > 0) {
 this.statusText = `Auto play: first ${autoCount}`;
@@ -2997,9 +3000,22 @@ await playPadTone(padId);
 await this.wait(NOTE_GAP_S + BLINK_HOLD_S + 0.2);
 flashPad(pad, false);
 this.setBlinkCuePad(null);
+}
 this.enteredByModifier.add(index);
 this.arrowSeqIndex = index;
 this.renderPanel();
+// Each auto-entered note advances the pattern exactly like a correct
+// press (no per-press Bars: there is no player press). Entering the
+// final note completes the round through the exact manual-finish path.
+const previousBest = this.game.bestStreak;
+const completed = this.game.onCorrectInput();
+if (this.game.bestStreak > previousBest) {
+this.economy.saveBestStreak(this.game.bestStreak);
+this.recordBeatenThisAttempt = true;
+}
+if (completed) {
+this.finishCompletedPattern(padId, previousBest);
+return;
 }
 await this.wait(NOTE_GAP_S);
 }
@@ -3010,7 +3026,6 @@ return;
 this.playbackKind = null;
 this.playbackCursor = -1;
 this.game.phase = 'input';
-this.game.inputStep = autoCount;
 this.inputNeedsClear = true;
 this.lastInputAt = performance.now() / 1000;
 this.idleReplayQueued = false;
