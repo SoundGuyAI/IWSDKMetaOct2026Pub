@@ -3992,15 +3992,18 @@ this.world
 ?.setProperties({ display: visible ? 'flex' : 'none' });
 }
 
-private setRepeatUiVisible(_visible: boolean): void {
+private setRepeatUiVisible(visible: boolean): void {
 // Item 67: the single Repeat button is now the control row (Repeat / Play
 // / Autoplay / Speed / Multiplier); visibility moves to the row.
 this.world
 .getSceneObject<UIKitMLAsset>('wall-tones-panel')
 ?.getElementById('control-row')
 // Owner 2026-11-14: the modifier buttons live in the game menu from the
-// start (locked ones greyed) and are not added when a run begins.
-?.setProperties({ display: 'flex' });
+// start (locked ones greyed) and are not added when a run begins - the
+// run-start paths below all pass true. Owner 2026-11-15: they must NOT
+// appear on the room-setup panel (choose-mode / scanning / wall-picking /
+// air-placement), so the false callers here stay honored.)
+?.setProperties({ display: visible ? 'flex' : 'none' });
 }
 
 private setRescanUiVisible(visible: boolean): void {
