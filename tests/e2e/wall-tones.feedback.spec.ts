@@ -111,6 +111,13 @@ for (const improvedBest of [false, true]) {
       await expect(page.locator('#wall-tones-flat-subtitles [data-wronghit]')).toHaveCount(expectedPreceding.length + 2);
       await expect(page.locator('#wall-tones-flat-subtitles')).toContainText('Expected:');
       await expect(page.locator('#wall-tones-flat-subtitles')).toContainText('Hit:');
+      // Each label+square pair is one non-breaking unit so a wrap never
+      // separates a label from its square (reviewer pass 2026-11-15).
+      for (const groupName of ['expected', 'hit']) {
+        const group = page.locator(`#wall-tones-flat-subtitles [data-wronghit-group="${groupName}"]`);
+        await expect(group).toHaveCount(1);
+        await expect(group.locator('[data-wronghit]')).toHaveCount(1);
+      }
     }
     await page.screenshot({ path: testInfo.outputPath(`missed-hit-${improvedBest ? 'best' : 'first'}.png`) });
     await page.evaluate((retry) => {
