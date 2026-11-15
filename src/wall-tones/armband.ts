@@ -17,10 +17,13 @@ export function setArmbandHand(hand: ArmbandHand): void {
 export type ArmbandDisplayMode = 'band' | 'projector';
 const MODE_KEY = 'wall-tones-armband-mode';
 let sessionMode: ArmbandDisplayMode | undefined;
+// Nov 16 user feedback: the wristband misbehaves on Quest and is hidden for
+// now; the palm projector is the armband display. The stored preference is
+// ignored on purpose so a stale 'band' value cannot resurrect it; an explicit
+// session override (tests, or a future re-enable) still wins. Non-destructive:
+// the band path, its settings row and this setter all stay in place.
 export function armbandDisplayMode(): ArmbandDisplayMode {
-  if (sessionMode) return sessionMode;
-  try { return localStorage.getItem(MODE_KEY) === 'projector' ? 'projector' : 'band'; }
-  catch { return 'band'; }
+  return sessionMode ?? 'projector';
 }
 export function setArmbandDisplayMode(mode: ArmbandDisplayMode): void {
   sessionMode = mode;
