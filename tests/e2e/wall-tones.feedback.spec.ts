@@ -87,9 +87,10 @@ for (const improvedBest of [false, true]) {
       return { expected, hit: (expected + 1) % 4, inputStep: d.inputStep, sequence: [...d.sequence] };
     });
     const names = ['green', 'red', 'blue', 'yellow'];
-    // Owner 2026-11-15: squares instead of words; a history row of up to the
-    // last 10 notes, then two comparison rows (Expected vs Hit) of up to 5
-    // notes, the final position differing - e.g. right RRRBG vs played RRRBY.
+    // Owner 2026-11-15 18:35: one compact row - Expected and Hit side by
+    // side, each with up to 5 notes, the final position differing (right
+    // RRRBG vs played RRRBY); the pattern/history row no longer shows after
+    // a failure so the panel stays small on a phone.
     const expectedPreceding = mismatch.sequence.slice(Math.max(0, mismatch.inputStep - 10), mismatch.inputStep);
     const expectedLeadIn = expectedPreceding.slice(-4);
     const beforeFailure = clips.length;
@@ -106,24 +107,23 @@ for (const improvedBest of [false, true]) {
     await page.screenshot({ path: testInfo.outputPath(`missed-hit-line-${improvedBest ? 'best' : 'first'}.png`) });
     await expect.poll(() => page.evaluate(() => (window as any).__wallTonesDebug.gameOverOpen), { timeout: 30000 }).toBe(true);
     expect(await page.evaluate(() => (window as any).__wallTonesDebug.wrongHitRowVisible)).toBe(true);
-    // Owner 2026-11-15: in Game Over the Hit row sits on its own line below
-    // the Expected row.
+    // Owner 2026-11-15 18:35: in Game Over the Expected and Hit groups share
+    // one compact line, Hit after Expected.
     const rowTops = await page.evaluate(() => (window as any).__wallTonesDebug.wrongHitPopupRowTops);
     expect(rowTops).not.toBeNull();
-    expect(rowTops.hitTop).toBeGreaterThan(rowTops.expectedTop);
+    expect(Math.abs(rowTops.hitTop - rowTops.expectedTop)).toBeLessThanOrEqual(1);
+    expect(rowTops.hitLeft).toBeGreaterThan(rowTops.expectedLeft);
     const failureClips = clips.slice(beforeFailure);
     expect(failureClips.some(url => /\/wrong-[1-5]\.mp3/.test(url))).toBe(true);
     expect(failureClips.some(url => /\/(cheer|new-best|milestone)/.test(url))).toBe(false);
     if (improvedBest) {
-      // History row plus the two comparison rows.
-      await expect(page.locator('#wall-tones-flat-subtitles [data-wronghit]')).toHaveCount(expectedPreceding.length + (expectedLeadIn.length + 1) * 2);
+      // One comparison line: an Expected group and a Hit group, each with its
+      // lead-in plus the differing final note (owner 2026-11-15 18:35). No
+      // history/pattern row after a failure.
+      await expect(page.locator('#wall-tones-flat-subtitles [data-wronghit]')).toHaveCount((expectedLeadIn.length + 1) * 2);
       await expect(page.locator('#wall-tones-flat-subtitles')).toContainText('Expected:');
       await expect(page.locator('#wall-tones-flat-subtitles')).toContainText('Hit:');
-      const historyRow = page.locator('#wall-tones-flat-subtitles [data-wronghit-row="history"]');
-      await expect(historyRow).toHaveCount(1);
-      await expect(historyRow.locator('[data-wronghit]')).toHaveCount(expectedPreceding.length);
-      // Two comparison rows, each with its lead-in plus the differing final
-      // note (owner 2026-11-15: right pattern vs what was played).
+      await expect(page.locator('#wall-tones-flat-subtitles [data-wronghit-row="history"]')).toHaveCount(0);
       for (const rowName of ['expected', 'hit']) {
         const row = page.locator(`#wall-tones-flat-subtitles [data-wronghit-row="${rowName}"]`);
         await expect(row).toHaveCount(1);
@@ -139,24 +139,20 @@ for (const improvedBest of [false, true]) {
         page.locator(`#wall-tones-flat-subtitles [data-wronghit-row="${rowName}"] [data-wronghit]`).evaluateAll(
           squares => squares.map(square => square.getAttribute('aria-label')),
         );
-      await expect.poll(() => rowLabels('history')).toEqual(['red', 'red', 'red', 'blue']);
       await expect.poll(() => rowLabels('expected')).toEqual(['red', 'red', 'red', 'blue', 'green']);
       await expect.poll(() => rowLabels('hit')).toEqual(['red', 'red', 'red', 'blue', 'yellow']);
-      // No ellipsis when no earlier notes are hidden.
+      // No ellipsis: the compact failure line has no prefix slots.
       await expect(page.locator('#wall-tones-flat-subtitles')).not.toContainText('…');
       expect(await page.evaluate(() => (window as any).__wallTonesDebug.wrongHitTruncated)).toBe(false);
-      // Truncated rendering, injected: the rows read the same captured-miss
-      // state. Owner 2026-11-15: the history row takes a leading "…" only when
-      // the full chain is longer than 10; the comparison rows prefix their
-      // note sequence when earlier notes are hidden (5 vs 10 and its exact
-      // prefix policy are still open).
+      // Longer captured chains render the same single comparison line - no
+      // history row, no ellipsis (owner 2026-11-15 18:35).
       await page.evaluate(() => {
         const d = (window as any).__wallTonesDebug;
         d.debugSetWrongHit({ hit: d.wrongHitHit, expected: d.wrongHitExpected, preceding: [0, 1, 2, 3, 0, 1, 2, 3, 0, 1], truncated: true });
       });
       await expect.poll(() => page.evaluate(() => (window as any).__wallTonesDebug.wrongHitTruncated)).toBe(true);
-      await expect(page.locator('#wall-tones-flat-subtitles')).toContainText('…');
-      await expect(page.locator('#wall-tones-flat-subtitles [data-wronghit]')).toHaveCount(10 + 5 * 2);
+      await expect(page.locator('#wall-tones-flat-subtitles')).not.toContainText('…');
+      await expect(page.locator('#wall-tones-flat-subtitles [data-wronghit]')).toHaveCount(5 * 2);
       await page.evaluate((preceding) => {
         const d = (window as any).__wallTonesDebug;
         d.debugSetWrongHit({ hit: d.wrongHitHit, expected: d.wrongHitExpected, preceding, truncated: false });
