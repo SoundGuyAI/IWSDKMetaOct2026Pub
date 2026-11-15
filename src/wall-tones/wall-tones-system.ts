@@ -483,6 +483,7 @@ private readonly sequenceCueNames: UIKit.Text[] = [];
 /** Small '▼' markers: one per square, shown only on the current/last
  * auto-entered note (owner 2026-11-14 dim + arrow pick). */
 private readonly sequenceCueArrows: UIKit.Container[] = [];
+private readonly sequenceCueArrowImgs: UIKit.Image[] = [];
 private readonly flushSequenceIcons = () => {
 this.sequenceIconUpdateQueued = false;
 const panel = this.sequenceIconPendingPanel;
@@ -4349,20 +4350,9 @@ panel
 .getElementById<UIKit.Text>('wall-tones-current-streak')
 ?.setProperties({ text: String(this.game.streak) });
 // Index pointer (owner add 2026-11-13, original 2026-11-07: "shows where I
-// clicked in the pattern"): while owned, Your Turn shows the position.
-// Display wording is a proposal pending owner review.
-panel
-.getElementById<UIKit.Text>('index-indicator')
-?.setProperties({
-display: this.economy.ownsIndex()
-&& this.experienceActive
-&& this.flowPhase === 'playing'
-&& this.game.phase === 'input'
-&& this.game.sequence.length > 0
-? 'flex'
-: 'none',
-text: `Note ${Math.min(this.game.inputStep + 1, this.game.sequence.length)} of ${this.game.sequence.length}`,
-});
+// clicked in the pattern"): the hint-row arrow/dim/blink IS the indication.
+// Owner 2026-11-15 02:33 (physical preview): remove the "Note X of Y" text
+// line entirely - he does not want that line.
 this.renderEconomy(panel);
 }
 
@@ -5656,14 +5646,22 @@ row.setProperties({ display: visible ? 'flex' : 'none' });
 this.lastSequenceRowVisible = visible;
 for (let i = 0; i < this.game.sequence.length; i++) {
 if (!this.sequenceCueSquares[i]) {
-const arrow = new UIKit.Container({width: 12, height: 7, flexShrink: 0});
-arrow.add(new UIKit.Image({src: storeChipGlyphSrc('arrow', '#ffffff'), width: 12, height: 7}));
+// Owner 2026-11-15 (physical preview, 02:32): the arrow belongs ABOVE
+// its note, not inline between the squares. Each note gets a column
+// with a fixed-size arrow slot over the square, and the slot keeps its
+// space when empty so the row never shifts as the arrow moves.
+const arrowSlot = new UIKit.Container({width: 12, height: 7, flexShrink: 0});
+const arrowImg = new UIKit.Image({src: storeChipGlyphSrc('arrow', '#ffffff'), width: 12, height: 7}) as UIKit.Image;
+arrowSlot.add(arrowImg);
 const square = new UIKit.Container({width: 16, height: 16, borderRadius: 2, flexShrink: 0});
 const name = new UIKit.Text({fontSize: 15, color: 0xffffff});
-this.sequenceCueArrows.push(arrow);
+const note = new UIKit.Container({flexDirection: 'column', alignItems: 'center', flexShrink: 0});
+note.add(arrowSlot); note.add(square);
+this.sequenceCueArrows.push(arrowSlot);
+this.sequenceCueArrowImgs.push(arrowImg);
 this.sequenceCueSquares.push(square);
 this.sequenceCueNames.push(name);
-row.add(arrow); row.add(square); row.add(name);
+row.add(note); row.add(name);
 }
 }
 let shown = 0;
@@ -5686,7 +5684,7 @@ backgroundColor: id == null ? 0 : unknown ? 0x8a8f98
 : current && !blinkOn ? this.dimSequenceColor(WALL_TONE_PADS[id].color, 0.35)
 : WALL_TONE_PADS[id].color,
 });
-this.sequenceCueArrows[i]!.setProperties({
+this.sequenceCueArrowImgs[i]!.setProperties({
 display: i === arrowAt && id != null && !notYetPlayed ? 'flex' : 'none',
 });
 this.sequenceCueNames[i]!.setProperties({
