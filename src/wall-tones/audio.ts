@@ -334,6 +334,60 @@ export async function playErrorTone(): Promise<void> {
   await new Promise<void>((resolve) => window.setTimeout(resolve, 320));
 }
 
+/**
+ * Achievement celebration sound effects (user ask, November 14: "There
+ * should also be some audio for the achievement, some sound effects
+ * associated with it."). Synthesized, no assets, no spoken words - voice
+ * stays milestone-only. Beats follow the approved show clock: a burst
+ * sparkle at 0s, a ping as the letters cascade in (~0.45s), a soft falling
+ * whoosh as the badge flies to the Achievements button (~2.2s) and a warm
+ * landing ding with the gold pulse (~2.55s). Returns true when scheduled.
+ */
+export async function playAchievementCelebrationSfx(): Promise<boolean> {
+  const context = await ensureAudioRunning();
+  if (context == null) return false;
+  const t0 = context.currentTime + 0.03;
+  const chime = (
+    frequencyHz: number,
+    at: number,
+    durationS: number,
+    peak: number,
+    type: OscillatorType = 'sine',
+  ): void => {
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = type;
+    oscillator.frequency.setValueAtTime(frequencyHz, at);
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.exponentialRampToValueAtTime(peak, at + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + durationS);
+    oscillator.connect(gain).connect(context.destination);
+    oscillator.start(at);
+    oscillator.stop(at + durationS + 0.05);
+  };
+  // Burst: bright two-note sparkle (A5, E6).
+  chime(880, t0, 0.16, 0.2, 'triangle');
+  chime(1318.51, t0 + 0.07, 0.2, 0.18, 'triangle');
+  // Letter cascade ping (A6).
+  chime(1760, t0 + 0.45, 0.22, 0.12);
+  // Fly: gentle falling whoosh.
+  const whoosh = context.createOscillator();
+  const whooshGain = context.createGain();
+  whoosh.type = 'triangle';
+  whoosh.frequency.setValueAtTime(1150, t0 + 2.2);
+  whoosh.frequency.exponentialRampToValueAtTime(520, t0 + 2.2 + 0.42);
+  whooshGain.gain.setValueAtTime(0.0001, t0 + 2.2);
+  whooshGain.gain.exponentialRampToValueAtTime(0.07, t0 + 2.2 + 0.05);
+  whooshGain.gain.exponentialRampToValueAtTime(0.0001, t0 + 2.2 + 0.42);
+  whoosh.connect(whooshGain).connect(context.destination);
+  whoosh.start(t0 + 2.2);
+  whoosh.stop(t0 + 2.2 + 0.47);
+  // Landing with the gold pulse: warm ding (G6 + C7).
+  chime(1567.98, t0 + 2.55, 0.5, 0.16);
+  chime(2093, t0 + 2.55, 0.35, 0.08);
+  return true;
+}
+
 export function suspendAudioContext(): void {
   void sharedContext?.close();
   sharedContext = null;
