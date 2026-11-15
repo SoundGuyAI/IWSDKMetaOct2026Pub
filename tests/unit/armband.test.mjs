@@ -35,6 +35,14 @@ test('both scenes provide poke/ray wrist UI and a housing, default hand is left'
  assert.match(source,/getItem\(HAND_KEY\) === 'right' \? 'right' : 'left'/);
 });
 
+test('wristband hidden for now: projector is the forced display, cuff and settings row gated (Nov 16 feedback)',()=>{
+ assert.match(source,/return sessionMode \?\? 'projector'/);
+ const system=readFileSync('src/wall-tones/wall-tones-system.ts','utf8');
+ assert.match(system,/housing\.object3D\.visible = tracked && armbandDisplayMode\(\) === 'band'/);
+ assert.match(system,/armbandBeam\.renderOrder = -1/);
+ const appMode=readFileSync('src/app-mode.ts','utf8');
+ assert.match(appMode,/armband-mode-button'\)\?\.setProperties\(\{ display: 'none' \}/);
+});
 test('hand setting defaults left, persists right, and survives unavailable storage',async()=>{
  const preferenceSource=source.slice(source.indexOf('const HAND_KEY'),source.indexOf("import { Matrix4"));
  const preferenceJs=ts.transpileModule(preferenceSource,{compilerOptions:{module:ts.ModuleKind.ESNext}}).outputText;
