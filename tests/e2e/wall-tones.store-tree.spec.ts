@@ -3,7 +3,8 @@ import { expect, test, type Page } from '@playwright/test';
 /**
  * Skill-tree store E2E (backlog 44, owner decisions 2026-11-11): the Listen
  * item gates the Listen-phase pattern row and unlocks Hint L1, Autoplay
- * unlocks at Hint L4 and plays the pattern prefix for the player, and the
+ * unlocks at Play L4 and enters the pattern prefix for the player (final
+ * note included, owner feedback 2026-11-15), and the
  * Replay consumable is earned past the Hint coverage and spent by the Repeat
  * button. Driven through the window.__wallTonesDebug bridge like the economy
  * spec; speech fetches are aborted so lines settle instantly.
@@ -173,7 +174,7 @@ test.describe('Wall Tones store skill tree', () => {
       .toBe('shown');
   });
 
-  test('Autoplay unlocks at Play L4 (after Hint L4) and plays the pattern prefix, capped one short', async ({
+  test('Autoplay unlocks at Play L4 (after Hint L4), auto-completes covered rounds, leaves extra notes manual', async ({
     page,
   }) => {
     test.slow();
@@ -201,9 +202,15 @@ test.describe('Wall Tones store skill tree', () => {
     expect(snap.bars).toBe(5);
 
     await submitPad(page, 0); // start tap
-    await playToStreak(page, 5);
-    // The 6-note round: Listen plays, then Autoplay plays notes 1-5, so Your
-    // Turn starts expecting note 6 (inputStep 5).
+    // Owner feedback 2026-11-15 ("auto play doesn't play the pattern all
+    // the way"): with Autoplay L1 (5 notes) every round of 1-5 notes is
+    // entered in full, final note included, so the streak climbs to 5 with
+    // no manual presses at all.
+    await expect
+      .poll(async () => (await readState(page)).streak, { timeout: 180_000 })
+      .toBe(5);
+    // The 6-note round: Listen plays, then Autoplay enters notes 1-5, so
+    // Your Turn starts expecting note 6 (inputStep 5).
     await expect
       .poll(
         async () => {
