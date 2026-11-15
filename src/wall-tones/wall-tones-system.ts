@@ -87,6 +87,7 @@ TOUCH_PRESS_DEPTH_M,
 TOUCH_PRESS_SCALE,
 TOUCH_TIP_GRIP_MAX_M,
 WALL_TONE_PADS,
+WRONG_HIT_HISTORY_MAX,
 WRONG_HIT_ROW_NOTES,
 WRONG_RESET_DELAY_S,
 type WallTonePadId,
@@ -1677,13 +1678,14 @@ system.wrongHit = state;
 // (owner 2026-11-15). null until the popup row is laid out.
 get wrongHitPopupRowTops() {
 const cache = system.wrongHitPopupCache;
-const hitLabelIndex = WRONG_HIT_ROW_NOTES * 2 + 4; // ellipsis+label+pairs, break, ellipsis, label
+const expectedLabelIndex = WRONG_HIT_HISTORY_MAX * 2 + 2; // history ellipsis+pairs, break, label
+const hitLabelIndex = expectedLabelIndex + WRONG_HIT_ROW_NOTES * 2 + 4; // expected ellipsis+pairs, break, ellipsis, label
 if (cache.children.length <= hitLabelIndex) return null;
 const topOf = (child: unknown): number | null => {
 const yoga = (child as { node?: Record<string, { getComputedLayout?: () => { top: number } }> } | undefined)?.node?.['yogaNode'];
 return yoga?.getComputedLayout?.().top ?? null;
 };
-const expectedTop = topOf(cache.children[1]);
+const expectedTop = topOf(cache.children[expectedLabelIndex]);
 const hitTop = topOf(cache.children[hitLabelIndex]);
 return expectedTop == null || hitTop == null ? null : { expectedTop, hitTop };
 },
@@ -3811,10 +3813,12 @@ const missStep = this.game.inputStep;
 this.wrongHit = {
 hit,
 expected,
-preceding: this.game.sequence.slice(Math.max(0, missStep - (WRONG_HIT_ROW_NOTES - 1)), missStep),
-// Owner 2026-11-15: prefix the rows with an ellipsis when earlier notes are
-// hidden (the 5 vs 10 window and its exact prefix policy are still open).
-truncated: missStep > WRONG_HIT_ROW_NOTES - 1,
+preceding: this.game.sequence.slice(Math.max(0, missStep - WRONG_HIT_HISTORY_MAX), missStep),
+// Owner 2026-11-15: the history row takes a leading "…" only when the full
+// chain is longer than 10, never for 10 notes or fewer. The Expected/Hit
+// comparison rows show the last WRONG_HIT_ROW_NOTES of these (5 vs 10 and its
+// prefix policy are still open).
+truncated: missStep > WRONG_HIT_HISTORY_MAX,
 };
 this.statusText = '';
 this.renderPanel();
@@ -5389,18 +5393,25 @@ this.lastWrongHitRowVisible = this.wrongHitVisible();
 }
 
 /** Child kinds at fixed plan indices, identical for the panel info row and the
- * Game Over popup: an Expected row and a Hit row, each a leading ellipsis slot,
- * a fixed-width label, and WRONG_HIT_ROW_NOTES square/name pairs whose final
- * square is the note that differs (owner 2026-11-15: the right pattern vs what
- * was played, e.g. RRRBG vs RRRBY). A full-width break between the rows keeps
- * each on its own line. */
+ * Game Over popup. Three stacked lines, each ending at a full-width break:
+ * 1. history row - up to WRONG_HIT_HISTORY_MAX squares leading up to the miss,
+ *    with a leading "..." slot used only when the full chain is longer than 10
+ *    (owner 2026-11-15: never for 10 notes or fewer);
+ * 2. Expected row - fixed-width label, "..." slot, then up to
+ *    WRONG_HIT_ROW_NOTES square/name pairs whose final square is the note the
+ *    game expected;
+ * 3. Hit row - same lead-in, final square is the pad actually hit
+ *    (owner 2026-11-15: right pattern vs what was played, e.g. RRRBG vs
+ *    RRRBY; the 5 vs 10 comparison window and its prefix policy are open). */
 private wrongHitChildKind(index: number): 'ellipsis' | 'label' | 'square' | 'text' | 'break' {
-const breakIndex = WRONG_HIT_ROW_NOTES * 2 + 2;
-if (index === 0 || index === breakIndex + 1) return 'ellipsis';
-if (index === 1 || index === breakIndex + 2) return 'label';
-if (index === breakIndex) return 'break';
-if (index < breakIndex) return index % 2 === 0 ? 'square' : 'text';
-return (index - breakIndex - 3) % 2 === 0 ? 'square' : 'text';
+const histBreak = WRONG_HIT_HISTORY_MAX * 2 + 1;
+const hitBreak = histBreak + WRONG_HIT_ROW_NOTES * 2 + 4;
+if (index === 0 || index === histBreak + 2 || index === hitBreak + 2) return 'ellipsis';
+if (index === histBreak + 1 || index === hitBreak + 1) return 'label';
+if (index === histBreak || index === hitBreak) return 'break';
+if (index < histBreak) return index % 2 === 1 ? 'square' : 'text';
+if (index < hitBreak) return (index - histBreak - 3) % 2 === 0 ? 'square' : 'text';
+return (index - hitBreak - 3) % 2 === 0 ? 'square' : 'text';
 }
 
 /** Children are created once in ascending index order so the row layout order
@@ -5447,22 +5458,45 @@ cache.children.length = 0;
 }
 cache.key = key;
 row.setProperties({ display: wrong != null ? 'flex' : 'none' });
-const breakIndex = WRONG_HIT_ROW_NOTES * 2 + 2;
-const rows = [
-{ ellipsis: 0, label: 1, pairs: 2, text: 'Expected:', finalId: wrong?.expected },
-{ ellipsis: breakIndex + 1, label: breakIndex + 2, pairs: breakIndex + 3, text: 'Hit:', finalId: wrong?.hit },
-];
-for (const plan of rows) {
-this.wrongHitChild(cache, row, plan.ellipsis).setProperties({
+const histBreak = WRONG_HIT_HISTORY_MAX * 2 + 1;
+const hitBreak = histBreak + WRONG_HIT_ROW_NOTES * 2 + 4;
+// The panel/popup UIKit font has no U+2026 glyph (renders tofu), so these use
+// ASCII "..."; the flat DOM captions keep the real "…" character.
+this.wrongHitChild(cache, row, 0).setProperties({
 display: wrong?.truncated ? 'flex' : 'none',
 text: '...',
 });
+for (let i = 0; i < WRONG_HIT_HISTORY_MAX; i++) {
+const id = wrong?.preceding[i];
+this.wrongHitChild(cache, row, i * 2 + 1).setProperties({
+display: id == null ? 'none' : 'flex',
+backgroundColor: id == null ? 0 : WALL_TONE_PADS[id].color,
+});
+this.wrongHitChild(cache, row, i * 2 + 2).setProperties({
+display: id != null && names ? 'flex' : 'none',
+text: id == null ? '' : WALL_TONE_PADS[id].name,
+});
+}
+this.wrongHitChild(cache, row, histBreak);
+const leadIn = wrong ? wrong.preceding.slice(-(WRONG_HIT_ROW_NOTES - 1)) : [];
+// Prefix of the comparison rows' note sequences: shown when notes earlier
+// than the shown window exist (policy open while 5 vs 10 is weighed).
+const leadHidden = wrong != null && (wrong.truncated || wrong.preceding.length > leadIn.length);
+const rows = [
+{ label: histBreak + 1, ellipsis: histBreak + 2, pairs: histBreak + 3, text: 'Expected:', finalId: wrong?.expected },
+{ label: hitBreak + 1, ellipsis: hitBreak + 2, pairs: hitBreak + 3, text: 'Hit:', finalId: wrong?.hit },
+];
+for (const plan of rows) {
 this.wrongHitChild(cache, row, plan.label).setProperties({
 display: wrong == null ? 'none' : 'flex',
 text: plan.text,
 });
+this.wrongHitChild(cache, row, plan.ellipsis).setProperties({
+display: leadHidden ? 'flex' : 'none',
+text: '...',
+});
 for (let i = 0; i < WRONG_HIT_ROW_NOTES; i++) {
-const id = i < WRONG_HIT_ROW_NOTES - 1 ? wrong?.preceding[i] : plan.finalId;
+const id = i < WRONG_HIT_ROW_NOTES - 1 ? leadIn[i] : plan.finalId;
 this.wrongHitChild(cache, row, plan.pairs + i * 2).setProperties({
 display: id == null ? 'none' : 'flex',
 backgroundColor: id == null ? 0 : WALL_TONE_PADS[id].color,
@@ -5473,6 +5507,7 @@ text: id == null ? '' : WALL_TONE_PADS[id].name,
 });
 }
 }
+this.wrongHitChild(cache, row, hitBreak);
 }
 
 private trackFlatLayout(value: number): void {
@@ -5690,23 +5725,13 @@ const line = document.createElement('div');
 Object.assign(line.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexWrap: 'wrap' });
 const label = document.createElement('span'); label.textContent = info; line.append(label);
 if (captionWrong) {
-// Owner 2026-11-15: two comparison rows - the right pattern (Expected) and
-// what was played (Hit) - each up to WRONG_HIT_ROW_NOTES notes with the final
-// one differing (e.g. RRRBG vs RRRBY). A leading "…" marks hidden earlier notes.
+// Owner 2026-11-15: a history row of the notes leading up to the miss, then
+// two comparison rows - the right pattern (Expected) and what was played
+// (Hit) - each up to WRONG_HIT_ROW_NOTES notes with the final one differing
+// (e.g. RRRBG vs RRRBY).
 const namesOn = colorNamesEnabled();
-const appendWrongRow = (labelText: string, finalId: number, rowName: string) => {
-const rowEl = document.createElement('div');
-Object.assign(rowEl.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexBasis: '100%' });
-rowEl.setAttribute('data-wronghit-row', rowName);
-if (captionWrong.truncated) {
-const ellipsis = document.createElement('span');
-ellipsis.textContent = '\u2026';
-rowEl.append(ellipsis);
-}
-const rowLabel = document.createElement('span');
-rowLabel.textContent = labelText;
-rowEl.append(rowLabel);
-for (const id of [...captionWrong.preceding, finalId]) {
+const appendSquares = (rowEl: HTMLElement, ids: number[]) => {
+for (const id of ids) {
 const square = document.createElement('span');
 Object.assign(square.style, { width: '16px', height: '16px', borderRadius: '2px', background: `#${WALL_TONE_PADS[id].color.toString(16).padStart(6, '0')}`, display: 'inline-block', flexShrink: '0' });
 square.setAttribute('aria-label', WALL_TONE_PADS[id].name);
@@ -5718,7 +5743,37 @@ word.textContent = WALL_TONE_PADS[id].name;
 rowEl.append(word);
 }
 }
+};
+const appendRowShell = (rowName: string) => {
+const rowEl = document.createElement('div');
+Object.assign(rowEl.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexBasis: '100%' });
+rowEl.setAttribute('data-wronghit-row', rowName);
 line.append(rowEl);
+return rowEl;
+};
+const appendEllipsis = (rowEl: HTMLElement) => {
+const ellipsis = document.createElement('span');
+ellipsis.textContent = '\u2026';
+rowEl.append(ellipsis);
+};
+// History row: up to the last 10 notes leading up to the miss; the "…"
+// prefixes it only when the full chain is longer than 10, never for 10 or
+// fewer (owner 2026-11-15).
+const historyRow = appendRowShell('history');
+if (captionWrong.truncated) appendEllipsis(historyRow);
+appendSquares(historyRow, captionWrong.preceding);
+// Comparison rows: the "…" prefixes the note sequence (after the label) when
+// earlier notes beyond the shown window exist (policy open while 5 vs 10 is
+// weighed).
+const leadIn = captionWrong.preceding.slice(-(WRONG_HIT_ROW_NOTES - 1));
+const leadHidden = captionWrong.truncated || captionWrong.preceding.length > leadIn.length;
+const appendWrongRow = (labelText: string, finalId: number, rowName: string) => {
+const rowEl = appendRowShell(rowName);
+const rowLabel = document.createElement('span');
+rowLabel.textContent = labelText;
+rowEl.append(rowLabel);
+if (leadHidden) appendEllipsis(rowEl);
+appendSquares(rowEl, [...leadIn, finalId]);
 };
 appendWrongRow('Expected:', captionWrong.expected, 'expected');
 appendWrongRow('Hit:', captionWrong.hit, 'hit');
