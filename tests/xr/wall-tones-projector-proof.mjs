@@ -46,11 +46,25 @@ const openState=await page.evaluate(()=>{
 console.log('PROJECTOR_OPEN',openState);
 assert.equal(openState.visible,true,'panel visible over open palm');
 assert.ok(openState.panel[1]-openState.wrist[1]>0.08,'panel rises above palm');
-assert.ok(openState.panel[1]-openState.wrist[1]<0.25,'panel stays near palm');
+assert.ok(openState.panel[1]-openState.wrist[1]<0.32,'panel stays near palm (raised Nov 16 to clear the hand outline)');
 assert.equal(await page.evaluate(()=>window.__armbandHarness.system.armband.squares.filter(s=>s.properties.peek().display!=='none').length),20);
 console.log('SQUARES_20 OK');
 assert.equal(await page.evaluate(()=>window.__armbandHarness.system.armbandBeam && window.__armbandHarness.system.armbandBeam.visible),true,'palm light beam visible over open palm');
 console.log('BEAM OK');
+// Nov 16 feedback: the panel must obscure the cone - the beam's tilted top
+// disc stays fully on the palm side of the head-facing panel plane, and the
+// beam draws before the panel so the panel composites over any overlap.
+const occlusion=await page.evaluate(()=>{
+ const s=window.__armbandHarness.system;const b=s.armbandBeam;
+ const d=new b.position.constructor(0,1,0).applyQuaternion(b.quaternion);
+ const top={x:b.position.x+d.x*b.scale.y/2,y:b.position.y+d.y*b.scale.y/2,z:b.position.z+d.z*b.scale.y/2};
+ const p=s.armbandSmoothPos;const n=s.armbandPanelZ;
+ return {penetration:(top.x-p.x)*n.x+(top.y-p.y)*n.y+(top.z-p.z)*n.z,renderOrder:b.renderOrder,housing:(()=>{const h=window.__armbandHarness.world.getSceneObject('wall-tones-armband-housing');return h?h.visible:'missing';})()};
+});
+console.log('BEAM_OCCLUSION',occlusion);
+assert.ok(occlusion.penetration<-0.004,'beam top stays below the panel plane');
+assert.equal(occlusion.renderOrder,-1,'panel composites over the beam');
+assert.equal(occlusion.housing,false,'wrist cuff hidden in projector mode');
 await page.evaluate(async()=>{ const world=window.__armbandHarness.world; await window.IWER_DEVICE.remote.dispatch('look_at',{device:'headset',target:world.getSceneObject('wall-tones-armband').position}); });
 await page.waitForTimeout(400);
 await page.screenshot({path:join(evidenceDir,'armband-projector-open.png')});
@@ -146,10 +160,13 @@ await page.evaluate(async()=>{
  await window.IWER_DEVICE.remote.dispatch('look_at',{device:'headset',target:{x:0,y:1.4,z:-0.55}});
 });
 await page.waitForTimeout(600);
+// Nov 16 feedback: the wristband is hidden for now, so the settings row no
+// longer offers the band/projector toggle; the projector is the only display.
 console.log('TOGGLE',await page.evaluate(()=>{
  const menu=window.__armbandHarness.world.getSceneObject('main-menu-panel');
- return {label:menu.getElementById('armband-mode-setting-label')?.properties.peek().text, stored:localStorage.getItem('wall-tones-armband-mode')};
+ return {rowDisplay:menu.getElementById('armband-mode-button')?.properties.peek().display};
 }));
+assert.equal(await page.evaluate(()=>window.__armbandHarness.world.getSceneObject('main-menu-panel').getElementById('armband-mode-button')?.properties.peek().display),'none','wristband mode row hidden while the wristband is disabled');
 await page.screenshot({path:join(evidenceDir,'armband-projector-toggle.png')});
-console.log('PASS: projector float over open palm, 20 real cues, fist fold, tilt fold, reopen, accessibility toggle.');
+console.log('PASS: projector float over open palm, 20 real cues, fist fold, tilt fold, reopen, beam occlusion, hidden wristband toggle.');
 } finally { await browser.close(); }
