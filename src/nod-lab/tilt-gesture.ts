@@ -60,6 +60,19 @@ export const TILT_WRAP_JUMP_DEG = 45;
  * motion at ~1 deg/event).
  */
 export const TILT_FLIP_JUMP_DEG = 10;
+/**
+ * |beta| above which the phone is near or past vertical and iOS's gamma
+ * reflection makes yaw untrusted: gamma flips sign as beta crosses +-90,
+ * and the flip can arrive as a multi-event slide too gradual for
+ * TILT_WRAP_JUMP_DEG / TILT_FLIP_JUMP_DEG to absorb. The owner's Nov 16
+ * iPhone retest: a nod through vertical read yaw ~100-160 deg for seconds
+ * and answered "no" at 81.7 deg. While beta is in this zone the tracker
+ * snaps the gamma baseline to the current reading every event, freezing
+ * yawDeg at 0; the flip (and the flip back) both happen inside the zone,
+ * so yaw resumes cleanly when beta leaves it. Pitch (beta) stays
+ * continuous through vertical, so nods keep working there.
+ */
+export const TILT_GIMBAL_ZONE_BETA_DEG = 80;
 /** Still events before the baseline starts tracking the resting pose (~0.2 s). */
 export const TILT_STILL_EVENTS_TO_TRACK = 12;
 /** Per-event convergence toward the resting pose while still. */
@@ -97,6 +110,22 @@ export class TiltBaselineTracker {
   feed(betaDeg: number | null, gammaDeg: number | null): GestureAngleSample | null {
     if (betaDeg == null || gammaDeg == null) {
       return null;
+    }
+    if (Math.abs(betaDeg) > TILT_GIMBAL_ZONE_BETA_DEG) {
+      // Gimbal zone: gamma semantics are reflected/unstable (see
+      // TILT_GIMBAL_ZONE_BETA_DEG). Freeze yaw by tracking the gamma
+      // baseline 1:1; keep beta flowing so pitch nods still read.
+      this.baseGamma = gammaDeg;
+      this.lastBeta = betaDeg;
+      this.lastGamma = gammaDeg;
+      this.stillEvents = 0;
+      if (this.baseBeta == null) {
+        this.baseBeta = betaDeg;
+      }
+      return {
+        pitchDeg: betaDeg - this.baseBeta,
+        yawDeg: 0,
+      };
     }
     if (this.baseBeta == null || this.baseGamma == null) {
       this.baseBeta = betaDeg;
