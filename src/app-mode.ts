@@ -1,6 +1,7 @@
 import { captureCypherCast } from './wall-tones/cypher-voice.js';
 import { hearingSubtitlesEnabled, colorNamesEnabled, setHearingSubtitles, setColorNames, voicesOffEnabled, setVoicesOff, headGazePinchEnabled, setHeadGazePinch, nativeGazePinchEnabled, setNativeGazePinch } from './wall-tones/accessibility.js';
 import { GAZE_SOURCE_EVENT, gazeSourceStatusText, type GazeSourceStatus } from './wall-tones/gaze-source.js';
+import { gazePinchSettingsVisible } from './enter-xr-visibility.js';
 /**
  * Switches between the main menu and experience modes by toggling authored
  * scene node visibility. Mode selection lives on spatial UIKitML panels.
@@ -450,6 +451,10 @@ export class AppModeSystem extends createSystem({}) {
       nativeGazePinchEnabled,
       setNativeGazePinch,
     );
+    // Gaze + pinch options are VR-headset only (Oded, 2026-11-15): hide both rows on PC and phone menus; settings values and default-OFF behavior unchanged.
+    const gazeRowsDisplay = gazePinchSettingsVisible(typeof navigator === 'undefined' ? '' : navigator.userAgent) ? 'flex' : 'none';
+    setDisplay('head-gaze-pinch-row', gazeRowsDisplay);
+    setDisplay('native-gaze-pinch-row', gazeRowsDisplay);
     // Debug stat reset: two-step confirm, clears progression stats only.
     let resetArmed = false;
     let resetDisarm: number | undefined;
