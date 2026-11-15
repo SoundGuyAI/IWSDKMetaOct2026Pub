@@ -99,6 +99,11 @@
     height: 56px;
     padding-top: 12px;
     padding-bottom: 12px;
+    background-color: #ffffff;
+  }
+
+  .nod-lab-answer-button:dark {
+    background-color: #34363c;
   }
 </style>
 <Panel id="nod-lab-root" class="nod-lab-root">
@@ -125,6 +130,14 @@
   <Button id="nod-lab-repeat-button" class="nod-lab-button">
     <ButtonLabel class="nod-lab-button-label">Repeat the line</ButtonLabel>
   </Button>
+  <div class="nod-lab-answer-row">
+    <Button id="nod-lab-record-button" class="nod-lab-answer-button">
+      <ButtonLabel id="nod-lab-record-label" class="nod-lab-button-label">Record gestures</ButtonLabel>
+    </Button>
+    <Button id="nod-lab-reset-button" class="nod-lab-answer-button">
+      <ButtonLabel class="nod-lab-button-label">Reset position</ButtonLabel>
+    </Button>
+  </div>
   <Button id="nod-lab-back-button" class="nod-lab-button" style="margin-bottom: 24px">
     <ButtonLabel class="nod-lab-button-label">Back to menu</ButtonLabel>
   </Button>
