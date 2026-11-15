@@ -15,6 +15,9 @@ const BARS_TOTAL_KEY = 'wall-tones-bars-total';
  * are tracked apart so lifetime Bars/Total Score achievements only count
  * Bars the human earned. */
 const AUTOPLAY_BARS_TOTAL_KEY = 'wall-tones-autoplay-bars-total';
+/** AutoPlay on/off (owner 2026-11-15: enable/disable get voice notices).
+ * Owning AutoPlay keeps it on until the player switches it off. */
+const AUTOPLAY_DISABLED_KEY = 'wall-tones-autoplay-disabled';
 const HINT_LEVEL_KEY = 'wall-tones-hint-level';
 const ACHIEVEMENTS_KEY = 'wall-tones-achievements';
 const FIRST_FLAGS_KEY = 'wall-tones-first-flags';
@@ -215,6 +218,7 @@ PRESSES_KEY,
 TOP_SECRET_KEY,
 LISTEN_KEY,
 AUTOPLAY_LEVEL_KEY,
+AUTOPLAY_DISABLED_KEY,
 REPLAY_FREE_KEY,
 REPLAY_PAID_KEY,
 SAVERS_KEY,
@@ -240,6 +244,7 @@ export class WallTonesEconomy {
   private topSecretOwned = readNumber(TOP_SECRET_KEY) === 1;
   private listenOwned = readNumber(LISTEN_KEY) === 1;
   private autoplayLevel = readNumber(AUTOPLAY_LEVEL_KEY);
+  private autoplayDisabled = readNumber(AUTOPLAY_DISABLED_KEY) === 1;
   private replaysFree = readNumber(REPLAY_FREE_KEY);
   private replaysPaid = readNumber(REPLAY_PAID_KEY);
   private savers = readNumber(SAVERS_KEY);
@@ -510,6 +515,19 @@ export class WallTonesEconomy {
     return this.autoplayLevel * AUTOPLAY_NOTES_PER_LEVEL;
   }
 
+  /** AutoPlay fires on rounds only while owned AND switched on (owner
+   * 2026-11-15: the player can enable/disable it). Owning keeps it on
+   * until the player switches it off. */
+  isAutoplayEnabled(): boolean {
+    return this.autoplayLevel > 0 && !this.autoplayDisabled;
+  }
+
+  /** Switch AutoPlay on/off. No-op below ownership. */
+  setAutoplayDisabled(disabled: boolean): void {
+    this.autoplayDisabled = disabled;
+    writeNumber(AUTOPLAY_DISABLED_KEY, disabled ? 1 : 0);
+  }
+
   /** Cost of buying Autoplay level `level` (1-based). Open-ended doubling. */
   autoplayCost(level: number): number {
     if (level <= AUTOPLAY_BASE_COSTS.length) return AUTOPLAY_BASE_COSTS[Math.max(level, 1) - 1]!;
@@ -718,4 +736,4 @@ export class WallTonesEconomy {
     writeStringArray(FIRST_FLAGS_KEY, [...this.firstFlags]);
     return true;
   }
-      }
+}
