@@ -1,4 +1,5 @@
 import { WALL_TONE_PADS, NOTE_DURATION_S } from './constants.js';
+import { AUTOPLAY_CUE_MP3_BASE64 } from './autoplay-cue.js';
 
 let sharedContext: AudioContext | null = null;
 const htmlToneCache = new Map<number, string>();
@@ -396,4 +397,61 @@ export function suspendAudioContext(): void {
   htmlErrorAudio = null;
   htmlPoolUnlocked = false;
   webAudioPrimed = false;
+  autoplayCueBuffer = null;
+  autoplayCuePromise = null;
+}
+
+// Auto Play cue: the robot chirp the owner picked from the audition File
+// (option 5, 2026-11-15). Ships as public/audio/autoplay-cue.mp3 - the exact
+// clip reviewed - and plays right before AutoPlay enters its notes. The cue
+// is decorative: any failure stays silent and never blocks playback.
+let autoplayCueBuffer: AudioBuffer | null = null;
+let autoplayCuePromise: Promise<AudioBuffer | null> | null = null;
+
+function loadAutoplayCue(context: AudioContext): Promise<AudioBuffer | null> {
+  if (autoplayCueBuffer != null) {
+    return Promise.resolve(autoplayCueBuffer);
+  }
+  if (autoplayCuePromise == null) {
+    // Manual base64 decode: no network fetch, so no CSP connect-src path.
+    autoplayCuePromise = Promise.resolve()
+      .then(() => {
+        const binary = atob(AUTOPLAY_CUE_MP3_BASE64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        return bytes.buffer;
+      })
+      .then((buffer) => context.decodeAudioData(buffer))
+      .then((buffer) => {
+        autoplayCueBuffer = buffer;
+        return buffer;
+      })
+      .catch(() => null);
+  }
+  return autoplayCuePromise;
+}
+
+/** Play the Auto Play cue once. Resolves when the cue has started (or after
+ * a silent fallback); never rejects. */
+export async function playAutoplayCue(): Promise<void> {
+  try {
+    const context = await ensureAudioRunning();
+    if (context == null) {
+      return;
+    }
+    const buffer = await loadAutoplayCue(context);
+    if (buffer == null) {
+      return;
+    }
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    gain.gain.value = 0.7;
+    source.buffer = buffer;
+    source.connect(gain).connect(context.destination);
+    source.start();
+  } catch {
+    // A silent cue must never interrupt the pattern.
+  }
 }
