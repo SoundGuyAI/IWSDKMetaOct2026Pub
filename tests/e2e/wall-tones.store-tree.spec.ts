@@ -31,6 +31,7 @@ interface DebugSnap {
   presses: number;
   savedBestStreak: number;
   autoplayBarsTotal: number;
+  autoplayEnabled: boolean;
   unlockedAchievements: string[];
 }
 
@@ -59,6 +60,7 @@ const readState = (page: Page): Promise<DebugSnap> =>
       presses: d.presses,
       savedBestStreak: d.savedBestStreak,
       autoplayBarsTotal: d.autoplayBarsTotal,
+      autoplayEnabled: d.autoplayEnabled,
       unlockedAchievements: [...d.unlockedAchievements],
     };
   });
@@ -209,7 +211,18 @@ test.describe('Wall Tones store skill tree', () => {
     expect(snap.autoplayLevel).toBe(1);
     expect(snap.bars).toBe(5);
 
-    const barsTotalBeforeAutoplay = (await readState(page)).barsTotal;
+    // Owner 2026-11-15: the owned Autoplay control toggles it on/off (with
+    // the engaged/disengaged voice notices, silent in tests). Off means no
+    // AutoPlay entry; back on resumes it.
+    let snap0 = await readState(page);
+    expect(snap0.autoplayEnabled).toBe(true);
+    await dbg(page, 'pressAutoplayControl');
+    snap0 = await readState(page);
+    expect(snap0.autoplayEnabled).toBe(false);
+    await dbg(page, 'pressAutoplayControl');
+    snap0 = await readState(page);
+    expect(snap0.autoplayEnabled).toBe(true);
+    const barsTotalBeforeAutoplay = snap0.barsTotal;
     await submitPad(page, 0); // start tap
     // Owner feedback 2026-11-15 ("auto play doesn't play the pattern all
     // the way"): with Autoplay L1 (5 notes) every round of 1-5 notes is
