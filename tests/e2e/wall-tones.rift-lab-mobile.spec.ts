@@ -46,7 +46,25 @@ test('portrait touch: Start opens a rift and a corner drag seals it', async ({ p
 
   const cdp = await page.context().newCDPSession(page);
   const at = (x: number, y: number) => [{ x, y }];
+
+  // A press that is not on the orb must not move the orb or start a drag
+  // (his 22:59 note: it jumped to wherever the finger landed).
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at(300, 120) });
+  await page.waitForTimeout(120);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: at(310, 140) });
+  await page.waitForTimeout(120);
+  const away = await page.evaluate(() => window.__riftLabDebug!.snapshot());
+  expect(away.beamActive).toBe(false);
+  expect(away.noteOriginNdc[0]).toBeCloseTo(onx, 3);
+  expect(away.noteOriginNdc[1]).toBeCloseTo(ony, 3);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at(orbX, orbY) });
+  // Finger on the orb: the cloud grows to fingertip + 50% (>= 16 mm * 1.5
+  // at ~6 px/mm, so >= 70 px radius) so the finger no longer hides it.
+  await page.waitForTimeout(150);
+  const held = await page.evaluate(() => window.__riftLabDebug!.snapshot());
+  expect(held.beamActive).toBe(true);
+  expect(held.noteCloudRadiusPx).toBeGreaterThanOrEqual(70);
   for (let i = 1; i <= 12; i++) {
     await page.waitForTimeout(40);
     await cdp.send('Input.dispatchTouchEvent', {
