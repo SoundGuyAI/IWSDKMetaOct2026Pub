@@ -28,6 +28,9 @@ await page.evaluate(async()=>{
 });
 
 await page.waitForFunction(()=>window.IWER_DEVICE.activeSession && window.__wallTonesDebug.flowPhase==='choose-mode');
+// The wristband is hidden by default (Nov 16 feedback); this spec exercises
+// band mode, so force it for the session - the settings row no longer toggles.
+await page.evaluate(async()=>{ const m=await import('/src/wall-tones/armband.ts'); m.setArmbandDisplayMode('band'); });
 console.log('PREP',await page.evaluate(async()=>{
  const {system,world}=window.__armbandHarness;
  system.flowPhase='playing';system.experienceActive=true;system.game.phase='input';system.lastInputAt=performance.now()/1000;system.idleReplayQueued=false;
