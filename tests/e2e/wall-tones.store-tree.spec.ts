@@ -28,6 +28,7 @@ interface DebugSnap {
   storeOpen: boolean;
   sequenceRowVisible: boolean;
   controlRowVisible: boolean;
+  sequenceArrowAt: number;
   sequenceBoxesShown: number;
   flatAwaitingStart: boolean;
   presses: number;
@@ -59,6 +60,7 @@ const readState = (page: Page): Promise<DebugSnap> =>
       storeOpen: d.storeOpen,
       sequenceRowVisible: d.sequenceRowVisible,
       controlRowVisible: d.controlRowVisible,
+      sequenceArrowAt: d.sequenceArrowAt,
       sequenceBoxesShown: d.sequenceBoxesShown,
       flatAwaitingStart: d.flatAwaitingStart,
       presses: d.presses,
@@ -487,6 +489,12 @@ test.describe('Wall Tones store skill tree', () => {
     test.slow();
     await abortSpeech(page);
     await bootWallTones(page, true, '?demoBars=800');
+    // Owner 2026-11-15: without the Index owned, a regular run shows no arrow.
+    await submitPad(page, 0); // start tap
+    await expect
+      .poll(async () => (await readState(page)).phase, { timeout: 60_000 })
+      .toBe('input');
+    expect((await readState(page)).sequenceArrowAt).toBe(-1);
     await dbg(page, 'toggleStore');
     await expect
       .poll(
@@ -523,6 +531,28 @@ test.describe('Wall Tones store skill tree', () => {
         () => (window as any).__wallTonesDebug.ownsIndex,
       ),
     ).toBe(true);
+    // Owned: the arrow marks the player's position in a regular run.
+    await dbg(page, 'toggleStore');
+    await expect
+      .poll(async () => (await readState(page)).sequenceArrowAt, {
+        timeout: 30_000,
+      })
+      .toBe(0);
+    // Round 1 has one note; finishing it grows the sequence to two notes.
+    let snap = await readState(page);
+    await submitPad(page, snap.sequence[0]!);
+    await expect
+      .poll(async () => (await readState(page)).phase, { timeout: 60_000 })
+      .toBe('input');
+    expect((await readState(page)).sequenceArrowAt).toBe(0);
+    snap = await readState(page);
+    expect(snap.sequence.length).toBe(2);
+    await submitPad(page, snap.sequence[0]!);
+    await expect
+      .poll(async () => (await readState(page)).sequenceArrowAt, {
+        timeout: 30_000,
+      })
+      .toBe(1);
   });
 });
 
