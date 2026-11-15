@@ -158,15 +158,15 @@
   <div id="accessibility-dialog" class="settings-dialog" style="display: none">
     <div class="eyebrow">SETTINGS</div>
     <div class="heading">Accessibility</div>
-    <div style="flex-direction: row; gap: 12px; align-items: center; padding: 12px">
+    <div id="hearing-subtitles-row" style="flex-direction: row; gap: 12px; align-items: center; padding: 12px; cursor: pointer">
       <Checkbox id="hearing-subtitles-checkbox"></Checkbox>
       <div class="body">Hearing accessibility: subtitles</div>
     </div>
-    <div style="flex-direction: row; gap: 12px; align-items: center; padding: 12px">
+    <div id="color-names-row" style="flex-direction: row; gap: 12px; align-items: center; padding: 12px; cursor: pointer">
       <Checkbox id="color-names-checkbox"></Checkbox>
       <div class="body">Color blindness: show color names</div>
     </div>
-    <div style="flex-direction: row; gap: 12px; align-items: center; padding: 12px">
+    <div id="voices-off-row" style="flex-direction: row; gap: 12px; align-items: center; padding: 12px; cursor: pointer">
       <Checkbox id="voices-off-checkbox"></Checkbox>
       <div class="body">Voices off: mute all narration</div>
     </div>

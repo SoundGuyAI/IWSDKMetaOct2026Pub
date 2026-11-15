@@ -37,6 +37,22 @@ export type WallTonesClipId =
   | 'barsFirstEarn'
   | 'storeWelcome'
   | 'storeHints'
+  | 'storeIntro'
+  | 'storeItemListen'
+  | 'storeItemHint'
+  | 'storeItemPlay'
+  | 'storeItemAutoplay'
+  | 'storeItemIndex'
+  | 'storeItemReplay'
+  | 'storeItemSaver'
+  | 'storeItemSecret'
+  | 'storeItemHack'
+  | 'achvStreak'
+  | 'achvBars'
+  | 'achvScore'
+  | 'achvStore'
+  | 'achvPresses'
+  | 'achvMovement'
   | 'cheer1'
   | 'cheer2'
   | 'cheer3'
@@ -105,6 +121,22 @@ export const WALL_TONES_CLIP_FILES: Record<WallTonesClipId, string> = {
   barsFirstEarn: 'bars-first-earn.mp3',
   storeWelcome: 'store-welcome.mp3',
   storeHints: 'store-hints.mp3',
+  storeIntro: 'store-intro.mp3',
+  storeItemListen: 'store-item-listen.mp3',
+  storeItemHint: 'store-item-hint.mp3',
+  storeItemPlay: 'store-item-play.mp3',
+  storeItemAutoplay: 'store-item-autoplay.mp3',
+  storeItemIndex: 'store-item-index.mp3',
+  storeItemReplay: 'store-item-replay.mp3',
+  storeItemSaver: 'store-item-saver.mp3',
+  storeItemSecret: 'store-item-secret.mp3',
+  storeItemHack: 'store-item-hack.mp3',
+  achvStreak: 'achv-streak.mp3',
+  achvBars: 'achv-bars.mp3',
+  achvScore: 'achv-score.mp3',
+  achvStore: 'achv-store.mp3',
+  achvPresses: 'achv-presses.mp3',
+  achvMovement: 'achv-movement.mp3',
   hype1: 'hype-1.mp3',
   hype2: 'hype-2.mp3',
   hype3: 'hype-3.mp3',

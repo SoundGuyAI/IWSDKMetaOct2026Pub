@@ -311,6 +311,22 @@ type FlowPhase =
 | 'air-placement'
 | 'playing';
 
+/** Store tile -> its narrator explanation line (owner-approved words
+ * 2026-11-15). Locked teasers x2/Speed/Pads 5-6 stay silent on purpose;
+ * Hack is the one locked tile with a line. play/index activate when
+ * PR #87's tiles land. */
+const STORE_ITEM_CLIPS: Partial<Record<string, WallTonesClipId>> = {
+listen: 'storeItemListen',
+hint: 'storeItemHint',
+play: 'storeItemPlay',
+autoplay: 'storeItemAutoplay',
+index: 'storeItemIndex',
+replay: 'storeItemReplay',
+saver: 'storeItemSaver',
+secret: 'storeItemSecret',
+narrator: 'storeItemHack',
+};
+
 export class WallTonesSystem extends createSystem({
 pads: { required: [WallTonePad] },
 planes: { required: [XRPlane] },
@@ -4860,6 +4876,18 @@ popup.setProperties({ display: 'none' });
 // progress, no stored data and no achievement rules are touched.
 const demoParam = typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('demoAchievements');
 const demoLevels: Record<string, number> = { streak: 3, bars: 4, score: 1, presses: 2 };
+/** Achievement category -> its narrator line (owner-approved words
+ * 2026-11-15). The hidden Secret achievement stays silent; movement
+ * activates when PR #72's category lands. */
+const ACHV_CLIPS: Partial<Record<string, WallTonesClipId>> = {
+streak: 'achvStreak',
+bars: 'achvBars',
+score: 'achvScore',
+store: 'achvStore',
+presses: 'achvPresses',
+movement: 'achvMovement',
+};
+
 type TileCat = { id: string; label: string; description: string; levels: readonly number[]; hidden?: boolean; glyph?: string };
 const tileCats: TileCat[] = [...ACHIEVEMENT_CATEGORIES];
 if (demoParam === 'many') {
@@ -4950,6 +4978,10 @@ if (stickyCat != null) tileSetters.get(stickyCat)?.(false);
 show(e.uv);
 stickyCat = cat.id;
 setSel(true);
+// Narrator line on tap/click pin-open only - never on hover/gaze, which
+// opens details passively (owner-approved words 2026-11-15).
+const achvClip = ACHV_CLIPS[cat.id];
+if (achvClip != null) this.speech.speak(achvClip);
 });
 list.add(tile);
 }
@@ -5154,10 +5186,10 @@ private onToggleStore(): void {
 this.storeOpen = !this.storeOpen;
 if (this.storeOpen) this.achievementsOpen = false;
 this.syncMenuPopupVisibility();
-if (this.storeOpen && this.economy.takeFirstTime('store-open')) {
-// Approved onboarding pair: welcome, then how hints work (once ever).
-this.speech.speak('storeWelcome');
-this.speech.speak('storeHints');
+if (this.storeOpen && !voicesOffEnabled() && this.economy.takeFirstTime('store-intro-v2')) {
+// General store intro (owner-approved words 2026-11-15, WhatsApp review):
+// once ever on any platform, replacing the old hint-only open pair.
+this.speech.speak('storeIntro');
 }
 this.renderPanel();
 }
@@ -5186,6 +5218,10 @@ private storeSelected: string | null = null;
  * achievements popup). */
 private selectStoreTile(id: string): void {
 this.storeSelected = this.storeSelected === id ? null : id;
+if (this.storeSelected != null) {
+const clip = STORE_ITEM_CLIPS[this.storeSelected];
+if (clip != null) this.speech.speak(clip);
+}
 this.renderPanel();
 // A new selection resets the status line, so a previous tile's "Bought."
 // or denial never lingers over another item's details.
