@@ -815,6 +815,8 @@ export class RiftLabSystem extends createSystem({
           // bottom-left orb (mockup 6).
           const ndcP = new Vector3().copy(pos).project(this.world.camera);
           const portrait = this.world.camera.aspect < 1;
+          // Portrait: rifts stay in the right half, opposite the bottom-left orb.
+          if (portrait && ndcP.x < 0.05) continue;
           const bias = portrait
             ? -Math.hypot(ndcP.x - 0.55, ndcP.y + 0.55) * 1.5
             : 0;
