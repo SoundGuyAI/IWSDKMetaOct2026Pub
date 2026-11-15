@@ -87,7 +87,7 @@ TOUCH_PRESS_DEPTH_M,
 TOUCH_PRESS_SCALE,
 TOUCH_TIP_GRIP_MAX_M,
 WALL_TONE_PADS,
-WRONG_HIT_PRECEDING_MAX,
+WRONG_HIT_ROW_NOTES,
 WRONG_RESET_DELAY_S,
 type WallTonePadId,
 } from './constants.js';
@@ -189,7 +189,6 @@ type WrongHitRowCache = {
 row: UIKit.Container | null;
 key: string;
 children: (UIKit.Container | UIKit.Text)[];
-groupChildren: { label: UIKit.Text; square: UIKit.Container; name: UIKit.Text }[];
 };
 
 const FLAT_BACKDROP_NODE_IDS = [
@@ -236,7 +235,9 @@ wrongHitRowVisible: boolean;
 wrongHitPreceding: number[] | null;
 wrongHitExpected: number | null;
 wrongHitHit: number | null;
-wrongHitPopupGroupTops: { firstSquareTop: number; expectedTop: number; hitTop: number } | null;
+wrongHitTruncated: boolean;
+debugSetWrongHit(state: { hit: number; expected: number; preceding: number[]; truncated: boolean }): void;
+wrongHitPopupRowTops: { expectedTop: number; hitTop: number } | null;
 sequenceRowVisible: boolean;
 sequenceBoxesShown: number;
 sequenceUnknownShown: number;
@@ -476,9 +477,9 @@ private sequenceIconRow: UIKit.Container | null = null;
 /** Item 75 follow-up (owner 2026-11-15): a missed hit is shown as color
  * squares instead of color words - up to the last 10 notes leading up to the
  * miss, then Expected:/Hit: with their squares. */
-private wrongHit: { hit: number; expected: number; preceding: number[] } | null = null;
-private readonly wrongHitPanelCache: WrongHitRowCache = { row: null, key: '', children: [], groupChildren: [] };
-private readonly wrongHitPopupCache: WrongHitRowCache = { row: null, key: '', children: [], groupChildren: [] };
+private wrongHit: { hit: number; expected: number; preceding: number[]; truncated: boolean } | null = null;
+private readonly wrongHitPanelCache: WrongHitRowCache = { row: null, key: '', children: [] };
+private readonly wrongHitPopupCache: WrongHitRowCache = { row: null, key: '', children: [] };
 private lastWrongHitRowVisible = false;
 /** Setup HUD is world-anchored; look-away past a threshold re-snaps it. */
 private panelWorldAnchored = false;
@@ -1663,23 +1664,28 @@ return system.wrongHit?.expected ?? null;
 get wrongHitHit() {
 return system.wrongHit?.hit ?? null;
 },
+get wrongHitTruncated() {
+return system.wrongHit?.truncated ?? false;
+},
+// Test-only: replace the captured miss state so truncation rendering is
+// exercisable without replaying 11 rounds.
+debugSetWrongHit(state: { hit: number; expected: number; preceding: number[]; truncated: boolean }) {
+system.wrongHit = state;
+},
 // Yoga-computed line positions inside the Game Over wrong-hit row (test-only):
-// proves Expected:/Hit: sit on their own line below the history squares
+// proves the Hit row sits on its own line below the Expected row
 // (owner 2026-11-15). null until the popup row is laid out.
-get wrongHitPopupGroupTops() {
+get wrongHitPopupRowTops() {
 const cache = system.wrongHitPopupCache;
-const base = WRONG_HIT_PRECEDING_MAX * 2;
-if (cache.children.length < base + 3) return null;
+const hitLabelIndex = WRONG_HIT_ROW_NOTES * 2 + 4; // ellipsis+label+pairs, break, ellipsis, label
+if (cache.children.length <= hitLabelIndex) return null;
 const topOf = (child: unknown): number | null => {
 const yoga = (child as { node?: Record<string, { getComputedLayout?: () => { top: number } }> } | undefined)?.node?.['yogaNode'];
 return yoga?.getComputedLayout?.().top ?? null;
 };
-const firstSquareTop = topOf(cache.children[0]);
-const expectedTop = topOf(cache.children[base + 1]);
-const hitTop = topOf(cache.children[base + 2]);
-return firstSquareTop == null || expectedTop == null || hitTop == null
-? null
-: { firstSquareTop, expectedTop, hitTop };
+const expectedTop = topOf(cache.children[1]);
+const hitTop = topOf(cache.children[hitLabelIndex]);
+return expectedTop == null || hitTop == null ? null : { expectedTop, hitTop };
 },
 get sequenceRowVisible() {
 return system.lastSequenceRowVisible;
@@ -3796,14 +3802,19 @@ this.hideRoundBarsCard();
 this.game.phase = 'resetting';
 this.inputNeedsClear = true;
 // Capture the actual mismatch before any reset, shown as color squares (owner
-// 2026-11-15: squares instead of words, plus the notes leading up to the miss)
-// in the info row and Game Over popup, even without a purchased hint or
-// subtitles (item 75). The status text element stays blank while the row shows.
+// 2026-11-15: squares instead of words; two comparison rows - Expected vs Hit -
+// each showing up to WRONG_HIT_ROW_NOTES notes with the final position
+// differing, e.g. right RRRBG vs played RRRBY) in the info row and Game Over
+// popup, even without a purchased hint or subtitles (item 75). The status text
+// element stays blank while the rows show.
 const missStep = this.game.inputStep;
 this.wrongHit = {
 hit,
 expected,
-preceding: this.game.sequence.slice(Math.max(0, missStep - WRONG_HIT_PRECEDING_MAX), missStep),
+preceding: this.game.sequence.slice(Math.max(0, missStep - (WRONG_HIT_ROW_NOTES - 1)), missStep),
+// Owner 2026-11-15: prefix the rows with an ellipsis when earlier notes are
+// hidden (the 5 vs 10 window and its exact prefix policy are still open).
+truncated: missStep > WRONG_HIT_ROW_NOTES - 1,
 };
 this.statusText = '';
 this.renderPanel();
@@ -5377,15 +5388,19 @@ this.reconcileWrongHitRow(this.wrongHitPopupCache, panel, 'gameover-wronghit-row
 this.lastWrongHitRowVisible = this.wrongHitVisible();
 }
 
-/** Child kinds at fixed plan indices: preceding square/name pairs, then one
- * non-breaking group container each for Expected: and Hit: (label+square+name
- * never wrap apart - reviewer pass 2026-11-15). The Game Over popup inserts a
- * full-width break before the Expected group so Expected:/Hit: sit together on
- * their own line below the history squares (owner 2026-11-15). */
-private wrongHitChildKind(index: number, gameOverBreak: boolean): 'square' | 'text' | 'break' | 'group' {
-if (index < WRONG_HIT_PRECEDING_MAX * 2) return index % 2 === 0 ? 'square' : 'text';
-if (gameOverBreak && index === WRONG_HIT_PRECEDING_MAX * 2) return 'break';
-return 'group';
+/** Child kinds at fixed plan indices, identical for the panel info row and the
+ * Game Over popup: an Expected row and a Hit row, each a leading ellipsis slot,
+ * a fixed-width label, and WRONG_HIT_ROW_NOTES square/name pairs whose final
+ * square is the note that differs (owner 2026-11-15: the right pattern vs what
+ * was played, e.g. RRRBG vs RRRBY). A full-width break between the rows keeps
+ * each on its own line. */
+private wrongHitChildKind(index: number): 'ellipsis' | 'label' | 'square' | 'text' | 'break' {
+const breakIndex = WRONG_HIT_ROW_NOTES * 2 + 2;
+if (index === 0 || index === breakIndex + 1) return 'ellipsis';
+if (index === 1 || index === breakIndex + 2) return 'label';
+if (index === breakIndex) return 'break';
+if (index < breakIndex) return index % 2 === 0 ? 'square' : 'text';
+return (index - breakIndex - 3) % 2 === 0 ? 'square' : 'text';
 }
 
 /** Children are created once in ascending index order so the row layout order
@@ -5394,17 +5409,17 @@ private wrongHitChild(
 cache: WrongHitRowCache,
 row: UIKit.Container,
 index: number,
-gameOverBreak: boolean,
 ): UIKit.Container | UIKit.Text {
 while (cache.children.length <= index) {
-const kind = this.wrongHitChildKind(cache.children.length, gameOverBreak);
+const kind = this.wrongHitChildKind(cache.children.length);
 const child =
 kind === 'square'
 ? new UIKit.Container({ width: 16, height: 16, borderRadius: 2, flexShrink: 0 })
 : kind === 'break'
 ? new UIKit.Container({ width: '100%', height: 0, flexShrink: 0 })
-: kind === 'group'
-? new UIKit.Container({ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 })
+: kind === 'label'
+? // Fixed label width lines up the square columns of the two rows.
+new UIKit.Text({ fontSize: 15, color: 0xffffff, width: 72, flexShrink: 0 })
 : new UIKit.Text({ fontSize: 15, color: 0xffffff });
 row.add(child);
 cache.children.push(child);
@@ -5421,57 +5436,43 @@ const row = panel.getElementById<UIKit.Container>(rowId);
 if (row == null) return;
 const wrong = this.wrongHitVisible() ? this.wrongHit : null;
 const names = colorNamesEnabled();
-const gameOverBreak = rowId === 'gameover-wronghit-row';
 const key =
 wrong == null
 ? 'hidden'
-: `${wrong.preceding.join(',')}|${wrong.expected}|${wrong.hit}|${names ? 1 : 0}`;
+: `${wrong.preceding.join(',')}|${wrong.expected}|${wrong.hit}|${wrong.truncated ? 1 : 0}|${names ? 1 : 0}`;
 if (cache.row === row && cache.key === key) return;
 if (cache.row !== row) {
 cache.row = row;
 cache.children.length = 0;
-cache.groupChildren.length = 0;
 }
 cache.key = key;
 row.setProperties({ display: wrong != null ? 'flex' : 'none' });
-for (let i = 0; i < WRONG_HIT_PRECEDING_MAX; i++) {
-const id = wrong?.preceding[i];
-this.wrongHitChild(cache, row, i * 2, gameOverBreak).setProperties({
+const breakIndex = WRONG_HIT_ROW_NOTES * 2 + 2;
+const rows = [
+{ ellipsis: 0, label: 1, pairs: 2, text: 'Expected:', finalId: wrong?.expected },
+{ ellipsis: breakIndex + 1, label: breakIndex + 2, pairs: breakIndex + 3, text: 'Hit:', finalId: wrong?.hit },
+];
+for (const plan of rows) {
+this.wrongHitChild(cache, row, plan.ellipsis).setProperties({
+display: wrong?.truncated ? 'flex' : 'none',
+text: '...',
+});
+this.wrongHitChild(cache, row, plan.label).setProperties({
+display: wrong == null ? 'none' : 'flex',
+text: plan.text,
+});
+for (let i = 0; i < WRONG_HIT_ROW_NOTES; i++) {
+const id = i < WRONG_HIT_ROW_NOTES - 1 ? wrong?.preceding[i] : plan.finalId;
+this.wrongHitChild(cache, row, plan.pairs + i * 2).setProperties({
 display: id == null ? 'none' : 'flex',
 backgroundColor: id == null ? 0 : WALL_TONE_PADS[id].color,
 });
-this.wrongHitChild(cache, row, i * 2 + 1, gameOverBreak).setProperties({
+this.wrongHitChild(cache, row, plan.pairs + i * 2 + 1).setProperties({
 display: id != null && names ? 'flex' : 'none',
 text: id == null ? '' : WALL_TONE_PADS[id].name,
 });
 }
-const groups = [
-{ label: 'Expected:', id: wrong?.expected },
-{ label: 'Hit:', id: wrong?.hit },
-];
-const groupBase = WRONG_HIT_PRECEDING_MAX * 2 + (gameOverBreak ? 1 : 0);
-groups.forEach((group, g) => {
-const container = this.wrongHitChild(cache, row, groupBase + g, gameOverBreak) as UIKit.Container;
-container.setProperties({ display: group.id == null ? 'none' : 'flex' });
-if (cache.groupChildren.length <= g) {
-const label = new UIKit.Text({ fontSize: 15, color: 0xffffff });
-const square = new UIKit.Container({ width: 16, height: 16, borderRadius: 2, flexShrink: 0 });
-const name = new UIKit.Text({ fontSize: 15, color: 0xffffff });
-container.add(label);
-container.add(square);
-container.add(name);
-cache.groupChildren.push({ label, square, name });
 }
-const inner = cache.groupChildren[g]!;
-inner.label.setProperties({ text: group.label });
-inner.square.setProperties({
-backgroundColor: group.id == null ? 0 : WALL_TONE_PADS[group.id].color,
-});
-inner.name.setProperties({
-display: group.id != null && names ? 'flex' : 'none',
-text: group.id == null ? '' : WALL_TONE_PADS[group.id].name,
-});
-});
 }
 
 private trackFlatLayout(value: number): void {
@@ -5568,7 +5569,7 @@ if (previous.sequence[i] !== this.game.sequence[i]) { sequenceChanged = true; br
 }
 const wrongKey = this.wrongHit == null
 ? ''
-: `${this.wrongHit.preceding.join(',')}|${this.wrongHit.expected}|${this.wrongHit.hit}`;
+: `${this.wrongHit.preceding.join(',')}|${this.wrongHit.expected}|${this.wrongHit.hit}|${this.wrongHit.truncated ? 1 : 0}`;
 const accessibilityChanged = this.accessibilityPanel !== panel || !previous ||
 previous.show !== show || previous.flat !== flat ||
 previous.active !== this.experienceActive || previous.caption !== caption ||
@@ -5689,45 +5690,38 @@ const line = document.createElement('div');
 Object.assign(line.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexWrap: 'wrap' });
 const label = document.createElement('span'); label.textContent = info; line.append(label);
 if (captionWrong) {
-const appendWrongSquare = (id: number) => {
-const square = document.createElement('span');
-Object.assign(square.style, { width: '16px', height: '16px', borderRadius: '2px', background: `#${WALL_TONE_PADS[id].color.toString(16).padStart(6, '0')}`, display: 'inline-block', flexShrink: '0' });
-square.setAttribute('aria-label', WALL_TONE_PADS[id].name);
-square.setAttribute('data-wronghit', '1');
-line.append(square);
-};
-const appendWrongWord = (text: string) => {
-const word = document.createElement('span');
-word.textContent = text;
-line.append(word);
-};
-for (const id of captionWrong.preceding) {
-appendWrongSquare(id);
-if (colorNamesEnabled()) appendWrongWord(WALL_TONE_PADS[id].name);
+// Owner 2026-11-15: two comparison rows - the right pattern (Expected) and
+// what was played (Hit) - each up to WRONG_HIT_ROW_NOTES notes with the final
+// one differing (e.g. RRRBG vs RRRBY). A leading "…" marks hidden earlier notes.
+const namesOn = colorNamesEnabled();
+const appendWrongRow = (labelText: string, finalId: number, rowName: string) => {
+const rowEl = document.createElement('div');
+Object.assign(rowEl.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexBasis: '100%' });
+rowEl.setAttribute('data-wronghit-row', rowName);
+if (captionWrong.truncated) {
+const ellipsis = document.createElement('span');
+ellipsis.textContent = '\u2026';
+rowEl.append(ellipsis);
 }
-// Each label+square(+name) is one non-breaking unit so a wrap never
-// separates a label from its square (reviewer pass 2026-11-15).
-const appendWrongGroup = (labelText: string, id: number, groupName: string) => {
-const group = document.createElement('span');
-Object.assign(group.style, { display: 'inline-flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' });
-group.setAttribute('data-wronghit-group', groupName);
-const groupLabel = document.createElement('span');
-groupLabel.textContent = labelText;
-group.append(groupLabel);
+const rowLabel = document.createElement('span');
+rowLabel.textContent = labelText;
+rowEl.append(rowLabel);
+for (const id of [...captionWrong.preceding, finalId]) {
 const square = document.createElement('span');
 Object.assign(square.style, { width: '16px', height: '16px', borderRadius: '2px', background: `#${WALL_TONE_PADS[id].color.toString(16).padStart(6, '0')}`, display: 'inline-block', flexShrink: '0' });
 square.setAttribute('aria-label', WALL_TONE_PADS[id].name);
 square.setAttribute('data-wronghit', '1');
-group.append(square);
-if (colorNamesEnabled()) {
+rowEl.append(square);
+if (namesOn) {
 const word = document.createElement('span');
 word.textContent = WALL_TONE_PADS[id].name;
-group.append(word);
+rowEl.append(word);
 }
-line.append(group);
+}
+line.append(rowEl);
 };
-appendWrongGroup('Expected:', captionWrong.expected, 'expected');
-appendWrongGroup('Hit:', captionWrong.hit, 'hit');
+appendWrongRow('Expected:', captionWrong.expected, 'expected');
+appendWrongRow('Hit:', captionWrong.hit, 'hit');
 }
 if (seqVisible) for (let i = 0; i < this.game.sequence.length; i++) {
 if (captionListening && i >= this.playbackShownCount) break;
