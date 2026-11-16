@@ -211,8 +211,9 @@ const SPARK_COUNT = 56;
  * Living four-color fracture (style D, his concept art): a dark void with a
  * jagged, animated edge whose quadrants take the four pad colors, a soft
  * glow halo, and a distortion shimmer. uOpen widens it as it tears open;
- * uSeal closes and brightens it through the sealing stages. Normal blending
- * (additive washed out on bright rooms, 14:38 check).
+ * uSeal drives a film-melt close (uneven drip collapse) over the same hold
+ * duration — visual only; sealing trigger/completion stay in game logic.
+ * Normal blending (additive washed out on bright rooms, 14:38 check).
  */
 const FRACTURE_VERT = `
 varying vec2 vUv;
@@ -238,6 +239,9 @@ float noise1(float x) {
   f = f * f * (3.0 - 2.0 * f);
   return mix(hash(i), hash(i + 1.0), f);
 }
+float noise2(vec2 p) {
+  return noise1(p.x * 1.7 + p.y * 13.1 + uSeed);
+}
 vec3 quadColor(float a) {
   // Green top-left, red top-right, yellow bottom-right, blue bottom-left
   // (the order in his style D concept), blended around the rim.
@@ -249,23 +253,51 @@ vec3 quadColor(float a) {
 }
 void main() {
   vec2 p = vec2(vUv.x * 1.1, vUv.y);
-  float r = length(p);
   float a = atan(p.y, p.x);
   float open = smoothstep(0.0, 1.0, uOpen);
-  float keep = 1.0 - 0.92 * uSeal;
-  // Torn hole: big, taller than wide, with a ragged outline.
+  float seal = clamp(uSeal, 0.0, 1.0);
+
+  // Base torn hole: taller than wide, ragged outline (forming/idle).
   float jag = 0.64 + 0.26 * noise1(a * 3.0 + 7.0)
                    + 0.10 * noise1(a * 9.0 + uTime * 1.2)
                    + 0.06 * noise1(a * 23.0 - uTime * 2.4);
   vec2 hp = vec2(p.x * 1.18, p.y * 0.86);
   float hr = length(hp);
-  float edge = 0.52 * jag * open * keep;
+  float baseEdge = 0.52 * jag * open;
+
+  // Film-melt close: irregular threshold + gravity drip, not a uniform shrink.
+  // Melting advances from the outer rim inward with hanging strands.
+  float meltN = noise2(vec2(a * 2.4 + uTime * 0.35, hr * 6.0 + uSeed));
+  meltN = 0.55 * meltN + 0.30 * noise2(vec2(a * 7.0 - uTime * 0.8, hr * 14.0))
+        + 0.15 * noise2(vec2(a * 17.0, uTime * 1.4));
+  // Bias so the top collapses earlier and material sags downward.
+  float gravity = clamp(0.55 - p.y * 0.55, 0.0, 1.0);
+  float meltField = meltN * 0.72 + gravity * 0.38;
+  float meltThresh = mix(1.15, -0.05, seal);
+  float melted = smoothstep(meltThresh - 0.18, meltThresh + 0.12, meltField);
+  // Remaining hole radius: shrinks unevenly as melt eats the rim.
+  float keep = mix(1.0, 0.08, seal * (0.55 + 0.45 * (1.0 - meltField)));
+  float edge = baseEdge * keep * (1.0 - 0.72 * melted * seal);
+
+  // Drip strands: neon blobs hanging below the surviving rim while sealing.
+  float drip = 0.0;
+  if (seal > 0.02) {
+    float strand = noise1(a * 11.0 + 3.0);
+    float dripLen = seal * (0.08 + 0.22 * strand);
+    float rimY = edge * sin(a);
+    // Soft hanging tendrils under the current rim.
+    float along = clamp((rimY - p.y) / max(dripLen, 0.001), 0.0, 1.0);
+    float nearX = exp(-abs(p.x - edge * cos(a) * 0.15) * 28.0);
+    float bulb = exp(-pow((along - 0.85) / 0.12, 2.0));
+    drip = nearX * smoothstep(0.0, 0.15, along) * (0.35 + 0.65 * bulb) * seal
+         * step(p.y, rimY + 0.02);
+  }
+
   float d = hr - edge;
   vec3 rim = quadColor(a);
-  rim = mix(rim, vec3(1.0), 0.6 * uSeal);
+  rim = mix(rim, vec3(1.0), 0.45 * seal + 0.25 * drip);
 
-  // Radial cracks in the wall: thin jagged lines fanning out of the hole,
-  // fading with distance, glowing in the quadrant color.
+  // Radial cracks heal as the melt advances.
   float crack = 0.0;
   for (int i = 0; i < 3; i++) {
     float fi = float(i);
@@ -274,33 +306,35 @@ void main() {
     float cell = fract((a + warp) / 6.28318 * n + hash(fi) );
     float dist = abs(cell - 0.5) * 6.28318 / n * hr;
     float width = 0.006 + 0.004 * (1.0 - fi * 0.3);
-    float reach = (0.95 - fi * 0.15) * open;
+    float reach = (0.95 - fi * 0.15) * open * (1.0 - 0.85 * seal);
     float fade = step(edge, hr) * (1.0 - smoothstep(reach * 0.55, reach, hr)) * smoothstep(0.0, 0.05, hr - edge);
     float gate = step(0.5 + fi * 0.12, hash(floor((a + warp) / 6.28318 * n + hash(fi)) + fi * 5.0));
     crack += (exp(-dist / width) * 0.9 + exp(-dist / (width * 5.0)) * 0.25) * fade * gate;
   }
-  crack *= keep;
+  crack *= (1.0 - 0.9 * seal);
+
   float flicker = 0.78 + 0.22 * noise1(a * 5.0 + uTime * 6.0);
   float line = exp(-abs(d) * 75.0) * flicker;
-  float halo = exp(-max(d, 0.0) * 9.0) * 0.5 * keep;
+  // Molten rim band: thicker and hotter while sealing.
+  float meltRim = exp(-abs(d) * mix(75.0, 28.0, seal)) * (0.55 + 1.6 * seal) * flicker;
+  float halo = exp(-max(d, 0.0) * 9.0) * 0.5 * (1.0 - 0.35 * seal);
   float inside = 1.0 - smoothstep(-0.015, 0.015, d);
 
-  // Dark void (ref 15): nearly black interior; rim/crack carry the color.
-  // Soft seal stitch: a vertical hot seam that brightens while sealing.
-  float stitch = exp(-abs(p.x) * 55.0) * (0.35 + 0.9 * uSeal) * open * keep;
-  float stitchPulse = 0.75 + 0.25 * noise1(uTime * 8.0 + a);
   vec3 voidCol = vec3(0.01, 0.01, 0.015);
   float star = step(0.995, hash(floor(hp.x * 36.0) + floor(hp.y * 36.0) * 57.0));
   voidCol += star * rim * 0.35 * inside;
 
-  // Wall damage around the hole darkens the plaster.
-  float scorch = exp(-max(d, 0.0) * 9.0) * 0.38 * keep * open;
-  float sealHot = line * (1.0 + 1.4 * uSeal) + stitch * stitchPulse;
-  vec3 col = voidCol * inside + rim * (sealHot * 1.35 + crack * 1.35) + rim * halo * (0.6 + 0.5 * uSeal);
+  float scorch = exp(-max(d, 0.0) * 9.0) * 0.38 * (1.0 - 0.5 * seal) * open;
+  float sealHot = meltRim + drip * 1.4;
+  vec3 col = voidCol * inside + rim * (sealHot * 1.35 + crack * 1.2 + line * 0.6)
+           + rim * halo * (0.6 + 0.7 * seal);
   col = mix(col, vec3(0.02, 0.02, 0.03), (1.0 - inside) * scorch);
-  // Focal sealing glow near the hole centre.
-  col += mix(rim, vec3(1.0), 0.55) * uSeal * exp(-hr * 3.5) * 0.55;
-  float alpha = clamp(inside * 0.96 + sealHot + halo * 0.8 + crack + scorch, 0.0, 1.0);
+  // Focal sealing glow + molten drip highlights.
+  col += mix(rim, vec3(1.0), 0.55) * seal * exp(-hr * 3.2) * 0.5;
+  col += rim * drip * 1.8;
+  float alpha = clamp(inside * 0.96 + sealHot + halo * 0.8 + crack + scorch + drip, 0.0, 1.0);
+  // Late seal: dissolve leftover alpha so completion clears cleanly.
+  alpha *= 1.0 - smoothstep(0.88, 1.0, seal) * 0.92;
   float vig = 1.0 - smoothstep(0.82, 1.0, length(vUv));
   gl_FragColor = vec4(col, alpha * vig);
 }`;
