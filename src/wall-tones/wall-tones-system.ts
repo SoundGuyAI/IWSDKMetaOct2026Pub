@@ -117,7 +117,9 @@ defaultHeadsetPadSize,
 disposePadRuntimes,
 flashPad,
 setPadDebugCollidersVisible,
+pointInFrustumVolume,
 solidifyGhostPad,
+type FrustumVolumeSpec,
 type PadRuntime,
 } from './pads.js';
 import {
@@ -3735,6 +3737,21 @@ continue;
 }
 this.tipLocal.copy(this.tipScratch);
 volume.worldToLocal(this.tipLocal);
+const frustum = (volume.userData as { frustum?: FrustumVolumeSpec }).frustum;
+if (frustum != null) {
+// Backlog 82: frustum volume - narrow at the pad, wide toward the player.
+if (
+pointInFrustumVolume(
+frustum,
+this.tipLocal.x,
+this.tipLocal.y,
+this.tipLocal.z,
+)
+) {
+return centerDist;
+}
+continue;
+}
 const touchMesh = volume as import('@iwsdk/core').Mesh;
 const geom = touchMesh.geometry as {
 parameters?: { width?: number; height?: number; depth?: number };

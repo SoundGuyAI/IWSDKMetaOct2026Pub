@@ -1,5 +1,7 @@
 import {
   BoxGeometry,
+  BufferAttribute,
+  BufferGeometry,
   Color,
   DoubleSide,
   Mesh,
@@ -13,10 +15,14 @@ import {
 import {
   DESKTOP_PAD_SIZE_M,
   HEADSET_PAD_SIZE_M,
-  TOUCH_HOVER_DEPTH_M,
-  TOUCH_HOVER_SCALE,
-  TOUCH_PRESS_DEPTH_M,
-  TOUCH_PRESS_SCALE,
+  TOUCH_HOVER_FAR_SCALE,
+  TOUCH_HOVER_FAR_Z_M,
+  TOUCH_HOVER_NEAR_SCALE,
+  TOUCH_HOVER_NEAR_Z_M,
+  TOUCH_PRESS_FAR_SCALE,
+  TOUCH_PRESS_FAR_Z_M,
+  TOUCH_PRESS_NEAR_SCALE,
+  TOUCH_PRESS_NEAR_Z_M,
   RAY_TARGET_DEPTH_M,
   RAY_TARGET_SCALE,
   WALL_TONE_PADS,
@@ -91,30 +97,88 @@ function makeVolumeMesh(
   return mesh;
 }
 
-function makeDebugMesh(
+/** Square-frustum volume dimensions: small face at the pad, big face out. */
+export type FrustumVolumeSpec = {
+  nearW: number;
+  nearH: number;
+  nearZ: number;
+  farW: number;
+  farH: number;
+  farZ: number;
+};
+
+/**
+ * Backlog 82: fingertip volumes as frusta (Oded 2026-11-14 00:58, verbatim:
+ * "perhaps bounding boxes shouldn't be square cubes but rectangles with the
+ * faces pointing to the sides away from you are smaller and the face pointing
+ * towards the player is biger"). The mesh spans [nearZ, farZ] in local z
+ * (mesh position untouched at the pad origin), so worldToLocal on the volume
+ * gives coordinates comparable to the spec directly. userData.frustum drives
+ * the containment test in wall-tones-system (slot candidates stay boxes).
+ */
+export function makeFrustumVolumeMesh(
   name: string,
-  width: number,
-  height: number,
-  depth: number,
-  z: number,
-  color: number,
+  spec: FrustumVolumeSpec,
+  material?: MeshBasicMaterial,
 ): Mesh {
+  const { nearW, nearH, nearZ, farW, farH, farZ } = spec;
+  const nx = nearW / 2;
+  const ny = nearH / 2;
+  const fx = farW / 2;
+  const fy = farH / 2;
+  // 8 corners: 0-3 near rect, 4-7 far rect, both counter-clockwise from
+  // bottom-left seen from the player (+z looking toward -z).
+  const positions = new Float32Array([
+    -nx, -ny, nearZ,  nx, -ny, nearZ,  nx, ny, nearZ,  -nx, ny, nearZ,
+    -fx, -fy, farZ,   fx, -fy, farZ,   fx, fy, farZ,   -fx, fy, farZ,
+  ]);
+  const indices = [
+    0, 2, 1, 0, 3, 2, // near face
+    4, 5, 6, 4, 6, 7, // far face
+    0, 1, 5, 0, 5, 4, // bottom
+    1, 2, 6, 1, 6, 5, // right
+    2, 3, 7, 2, 7, 6, // top
+    3, 0, 4, 3, 4, 7, // left
+  ];
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
   const mesh = new Mesh(
-    new BoxGeometry(width, height, depth),
-    new MeshBasicMaterial({
-      color,
-      wireframe: true,
-      transparent: true,
-      opacity: 0.85,
-      depthWrite: false,
-      side: DoubleSide,
-    }),
+    geometry,
+    material ?? new MeshBasicMaterial({ visible: false }),
   );
   mesh.name = name;
-  mesh.position.z = z;
-  mesh.renderOrder = 40;
-  mesh.visible = false;
+  mesh.userData.frustum = spec;
   return mesh;
+}
+
+/** True when a volume-local point lies inside the frustum slab. */
+export function pointInFrustumVolume(
+  spec: FrustumVolumeSpec,
+  x: number,
+  y: number,
+  z: number,
+): boolean {
+  const t = (z - spec.nearZ) / (spec.farZ - spec.nearZ);
+  if (t < 0 || t > 1) {
+    return false;
+  }
+  const hx = (spec.nearW + (spec.farW - spec.nearW) * t) / 2;
+  const hy = (spec.nearH + (spec.farH - spec.nearH) * t) / 2;
+  return Math.abs(x) <= hx && Math.abs(y) <= hy;
+}
+
+
+function debugWireMaterial(color: number): MeshBasicMaterial {
+  return new MeshBasicMaterial({
+    color,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.85,
+    depthWrite: false,
+    side: DoubleSide,
+  });
 }
 
 function attachTouchVolumes(root: Object3D, sizeM: number): {
@@ -124,41 +188,27 @@ function attachTouchVolumes(root: Object3D, sizeM: number): {
   debugPressMesh: Mesh;
   rayTarget: Mesh;
 } {
-  const pressW = sizeM * TOUCH_PRESS_SCALE;
-  const hoverW = sizeM * TOUCH_HOVER_SCALE;
-  const pressZ = TOUCH_PRESS_DEPTH_M * 0.42;
-  const hoverZ = TOUCH_HOVER_DEPTH_M * 0.42;
+  // Backlog 82: frusta, not cubes - pad-sized face at the pad, player-sized
+  // face toward the player, over the same accepted z slabs as before.
+  const pressSpec = frustumSpecFor(sizeM, 'press');
+  const hoverSpec = frustumSpecFor(sizeM, 'hover');
 
-  const touchVolume = makeVolumeMesh(
-    'touch-volume',
-    pressW,
-    pressW,
-    TOUCH_PRESS_DEPTH_M,
-    pressZ,
-  );
-  const hoverVolume = makeVolumeMesh(
-    'hover-volume',
-    hoverW,
-    hoverW,
-    TOUCH_HOVER_DEPTH_M,
-    hoverZ,
-  );
-  const debugPressMesh = makeDebugMesh(
+  const touchVolume = makeFrustumVolumeMesh('touch-volume', pressSpec);
+  const hoverVolume = makeFrustumVolumeMesh('hover-volume', hoverSpec);
+  const debugPressMesh = makeFrustumVolumeMesh(
     'debug-press-volume',
-    pressW,
-    pressW,
-    TOUCH_PRESS_DEPTH_M,
-    pressZ,
-    0xff66cc,
+    pressSpec,
+    debugWireMaterial(0xff66cc),
   );
-  const debugHoverMesh = makeDebugMesh(
+  const debugHoverMesh = makeFrustumVolumeMesh(
     'debug-hover-volume',
-    hoverW,
-    hoverW,
-    TOUCH_HOVER_DEPTH_M,
-    hoverZ,
-    0x66fff0,
+    hoverSpec,
+    debugWireMaterial(0x66fff0),
   );
+  debugPressMesh.renderOrder = 40;
+  debugPressMesh.visible = false;
+  debugHoverMesh.renderOrder = 40;
+  debugHoverMesh.visible = false;
 
   // The fingertip volumes are hand-only colliders. They must never answer
   // pointer raycasts, or the controller/hand ray (and desktop pointer) would
@@ -399,24 +449,45 @@ export function solidifyGhostPad(pad: PadRuntime, sizeM: number): void {
   applyPadVisualState(pad, 'idle');
 }
 
-function resizeTouchVolumes(pad: PadRuntime, sizeM: number): void {
-  const pressW = sizeM * TOUCH_PRESS_SCALE;
-  const hoverW = sizeM * TOUCH_HOVER_SCALE;
-  const pressZ = TOUCH_PRESS_DEPTH_M * 0.42;
-  const hoverZ = TOUCH_HOVER_DEPTH_M * 0.42;
+function frustumSpecFor(sizeM: number, kind: 'press' | 'hover'): FrustumVolumeSpec {
+  const nearScale = kind === 'press' ? TOUCH_PRESS_NEAR_SCALE : TOUCH_HOVER_NEAR_SCALE;
+  const farScale = kind === 'press' ? TOUCH_PRESS_FAR_SCALE : TOUCH_HOVER_FAR_SCALE;
+  return kind === 'press'
+    ? {
+        nearW: sizeM * nearScale,
+        nearH: sizeM * nearScale,
+        nearZ: TOUCH_PRESS_NEAR_Z_M,
+        farW: sizeM * farScale,
+        farH: sizeM * farScale,
+        farZ: TOUCH_PRESS_FAR_Z_M,
+      }
+    : {
+        nearW: sizeM * nearScale,
+        nearH: sizeM * nearScale,
+        nearZ: TOUCH_HOVER_NEAR_Z_M,
+        farW: sizeM * farScale,
+        farH: sizeM * farScale,
+        farZ: TOUCH_HOVER_FAR_Z_M,
+      };
+}
 
-  for (const [mesh, w, d, z] of [
-    [pad.touchVolume, pressW, TOUCH_PRESS_DEPTH_M, pressZ],
-    [pad.hoverVolume, hoverW, TOUCH_HOVER_DEPTH_M, hoverZ],
-    [pad.debugPressMesh, pressW, TOUCH_PRESS_DEPTH_M, pressZ],
-    [pad.debugHoverMesh, hoverW, TOUCH_HOVER_DEPTH_M, hoverZ],
+function resizeTouchVolumes(pad: PadRuntime, sizeM: number): void {
+  const pressSpec = frustumSpecFor(sizeM, 'press');
+  const hoverSpec = frustumSpecFor(sizeM, 'hover');
+  for (const [mesh, spec] of [
+    [pad.touchVolume, pressSpec],
+    [pad.hoverVolume, hoverSpec],
+    [pad.debugPressMesh, pressSpec],
+    [pad.debugHoverMesh, hoverSpec],
   ] as const) {
     if (!(mesh instanceof Mesh)) {
       continue;
     }
+    const rebuilt = makeFrustumVolumeMesh(mesh.name, spec, mesh.material as MeshBasicMaterial);
     mesh.geometry.dispose();
-    mesh.geometry = new BoxGeometry(w, w, d);
-    mesh.position.z = z;
+    mesh.geometry = rebuilt.geometry;
+    mesh.userData.frustum = spec;
+    mesh.position.z = 0;
   }
 }
 
