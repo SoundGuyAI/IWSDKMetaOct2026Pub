@@ -87,7 +87,7 @@ test.describe('Wall Tones achievement unlock celebration (item 54)', () => {
   }) => {
     await abortSpeech(page);
     await bootWallTones(page);
-    await grantBars(page, 1000);
+    await grantBars(page, 10_000); // Secret now costs 10,000 (owner 2026-11-14)
 
     // Capture the Achievements button's home position with no popup open:
     // the fly-in must land there even after the store popup hides
