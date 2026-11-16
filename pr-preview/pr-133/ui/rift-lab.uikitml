@@ -1,0 +1,90 @@
+<!--
+  Rift Sealing Lab panel (backlog item 75). Placeholder prototype:
+  charge energy with successful notes, seal placeholder rifts with a beam.
+  Flat/mobile: drag from the charge spot. PC click target is UNRESOLVED.
+-->
+<style>
+  .rift-lab-root {
+    flex-direction: column;
+    width: 560px;
+  }
+
+  .rift-lab-content {
+    flex-direction: column;
+    gap: 10px;
+    padding: 24px;
+  }
+
+  .rift-lab-eyebrow {
+    color: #6b5a00;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+  }
+
+  .rift-lab-eyebrow:dark {
+    color: #f5d90a;
+  }
+
+  .rift-lab-heading {
+    color: #1c1d20;
+    font-size: 30px;
+    font-weight: 700;
+    line-height: 36px;
+  }
+
+  .rift-lab-heading:dark {
+    color: #fafaf7;
+  }
+
+  .rift-lab-body {
+    color: #3a3b40;
+    font-size: 17px;
+    line-height: 24px;
+  }
+
+  .rift-lab-body:dark {
+    color: #dddfe3;
+  }
+
+  .rift-lab-button {
+    justify-content: center;
+    height: 64px;
+    margin-left: 24px;
+    margin-right: 24px;
+    margin-bottom: 12px;
+    padding-top: 14px;
+    padding-bottom: 14px;
+  }
+
+  .rift-lab-button-label {
+    font-size: 20px;
+    font-weight: 700;
+    transform-translate-y: 1px;
+  }
+</style>
+<Panel id="rift-lab-root" class="rift-lab-root">
+  <div id="rift-lab-content" class="rift-lab-content">
+    <div id="rift-lab-eyebrow" class="rift-lab-eyebrow">LAB</div>
+    <div id="rift-lab-heading" class="rift-lab-heading">Rift Sealing Lab</div>
+    <div id="rift-lab-status" class="rift-lab-body">Press Start. Successful notes charge your hands with energy.</div>
+    <div id="rift-lab-energy" class="rift-lab-body">Energy: 0</div>
+    <div id="rift-lab-telemetry" class="rift-lab-body">No rifts.</div>
+  </div>
+  <Button id="rift-lab-note-button" class="rift-lab-button" style="height: 64px">
+    <ButtonIcon><FlaskConical></FlaskConical></ButtonIcon>
+    <ButtonLabel id="rift-lab-note-label" class="rift-lab-button-label">Play a note (lab stand-in)</ButtonLabel>
+  </Button>
+  <Button id="rift-lab-mr-button" class="rift-lab-button" style="height: 64px; display: none">
+    <ButtonIcon><FlaskConical></FlaskConical></ButtonIcon>
+    <ButtonLabel id="rift-lab-mr-label" class="rift-lab-button-label">Enter mixed reality</ButtonLabel>
+  </Button>
+  <Button id="rift-lab-start-button" class="rift-lab-button" style="height: 64px">
+    <ButtonIcon><FlaskConical></FlaskConical></ButtonIcon>
+    <ButtonLabel id="rift-lab-start-label" class="rift-lab-button-label">Start</ButtonLabel>
+  </Button>
+  <Button id="rift-lab-back-button" class="rift-lab-button" style="height: 64px; margin-bottom: 24px">
+    <ButtonIcon><ArrowLeft></ArrowLeft></ButtonIcon>
+    <ButtonLabel id="rift-lab-back-label" class="rift-lab-button-label">Back</ButtonLabel>
+  </Button>
+</Panel>
