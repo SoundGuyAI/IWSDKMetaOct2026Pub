@@ -553,6 +553,7 @@
           "content": {
             "type": "asset",
             "asset": "lab-entry-panel"
+
           },
           "transform": {
             "position": [
@@ -574,6 +575,22 @@
       "content": {
         "type": "asset",
         "asset": "lab-menu-panel"
+
+      },
+      "transform": {
+        "position": [0, 1.78, -2.75],
+        "scale": 0.34
+      },
+      "components": {
+        "RayInteractable": {}
+      }
+    },
+    {
+      "id": "nod-lab-panel",
+      "name": "Nod Lab Panel",
+      "content": {
+        "type": "asset",
+        "asset": "nod-lab-panel"
       },
       "transform": {
         "position": [
