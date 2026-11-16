@@ -99,11 +99,6 @@
     height: 56px;
     padding-top: 12px;
     padding-bottom: 12px;
-    background-color: #ffffff;
-  }
-
-  .nod-lab-answer-button:dark {
-    background-color: #34363c;
   }
 </style>
 <Panel id="nod-lab-root" class="nod-lab-root">

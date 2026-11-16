@@ -155,27 +155,35 @@
       <ButtonLabel class="button-label">Back</ButtonLabel>
     </Button>
   </div>
-  <div id="accessibility-dialog" class="settings-dialog" style="display: none">
+  <div id="accessibility-dialog" class="settings-dialog" style="display: none; gap: 3px; padding: 8px">
     <div class="eyebrow">SETTINGS</div>
     <div class="heading">Accessibility</div>
-    <div id="hearing-subtitles-row" style="flex-direction: row; gap: 12px; align-items: center; padding: 12px; cursor: pointer">
+    <div id="hearing-subtitles-row" style="flex-direction: row; gap: 12px; align-items: center; padding: 6px; cursor: pointer">
       <Checkbox id="hearing-subtitles-checkbox"></Checkbox>
       <div class="body">Hearing accessibility: subtitles</div>
     </div>
-    <div id="color-names-row" style="flex-direction: row; gap: 12px; align-items: center; padding: 12px; cursor: pointer">
+    <div id="color-names-row" style="flex-direction: row; gap: 12px; align-items: center; padding: 6px; cursor: pointer">
       <Checkbox id="color-names-checkbox"></Checkbox>
       <div class="body">Color blindness: show color names</div>
     </div>
-    <div id="voices-off-row" style="flex-direction: row; gap: 12px; align-items: center; padding: 12px; cursor: pointer">
+    <div id="voices-off-row" style="flex-direction: row; gap: 12px; align-items: center; padding: 6px; cursor: pointer">
       <Checkbox id="voices-off-checkbox"></Checkbox>
       <div class="body">Voices off: mute all narration</div>
     </div>
-    <div class="body" style="padding-left: 12px; padding-right: 12px">Debug reset clears Bars, total score, streaks, achievements, purchased hint levels, purchase and press counters, and first-time flags. Settings and accessibility stay.</div>
-    <Button id="reset-stats-button" class="button" style="height: 64px">
+    <div id="head-gaze-pinch-row" style="flex-direction: row; gap: 12px; align-items: center; padding: 6px; cursor: pointer">
+      <Checkbox id="head-gaze-pinch-checkbox"></Checkbox>
+      <div class="body">Head gaze + pinch: press pads by looking</div>
+    </div>
+    <div id="native-gaze-pinch-row" style="flex-direction: row; gap: 12px; align-items: center; padding: 6px; cursor: pointer">
+      <Checkbox id="native-gaze-pinch-checkbox"></Checkbox>
+      <div id="native-gaze-status" class="body">Eye gaze + pinch (experimental) - Eye tracking: unknown</div>
+    </div>
+    <div class="body" style="padding-left: 12px; padding-right: 12px; font-size: 13px">Debug reset clears Bars, total score, streaks, achievements, purchased hint levels, purchase and press counters, and first-time flags. Settings and accessibility stay.</div>
+    <Button id="reset-stats-button" class="button" style="height: 48px">
       <ButtonIcon><Trash2></Trash2></ButtonIcon>
       <ButtonLabel id="reset-stats-label" class="button-label">Reset my stats (debug)</ButtonLabel>
     </Button>
-    <Button id="accessibility-back-button" class="button" style="height: 64px">
+    <Button id="accessibility-back-button" class="button" style="height: 48px">
       <ButtonIcon><ArrowLeft></ArrowLeft></ButtonIcon><ButtonLabel>Back</ButtonLabel>
     </Button>
   </div>
