@@ -1,16 +1,17 @@
 /**
  * Hand energy aura for the Rift Lab (visual-only).
  *
- * Four-color spiral filaments + ember sparks around each palm, denser on
- * the firing hand. Optional experimental PointLight while firing.
+ * Four-color spiral ribbons + ember sparks around each palm (mesh ribbons,
+ * not 1px Lines). Denser on the firing hand. Optional experimental PointLight.
  */
 import {
   AdditiveBlending,
   BufferGeometry,
+  DoubleSide,
   Float32BufferAttribute,
   Group,
-  Line,
-  LineBasicMaterial,
+  Mesh,
+  MeshBasicMaterial,
   PointLight,
   Points,
   PointsMaterial,
@@ -22,28 +23,45 @@ import { PAD_COLOR_NAMES, type HandSide } from './rift-energy.js';
 import { glowDotTexture, neonPadHex } from './rift-note-visuals.js';
 
 const FILAMENT_COUNT = 4;
-const FILAMENT_SEGMENTS = 28;
-const EMBER_COUNT = 24;
+const FILAMENT_SEGMENTS = 24;
+const EMBER_COUNT = 28;
 
 export interface HandAuraUpdate {
   left: Vector3 | null;
   right: Vector3 | null;
-  /** Which palm is currently firing the seal beam, if any. */
   firing: HandSide | null;
   energy01: number;
   timeSec: number;
-  /** Enable experimental local light on the firing palm. */
   usePalmLight: boolean;
+}
+
+interface Filament {
+  mesh: Mesh;
+  pos: Float32Array;
+  mat: MeshBasicMaterial;
+  phase: number;
 }
 
 interface HandBundle {
   group: Group;
-  filaments: { line: Line; pos: Float32Array; mat: LineBasicMaterial; phase: number }[];
+  filaments: Filament[];
   embers: Points;
   emberPos: Float32Array;
   emberSeeds: Float32Array;
   core: Sprite;
   light: PointLight;
+}
+
+function makeRibbonGeometry(segments: number, pos: Float32Array): BufferGeometry {
+  const geo = new BufferGeometry();
+  geo.setAttribute('position', new Float32BufferAttribute(pos, 3));
+  const indices: number[] = [];
+  for (let i = 0; i < segments; i++) {
+    const a = i * 2;
+    indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+  }
+  geo.setIndex(indices);
+  return geo;
 }
 
 export class RiftHandAura {
@@ -63,29 +81,23 @@ export class RiftHandAura {
     group.name = `HandAura_${side}`;
     group.visible = false;
 
-    const filaments: HandBundle['filaments'] = [];
+    const filaments: Filament[] = [];
     for (let i = 0; i < FILAMENT_COUNT; i++) {
       const colorName = PAD_COLOR_NAMES[i % PAD_COLOR_NAMES.length];
-      const pos = new Float32Array((FILAMENT_SEGMENTS + 1) * 3);
-      const geo = new BufferGeometry();
-      geo.setAttribute('position', new Float32BufferAttribute(pos, 3));
-      const mat = new LineBasicMaterial({
+      const pos = new Float32Array((FILAMENT_SEGMENTS + 1) * 6);
+      const mat = new MeshBasicMaterial({
         color: neonPadHex(colorName),
         transparent: true,
-        opacity: 0.78,
+        opacity: 0.9,
         blending: AdditiveBlending,
         depthWrite: false,
         toneMapped: false,
+        side: DoubleSide,
       });
-      const line = new Line(geo, mat);
-      line.frustumCulled = false;
-      group.add(line);
-      filaments.push({
-        line,
-        pos,
-        mat,
-        phase: (i / FILAMENT_COUNT) * Math.PI * 2,
-      });
+      const mesh = new Mesh(makeRibbonGeometry(FILAMENT_SEGMENTS, pos), mat);
+      mesh.frustumCulled = false;
+      group.add(mesh);
+      filaments.push({ mesh, pos, mat, phase: (i / FILAMENT_COUNT) * Math.PI * 2 });
     }
 
     const emberPos = new Float32Array(EMBER_COUNT * 3);
@@ -95,15 +107,11 @@ export class RiftHandAura {
       emberSeeds[i * 4] = Math.random();
       emberSeeds[i * 4 + 1] = Math.random() * Math.PI * 2;
       emberSeeds[i * 4 + 2] = 0.4 + Math.random();
-      emberSeeds[i * 4 + 3] = 0.02 + Math.random() * 0.06;
+      emberSeeds[i * 4 + 3] = 0.025 + Math.random() * 0.06;
       const hex = neonPadHex(PAD_COLOR_NAMES[i % 4]);
-      // Parse via CSS color string into the buffer by temp Line material-free approach:
-      const r = Number.parseInt(hex.slice(1, 3), 16) / 255;
-      const g = Number.parseInt(hex.slice(3, 5), 16) / 255;
-      const b = Number.parseInt(hex.slice(5, 7), 16) / 255;
-      emberCol[i * 3] = r;
-      emberCol[i * 3 + 1] = g;
-      emberCol[i * 3 + 2] = b;
+      emberCol[i * 3] = Number.parseInt(hex.slice(1, 3), 16) / 255;
+      emberCol[i * 3 + 1] = Number.parseInt(hex.slice(3, 5), 16) / 255;
+      emberCol[i * 3 + 2] = Number.parseInt(hex.slice(5, 7), 16) / 255;
     }
     const emberGeo = new BufferGeometry();
     emberGeo.setAttribute('position', new Float32BufferAttribute(emberPos, 3));
@@ -111,14 +119,15 @@ export class RiftHandAura {
     const embers = new Points(
       emberGeo,
       new PointsMaterial({
-        size: 0.028,
+        size: 0.045,
         map: glowDotTexture(),
         vertexColors: true,
         transparent: true,
         depthWrite: false,
         blending: AdditiveBlending,
         toneMapped: false,
-        opacity: 0.85,
+        opacity: 0.95,
+        sizeAttenuation: true,
       }),
     );
     embers.frustumCulled = false;
@@ -132,10 +141,10 @@ export class RiftHandAura {
         depthWrite: false,
         blending: AdditiveBlending,
         toneMapped: false,
-        opacity: 0.55,
+        opacity: 0.7,
       }),
     );
-    core.scale.setScalar(0.08);
+    core.scale.setScalar(0.1);
     group.add(core);
 
     const light = new PointLight(0xffffff, 0, 0.55, 2);
@@ -161,28 +170,35 @@ export class RiftHandAura {
     }
     bundle.group.visible = true;
     const dens = firing ? 1 : 0.55;
-    const radius = 0.045 + energy01 * 0.035 * dens;
+    const radius = 0.05 + energy01 * 0.04 * dens;
 
     for (let i = 0; i < bundle.filaments.length; i++) {
       const f = bundle.filaments[i];
-      f.mat.opacity = (firing ? 0.88 : 0.55) * Math.min(1, energy01 * 1.4);
-      const spin = timeSec * (2.6 + i * 0.45) + f.phase;
+      f.mat.opacity = (firing ? 0.95 : 0.6) * Math.min(1, energy01 * 1.4);
+      const spin = timeSec * (2.8 + i * 0.5) + f.phase;
       for (let k = 0; k <= FILAMENT_SEGMENTS; k++) {
         const u = k / FILAMENT_SEGMENTS;
-        // Helix around the palm, slightly elongated along the local up.
-        const ang = f.phase + u * Math.PI * 2 * 1.6 + spin;
-        const rad = radius * (0.65 + 0.35 * Math.sin(u * 5 + spin));
-        const y = (u - 0.5) * radius * 1.6;
-        const o = k * 3;
-        f.pos[o] = palm.x + Math.cos(ang) * rad;
-        f.pos[o + 1] = palm.y + y;
-        f.pos[o + 2] = palm.z + Math.sin(ang) * rad;
+        const ang = f.phase + u * Math.PI * 2 * 1.7 + spin;
+        const rad = radius * (0.65 + 0.4 * Math.sin(u * 5 + spin));
+        const y = (u - 0.5) * radius * 1.7;
+        const cx = palm.x + Math.cos(ang) * rad;
+        const cy = palm.y + y;
+        const cz = palm.z + Math.sin(ang) * rad;
+        const hw = 0.01 * dens;
+        const sx = -Math.sin(ang) * hw;
+        const sz = Math.cos(ang) * hw;
+        const o = k * 6;
+        f.pos[o] = cx - sx;
+        f.pos[o + 1] = cy;
+        f.pos[o + 2] = cz - sz;
+        f.pos[o + 3] = cx + sx;
+        f.pos[o + 4] = cy;
+        f.pos[o + 5] = cz + sz;
       }
-      (f.line.geometry.getAttribute('position') as Float32BufferAttribute).needsUpdate = true;
+      (f.mesh.geometry.getAttribute('position') as Float32BufferAttribute).needsUpdate = true;
     }
 
     for (let i = 0; i < EMBER_COUNT; i++) {
-      // When not firing, only show half the embers to save fill.
       if (!firing && i >= EMBER_COUNT / 2) {
         const o = i * 3;
         bundle.emberPos[o] = palm.x;
@@ -202,18 +218,15 @@ export class RiftHandAura {
     (bundle.embers.geometry.getAttribute('position') as Float32BufferAttribute).needsUpdate = true;
 
     bundle.core.position.copy(palm);
-    const coreScale = (firing ? 0.1 : 0.06) * (0.7 + 0.5 * energy01);
-    bundle.core.scale.setScalar(coreScale);
-    (bundle.core.material as SpriteMaterial).opacity = firing ? 0.85 : 0.4;
+    bundle.core.scale.setScalar((firing ? 0.12 : 0.07) * (0.7 + 0.5 * energy01));
+    (bundle.core.material as SpriteMaterial).opacity = firing ? 0.9 : 0.45;
 
     if (usePalmLight && firing) {
-      // Filament/ember positions are authored in world space under an identity
-      // group, so the experimental palm light uses the same world palm point.
       bundle.light.visible = true;
       bundle.light.position.copy(palm);
-      bundle.light.intensity = 0.35 + 0.25 * energy01;
-      bundle.light.color.set(neonPadHex(PAD_COLOR_NAMES[Math.floor(timeSec * 0.8) % 4]));
-      bundle.light.distance = 0.65;
+      bundle.light.intensity = 0.4 + 0.25 * energy01;
+      bundle.light.color.set(neonPadHex(PAD_COLOR_NAMES[Math.floor(timeSec / 0.55) % 4]));
+      bundle.light.distance = 0.7;
     } else {
       bundle.light.visible = false;
       bundle.light.intensity = 0;

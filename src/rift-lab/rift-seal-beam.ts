@@ -1,9 +1,9 @@
 /**
  * Layered Rift-sealing beam VFX (visual-only).
  *
- * Layers: hot core, colored spiral filaments, traveling orbit sparks,
- * palm emitter tangle, and impact flare. Palette cycles the four pad
- * colors with a mild hue/sat lift so the beam stays energetic in MR.
+ * WebGL Lines are ~1px on Quest/desktop, so every energetic layer is a real
+ * mesh: hot core tubes, wide spiral ribbons, orbit sparks, palm burst, impact.
+ * Beam color holds one pad color per beat, then steps to the next.
  */
 import {
   AdditiveBlending,
@@ -13,8 +13,6 @@ import {
   DoubleSide,
   Float32BufferAttribute,
   Group,
-  Line,
-  LineBasicMaterial,
   Mesh,
   MeshBasicMaterial,
   Points,
@@ -23,48 +21,89 @@ import {
   SpriteMaterial,
   Vector3,
 } from '@iwsdk/core';
-import { PAD_COLOR_NAMES, type PadColorName } from './rift-energy.js';
+import { PAD_COLOR_NAMES } from './rift-energy.js';
 import { glowDotTexture, neonPadHex } from './rift-note-visuals.js';
 
-const CORE_SEGMENTS = 24;
 const SPIRAL_COUNT = 3;
-const SPIRAL_SEGMENTS = 48;
-const SPARK_COUNT = 42;
-const PALM_WISP_COUNT = 5;
-const PALM_WISP_SEGMENTS = 10;
-const BEAM_CYCLE_HZ = 0.42;
+const SPIRAL_SEGMENTS = 40;
+const SPARK_COUNT = 56;
+const PALM_WISP_COUNT = 4;
+const PALM_WISP_SEGMENTS = 12;
+/** Hold each pad color this long, then snap to the next (not a gradual lerp). */
+const COLOR_BEAT_SEC = 0.55;
 
 export interface SealBeamUpdate {
   origin: Vector3;
   end: Vector3;
   /** 0..1 when contacting a rift; drives impact flare. */
   hitStrength: number;
-  /** Wall-local forward for impact billboard; null = face camera later. */
   timeSec: number;
   visible: boolean;
 }
 
+interface Ribbon {
+  mesh: Mesh;
+  pos: Float32Array;
+  mat: MeshBasicMaterial;
+  phase: number;
+  turns: number;
+  radius: number;
+  halfWidth: number;
+}
+
+function makeRibbonGeometry(segments: number, pos: Float32Array): BufferGeometry {
+  // Triangle strip as indexed tris: 2 verts per segment → (segments)*2 tris.
+  const geo = new BufferGeometry();
+  geo.setAttribute('position', new Float32BufferAttribute(pos, 3));
+  const indices: number[] = [];
+  for (let i = 0; i < segments; i++) {
+    const a = i * 2;
+    indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+  }
+  geo.setIndex(indices);
+  return geo;
+}
+
+function writeRibbonSegment(
+  pos: Float32Array,
+  i: number,
+  cx: number,
+  cy: number,
+  cz: number,
+  sx: number,
+  sy: number,
+  sz: number,
+): void {
+  const o = i * 6;
+  pos[o] = cx - sx;
+  pos[o + 1] = cy - sy;
+  pos[o + 2] = cz - sz;
+  pos[o + 3] = cx + sx;
+  pos[o + 4] = cy + sy;
+  pos[o + 5] = cz + sz;
+}
+
 export class RiftSealBeam {
   readonly root = new Group();
-  private readonly core: Line;
-  private readonly corePos: Float32Array;
-  private readonly coreMat: LineBasicMaterial;
-  private readonly coreTube: Mesh;
-  private readonly coreTubeMat: MeshBasicMaterial;
-  private readonly spirals: { line: Line; pos: Float32Array; mat: LineBasicMaterial; phase: number; turns: number; radius: number }[] = [];
+  private readonly coreInner: Mesh;
+  private readonly coreOuter: Mesh;
+  private readonly coreInnerMat: MeshBasicMaterial;
+  private readonly coreOuterMat: MeshBasicMaterial;
+  private readonly spirals: Ribbon[] = [];
   private readonly sparks: Points;
   private readonly sparkPos: Float32Array;
   private readonly sparkCol: Float32Array;
   private readonly sparkSeeds: Float32Array;
   private readonly palmCore: Sprite;
-  private readonly palmWisps: { line: Line; pos: Float32Array; mat: LineBasicMaterial; phase: number }[] = [];
+  private readonly palmHalo: Sprite;
+  private readonly palmWisps: Ribbon[] = [];
   private readonly impact: Sprite;
   private readonly impactMat: SpriteMaterial;
   private readonly tmpA = new Vector3();
   private readonly tmpB = new Vector3();
   private readonly tmpC = new Vector3();
-  private readonly colorA = new Color();
-  private readonly colorB = new Color();
+  private readonly tmpSide = new Vector3();
+  private readonly yUp = new Vector3(0, 1, 0);
   private readonly colorMix = new Color();
   private readonly white = new Color(1, 1, 1);
   private readonly padColors: Color[];
@@ -74,61 +113,57 @@ export class RiftSealBeam {
     this.root.name = 'RiftSealBeam';
     this.root.visible = false;
 
-    this.corePos = new Float32Array((CORE_SEGMENTS + 1) * 3);
-    const coreGeo = new BufferGeometry();
-    coreGeo.setAttribute('position', new Float32BufferAttribute(this.corePos, 3));
-    this.coreMat = new LineBasicMaterial({
+    this.coreInnerMat = new MeshBasicMaterial({
       color: 0xffffff,
       transparent: true,
       opacity: 0.95,
-      blending: AdditiveBlending,
-      depthWrite: false,
-      toneMapped: false,
-    });
-    this.core = new Line(coreGeo, this.coreMat);
-    this.core.frustumCulled = false;
-    this.root.add(this.core);
-
-    // Soft volumetric core so the beam reads on Quest (1px lines wash out).
-    // Keep some opacity with normal blending so the shaft survives bright rooms;
-    // additive alone washed out against the white hub (same lesson as notes).
-    this.coreTubeMat = new MeshBasicMaterial({
-      color: 0xffffff,
-      transparent: true,
-      opacity: 0.9,
       depthWrite: false,
       toneMapped: false,
       side: DoubleSide,
     });
-    this.coreTube = new Mesh(
-      new CylinderGeometry(0.028, 0.016, 1, 12, 1, true),
-      this.coreTubeMat,
+    this.coreOuterMat = new MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.45,
+      blending: AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+      side: DoubleSide,
+    });
+    this.coreInner = new Mesh(
+      new CylinderGeometry(0.018, 0.012, 1, 12, 1, true),
+      this.coreInnerMat,
     );
-    this.coreTube.frustumCulled = false;
-    this.root.add(this.coreTube);
+    this.coreOuter = new Mesh(
+      new CylinderGeometry(0.045, 0.032, 1, 14, 1, true),
+      this.coreOuterMat,
+    );
+    this.coreInner.frustumCulled = false;
+    this.coreOuter.frustumCulled = false;
+    this.root.add(this.coreOuter, this.coreInner);
 
     for (let i = 0; i < SPIRAL_COUNT; i++) {
-      const pos = new Float32Array((SPIRAL_SEGMENTS + 1) * 3);
-      const geo = new BufferGeometry();
-      geo.setAttribute('position', new Float32BufferAttribute(pos, 3));
-      const mat = new LineBasicMaterial({
+      const pos = new Float32Array((SPIRAL_SEGMENTS + 1) * 6);
+      const mat = new MeshBasicMaterial({
         color: this.padColors[i % 4].clone(),
         transparent: true,
-        opacity: 0.72,
+        opacity: 0.9,
         blending: AdditiveBlending,
         depthWrite: false,
         toneMapped: false,
+        side: DoubleSide,
       });
-      const line = new Line(geo, mat);
-      line.frustumCulled = false;
-      this.root.add(line);
+      const mesh = new Mesh(makeRibbonGeometry(SPIRAL_SEGMENTS, pos), mat);
+      mesh.frustumCulled = false;
+      this.root.add(mesh);
       this.spirals.push({
-        line,
+        mesh,
         pos,
         mat,
         phase: (i / SPIRAL_COUNT) * Math.PI * 2,
-        turns: 2.4 + i * 0.55,
-        radius: 0.018 + i * 0.008,
+        turns: 2.2 + i * 0.65,
+        radius: 0.04 + i * 0.018,
+        halfWidth: 0.01 + i * 0.003,
       });
     }
 
@@ -139,7 +174,7 @@ export class RiftSealBeam {
       this.sparkSeeds[i * 4] = Math.random();
       this.sparkSeeds[i * 4 + 1] = Math.random() * Math.PI * 2;
       this.sparkSeeds[i * 4 + 2] = 0.55 + Math.random() * 0.9;
-      this.sparkSeeds[i * 4 + 3] = 0.012 + Math.random() * 0.03;
+      this.sparkSeeds[i * 4 + 3] = 0.03 + Math.random() * 0.05;
       const c = this.padColors[i % 4];
       this.sparkCol[i * 3] = c.r;
       this.sparkCol[i * 3 + 1] = c.g;
@@ -151,14 +186,15 @@ export class RiftSealBeam {
     this.sparks = new Points(
       sparkGeo,
       new PointsMaterial({
-        size: 0.045,
+        size: 0.09,
         map: glowDotTexture(),
         vertexColors: true,
         transparent: true,
         depthWrite: false,
         blending: AdditiveBlending,
         toneMapped: false,
-        opacity: 0.9,
+        opacity: 1,
+        sizeAttenuation: true,
       }),
     );
     this.sparks.frustumCulled = false;
@@ -172,28 +208,47 @@ export class RiftSealBeam {
         depthWrite: false,
         blending: AdditiveBlending,
         toneMapped: false,
-        opacity: 0.95,
+        opacity: 1,
       }),
     );
-    this.palmCore.scale.setScalar(0.14);
-    this.root.add(this.palmCore);
+    this.palmHalo = new Sprite(
+      new SpriteMaterial({
+        map: glowDotTexture(),
+        color: 0xffffff,
+        transparent: true,
+        depthWrite: false,
+        blending: AdditiveBlending,
+        toneMapped: false,
+        opacity: 0.7,
+      }),
+    );
+    this.palmCore.scale.setScalar(0.18);
+    this.palmHalo.scale.setScalar(0.32);
+    this.root.add(this.palmHalo, this.palmCore);
 
     for (let i = 0; i < PALM_WISP_COUNT; i++) {
-      const pos = new Float32Array((PALM_WISP_SEGMENTS + 1) * 3);
-      const geo = new BufferGeometry();
-      geo.setAttribute('position', new Float32BufferAttribute(pos, 3));
-      const mat = new LineBasicMaterial({
+      const pos = new Float32Array((PALM_WISP_SEGMENTS + 1) * 6);
+      const mat = new MeshBasicMaterial({
         color: this.padColors[i % 4].clone(),
         transparent: true,
-        opacity: 0.8,
+        opacity: 0.95,
         blending: AdditiveBlending,
         depthWrite: false,
         toneMapped: false,
+        side: DoubleSide,
       });
-      const line = new Line(geo, mat);
-      line.frustumCulled = false;
-      this.root.add(line);
-      this.palmWisps.push({ line, pos, mat, phase: (i / PALM_WISP_COUNT) * Math.PI * 2 });
+      const mesh = new Mesh(makeRibbonGeometry(PALM_WISP_SEGMENTS, pos), mat);
+      mesh.frustumCulled = false;
+      this.root.add(mesh);
+      this.palmWisps.push({
+        mesh,
+        pos,
+        mat,
+        phase: (i / PALM_WISP_COUNT) * Math.PI * 2,
+        turns: 1.4,
+        radius: 0.05,
+        halfWidth: 0.012,
+      });
     }
 
     this.impactMat = new SpriteMaterial({
@@ -206,33 +261,41 @@ export class RiftSealBeam {
       opacity: 0,
     });
     this.impact = new Sprite(this.impactMat);
-    this.impact.scale.setScalar(0.22);
+    this.impact.scale.setScalar(0.28);
     this.root.add(this.impact);
   }
 
-  /** Sample cycling pad color with a mild sat/brightness lift. */
+  /** One pad color per beat, then step — no gradual hue slide. */
   private sampleBeamColor(t: number, out: Color): Color {
     const n = this.padColors.length;
-    const x = ((t * BEAM_CYCLE_HZ) % n + n) % n;
-    const i0 = Math.floor(x);
-    const i1 = (i0 + 1) % n;
-    const f = x - i0;
-    this.colorA.copy(this.padColors[i0]);
-    this.colorB.copy(this.padColors[i1]);
-    out.copy(this.colorA).lerp(this.colorB, f);
-    // Lift toward white for a hot core feel without washing out hue.
-    out.lerp(this.white, 0.22);
+    const beat = Math.floor(t / COLOR_BEAT_SEC);
+    const idx = ((beat % n) + n) % n;
+    out.copy(this.padColors[idx]);
+    // Brief hot flash at the start of each beat so the change reads.
+    const phase = (t / COLOR_BEAT_SEC) % 1;
+    if (phase < 0.12) {
+      out.lerp(this.white, 0.55 * (1 - phase / 0.12));
+    } else {
+      out.lerp(this.white, 0.12);
+    }
     return out;
   }
 
   private orthonormalBasis(dir: Vector3, right: Vector3, up: Vector3): void {
-    // Pick a stable perpendicular.
     if (Math.abs(dir.y) < 0.9) {
       right.set(0, 1, 0).cross(dir).normalize();
     } else {
       right.set(1, 0, 0).cross(dir).normalize();
     }
     up.copy(dir).cross(right).normalize();
+  }
+
+  private placeTube(mesh: Mesh, origin: Vector3, dir: Vector3, len: number): void {
+    mesh.position.copy(origin).addScaledVector(dir, len * 0.5);
+    mesh.quaternion.setFromUnitVectors(this.yUp, dir);
+    const sx = mesh.scale.x;
+    const sz = mesh.scale.z;
+    mesh.scale.set(sx || 1, len, sz || 1);
   }
 
   update(state: SealBeamUpdate): void {
@@ -245,75 +308,67 @@ export class RiftSealBeam {
     const origin = state.origin;
     const end = state.end;
     this.tmpA.copy(end).sub(origin);
-    const len = Math.max(this.tmpA.length(), 0.05);
+    const len = Math.max(this.tmpA.length(), 0.08);
     this.tmpA.multiplyScalar(1 / len);
     this.orthonormalBasis(this.tmpA, this.tmpB, this.tmpC);
 
     const beamCol = this.sampleBeamColor(state.timeSec, this.colorMix);
-    this.coreMat.color.copy(beamCol).lerp(this.white, 0.45);
-    this.coreTubeMat.color.copy(beamCol).lerp(this.white, 0.35);
-    (this.palmCore.material as SpriteMaterial).color.copy(beamCol);
+    this.coreInnerMat.color.copy(beamCol).lerp(this.white, 0.55);
+    this.coreOuterMat.color.copy(beamCol);
+    (this.palmCore.material as SpriteMaterial).color.copy(beamCol).lerp(this.white, 0.4);
+    (this.palmHalo.material as SpriteMaterial).color.copy(beamCol);
     this.impactMat.color.copy(beamCol).lerp(this.white, 0.35);
 
-    // Orient / scale the volumetric core along the beam axis.
-    // lookAt aims local -Z; rotateX maps the Y-cylinder onto that axis.
-    this.coreTube.position.copy(origin).addScaledVector(this.tmpA, len * 0.5);
-    this.coreTube.scale.set(1, 1, 1);
-    this.coreTube.lookAt(end);
-    this.coreTube.rotateX(Math.PI / 2);
-    this.coreTube.scale.set(1, len, 1);
+    this.coreInner.scale.set(1, 1, 1);
+    this.coreOuter.scale.set(1, 1, 1);
+    this.placeTube(this.coreInner, origin, this.tmpA, len);
+    this.placeTube(this.coreOuter, origin, this.tmpA, len);
+    // Outer glow a bit thicker than the unit cylinder radius.
+    this.coreOuter.scale.x = 1.15;
+    this.coreOuter.scale.z = 1.15;
 
-    // Core: slight energetic wobble along the axis.
-    for (let i = 0; i <= CORE_SEGMENTS; i++) {
-      const u = i / CORE_SEGMENTS;
-      const wobble = Math.sin(u * 18 + state.timeSec * 14) * 0.004 * (1 - Math.abs(u - 0.5) * 1.2);
-      const px = origin.x + this.tmpA.x * len * u + this.tmpB.x * wobble;
-      const py = origin.y + this.tmpA.y * len * u + this.tmpB.y * wobble;
-      const pz = origin.z + this.tmpA.z * len * u + this.tmpB.z * wobble;
-      const o = i * 3;
-      this.corePos[o] = px;
-      this.corePos[o + 1] = py;
-      this.corePos[o + 2] = pz;
-    }
-    (this.core.geometry.getAttribute('position') as Float32BufferAttribute).needsUpdate = true;
-
-    // Spiral filaments in the four neon pad colors.
+    // Spiral ribbons wrapping the shaft.
     for (let s = 0; s < this.spirals.length; s++) {
       const sp = this.spirals[s];
-      const colName = PAD_COLOR_NAMES[s % PAD_COLOR_NAMES.length] as PadColorName;
-      sp.mat.color.set(neonPadHex(colName));
-      sp.mat.color.lerp(beamCol, 0.25);
-      const spin = state.timeSec * (3.2 + s * 0.7) + sp.phase;
+      sp.mat.color.copy(this.padColors[s % 4]);
+      // Active beat color dominates the leading spiral.
+      if (s === 0) sp.mat.color.copy(beamCol);
+      const spin = state.timeSec * (4.0 + s * 0.9) + sp.phase;
       for (let i = 0; i <= SPIRAL_SEGMENTS; i++) {
         const u = i / SPIRAL_SEGMENTS;
         const ang = sp.phase + u * sp.turns * Math.PI * 2 + spin;
-        const rad = sp.radius * (0.7 + 0.3 * Math.sin(u * 9 + spin));
-        const ox = this.tmpB.x * Math.cos(ang) + this.tmpC.x * Math.sin(ang);
-        const oy = this.tmpB.y * Math.cos(ang) + this.tmpC.y * Math.sin(ang);
-        const oz = this.tmpB.z * Math.cos(ang) + this.tmpC.z * Math.sin(ang);
-        const o = i * 3;
-        sp.pos[o] = origin.x + this.tmpA.x * len * u + ox * rad;
-        sp.pos[o + 1] = origin.y + this.tmpA.y * len * u + oy * rad;
-        sp.pos[o + 2] = origin.z + this.tmpA.z * len * u + oz * rad;
+        const rad = sp.radius * (0.75 + 0.35 * Math.sin(u * 11 + spin * 1.3));
+        const cx = origin.x + this.tmpA.x * len * u + this.tmpB.x * Math.cos(ang) * rad + this.tmpC.x * Math.sin(ang) * rad;
+        const cy = origin.y + this.tmpA.y * len * u + this.tmpB.y * Math.cos(ang) * rad + this.tmpC.y * Math.sin(ang) * rad;
+        const cz = origin.z + this.tmpA.z * len * u + this.tmpB.z * Math.cos(ang) * rad + this.tmpC.z * Math.sin(ang) * rad;
+        // Ribbon width in the radial plane.
+        this.tmpSide
+          .copy(this.tmpB)
+          .multiplyScalar(Math.cos(ang + Math.PI / 2))
+          .addScaledVector(this.tmpC, Math.sin(ang + Math.PI / 2))
+          .normalize()
+          .multiplyScalar(sp.halfWidth);
+        writeRibbonSegment(sp.pos, i, cx, cy, cz, this.tmpSide.x, this.tmpSide.y, this.tmpSide.z);
       }
-      (sp.line.geometry.getAttribute('position') as Float32BufferAttribute).needsUpdate = true;
+      (sp.mesh.geometry.getAttribute('position') as Float32BufferAttribute).needsUpdate = true;
     }
 
     // Orbiting sparks traveling hand → rift.
     for (let i = 0; i < SPARK_COUNT; i++) {
       const seed = this.sparkSeeds;
       const speed = seed[i * 4 + 2];
-      const u = (seed[i * 4] + state.timeSec * speed * 0.22) % 1;
-      const ang = seed[i * 4 + 1] + state.timeSec * 4.5;
-      const rad = seed[i * 4 + 3] * (0.8 + 0.4 * Math.sin(ang * 2));
-      const ox = this.tmpB.x * Math.cos(ang) + this.tmpC.x * Math.sin(ang);
-      const oy = this.tmpB.y * Math.cos(ang) + this.tmpC.y * Math.sin(ang);
-      const oz = this.tmpB.z * Math.cos(ang) + this.tmpC.z * Math.sin(ang);
+      const u = (seed[i * 4] + state.timeSec * speed * 0.28) % 1;
+      const ang = seed[i * 4 + 1] + state.timeSec * 5.2;
+      const rad = seed[i * 4 + 3] * (0.9 + 0.5 * Math.sin(ang * 2));
       const o = i * 3;
-      this.sparkPos[o] = origin.x + this.tmpA.x * len * u + ox * rad;
-      this.sparkPos[o + 1] = origin.y + this.tmpA.y * len * u + oy * rad;
-      this.sparkPos[o + 2] = origin.z + this.tmpA.z * len * u + oz * rad;
-      const c = this.padColors[i % 4];
+      this.sparkPos[o] =
+        origin.x + this.tmpA.x * len * u + this.tmpB.x * Math.cos(ang) * rad + this.tmpC.x * Math.sin(ang) * rad;
+      this.sparkPos[o + 1] =
+        origin.y + this.tmpA.y * len * u + this.tmpB.y * Math.cos(ang) * rad + this.tmpC.y * Math.sin(ang) * rad;
+      this.sparkPos[o + 2] =
+        origin.z + this.tmpA.z * len * u + this.tmpB.z * Math.cos(ang) * rad + this.tmpC.z * Math.sin(ang) * rad;
+      // Sparks mostly match the current beat color, with a few accent pads.
+      const c = i % 5 === 0 ? this.padColors[i % 4] : beamCol;
       this.sparkCol[o] = c.r;
       this.sparkCol[o + 1] = c.g;
       this.sparkCol[o + 2] = c.b;
@@ -323,43 +378,49 @@ export class RiftSealBeam {
 
     // Palm emitter tangle.
     this.palmCore.position.copy(origin);
-    const pulse = 0.11 + 0.04 * (0.5 + 0.5 * Math.sin(state.timeSec * 9));
+    this.palmHalo.position.copy(origin);
+    const pulse = 0.16 + 0.05 * (0.5 + 0.5 * Math.sin(state.timeSec * 10));
     this.palmCore.scale.setScalar(pulse);
+    this.palmHalo.scale.setScalar(pulse * 1.85);
     for (let i = 0; i < this.palmWisps.length; i++) {
       const w = this.palmWisps[i];
       w.mat.color.copy(this.padColors[i % 4]);
-      const spin = state.timeSec * (5 + i) + w.phase;
+      const spin = state.timeSec * (6 + i) + w.phase;
       for (let k = 0; k <= PALM_WISP_SEGMENTS; k++) {
         const u = k / PALM_WISP_SEGMENTS;
-        const ang = w.phase + u * Math.PI * 2.4 + spin;
-        const rad = 0.01 + u * 0.045;
-        const along = u * 0.07;
-        const o = k * 3;
-        w.pos[o] =
+        const ang = w.phase + u * Math.PI * 2.8 + spin;
+        const rad = 0.02 + u * 0.07;
+        const along = u * 0.1;
+        const cx =
           origin.x +
           this.tmpA.x * along +
           this.tmpB.x * Math.cos(ang) * rad +
           this.tmpC.x * Math.sin(ang) * rad;
-        w.pos[o + 1] =
+        const cy =
           origin.y +
           this.tmpA.y * along +
           this.tmpB.y * Math.cos(ang) * rad +
           this.tmpC.y * Math.sin(ang) * rad;
-        w.pos[o + 2] =
+        const cz =
           origin.z +
           this.tmpA.z * along +
           this.tmpB.z * Math.cos(ang) * rad +
           this.tmpC.z * Math.sin(ang) * rad;
+        this.tmpSide
+          .copy(this.tmpB)
+          .multiplyScalar(Math.cos(ang + 1.2))
+          .addScaledVector(this.tmpC, Math.sin(ang + 1.2))
+          .normalize()
+          .multiplyScalar(w.halfWidth * (1.1 - u * 0.5));
+        writeRibbonSegment(w.pos, k, cx, cy, cz, this.tmpSide.x, this.tmpSide.y, this.tmpSide.z);
       }
-      (w.line.geometry.getAttribute('position') as Float32BufferAttribute).needsUpdate = true;
+      (w.mesh.geometry.getAttribute('position') as Float32BufferAttribute).needsUpdate = true;
     }
 
-    // Impact flare at the far end when hitting a rift.
     this.impact.position.copy(end);
     const hit = Math.max(0, Math.min(1, state.hitStrength));
-    this.impactMat.opacity = hit * (0.55 + 0.35 * Math.sin(state.timeSec * 18));
-    const impactScale = 0.12 + hit * 0.28;
-    this.impact.scale.setScalar(impactScale);
+    this.impactMat.opacity = hit * (0.65 + 0.35 * Math.sin(state.timeSec * 18));
+    this.impact.scale.setScalar(0.18 + hit * 0.38);
   }
 
   dispose(): void {
