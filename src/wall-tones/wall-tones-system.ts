@@ -609,7 +609,7 @@ if (!this.armband) {
 const hand = armbandHand();
 const adapter = this.input.xr.visualAdapters[hand].peek();
 let tracked = false;
-let floating: { open: number; center: PalmVec; normal: PalmVec; along: PalmVec } | undefined;
+let floating: { open: number; center: PalmVec; normal: PalmVec; along: PalmVec; origin: PalmVec } | undefined;
 if (this.armbandTrackable() && adapter?.connected) {
   const session = this.xrManager.getSession();
   const frame = this.xrManager.getFrame();
@@ -638,7 +638,22 @@ if (session) for (const candidate of session.inputSources) {
           const rate = isOpen ? 8 : 12; // unfold ~0.13s, fold ~0.08s, frame-rate independent
           this.armbandProjectorOpen = Math.min(1, Math.max(0,
             this.armbandProjectorOpen + (isOpen ? 1 : -1) * rate * Math.max(delta, 1e-4)));
-          floating = { open: this.armbandProjectorOpen, center: panel.center, normal: panel.normal, along: panel.along };
+          // Nov 16 user feedback: the floating panel must render in front of
+  // everything - pads and their glows (renderOrder 12) composited over it and
+  // hid it. UIKitML builds and re-renders the panel's meshes asynchronously
+  // and resets these flags when it does, so re-apply every frame (a handful
+  // of property writes; cheaper than diffing).
+  entity.object3D.traverse((node) => {
+    node.renderOrder = 20;
+    const mesh = node as Mesh;
+    const mats = Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : [];
+    for (const mat of mats) {
+      mat.depthTest = false;
+      mat.depthWrite = false;
+    }
+  });
+  floating = { open: this.armbandProjectorOpen, center: panel.center, normal: panel.normal, along: panel.along, origin: panel.origin };
+          this.armbandLastPose = panel;
         } else {
           this.armbandProjectorOpen = 0;
           this.armbandJointSmoother.reset();
@@ -812,6 +827,7 @@ private armbandBeam: Mesh | undefined;
 private armbandBeamMat: ShaderMaterial | undefined;
 private armbandGlow: Mesh | undefined;
 private armbandBeamTime = 0;
+private armbandLastPose: import('./palm-projector.js').PalmPanelPose | undefined;
 private readonly armbandPanelX = new Vector3();
 private readonly armbandPanelY = new Vector3();
 private readonly armbandPanelZ = new Vector3();
@@ -848,25 +864,42 @@ private ensureArmbandBeam(): void {
   // cone where they overlap (Nov 16 user feedback).
   this.armbandBeam.renderOrder = -1;
   this.world.scene.add(this.armbandBeam);
+  // Fresnel falloff so the emitter reads as a small glowing orb from every
+  // angle; a flat additive fill looked like a 2D disc from the side (Nov 16
+  // user feedback).
   this.armbandGlow = new Mesh(
     new SphereGeometry(0.011, 12, 8),
-    new MeshBasicMaterial({ color: 0x9dffc9, transparent: true, opacity: 0.9, blending: AdditiveBlending, depthWrite: false }),
+    new ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: AdditiveBlending,
+      uniforms: { uTime: { value: 0 } },
+      vertexShader: 'varying vec3 vN; varying vec3 vV; void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalMatrix * normal; vV = -mv.xyz; gl_Position = projectionMatrix * mv; }',
+      fragmentShader: [
+        'uniform float uTime; varying vec3 vN; varying vec3 vV;',
+        'void main(){',
+        '  float facing = abs(dot(normalize(vN), normalize(vV)));',
+        '  float soft = 0.25 + 0.75 * pow(facing, 0.7);',
+        '  float core = 0.6 + 0.4 * pow(facing, 2.0);',
+        '  vec3 color = mix(vec3(0.35, 1.0, 0.7), vec3(0.75, 1.0, 0.9), pow(facing, 2.0));',
+        '  gl_FragColor = vec4(color * soft * core * 0.9, soft * core * 0.9);',
+        '}',
+      ].join('\n'),
+    }),
   );
   this.armbandGlow.visible = false;
   this.armbandGlow.renderOrder = -1;
   this.world.scene.add(this.armbandGlow);
 }
 
-private updateArmbandBeam(floating: { open: number; center: PalmVec; normal: PalmVec; along: PalmVec }, e: number, delta: number): void {
+private updateArmbandBeam(floating: { open: number; center: PalmVec; normal: PalmVec; along: PalmVec; origin: PalmVec }, e: number, delta: number): void {
   this.ensureArmbandBeam();
   const beam = this.armbandBeam!;
   const glow = this.armbandGlow!;
   this.armbandBeamTime += Math.max(delta, 0);
-  // Beam runs from the palm's center (below the floating panel) to the panel.
-  this.armbandBeamBase.set(
-    floating.center.x - floating.normal.x * PALM_PANEL_LIFT,
-    floating.center.y - floating.normal.y * PALM_PANEL_LIFT,
-    floating.center.z - floating.normal.z * PALM_PANEL_LIFT);
+  // Beam rises out of the palm's surface center (Nov 16 user feedback: the
+  // root read as the wrist joint; the pose's origin is the palm-skin center).
+  this.armbandBeamBase.set(floating.origin.x, floating.origin.y, floating.origin.z);
   this.armbandBeamDir.copy(this.armbandSmoothPos).sub(this.armbandBeamBase);
   const fullLen = Math.max(this.armbandBeamDir.length(), 0.001);
   this.armbandBeamDir.normalize();
@@ -885,6 +918,7 @@ private updateArmbandBeam(floating: { open: number; center: PalmVec; normal: Pal
   beam.quaternion.setFromUnitVectors(this.handUp, this.armbandBeamDir);
   beam.scale.set(1, len, 1);
   this.armbandBeamMat!.uniforms.uTime!.value = this.armbandBeamTime;
+  (this.armbandGlow!.material as ShaderMaterial).uniforms.uTime!.value = this.armbandBeamTime;
   this.armbandBeamMat!.uniforms.uStrength!.value = e;
   beam.visible = e > 0.05;
   glow.position.copy(this.armbandBeamBase);
