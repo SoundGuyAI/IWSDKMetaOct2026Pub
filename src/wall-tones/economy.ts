@@ -33,6 +33,8 @@ const REPLAY_PAID_KEY = 'wall-tones-replays-paid';
 const SAVERS_KEY = 'wall-tones-savers';
 const PLAY_LEVEL_KEY = 'wall-tones-play-level';
 const INDEX_OWNED_KEY = 'wall-tones-index-owned';
+const SPEED_LEVEL_KEY = 'wall-tones-speed-level';
+const SPEED_DISABLED_KEY = 'wall-tones-speed-disabled';
 
 // Skill-tree store prices (owner-approved 2026-11-11 as starting balance for
 // testing, not final). Hint: 25/50/100 Bars then doubling. Open-ended by
@@ -81,6 +83,24 @@ export const PLAY_MAX_LEVEL = 4;
 export const PLAY_TONES_PER_LEVEL = 5;
 export const PLAY_PRICING_SET = true;
 export const PLAY_COSTS: readonly number[] = [500, 1000, 2000, 4000];
+
+/** Speed modifier (backlog 96, his proposal 2026-11-14 18:43, verbatim in
+ * WALL_TONES_TODO.md): four levels; the beginning of the pattern plays faster
+ * during the Listen playback, covering only the first N notes where N is the
+ * higher of the Play/Autoplay note counts (capped at the pattern length). He
+ * flagged both open points himself: the per-level curve ("maybe half ... i
+ * don't know if it's too much") and the base price ("like in the thousands"),
+ * so the values below are PROVISIONAL TEST VALUES for the preview, not
+ * approved economy. No unlock prerequisite was specified, so it is ungated
+ * for now like Replay/Saver ("no prerequisites for now", 2026-11-11) - his
+ * call if it needs a gate. */
+export const SPEED_MAX_LEVEL = 4;
+/** Provisional ladder ("base price ... in the thousands"), doubling per
+ * level until the balance pass settles it. */
+export const SPEED_COSTS: readonly number[] = [1000, 2000, 4000, 8000];
+/** Note-time divisor per owned level (his "maybe half ... in each level"
+ * proposal: level 4 reaches 16x, his own flagged concern). */
+export const SPEED_NOTE_TIME_DIVISOR = 2;
 
 /** Index pointer (owner 2026-11-12: "same row as play, unlocking after hint
  * level 3"; added to this PR by his 2026-11-13 ask). An indicator for where
@@ -234,6 +254,8 @@ REPLAY_PAID_KEY,
 SAVERS_KEY,
 PLAY_LEVEL_KEY,
 INDEX_OWNED_KEY,
+SPEED_LEVEL_KEY,
+SPEED_DISABLED_KEY,
 // Backlog 30 research totals (fractional meters; economy's number helpers
 // do not own them).
 ...MOVEMENT_STORAGE_KEYS,
@@ -263,6 +285,8 @@ export class WallTonesEconomy {
   private savers = readNumber(SAVERS_KEY);
   private playLevel = readNumber(PLAY_LEVEL_KEY);
   private indexOwned = readNumber(INDEX_OWNED_KEY) === 1;
+  private speedLevel = readNumber(SPEED_LEVEL_KEY);
+  private speedDisabled = readNumber(SPEED_DISABLED_KEY) === 1;
   /** In-memory test Bars from the ?demoBars URL flag. Never persisted, never
    * counted in lifetime totals, and always spent before real Bars so the
    * saved balance stays untouched (owner-approved preview aid 2026-11-11). */
@@ -610,6 +634,61 @@ export class WallTonesEconomy {
   debugGrantIndex(): void {
     this.indexOwned = true;
     writeNumber(INDEX_OWNED_KEY, 1);
+  }
+
+  /** Owned Speed level (0 = not owned). */
+  getSpeedLevel(): number {
+    return this.speedLevel;
+  }
+
+  /** Speed applies while owned AND switched on (the enable/disable toggle
+   * mirrors the settled AutoPlay pattern; owning keeps it on until the
+   * player switches it off). */
+  isSpeedEnabled(): boolean {
+    return this.speedLevel > 0 && !this.speedDisabled;
+  }
+
+  /** Switch Speed on/off. No-op below ownership. */
+  setSpeedDisabled(disabled: boolean): void {
+    this.speedDisabled = disabled;
+    writeNumber(SPEED_DISABLED_KEY, disabled ? 1 : 0);
+  }
+
+  /** Cost of Speed level `level` (1-based). Provisional test prices. */
+  speedCost(level: number): number {
+    return SPEED_COSTS[Math.min(Math.max(level, 1), SPEED_MAX_LEVEL) - 1]!;
+  }
+
+  /** Note-time multiplier for covered notes: 1/2^level on his "half each
+   * level" proposal; 1 (normal time) while not enabled. */
+  speedNoteTimeFactor(): number {
+    if (!this.isSpeedEnabled()) return 1;
+    return 1 / SPEED_NOTE_TIME_DIVISOR ** this.speedLevel;
+  }
+
+  /** Listen-playback notes Speed covers at the current Play/Autoplay
+   * ownership (his rule: the higher of the two note counts). Without Play
+   * or Autoplay this is 0 and Speed has no effect - flagged for him. */
+  speedCoveredNoteCount(): number {
+    return Math.max(this.getPlayNoteCount(), this.getAutoplayNoteCount());
+  }
+
+  /** Buy the next Speed level. Four levels max; provisional prices, no
+   * unlock gate for now (see the constants block). */
+  buyNextSpeedLevel(): boolean {
+    if (this.speedLevel >= SPEED_MAX_LEVEL) return false;
+    const cost = this.speedCost(this.speedLevel + 1);
+    if (!this.spend(cost)) return false;
+    this.speedLevel += 1;
+    writeNumber(SPEED_LEVEL_KEY, this.speedLevel);
+    this.countPurchase();
+    return true;
+  }
+
+  /** Test-only: seed the Speed level without a purchase. */
+  debugGrantSpeedLevel(level: number): void {
+    this.speedLevel = Math.min(Math.max(Math.floor(level), 0), SPEED_MAX_LEVEL);
+    writeNumber(SPEED_LEVEL_KEY, this.speedLevel);
   }
 
   /** Index pointer owned (one-time item). */
