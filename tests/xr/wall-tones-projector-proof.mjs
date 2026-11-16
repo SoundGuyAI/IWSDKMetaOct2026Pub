@@ -106,6 +106,30 @@ const placement=await page.evaluate(()=>{
 });
 console.log('PLACEMENT',placement);
 assert.ok(placement.rise>0.12,'panel floats higher above the palm');
+// Nov 16 hardware feedback, three fixes:
+// (a) the projector roots at the palm's surface center, not the wrist joint;
+const originCheck=await page.evaluate(()=>{
+ const s=window.__armbandHarness.system;
+ const o=s.armbandLastPose.origin;const b=s.armbandGlow.position;
+ const wrist=s.armband.position;
+ return {mismatch:Math.hypot(o.x-b.x,o.y-b.y,o.z-b.z),wristDist:Math.hypot(b.x-wrist.x,b.y-wrist.y,b.z-wrist.z)};
+});
+console.log('ORIGIN',originCheck);
+assert.ok(originCheck.mismatch<0.005,'beam/glow root tracks the palm-origin pose');
+assert.ok(originCheck.wristDist>0.03,'projector root is clear of the wrist joint');
+// (b) the glow is a fresnel-shaded orb, not a flat additive disc;
+const glowMat=await page.evaluate(()=>{const m=window.__armbandHarness.system.armbandGlow.material;return {shader:m.isShaderMaterial===true,fresnel:(m.fragmentShader||'').includes('facing')};});
+assert.ok(glowMat.shader&&glowMat.fresnel,'glow uses the fresnel shader');
+// (c) the panel renders in front of everything (pads glows use renderOrder 12).
+const layering=await page.evaluate(()=>{
+ const o=window.__armbandHarness.world.getSceneObject('wall-tones-armband');
+ const out={minOrder:Infinity,badMats:0};
+ o.traverse((n)=>{if(n.renderOrder<out.minOrder)out.minOrder=n.renderOrder;const ms=Array.isArray(n.material)?n.material:n.material?[n.material]:[];for(const m of ms){if(m.depthTest!==false||m.depthWrite!==false)out.badMats++;}});
+ return out;
+});
+console.log('LAYERING',layering);
+assert.ok(layering.minOrder>=20,'panel draws after the pad glows (renderOrder 12)');
+assert.equal(layering.badMats,0,'panel materials ignore depth (render in front)');
 assert.ok(Math.abs(placement.awayApplied-0.06)<0.01,'head-away offset applied in full');
 assert.ok(placement.awayGain>0.015,'panel sits farther from the head than the palm');
 // Jitter: physical tracking noise (~+-5 mm at ~8 Hz) must not shake the panel
