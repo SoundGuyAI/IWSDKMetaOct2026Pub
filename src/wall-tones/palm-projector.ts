@@ -19,6 +19,11 @@ export const FINGER_EXTENDED_MIN = 0.055;
 export const PALM_PANEL_LIFT = 0.18;
 /** The panel also floats this far horizontally away from the player's head (meters). */
 export const PALM_PANEL_HEAD_AWAY = 0.06;
+/** The beam/glow root sits this far along the palm normal from the palm's
+ * joint-plane center (meters): on the skin, not at bone depth, so the
+ * projector reads as rising out of the palm itself (Nov 16 user feedback:
+ * the root looked sunk toward the wrist). */
+export const PALM_SURFACE_LIFT = 0.012;
 /** Hysteresis for the open-palm gate: real hand tracking flaps near a single
  * threshold, which visibly restarts the unfold animation. Opening needs the
  * full snapshot gate; the panel stays open until the pose clearly leaves it. */
@@ -49,6 +54,8 @@ export interface PalmPanelPose {
   normal: PalmVec;
   /** Unit wrist-to-fingers direction: the panel's text "up". */
   along: PalmVec;
+  /** Palm-surface center: where the projector beam and glow root. */
+  origin: PalmVec;
   /** How many fingers read as extended (for the hysteresis gate). */
   fingers: number;
 }
@@ -60,9 +67,19 @@ export function palmPanelPose(j: PalmJoints, hand: 'left' | 'right'): PalmPanelP
   if (hand === 'right') normal = { x: -normal.x, y: -normal.y, z: -normal.z };
   const fingers = extendedFingerCount(j);
   const openFlat = fingers >= PALM_OPEN_MIN_FINGERS && normal.y >= PALM_UP_MIN;
-  const mid = { x: (j.wrist.x + j.middleMcp.x) / 2, y: (j.wrist.y + j.middleMcp.y) / 2, z: (j.wrist.z + j.middleMcp.z) / 2 };
+  // Palm center from the whole knuckle line, not one metacarpal: single-joint
+  // placement differs between runtimes (Nov 16 hardware feedback: the root
+  // showed at the wrist), and the four-knuckle average stays centered even
+  // then.
+  const knuckleMid = {
+    x: (j.indexMcp.x + j.middleMcp.x + j.ringMcp.x + j.pinkyMcp.x) / 4,
+    y: (j.indexMcp.y + j.middleMcp.y + j.ringMcp.y + j.pinkyMcp.y) / 4,
+    z: (j.indexMcp.z + j.middleMcp.z + j.ringMcp.z + j.pinkyMcp.z) / 4,
+  };
+  const mid = { x: (j.wrist.x + knuckleMid.x) / 2, y: (j.wrist.y + knuckleMid.y) / 2, z: (j.wrist.z + knuckleMid.z) / 2 };
   const center = { x: mid.x + normal.x * PALM_PANEL_LIFT, y: mid.y + normal.y * PALM_PANEL_LIFT, z: mid.z + normal.z * PALM_PANEL_LIFT };
-  return { openFlat, center, normal, along, fingers };
+  const origin = { x: mid.x + normal.x * PALM_SURFACE_LIFT, y: mid.y + normal.y * PALM_SURFACE_LIFT, z: mid.z + normal.z * PALM_SURFACE_LIFT };
+  return { openFlat, center, normal, along, origin, fingers };
 }
 
 /**
