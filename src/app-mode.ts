@@ -1,3 +1,4 @@
+import { armbandHand, setArmbandHand } from './wall-tones/armband.js';
 import { captureCypherCast } from './wall-tones/cypher-voice.js';
 import { hearingSubtitlesEnabled, colorNamesEnabled, setHearingSubtitles, setColorNames, voicesOffEnabled, setVoicesOff, headGazePinchEnabled, setHeadGazePinch, nativeGazePinchEnabled, setNativeGazePinch } from './wall-tones/accessibility.js';
 import { GAZE_SOURCE_EVENT, gazeSourceStatusText, type GazeSourceStatus } from './wall-tones/gaze-source.js';
@@ -501,6 +502,21 @@ export class AppModeSystem extends createSystem({}) {
     const gazeRowsDisplay = gazePinchSettingsVisible(typeof navigator === 'undefined' ? '' : navigator.userAgent) ? 'flex' : 'none';
     setDisplay('head-gaze-pinch-row', gazeRowsDisplay);
     setDisplay('native-gaze-pinch-row', gazeRowsDisplay);
+    const syncArmbandHand = () => panel.getElementById('armband-hand-setting-label')?.setProperties({
+      text: `MR armband: ${armbandHand() === 'left' ? 'Left' : 'Right'} hand`,
+    });
+    const handButton = panel.getElementById('armband-hand-button');
+    const toggleArmbandHand = () => {
+      setArmbandHand(armbandHand() === 'left' ? 'right' : 'left');
+      syncArmbandHand();
+    };
+    handButton?.addEventListener('click', toggleArmbandHand);
+    this.cleanupFuncs.push(() => handButton?.removeEventListener('click', toggleArmbandHand));
+    syncArmbandHand();
+    // Wristband display hidden for now (Nov 16 user feedback): the palm
+    // projector is the armband display, so the mode row is hidden, not
+    // removed; armbandDisplayMode() forces 'projector' meanwhile.
+    panel.getElementById('armband-mode-button')?.setProperties({ display: 'none' } as never);
     // Debug stat reset: two-step confirm, clears progression stats only.
     let resetArmed = false;
     let resetDisarm: number | undefined;
@@ -520,6 +536,7 @@ export class AppModeSystem extends createSystem({}) {
       window.location.reload();
     });
     const syncAccessibility = () => {
+      syncArmbandHand();
       if (voicesOffEnabled()) this.voicePreview.cancel();
       panel.getElementById('hearing-subtitles-checkbox')?.setProperties({ checked: hearingSubtitlesEnabled() } as never);
       panel.getElementById('color-names-checkbox')?.setProperties({ checked: colorNamesEnabled() } as never);
