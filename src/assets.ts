@@ -60,6 +60,7 @@ export default defineAssets({
   'lab-menu-panel': uikitml('lab-menu.uikitml', 'Lab Menu'),
   'lab-entry-panel': uikitml('lab-entry.uikitml', 'Lab Entry'),
   'rift-lab-panel': uikitml('rift-lab.uikitml', 'Rift Lab Panel'),
+  'thumbs-lab-panel': uikitml('thumbs-lab.uikitml', 'Thumbs Lab Panel'),
   'welcome-panel': uikitml('welcome.uikitml', 'Welcome Panel'),
   'gaze-debug-panel': uikitml('gaze-debug.uikitml', 'Gaze Debug Panel'),
   'wall-tones-panel': uikitml(

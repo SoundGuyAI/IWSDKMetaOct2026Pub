@@ -7,7 +7,9 @@ import { shouldAnnounceRecord } from './record-feedback.js';
 import { BarFloatPool } from './bar-floats.js';
 import { AchievementCelebration } from './achievement-celebration.js';
 import { achievementIconSrc, achievementTileSrc } from './achievement-icons.js';
-import { hearingSubtitlesEnabled, colorNamesEnabled, currentSpokenCaption, voicesOffEnabled } from './accessibility.js';
+import { hearingSubtitlesEnabled, colorNamesEnabled, currentSpokenCaption, voicesOffEnabled, gazePinchMode } from './accessibility.js';
+import { GAZE_SOURCE_EVENT, classifyGazeSource, type GazeSourceStatus } from './gaze-source.js';
+import { MovementTracker, formatMetersNumber, movementUiVisible, readLifetimeMovementMeters } from './movement.js';
 import {
 ConeGeometry,
 Matrix4,
@@ -265,6 +267,11 @@ celebrationText: string | null;
 celebrationSfxPlays: number;
 infoRowVisible: boolean;
 scoreInfoVisible: boolean;
+/** Backlog 30 research bridge: menu line visibility + tracker readings. */
+movementRowVisible: boolean;
+movementSessionHeadMeters: number;
+movementSessionPadMeters: number;
+movementLifetimeMeters: number;
 gameExplanationDisplay: unknown;
 scoringUiDisplays: Record<string, string | null>;
 toggleStore: () => void;
@@ -391,6 +398,16 @@ this.speech.speak('chooseMode');
 
 private readonly game = new WallTonesSequence();
 private readonly economy = withDemoBarsFlag(new WallTonesEconomy());
+/** Backlog 30 research: MR headset-movement + pad-reach estimates. Session
+ * values show on the menu's movement line (MR only); lifetime totals feed
+ * the provisional Movement achievement. */
+private readonly movement = new MovementTracker();
+private movementRowHeadDm = -1;
+private movementRowPadDm = -1;
+private movementRowTotalDm = -1;
+private movementAchvWholeMeters = -1;
+/** Last display state pushed to the menu movement row, exposed for e2e. */
+public lastMovementRowVisible = false;
 private storeOpen = false;
 private achievementsOpen = false;
 /** Game Over popup shown after a wrong note; New run starts the next run. */
@@ -528,6 +545,11 @@ private readonly panelDragSkipHands = new Set<string>();
 private readonly panelDragActiveHands = new Set<string>();
 private readonly rayPressLatched = new Set<number>();
 private readonly gazeSelectLatched = new Set<string>();
+// Native eye-gaze mode (experimental) source watch state.
+private gazeSourceStatus: GazeSourceStatus | null = null;
+private gazeSourceWatchElapsed = 0;
+private gazeSourceMaxSeparationDeg = 0;
+private gazeSourceLastSampleAt = 0;
 /** Last time a drag ended; briefly suppresses the ray dodge at the drop point. */
 private panelDragDoneAt = 0;
 private blinkCuePad: PadRuntime | null = null;
@@ -580,8 +602,13 @@ const onAccessibilityChange = () => {
 if (voicesOffEnabled()) {
 this.speech.cancel();
 }
+this.applyGazePinchMode();
 };
 window.addEventListener('wall-tones-accessibility-change', onAccessibilityChange);
+// Backlog 77+79: GazeSystem.init flips gazeEnabled on at startup (the
+// project config requests gazeTracking). Default the native pipeline OFF
+// unless the player explicitly chose the experimental native mode.
+this.applyGazePinchMode();
 this.wasNonImmersive =
 this.world.visibilityState.peek() === VisibilityState.NonImmersive;
 this.cleanupFuncs.push(
@@ -663,6 +690,10 @@ this.speech.speak('lookAround');
 update(delta: number): void {
 this.updateAccessibilityCaptions();
 this.tickHeadCaption();
+// Backlog 30 research sampling runs before the experience-active gate so
+// walking in the MR menus counts in the session estimate too.
+this.tickMovementTracking();
+this.tickGazeSourceWatch();
 if (!this.experienceActive) {
 return;
 }
@@ -1833,6 +1864,18 @@ return system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel')
 get scoreInfoVisible() {
 return system.lastScoreInfoVisible;
 },
+get movementRowVisible() {
+return system.lastMovementRowVisible;
+},
+get movementSessionHeadMeters() {
+return system.movement.getSessionHeadMeters();
+},
+get movementSessionPadMeters() {
+return system.movement.getSessionPadMeters();
+},
+get movementLifetimeMeters() {
+return readLifetimeMovementMeters();
+},
 get scoringUiDisplays() {
 const panel = system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
 return Object.fromEntries([
@@ -2935,6 +2978,8 @@ private clearPads(): void {
 disposePadRuntimes(this.pads);
 this.ghostPad?.entity.dispose({ disposeResources: true });
 this.ghostPad = null;
+// Backlog 30 research: a new layout means the old pad-reach anchor is stale.
+this.movement.resetPadAnchor();
 }
 
 /**
@@ -3227,7 +3272,7 @@ enter >= TOUCH_ENTER_FRAMES
 pad.fingerInside = true;
 pad.pointerArmed = false;
 pad.pressCooldownUntil = now + TOUCH_PRESS_COOLDOWN_S;
-this.handlePadInput(pad.padIndex);
+this.handlePadInput(pad.padIndex, true);
 }
 this.syncPadProximityVisual(pad, now);
 }
@@ -3273,6 +3318,17 @@ this.handlePadInput(pad.padIndex);
 // (b) Gaze: a head-forward ray against the pads, committed by a pinch from
 // either hand. A pinch aimed at the panel, or one whose hand ray already
 // rests on a pad, belongs to that target instead.
+// Backlog 79: the gaze path is optional (Settings > Accessibility, default
+// off 2026-11-15): head-direction hover read as wrong selection and any
+// pinch could commit the pad under the head ray (bug 77). Hand-ray (a) and
+// fingertip input are unaffected by the setting.
+// Backlog 77+79 native mode: this custom head reader runs ONLY in the
+// explicit "head" mode. The experimental "native" mode uses the IWSDK
+// GazeSystem pipeline instead - never a silent fallback to this path.
+if (gazePinchMode() !== 'head') {
+this.gazeSelectLatched.clear();
+return;
+}
 const gazePad = this.findGazeHoveredPad();
 if (gazePad != null && !gazePad.hoverInside) {
 gazePad.hoverInside = true;
@@ -3326,6 +3382,120 @@ return this.findPadAlongRay();
 }
 
 // Closest play pad under the head-forward gaze ray, or null.
+/**
+ * Backlog 77+79: apply the Settings gaze+pinch mode. "native" enables the
+ * IWSDK GazeSystem pipeline (GazeSystem.init turned it on at startup
+ * because the project config requests gazeTracking); every other mode
+ * keeps it off so native gaze never silently replaces the head path or
+ * the ordinary hand rays.
+ */
+private applyGazePinchMode(): void {
+this.input.xr.gazeEnabled = gazePinchMode() === 'native';
+if (gazePinchMode() !== 'native') {
+this.setGazeSourceStatus(null);
+}
+}
+
+/**
+ * While the experimental native mode is on, sample the WebXR gaze input
+ * source and report what the headset really supplies (GAZE_SOURCE_EVENT):
+ * no session, no gaze source, head-directed stand-in, or real eye
+ * tracking (the gaze ray separates from the head ray). Throttled to 4 Hz.
+ */
+private tickGazeSourceWatch(): void {
+if (gazePinchMode() !== 'native') {
+return;
+}
+const now = performance.now();
+if (now - this.gazeSourceLastSampleAt < 250) {
+return;
+}
+this.gazeSourceLastSampleAt = now;
+const xr = this.world.renderer.xr;
+const inSession = xr.isPresenting === true;
+let hasGazeSource = false;
+if (inSession) {
+const session = xr.getSession();
+const sources = session?.inputSources ?? [];
+for (let i = 0; i < sources.length; i += 1) {
+if (sources[i]?.targetRayMode === 'gaze') {
+hasGazeSource = true;
+break;
+}
+}
+if (hasGazeSource) {
+this.gazeSourceWatchElapsed += 0.25;
+this.sampleGazeHeadSeparation(session!, sources);
+}
+} else {
+this.gazeSourceWatchElapsed = 0;
+this.gazeSourceMaxSeparationDeg = 0;
+}
+this.setGazeSourceStatus(
+classifyGazeSource(
+hasGazeSource,
+inSession,
+this.gazeSourceMaxSeparationDeg,
+this.gazeSourceWatchElapsed,
+),
+);
+}
+
+/** Compare the raw gaze ray direction with the head (viewer) forward. */
+private sampleGazeHeadSeparation(
+session: XRSession,
+sources: XRInputSourceArray | readonly XRInputSource[],
+): void {
+const xr = this.world.renderer.xr;
+const frame = xr.getFrame?.();
+const refSpace = xr.getReferenceSpace?.();
+if (frame == null || refSpace == null) {
+return;
+}
+let gazeSource: XRInputSource | undefined;
+for (let i = 0; i < sources.length; i += 1) {
+if (sources[i]?.targetRayMode === 'gaze') {
+gazeSource = sources[i];
+break;
+}
+}
+if (gazeSource == null) {
+return;
+}
+const gazePose = frame.getPose(gazeSource.targetRaySpace, refSpace);
+const viewerPose = frame.getViewerPose(refSpace);
+const view = viewerPose?.views[0];
+if (gazePose == null || view == null) {
+return;
+}
+const g = gazePose.transform.orientation;
+const h = view.transform.orientation;
+this.tipLocal.set(0, 0, -1);
+this.tipScratch.set(0, 0, -1);
+const gazeDir = this.tipLocal
+.applyQuaternion(this.headQuat.set(g.x, g.y, g.z, g.w))
+.clone();
+const headDir = this.tipScratch
+.applyQuaternion(this.headQuat.set(h.x, h.y, h.z, h.w))
+.clone();
+const dot = Math.min(1, Math.max(-1, gazeDir.dot(headDir)));
+const angleDeg = (Math.acos(dot) * 180) / Math.PI;
+if (angleDeg > this.gazeSourceMaxSeparationDeg) {
+this.gazeSourceMaxSeparationDeg = angleDeg;
+}
+void session;
+}
+
+private setGazeSourceStatus(status: GazeSourceStatus | null): void {
+if (this.gazeSourceStatus === status) {
+return;
+}
+this.gazeSourceStatus = status;
+if (status != null) {
+window.dispatchEvent(new CustomEvent(GAZE_SOURCE_EVENT, { detail: status }));
+}
+}
+
 private findGazeHoveredPad(): PadRuntime | null {
 this.player.head.getWorldPosition(this.rayOrigin);
 this.player.head.getWorldQuaternion(this.headQuat);
@@ -3642,7 +3812,7 @@ this.blinkCueRoot.quaternion.setFromUnitVectors(this.handUp, this.toPanel);
 this.blinkCueRoot.visible = true;
 }
 
-private handlePadInput(padIndex: number): void {
+private handlePadInput(padIndex: number, physicalTouch = false): void {
 if (this.flatAwaitingStart && this.useDesktopPath()) {
 void this.startFlatPlayFromPad(padIndex);
 return;
@@ -3679,6 +3849,14 @@ return;
 }
 // Any instruction still finishing is obsolete once a correct pad is hit.
 this.speech.cancel();
+// Backlog 30 research: pad-reach estimate between correct presses (MR only;
+// flat pads are a fixed on-screen grid, not a reach). Physical fingertip
+// touches only: ray, gaze and pinch presses are far input, the hand never
+// travelled to the pad, so they add no reach (Quest feedback Nov 14).
+if (pad != null && physicalTouch) {
+pad.root.getWorldPosition(this.padWorldPos);
+this.movement.noteCorrectPadPress(this.padWorldPos.x, this.padWorldPos.y, this.padWorldPos.z, !this.isFlatView());
+}
 const previousBest = this.game.bestStreak;
 const completed = this.game.onCorrectInput();
 if (this.game.bestStreak > previousBest) {
@@ -4251,6 +4429,58 @@ return;
 }
 await this.playSequence();
 });
+}
+
+/** Backlog 30 research: one headset sample per frame into the movement
+ * tracker, plus the change-keyed menu line refresh (per-frame text writes
+ * would re-layout the panel every frame). */
+private tickMovementTracking(): void {
+const immersive = !this.isFlatView();
+this.player.head.getWorldPosition(this.viewer);
+this.movement.noteHeadPosition(this.viewer.x, this.viewer.y, this.viewer.z, immersive, performance.now() / 1000);
+const headDm = Math.round(this.movement.getSessionHeadMeters() * 10);
+const padDm = Math.round(this.movement.getSessionPadMeters() * 10);
+const totalDm = Math.round((this.movement.getLifetimeHeadMeters() + this.movement.getLifetimePadMeters()) * 10);
+// Owner scoping (Nov 11): the movement line is MR-only and follows the
+// score rows' visibility (hidden during placement setup).
+const rowVisible = immersive && this.experienceActive && this.lastScoreInfoVisible;
+if (
+headDm !== this.movementRowHeadDm ||
+padDm !== this.movementRowPadDm ||
+totalDm !== this.movementRowTotalDm ||
+rowVisible !== this.lastMovementRowVisible
+) {
+this.movementRowHeadDm = headDm;
+this.movementRowPadDm = padDm;
+this.movementRowTotalDm = totalDm;
+this.lastMovementRowVisible = rowVisible;
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+panel?.getElementById('wall-tones-movement-row')?.setProperties({
+display: rowVisible ? 'flex' : 'none',
+});
+panel?.getElementById('wall-tones-movement-total-row')?.setProperties({
+display: rowVisible ? 'flex' : 'none',
+});
+if (rowVisible) {
+panel?.getElementById<UIKit.Text>('wall-tones-movement-head')?.setProperties({
+text: formatMetersNumber(headDm / 10),
+});
+panel?.getElementById<UIKit.Text>('wall-tones-movement-pad')?.setProperties({
+text: formatMetersNumber(padDm / 10),
+});
+panel?.getElementById<UIKit.Text>('wall-tones-movement-total')?.setProperties({
+text: formatMetersNumber(totalDm / 10),
+});
+}
+}
+// Movement thresholds can be crossed by walking between presses, so the
+// economy re-checks achievements on each new whole meter.
+const wholeMeters = Math.floor(this.movement.getLifetimeHeadMeters() + this.movement.getLifetimePadMeters());
+if (wholeMeters !== this.movementAchvWholeMeters) {
+this.movementAchvWholeMeters = wholeMeters;
+this.economy.noteExternalProgress(this.game.streak);
+this.showAchievementToasts();
+}
 }
 
 private renderPanel(): void {
@@ -5016,6 +5246,7 @@ bars: 'Bars',
 score: 'Score',
 store: 'Store',
 presses: 'Presses',
+movement: 'Movement',
 secret: 'Secret',
 };
 // Details are a floating overlay on top of the grid, so the window keeps one
@@ -5092,7 +5323,13 @@ movement: 'achvMovement',
 };
 
 type TileCat = { id: string; label: string; description: string; levels: readonly number[]; hidden?: boolean; glyph?: string };
-const tileCats: TileCat[] = [...ACHIEVEMENT_CATEGORIES];
+const showMovement = movementUiVisible({
+immersive: this.world.visibilityState.peek() !== VisibilityState.NonImmersive,
+userAgent: typeof navigator === 'undefined' ? undefined : navigator.userAgent,
+});
+const tileCats: TileCat[] = showMovement
+? [...ACHIEVEMENT_CATEGORIES]
+: ACHIEVEMENT_CATEGORIES.filter((c) => c.id !== 'movement');
 if (demoParam === 'many') {
 const glyphs = ['streak', 'bars', 'store', 'presses', 'score', 'secret'];
 for (let i = 0; i < 6; i++) {

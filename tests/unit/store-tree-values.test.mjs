@@ -73,6 +73,19 @@ if (js.includes("'./cypher-background.js'")) {
   );
   assert.ok(!js.includes('cypher-background.js'), 'unresolved relative import left in transpiled economy');
 }
+// Same for the movement research module once the movement economy import is
+// present (PR72): no constants to inline, so point the specifier at a data
+// URL of the transpiled module (movement.ts has no relative imports itself).
+if (js.includes("'./movement.js'")) {
+  const movementSrc = readFileSync(
+    new URL('../../src/wall-tones/movement.ts', import.meta.url),
+    'utf8',
+  );
+  const movementJs = ts.transpileModule(movementSrc, { compilerOptions: { module: 'esnext', target: 'es2022' } }).outputText;
+  const movementUrl = 'data:text/javascript;base64,' + Buffer.from(movementJs).toString('base64');
+  js = js.replace("'./movement.js'", JSON.stringify(movementUrl));
+  assert.ok(!js.includes("'./movement.js'"), 'unresolved movement import left in transpiled economy');
+}
 const {
   WallTonesEconomy,
   LISTEN_COST,
