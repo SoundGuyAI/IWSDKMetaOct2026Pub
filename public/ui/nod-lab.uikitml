@@ -100,11 +100,6 @@
     padding-top: 12px;
     padding-bottom: 12px;
   }
-  /* No background-color here on purpose: a stylesheet background (including
-     a :dark variant) beats the runtime flash's inline backgroundColor in
-     UIKit's style resolution, which made the yes/no green/red flash
-     invisible. The default Button style matches the other panel buttons and
-     lets flashAnswerButton's inline color win (owner, Nov 16). */
 </style>
 <Panel id="nod-lab-root" class="nod-lab-root">
   <div class="nod-lab-content">
