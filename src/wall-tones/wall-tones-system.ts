@@ -382,6 +382,11 @@ secret: 'storeItemSecret',
 narrator: 'storeItemHack',
 };
 
+// How far the projector cone's root is sunk into the palm glow orb (m),
+// so the cut disc is hidden inside the orb and the beam reads as growing out
+// of it rather than touching it.
+const ARM_BAND_BEAM_EMBED = 0.008;
+
 export class WallTonesSystem extends createSystem({
 pads: { required: [WallTonePad] },
 planes: { required: [XRPlane] },
@@ -870,6 +875,7 @@ private readonly armbandBasisX = new Vector3();
 private readonly armbandJointQuat = new Quaternion();
 private readonly armbandBeamBase = new Vector3();
 private readonly armbandBeamDir = new Vector3();
+private readonly armbandBeamAxis = new Vector3(0, 1, 0);
 private armbandBeam: Mesh | undefined;
 private armbandBeamMat: ShaderMaterial | undefined;
 private armbandGlow: Mesh | undefined;
@@ -965,9 +971,14 @@ private updateArmbandBeam(floating: { open: number; center: PalmVec; normal: Pal
     const sinTheta = Math.sqrt(Math.max(0, 1 - cosTheta * cosTheta));
     len = Math.max(0.02, fullLen - (0.055 * sinTheta + 0.006) / cosTheta);
   }
-  beam.position.copy(this.armbandBeamBase).addScaledVector(this.armbandBeamDir, len * 0.5);
-  beam.quaternion.setFromUnitVectors(this.handUp, this.armbandBeamDir);
-  beam.scale.set(1, len, 1);
+  // The cone's local axis is +Y, so map THAT onto the beam direction.
+  // setFromUnitVectors(handUp, dir) only aligned the grip's up with the beam:
+  // the cone axis stayed rotated away by the grip twist and its base visibly
+  // floated off the glow orb (Nov 16 review). EMBED roots the cone's cut disc
+  // inside the orb so the beam reads as growing out of it, not touching it.
+  beam.position.copy(this.armbandBeamBase).addScaledVector(this.armbandBeamDir, (len - ARM_BAND_BEAM_EMBED) * 0.5);
+  beam.quaternion.setFromUnitVectors(this.armbandBeamAxis, this.armbandBeamDir);
+  beam.scale.set(1, len + ARM_BAND_BEAM_EMBED, 1);
   this.armbandBeamMat!.uniforms.uTime!.value = this.armbandBeamTime;
   (this.armbandGlow!.material as ShaderMaterial).uniforms.uTime!.value = this.armbandBeamTime;
   this.armbandBeamMat!.uniforms.uStrength!.value = e;
