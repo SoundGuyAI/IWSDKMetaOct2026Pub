@@ -79,8 +79,11 @@ test.beforeEach(async ({ page }) => {
 async function enterThumbsLab(page: import('@playwright/test').Page): Promise<void> {
   await page.mouse.click(1100, 320);
   await page.waitForTimeout(2000);
-  await page.mouse.move(640, 416);
-  await page.mouse.click(640, 416);
+  // The Lab menu has three rows (Nod, Thumbs, Rift) plus Back; the Thumbs row
+  // sits at y~372 on the 1280x800 viewport (verified against the deployed
+  // pr-75 preview; the old 416 predates the Rift row and hits it instead).
+  await page.mouse.move(640, 372);
+  await page.mouse.click(640, 372);
 }
 
 test('main menu carries a working Thumbs Yes/No Lab button (real canvas click)', async ({
