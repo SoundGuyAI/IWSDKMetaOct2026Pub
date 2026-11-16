@@ -60,6 +60,32 @@ test('small wobbles below the peak threshold do not fire', () => {
   assert.equal(fired, false);
 });
 
+test('a weak first stroke does not poison the real nod behind it (Quest regression)', () => {
+  // Owner's Nov 16 Quest 3 recording session: natural nodding starts with a
+  // sub-peak stroke; the old anti-double-count guard latched on ANY commit
+  // and blocked the qualifying stroke behind it for a full window.
+  const detector = new HeadNodShakeDetector();
+  detector.setEnabled(true);
+  now = 0;
+  let first = null;
+  swing((deg) => { first = first ?? detector.feed(-deg * D, 0, now); }, -8, 0.5);
+  assert.equal(first, null);
+  let second = null;
+  swing((deg) => { second = second ?? detector.feed(-deg * D, 0, now); }, -16, 0.5);
+  assert.equal(second?.answer, 'yes');
+});
+
+test('a real 12 deg nod now answers yes on the headset (Nov 16 Quest tuning)', () => {
+  // The owner's failed nods read 9-13.8 deg on-panel while accepted ones
+  // read 15-19 deg; the 14 deg peak sat above most real nods.
+  const detector = new HeadNodShakeDetector();
+  detector.setEnabled(true);
+  now = 0;
+  let event = null;
+  swing((deg) => { event = event ?? detector.feed(-deg * D, 0, now); }, -12, 0.6);
+  assert.equal(event?.answer, 'yes');
+});
+
 test('a slow look down and back up is not a nod', () => {
   const detector = new HeadNodShakeDetector();
   detector.setEnabled(true);
@@ -374,13 +400,10 @@ test('a one-way pointer drag (toward a button) never answers', () => {
 });
 
 test('a small pointer wiggle around a rested spot does not fire', () => {
-  // Guard floor: +-12px jitter. At the tuned 2 px/deg a +-12px wiggle reads
-  // 12 deg below the 14 deg peak; +-20px jitter can now complete a cycle,
-  // the accepted trade for the smaller desktop threshold.
-  const detector = new HeadNodShakeDetector({
-    ...DEFAULT_HEAD_GESTURE_CONFIG,
-    returnToBaselineRad: DEFAULT_HEAD_GESTURE_CONFIG.activationRad,
-  });
+  // Guard floor: +-8px jitter. At the tuned 1 px/deg an +-8px wiggle reads
+  // 8 deg below the 10 deg flat peak; +-12px jitter can now complete a cycle,
+  // the accepted trade for the smaller desktop threshold (Nov 15 retune).
+  const detector = new HeadNodShakeDetector(FLAT_HEAD_GESTURE_CONFIG);
   const tracker = new PointerGestureTracker();
   detector.setEnabled(true);
   now = 0;
@@ -392,7 +415,7 @@ test('a small pointer wiggle around a rested spot does not fire', () => {
   let fired = false;
   for (let i = 0; i < 20; i += 1) {
     now += step;
-    const s = tracker.feed(560 + (i % 2 === 0 ? 12 : -12), 200, now);
+    const s = tracker.feed(560 + (i % 2 === 0 ? 8 : -8), 200, now);
     fired = fired || detector.feed(s.pitchDeg * D, s.yawDeg * D, now) != null;
   }
   assert.equal(fired, false);
@@ -497,22 +520,19 @@ test('pointer scale keeps a deliberate flick above the peak threshold', () => {
 });
 
 test('a fast move, a pause, then a wiggle does not fire (idle re-prime)', () => {
-  const detector = new HeadNodShakeDetector({
-    ...DEFAULT_HEAD_GESTURE_CONFIG,
-    returnToBaselineRad: DEFAULT_HEAD_GESTURE_CONFIG.activationRad,
-  });
+  const detector = new HeadNodShakeDetector(FLAT_HEAD_GESTURE_CONFIG);
   const tracker = new PointerGestureTracker();
   detector.setEnabled(true);
   now = 0;
   tracker.feed(200, 200, 0);
-  // Fast flick across the screen (0.15s), then rest 1s, then wiggle +-12px
-  // (the +-20px floor moved with the 2 px/deg desktop tuning).
+  // Fast flick across the screen (0.15s), then rest 1s, then wiggle +-8px
+  // (the +-12px floor moved with the Nov 15 desktop retune).
   for (let i = 1; i <= 10; i += 1) { now += 0.015; tracker.feed(200 + i * 40, 200, now); }
   now += 1;
   let fired = false;
   for (let i = 0; i < 20; i += 1) {
     now += step;
-    const s = tracker.feed(600 + (i % 2 === 0 ? 12 : -12), 200, now);
+    const s = tracker.feed(600 + (i % 2 === 0 ? 8 : -8), 200, now);
     fired = fired || detector.feed(s.pitchDeg * D, s.yawDeg * D, now) != null;
   }
   assert.equal(fired, false);
