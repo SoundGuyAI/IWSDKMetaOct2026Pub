@@ -39,7 +39,9 @@ const bridge = (page: import('@playwright/test').Page) =>
 async function enterNodLab(page: import('@playwright/test').Page) {
   // Entry goes through the shared Lab foundation: the Lab entry (floating
   // right of the menu at 1280x800) opens the Lab menu, then the Nod Yes/No
-  // Lab row (first row, centred near y=343) enters the nod lab.
+  // Lab row: the merged Lab menu's rows are hardcoded in lab-menu.uikitml
+  // (nod, thumbs, rift) with the intro text above them, so the nod row is
+  // the first row, centred near y=290 at 1280x800.
   await page.mouse.click(1100, 320);
   await page.waitForFunction(
     () => sessionStorage.getItem('iwsdk-experience-mode') === 'lab',
@@ -48,7 +50,7 @@ async function enterNodLab(page: import('@playwright/test').Page) {
   );
   // Let the Lab menu take the flat layout and render before clicking the row.
   await page.waitForTimeout(2000);
-  await page.mouse.click(640, 343);
+  await page.mouse.click(640, 290);
 }
 
 async function answer(page: import('@playwright/test').Page, value: 'yes' | 'no') {
