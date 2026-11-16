@@ -332,8 +332,33 @@ test('store empty space clears selection without buying or closing; tiles and Bu
     await page.mouse.up();
     await page.waitForTimeout(600); // allow rebuilt UIKit layout/world matrices to settle
   };
-  await expect.poll(async () => (await targets())['store-tile-replay']?.x).toBeGreaterThan(0);
-  const replay = (await targets())['store-tile-replay'];
+  // The store grid mounts tiles incrementally on slow runners and re-centers
+  // its wrapping rows as they arrive, so a coordinate read taken mid-build
+  // points at the wrong tile by click time (CI run 43777531042 hit Listen
+  // instead of Replay this way). Wait until replay is present AND the whole
+  // target map keeps the same keys and coords (2px tolerance) continuously
+  // for 1.5s before clicking; any change resets the settle clock.
+  const settleTargets = async () => {
+    let prev: Record<string, { x: number; y: number }> | null = null;
+    let stableSince = 0;
+    const started = Date.now();
+    while (Date.now() - started < 30_000) {
+      const cur = await targets();
+      const near = prev !== null && Object.keys(cur).length === Object.keys(prev).length &&
+        Object.keys(cur).every(k => prev![k] && Math.abs(cur[k].x - prev![k].x) <= 2 && Math.abs(cur[k].y - prev![k].y) <= 2);
+      if (near && cur['store-tile-replay']) {
+        if (!stableSince) stableSince = Date.now();
+        if (Date.now() - stableSince >= 1_500) return cur;
+      } else {
+        stableSince = 0;
+      }
+      prev = cur;
+      await page.waitForTimeout(300);
+    }
+    throw new Error('store pointer targets did not settle with store-tile-replay present');
+  };
+  const settledTargets = await settleTargets();
+  const replay = settledTargets['store-tile-replay'];
   await click(replay.x, replay.y);
   await expect.poll(selected).toBe('replay');
   await testInfo.attach('selected', { body: await page.screenshot(), contentType: 'image/png' });

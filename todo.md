@@ -116,3 +116,10 @@ The merge-ready procedure is an enduring rule for every merge, not work in this 
 - [ ] MR armband (backlog 7): Concept A approved Nov 13. Separate feat/mr-armband PR in progress; left/right Accessibility, functional controls, owned Hint/Listen cues and streak readout. No merge or production promotion. Backlog 76 tracks the >20 Hint policy; in-game board surface confirmed. Headset acceptance pending.
 
 Armband verification update (Nov 13): typecheck/build and 102 unit tests pass. Quest-emulator hand-ray assertion check passes (Modifiers open/close, one Replay spent, exact Hint/Autoplay upgrade selection, 20 owned cues, tracking-loss hide, right-arm preference, setup hide). Run with the app-only dev server active: `node tests/xr/wall-tones-armband.mjs` (optional `XR_URL` and `XR_EVIDENCE_DIR`). The test injects its setup access into intercepted dev responses only; no extra production debug access is added. Near-touch remains inconsistent in emulation and is not accepted. Physical headset acceptance remains required. Full desktop E2E: 59/59 pass, including slow tests (22.9 minutes). The existing mute-test fake now models removeEventListener for the new listener cleanup. Separate draft PR pending; physical headset and near-touch acceptance remain open.
+
+## PR90 Lab welcome update - 2026-11-14
+
+- Owner approved the narrator and Cypher welcome wording and requested adding both to still-open PR90. Implemented for PR90 preview review; product merge remains held for the expanded-preview test and fresh owner go-ahead.
+- Four recordings: Puck/Laomedeia narrator and opposite-gender Kore/Algenib Cypher. Embedded MP3s keep the code and assets atomic. Exact transcript checked.
+- On Lab entry: narrator welcome, radio open, Cypher nudge, radio close. Leaving Lab cancels the queue. Existing voices-off/subtitle settings apply.
+- Local typecheck, build and 114 unit tests pass. Real-click entry plus both cast sequences pass. Full local regression suite and fresh merge-ready CI still required before merge. Expanded version needs owner preview review.

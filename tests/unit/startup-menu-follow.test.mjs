@@ -11,3 +11,19 @@ test('startup main menu follows with in-game panel constants and hidden panels d
   const app = readFileSync(new URL('../../src/app-mode.ts', import.meta.url), 'utf8');
   assert.ok(app.includes("'main-menu-panel'") && app.includes('removeComponent(RayInteractable)'));
 });
+
+test('Lab menu follows the player with the same placement constants as the main menu', () => {
+  const panel = readFileSync(new URL('../../src/panel.ts', import.meta.url), 'utf8');
+  assert.ok(panel.includes("'lab-menu-panel' : 'main-menu-panel'"));
+  assert.ok(panel.includes('followedMenuId'));
+  // One shared follow path: the constants are used once, for whichever menu is shown.
+  assert.equal(panel.split('PANEL_FOLLOW_SCALE;').length - 1, 1);
+});
+
+test('Thumbs Lab window follows the player with the same placement constants as the menus', () => {
+  const panel = readFileSync(new URL('../../src/panel.ts', import.meta.url), 'utf8');
+  assert.ok(panel.includes('thumbsVisibleForFollow'));
+  assert.ok(panel.includes("'thumbs-lab-panel'"));
+  // One shared follow path: the constants are used once, for whichever panel is shown.
+  assert.equal(panel.split('PANEL_FOLLOW_SCALE;').length - 1, 1);
+});

@@ -45,6 +45,7 @@ async function loadSpeech({ rejectFirst = false, subtitles = false } = {}) {
   globalThis.__voicesOff = false;
   globalThis.__captions = [];
   let source = readFileSync(new URL('../../src/wall-tones/speech.ts', import.meta.url), 'utf8');
+  source = source.replace("import { LAB_INTRO_AUDIO } from '../lab-menu/intro-audio.js';", readFileSync(new URL('../../src/lab-menu/intro-audio.ts', import.meta.url), 'utf8'));
   // Inline real, dependency-free story modules in this data-URL test harness.
   for (const name of ['cypher-voice', 'cypher-script', 'cypher-background']) {
     const dependency = readFileSync(new URL(`../../src/wall-tones/${name}.ts`, import.meta.url), 'utf8');
@@ -207,4 +208,25 @@ test('background lines use captured opposite cast and shared caption/Skip routin
   assert.match(globalThis.__captions.at(-1),/His name was Houston/);
   voice.cancel(); await line; assert.equal(voice.isBusy(),false);
   assert.equal(h.instances.length,1);
+});
+
+test('Lab lines keep captured opposite cast, exact captions and mobile cancellation', async () => {
+  const h = await loadSpeech({subtitles: true});
+  await h.gesture(() => h.speech.startMobileWelcomeFromGesture());
+  h.speech.unlockSpeechFromGesture(); h.instances[0].end();
+  const speech = new h.speech.WallTonesSpeech();
+  const cast = {narrator: 'female', cypher: 'male'};
+  const narrator = speech.speakLabLine('narrator', cast);
+  const cypher = speech.speakLabLine('cypher', cast);
+  await Promise.resolve(); await Promise.resolve();
+  assert.match(h.instances[0].src, /^data:audio\/mpeg;base64,/);
+  h.instances[0].onplaying();
+  assert.equal(globalThis.__captions.at(-1), 'Narrator: Welcome to the Lab. These are features that will be added to the game. For now, you can try them here as demos.');
+  h.instances[0].end(); await narrator;
+  await Promise.resolve(); await Promise.resolve();
+  h.instances[0].onplaying();
+  assert.equal(globalThis.__captions.at(-1), "Cypher: Hands. Heads. Voices. Funny how many ways a machine can learn to listen. Keep trying them. I'll be listening too.");
+  speech.cancel(); await cypher;
+  assert.equal(speech.isBusy(), false);
+  assert.equal(h.instances.length, 1);
 });
