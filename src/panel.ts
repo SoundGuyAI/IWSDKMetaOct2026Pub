@@ -66,6 +66,12 @@ function isCompactFlatViewport(): boolean {
   return false;
 }
 
+function thumbsVisibleForFollow(world: {
+  getSceneEntity: (id: string) => { getValue: (c: typeof Visibility, k: 'isVisible') => unknown } | undefined;
+}): boolean {
+  return world.getSceneEntity('thumbs-lab-panel')?.getValue(Visibility, 'isVisible') === true;
+}
+
 function riftVisibleForFollow(world: {
   getSceneEntity: (id: string) => { getValue: (c: typeof Visibility, k: 'isVisible') => unknown } | undefined;
 }): boolean {
@@ -83,7 +89,6 @@ const RIFT_DODGE_CLEAR_M = 0.12;
 const RIFT_PANEL_HALF_HEIGHT_PER_SCALE_M = 2.79;
 /** Largest lift so the panel never flies out of reach. */
 const RIFT_DODGE_MAX_LIFT_M = 1.5;
-
 export class PanelSystem extends createSystem({}) {
   private readonly savedMainMenuPosition = new Float32Array(3);
   private readonly savedMainMenuScale = new Float32Array(3);
@@ -220,7 +225,14 @@ export class PanelSystem extends createSystem({}) {
     const labVisible =
       this.world.getSceneEntity('lab-menu-panel')?.getValue(Visibility, 'isVisible') === true;
     const baseId = labVisible ? 'lab-menu-panel' : 'main-menu-panel';
-    const followId = riftVisibleForFollow(this.world) ? 'rift-lab-panel' : baseId;
+    // The Thumbs Lab panel replaces the Lab menu in place, so it follows the
+    // player with the same rules as the menus and the other lab windows. The
+    // Rift Lab panel follows the same way; only one lab runs at a time.
+    const followId = thumbsVisibleForFollow(this.world)
+      ? 'thumbs-lab-panel'
+      : riftVisibleForFollow(this.world)
+        ? 'rift-lab-panel'
+        : baseId;
     if (followId !== this.followedMenuId) {
       this.followedMenuId = followId;
       this.menuAnchored = false;
@@ -514,4 +526,4 @@ export class PanelSystem extends createSystem({}) {
       }
     }
   }
-}
+      }

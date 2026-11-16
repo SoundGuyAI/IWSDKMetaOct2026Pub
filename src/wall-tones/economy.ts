@@ -5,11 +5,20 @@
  * accessibility settings.
  */
 
+import { MOVEMENT_STORAGE_KEYS, readLifetimeMovementMeters } from './movement.js';
 import { BACKGROUND_PROGRESS_KEY } from './cypher-background.js';
 import { CYPHER_PROGRESS_KEY } from './cypher-progress.js';
 
 const BARS_KEY = 'wall-tones-bars';
 const BARS_TOTAL_KEY = 'wall-tones-bars-total';
+/** AutoPlay-completed rounds still pay their Bars to the spendable balance,
+ * but AutoPlay is not the human player (owner rule 2026-11-15): those Bars
+ * are tracked apart so lifetime Bars/Total Score achievements only count
+ * Bars the human earned. */
+const AUTOPLAY_BARS_TOTAL_KEY = 'wall-tones-autoplay-bars-total';
+/** AutoPlay on/off (owner 2026-11-15: enable/disable get voice notices).
+ * Owning AutoPlay keeps it on until the player switches it off. */
+const AUTOPLAY_DISABLED_KEY = 'wall-tones-autoplay-disabled';
 const HINT_LEVEL_KEY = 'wall-tones-hint-level';
 const ACHIEVEMENTS_KEY = 'wall-tones-achievements';
 const FIRST_FLAGS_KEY = 'wall-tones-first-flags';
@@ -22,6 +31,8 @@ const AUTOPLAY_LEVEL_KEY = 'wall-tones-autoplay-level';
 const REPLAY_FREE_KEY = 'wall-tones-replays-free';
 const REPLAY_PAID_KEY = 'wall-tones-replays-paid';
 const SAVERS_KEY = 'wall-tones-savers';
+const PLAY_LEVEL_KEY = 'wall-tones-play-level';
+const INDEX_OWNED_KEY = 'wall-tones-index-owned';
 
 // Skill-tree store prices (owner-approved 2026-11-11 as starting balance for
 // testing, not final). Hint: 25/50/100 Bars then doubling. Open-ended by
@@ -42,10 +53,43 @@ export const LISTEN_COST = 30;
 // Provisional test value (Oded 2026-11-12 11:49: "or maybe no. like 250. we'll
 // balance it later." - supersedes his 500 a minute earlier; balancing comes after
 // testing, so later levels keep the existing doubling for now).
-export const AUTOPLAY_BASE_COSTS: readonly number[] = [250];
+// Temporary repricing (Oded 2026-11-15 23:44 "Can you make auto play cost 2000
+// for now ?", settled 23:51 after his 23:49 "just the first level or maybe ...
+// 2500" and a follow-up ladder readout: asked to confirm 2500/5000/10000/20000
+// he replied "What you just said is correct with the order, not the thing you
+// heard by mistake."): the ladder base drops 5000 -> 2500 and keeps doubling.
+export const AUTOPLAY_BASE_COSTS: readonly number[] = [2500];
 export const AUTOPLAY_COST_GROWTH = 2;
 export const AUTOPLAY_NOTES_PER_LEVEL = 5;
-export const AUTOPLAY_UNLOCK_HINT_LEVEL = 4;
+/** Gate chain (owner voice 2026-11-13): Hint L4 unlocks Play L1; Play L4
+ * unlocks Autoplay; Hint levels keep increasing independently. */
+export const PLAY_UNLOCK_HINT_LEVEL = 4;
+/** Autoplay unlocks at Play level 4 (= PLAY_MAX_LEVEL, declared below). */
+export const AUTOPLAY_UNLOCK_PLAY_LEVEL = 4;
+
+/** Play (owner request 2026-11-12, backlog 66, verbatim): "another modifier
+ * called "Play" and then after 4 levels it will enable autoplay. Each level
+ * of play will play 5 tones for you when you press a button in the game
+ * menu." Four levels, five tones per level. Whether level 4 REPLACES the
+ * Hint L4 Autoplay gate or joins it as a second path is the owner's pending
+ * decision (asked 2026-11-12 11:42, unanswered; re-asked 2026-11-13), so
+ * autoplayUnlocked() stays unchanged until then.
+ * TEST PRICES (owner approved 2026-11-14 ~10:00, "Yeah we can do with them
+ * and balance later", replying to: Index 500 one-off, Play levels 1-4 at
+ * 500 / 1,000 / 2,000 / 4,000). They are test values for the balance pass. */
+export const PLAY_MAX_LEVEL = 4;
+export const PLAY_TONES_PER_LEVEL = 5;
+export const PLAY_PRICING_SET = true;
+export const PLAY_COSTS: readonly number[] = [500, 1000, 2000, 4000];
+
+/** Index pointer (owner 2026-11-12: "same row as play, unlocking after hint
+ * level 3"; added to this PR by his 2026-11-13 ask). An indicator for where
+ * the player is in the pattern; its exact display/behavior is still to
+ * confirm with him, so this PR ships the gated tile and the purchase only.
+ * One-off test price 500 (owner approved 2026-11-14, balance later). */
+export const INDEX_UNLOCK_HINT_LEVEL = 3;
+export const INDEX_PRICING_SET = true;
+export const INDEX_COST = 500;
 
 /** Replay (owner-approved 2026-11-11): a consumable re-hear of the current
  * pattern. Paid Replays cost 20 Bars, no purchase limit for now. Free Replays
@@ -58,7 +102,7 @@ export const REPLAY_EARN_STEP = 5;
 
 /** One-time Top Secret store item price (user-settled Nov 7): grants the
  * hidden Secret Revealed achievement and nothing else. */
-export const TOP_SECRET_COST = 1000;
+export const TOP_SECRET_COST = 10000;
 
 /** Bars per correct pad press (provisional value, user to calibrate). */
 export const PRESS_BARS = 1;
@@ -123,6 +167,10 @@ export const ACHIEVEMENT_CATEGORIES: readonly AchievementCategory[] = [
   { id: 'score', label: 'Total Score', description: 'Lifetime score: one point per Bar earned.', levels: [50, 100, 250] },
   { id: 'store', label: 'Store', description: 'Store purchases (provisional levels).', levels: [1, 3, 5, 10, 25] },
   { id: 'presses', label: 'Pad presses', description: 'Pad presses in the game, lifetime (provisional levels).', levels: [50, 100, 250, 500, 1000] },
+  // Backlog 30 research: combined MR movement estimate (headset + pad reach,
+  // meter totals from movement.ts). Levels are placeholders until headset
+  // testing settles the scoring (owner Nov 11).
+  { id: 'movement', label: 'Movement', description: 'Meters moved in MR: headset movement plus pad reach (research, provisional levels).', levels: [10, 25, 50] },
   { id: 'secret', label: 'Secret Revealed', description: 'A secret. It stays secret.', levels: [1], hidden: true },
 ];
 
@@ -170,6 +218,7 @@ export function resetWallTonesStats(): void {
 for (const key of [
 BARS_KEY,
 BARS_TOTAL_KEY,
+AUTOPLAY_BARS_TOTAL_KEY,
 HINT_LEVEL_KEY,
 ACHIEVEMENTS_KEY,
 FIRST_FLAGS_KEY,
@@ -179,9 +228,15 @@ PRESSES_KEY,
 TOP_SECRET_KEY,
 LISTEN_KEY,
 AUTOPLAY_LEVEL_KEY,
+AUTOPLAY_DISABLED_KEY,
 REPLAY_FREE_KEY,
 REPLAY_PAID_KEY,
 SAVERS_KEY,
+PLAY_LEVEL_KEY,
+INDEX_OWNED_KEY,
+// Backlog 30 research totals (fractional meters; economy's number helpers
+// do not own them).
+...MOVEMENT_STORAGE_KEYS,
 CYPHER_PROGRESS_KEY,
 BACKGROUND_PROGRESS_KEY,
 ]) {
@@ -192,6 +247,8 @@ try { globalThis.localStorage?.removeItem(key); } catch { /* private mode */ }
 export class WallTonesEconomy {
   private bars = readNumber(BARS_KEY);
   private barsTotal = readNumber(BARS_TOTAL_KEY);
+  /** Lifetime Bars AutoPlay earned (spendable, but never human progress). */
+  private autoplayBarsTotal = readNumber(AUTOPLAY_BARS_TOTAL_KEY);
   private hintLevel = readNumber(HINT_LEVEL_KEY);
   private unlocked = new Set(readStringArray(ACHIEVEMENTS_KEY));
   private firstFlags = new Set(readStringArray(FIRST_FLAGS_KEY));
@@ -200,9 +257,12 @@ export class WallTonesEconomy {
   private topSecretOwned = readNumber(TOP_SECRET_KEY) === 1;
   private listenOwned = readNumber(LISTEN_KEY) === 1;
   private autoplayLevel = readNumber(AUTOPLAY_LEVEL_KEY);
+  private autoplayDisabled = readNumber(AUTOPLAY_DISABLED_KEY) === 1;
   private replaysFree = readNumber(REPLAY_FREE_KEY);
   private replaysPaid = readNumber(REPLAY_PAID_KEY);
   private savers = readNumber(SAVERS_KEY);
+  private playLevel = readNumber(PLAY_LEVEL_KEY);
+  private indexOwned = readNumber(INDEX_OWNED_KEY) === 1;
   /** In-memory test Bars from the ?demoBars URL flag. Never persisted, never
    * counted in lifetime totals, and always spent before real Bars so the
    * saved balance stays untouched (owner-approved preview aid 2026-11-11). */
@@ -246,6 +306,12 @@ export class WallTonesEconomy {
 
   getBarsTotal(): number {
     return this.barsTotal;
+  }
+
+  /** Lifetime Bars AutoPlay earned: spendable but never human achievement
+   * progress (owner rule 2026-11-15). Exposed for the debug bridge/tests. */
+  getAutoplayBarsTotal(): number {
+    return this.autoplayBarsTotal;
   }
 
   /** Streak savers in stock (test-value consumable, see consumable-values). */
@@ -348,25 +414,38 @@ export class WallTonesEconomy {
    * achievement; when the completed pattern set a new best streak, also
    * pays the record bonus of rate x streak (exponential: 5 -> +5,
    * 10 -> +20, 15 -> +60, 20 -> +160). Returns both parts for the round
-   * summary breakdown. */
+   * summary breakdown. `achievementStreak` is the streak the achievement
+   * check may credit: the live streak for a human-completed round, the
+   * saved human best for an AutoPlay-completed round (owner rule
+   * 2026-11-15: AutoPlay never advances streak achievements).
+   * `creditHuman` false (AutoPlay-completed round) pays the completion Bars
+   * to the spendable balance but keeps them out of the human lifetime
+   * counters, so Bars/Total Score achievements never unlock from AutoPlay. */
   completePattern(
     streak: number,
     recordBeaten: boolean,
+    achievementStreak: number = streak,
+    creditHuman: boolean = true,
   ): { completion: number; bonus: number } {
-    const completion = this.award(barsForStreak(streak), streak);
+    const completion = this.award(barsForStreak(streak), streak, achievementStreak, creditHuman);
     const bonus = recordBeaten
-      ? this.award(barsForStreak(streak) * streak, streak)
+      ? this.award(barsForStreak(streak) * streak, streak, achievementStreak, creditHuman)
       : 0;
     return { completion, bonus };
   }
 
-  private award(amount: number, streak: number): number {
+  private award(amount: number, streak: number, achievementStreak?: number, countAsEarned = true): number {
     if (amount <= 0) return 0;
     this.bars += amount;
-    this.barsTotal += amount;
+    if (countAsEarned) {
+      this.barsTotal += amount;
+      writeNumber(BARS_TOTAL_KEY, this.barsTotal);
+    } else {
+      this.autoplayBarsTotal += amount;
+      writeNumber(AUTOPLAY_BARS_TOTAL_KEY, this.autoplayBarsTotal);
+    }
     writeNumber(BARS_KEY, this.bars);
-    writeNumber(BARS_TOTAL_KEY, this.barsTotal);
-    this.checkAchievements(streak);
+    this.checkAchievements(achievementStreak ?? streak);
     return amount;
   }
 
@@ -378,11 +457,16 @@ export class WallTonesEconomy {
       case 'bars':
       case 'score':
         // User-settled: Total Score == lifetime Bars earned, never decreases.
+        // AutoPlay earnings are tracked apart and never count here (owner
+        // rule 2026-11-15: AutoPlay does not earn human achievements).
         return this.barsTotal;
       case 'store':
         return this.purchases;
       case 'presses':
         return this.presses;
+      case 'movement':
+        // Backlog 30 research: owned by movement.ts storage, not a counter here.
+        return readLifetimeMovementMeters();
       default:
         // secret: the Top Secret purchase (user-settled Nov 7, backlog 13).
         return this.topSecretOwned ? 1 : 0;
@@ -419,11 +503,11 @@ export class WallTonesEconomy {
     return this.listenOwned;
   }
 
-  /** Skill-tree gate: Autoplay unlocks at Hint level 4 (owner 2026-11-11).
-   * Listen ownership required too (bug report 2026-11-12): legacy saves could
-   * carry Hint L4+ without Listen and unlock Autoplay out of the box. */
+  /** Skill-tree gate: Autoplay unlocks at Play level 4 (owner voice
+   * 2026-11-13). Listen ownership required too (bug report 2026-11-12):
+   * legacy saves could carry levels without Listen. */
   autoplayUnlocked(): boolean {
-    return this.listenOwned && this.hintLevel >= AUTOPLAY_UNLOCK_HINT_LEVEL;
+    return this.listenOwned && this.playLevel >= AUTOPLAY_UNLOCK_PLAY_LEVEL;
   }
 
   /** Buy the next hint level. Returns true when the purchase landed. */
@@ -447,6 +531,19 @@ export class WallTonesEconomy {
     return this.autoplayLevel * AUTOPLAY_NOTES_PER_LEVEL;
   }
 
+  /** AutoPlay fires on rounds only while owned AND switched on (owner
+   * 2026-11-15: the player can enable/disable it). Owning keeps it on
+   * until the player switches it off. */
+  isAutoplayEnabled(): boolean {
+    return this.autoplayLevel > 0 && !this.autoplayDisabled;
+  }
+
+  /** Switch AutoPlay on/off. No-op below ownership. */
+  setAutoplayDisabled(disabled: boolean): void {
+    this.autoplayDisabled = disabled;
+    writeNumber(AUTOPLAY_DISABLED_KEY, disabled ? 1 : 0);
+  }
+
   /** Cost of buying Autoplay level `level` (1-based). Open-ended doubling. */
   autoplayCost(level: number): number {
     if (level <= AUTOPLAY_BASE_COSTS.length) return AUTOPLAY_BASE_COSTS[Math.max(level, 1) - 1]!;
@@ -464,6 +561,76 @@ export class WallTonesEconomy {
     if (!this.spend(cost)) return false;
     this.autoplayLevel += 1;
     writeNumber(AUTOPLAY_LEVEL_KEY, this.autoplayLevel);
+    this.countPurchase();
+    return true;
+  }
+
+  /** Owned Play level (0 = not owned). */
+  getPlayLevel(): number {
+    return this.playLevel;
+  }
+
+  /** Tones Play plays for the player at the owned level (5 per level). */
+  getPlayNoteCount(): number {
+    return this.playLevel * PLAY_TONES_PER_LEVEL;
+  }
+
+  /** Cost of Play level `level` (1-based), once prices are set. */
+  playCost(level: number): number {
+    return PLAY_COSTS[Math.min(Math.max(level, 1), PLAY_MAX_LEVEL) - 1]!;
+  }
+
+  /** Play unlocks at Hint level 4 (owner voice 2026-11-13: only then can
+   * Play level one be opened). Listen ownership required too. */
+  playUnlocked(): boolean {
+    return this.listenOwned && this.hintLevel >= PLAY_UNLOCK_HINT_LEVEL;
+  }
+
+  /** Buy the next Play level. REFUSES while locked, and while
+   * PLAY_PRICING_SET is false; four levels max. */
+  buyNextPlayLevel(): boolean {
+    if (!this.playUnlocked()) return false;
+    if (!PLAY_PRICING_SET) return false;
+    if (this.playLevel >= PLAY_MAX_LEVEL) return false;
+    const cost = this.playCost(this.playLevel + 1);
+    if (!this.spend(cost)) return false;
+    this.playLevel += 1;
+    writeNumber(PLAY_LEVEL_KEY, this.playLevel);
+    this.countPurchase();
+    return true;
+  }
+
+  /** Test-only: seed the Play level without a purchase. */
+  debugGrantPlayLevel(level: number): void {
+    this.playLevel = Math.min(Math.max(Math.floor(level), 0), PLAY_MAX_LEVEL);
+    writeNumber(PLAY_LEVEL_KEY, this.playLevel);
+  }
+
+  /** Test-only: grant the Index pointer without a purchase. */
+  debugGrantIndex(): void {
+    this.indexOwned = true;
+    writeNumber(INDEX_OWNED_KEY, 1);
+  }
+
+  /** Index pointer owned (one-time item). */
+  ownsIndex(): boolean {
+    return this.indexOwned;
+  }
+
+  /** Skill-tree gate: Index unlocks at Hint level 3 (owner 2026-11-12).
+   * Listen ownership required too, same legacy-save lesson as Autoplay. */
+  indexUnlocked(): boolean {
+    return this.listenOwned && this.hintLevel >= INDEX_UNLOCK_HINT_LEVEL;
+  }
+
+  /** Buy the Index pointer: one-off, needs Hint level 3, test price 500. */
+  buyIndex(): boolean {
+    if (!INDEX_PRICING_SET || !this.indexUnlocked() || this.indexOwned) {
+      return false;
+    }
+    if (!this.spend(INDEX_COST)) return false;
+    this.indexOwned = true;
+    writeNumber(INDEX_OWNED_KEY, 1);
     this.countPurchase();
     return true;
   }
@@ -548,6 +715,13 @@ export class WallTonesEconomy {
     this.pendingToasts.push({ id, label, description });
   }
 
+  /** Movement totals change in movement.ts outside the economy's own
+   * counters; re-run the threshold check when the tracker reports a new
+   * whole meter so Movement achievements unlock during play (backlog 30). */
+  noteExternalProgress(liveStreak: number): void {
+    this.checkAchievements(liveStreak);
+  }
+
   /** Achievement unlocks not yet shown; clears the queue. */
   drainToasts(): AchievementDef[] {
     const out = this.pendingToasts;
@@ -585,4 +759,4 @@ export class WallTonesEconomy {
     writeStringArray(FIRST_FLAGS_KEY, [...this.firstFlags]);
     return true;
   }
-}
+      }

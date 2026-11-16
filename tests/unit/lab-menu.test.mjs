@@ -22,6 +22,9 @@ test('foundation ships the known demos; connected rows open their mode', () => {
   }
   const rift = lab.LAB_ENTRIES.find((e) => e.id === 'rift');
   assert.equal(lab.labRowTarget(rift), 'riftlab');
+  const thumbs = lab.LAB_ENTRIES.find((e) => e.id === 'thumbs');
+  assert.equal(lab.labRowTarget(thumbs), 'thumbslab');
+  assert.doesNotMatch(lab.labRowLabel(thumbs), /not connected/);
 });
 
 test('a connected entry opens its mode and drops the status suffix', () => {
