@@ -667,14 +667,12 @@ if (!this.armband) {
   bind('armband-repeat', () => {
     if (this.armbandUsable() && this.game.phase === 'input' && this.economy.getReplaysTotal() > 0) void this.onRepeatPattern();
   });
-  bind('armband-modifiers', () => { if (this.armbandUsable()) this.onToggleStore(); });
-  const upgrade = (id: string) => {
-    if (!this.armbandUsable()) return;
-    if (!this.storeOpen) this.onToggleStore();
-    this.forceSelectStoreTile(id);
-  };
-  bind('armband-hint-button', () => upgrade('hint'));
-  bind('armband-autoplay', () => upgrade('autoplay'));
+  // Play modifier (item 66): same action as the panel's Play control.
+  bind('armband-play', () => { if (this.armbandUsable()) void this.onPlayControl(); });
+  // New Run on the wrist while Game Over owns the retry decision; Skip Voice
+  // while narration is playing (mirrors the panel button's relevance rule).
+  bind('armband-newrun', () => { if (this.armbandTrackable() && this.gameOverOpen) this.onGameOverNewRun(); });
+  bind('armband-skip-voice', () => { if (this.armbandTrackable()) this.onSkipVoice(); });
 }
 const hand = armbandHand();
 const adapter = this.input.xr.visualAdapters[hand].peek();
@@ -865,7 +863,8 @@ this.armband.render({ streak: this.game.streak, best: this.game.bestStreak,
   hintCount: this.economy.getHintRevealCount(), listen: this.economy.ownsListen(),
   playbackShown: this.playbackShownCount, replays: this.economy.getReplaysTotal(),
   autoplay: this.economy.getAutoplayLevel(), colorNames: colorNamesEnabled(),
-  gameOver: this.gameOverOpen, bars: this.economy.getBars() });
+  gameOver: this.gameOverOpen, bars: this.economy.getBars(),
+  narrationBusy: this.speech.isBusy(), playLevel: this.economy.getPlayLevel() });
 }
 
 /** The band stays on the wrist for the whole run, including the Game Over popup. */
