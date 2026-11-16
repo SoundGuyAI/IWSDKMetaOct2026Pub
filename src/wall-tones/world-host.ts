@@ -15,6 +15,7 @@ import { RobotSystem } from '../robot.js';
 import { WallTonesSystem } from './wall-tones-system.js';
 import { NodLabSystem } from '../nod-lab/nod-lab-system.js';
 import { RiftLabSystem } from '../rift-lab/rift-lab-system.js';
+import { ThumbsLabSystem } from '../thumbs-lab/thumbs-lab-system.js';
 
 export { backToMenuDestroysWorld } from './back-to-menu-policy.js';
 
@@ -40,6 +41,7 @@ function registerHubSystems(world: World): void {
   world.registerSystem(WallTonesSystem);
   world.registerSystem(NodLabSystem);
   world.registerSystem(RiftLabSystem);
+  world.registerSystem(ThumbsLabSystem);
 }
 
 function registerArSystems(world: World): void {
@@ -48,6 +50,7 @@ function registerArSystems(world: World): void {
   world.registerSystem(WallTonesSystem);
   world.registerSystem(NodLabSystem);
   world.registerSystem(RiftLabSystem);
+  world.registerSystem(ThumbsLabSystem);
 }
 
 function buildArWorldOptions(): WorldOptions {

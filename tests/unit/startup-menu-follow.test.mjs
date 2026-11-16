@@ -29,3 +29,11 @@ test('the nod lab window follows the player in MR like the other lab menus (Nov 
   assert.ok(panel.includes("panelVisible('nod-lab-panel')"));
   assert.ok(panel.includes("? 'nod-lab-panel'"));
 });
+
+test('Thumbs Lab window follows the player with the same placement constants as the menus', () => {
+  const panel = readFileSync(new URL('../../src/panel.ts', import.meta.url), 'utf8');
+  assert.ok(panel.includes('thumbsVisibleForFollow'));
+  assert.ok(panel.includes("'thumbs-lab-panel'"));
+  // One shared follow path: the constants are used once, for whichever panel is shown.
+  assert.equal(panel.split('PANEL_FOLLOW_SCALE;').length - 1, 1);
+});

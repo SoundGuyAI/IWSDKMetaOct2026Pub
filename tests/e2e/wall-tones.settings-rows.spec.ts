@@ -5,9 +5,11 @@ import {
   hearingSubtitlesEnabled,
   colorNamesEnabled,
   voicesOffEnabled,
+  headGazePinchEnabled,
   setHearingSubtitles,
   setColorNames,
   setVoicesOff,
+  setHeadGazePinch,
 } from '../../src/wall-tones/accessibility.js';
 
 // Backlog 78: settings rows toggle on whole-row press, not just the checkbox.
@@ -67,6 +69,7 @@ test('accessibility rows carry ids and pointer cursor around their checkboxes', 
     ['hearing-subtitles-row', 'hearing-subtitles-checkbox'],
     ['color-names-row', 'color-names-checkbox'],
     ['voices-off-row', 'voices-off-checkbox'],
+    ['head-gaze-pinch-row', 'head-gaze-pinch-checkbox'],
   ]) {
     const row = new RegExp(
       `<div id="${rowId}" style="[^"]*cursor: pointer[^"]*">\\s*<Checkbox id="${checkboxId}">`,
@@ -83,6 +86,7 @@ test('whole-row press toggles each accessibility setting once per click', () => 
     setHearingSubtitles(false);
     setColorNames(false);
     setVoicesOff(false);
+    setHeadGazePinch(false);
     bind(panel);
 
     elements.get('hearing-subtitles-row')!.click();
@@ -94,10 +98,15 @@ test('whole-row press toggles each accessibility setting once per click', () => 
     expect(colorNamesEnabled()).toBe(true);
     elements.get('voices-off-row')!.click();
     expect(voicesOffEnabled()).toBe(true);
+    elements.get('head-gaze-pinch-row')!.click();
+    expect(headGazePinchEnabled()).toBe(true);
+    elements.get('head-gaze-pinch-row')!.click();
+    expect(headGazePinchEnabled()).toBe(false);
   } finally {
     setHearingSubtitles(false);
     setColorNames(false);
     setVoicesOff(false);
+    setHeadGazePinch(false);
     Object.assign(globalThis, { window: previousWindow });
   }
 });
@@ -128,7 +137,7 @@ test('real mouse press on the row label toggles the setting (1280x720)', async (
   // Accessibility button, then the subtitles row LABEL (not the checkbox).
   const SETTINGS: [number, number] = [640, 458];
   const ACCESSIBILITY: [number, number] = [640, 407];
-  const ROW_LABEL: [number, number] = [560, 95];
+  const ROW_LABEL: [number, number] = [560, 155];
 
   const MAX_ROUNDS = 3;
   let rounds = 0;
@@ -154,7 +163,7 @@ test('real mouse press on the row label toggles the setting (1280x720)', async (
   expect(value, `row label press must toggle within ${MAX_ROUNDS} rounds`).toBe('true');
 
   // A press on the checkbox itself toggles exactly once (no double-toggle).
-  const CHECKBOX: [number, number] = [405, 95];
+  const CHECKBOX: [number, number] = [405, 155];
   await panelClick(...CHECKBOX);
   await page.waitForTimeout(1_200);
   expect(await readSetting(), 'checkbox press must toggle back exactly once').toBe('false');

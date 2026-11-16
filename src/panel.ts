@@ -66,6 +66,12 @@ function isCompactFlatViewport(): boolean {
   return false;
 }
 
+function thumbsVisibleForFollow(world: {
+  getSceneEntity: (id: string) => { getValue: (c: typeof Visibility, k: 'isVisible') => unknown } | undefined;
+}): boolean {
+  return world.getSceneEntity('thumbs-lab-panel')?.getValue(Visibility, 'isVisible') === true;
+}
+
 function riftVisibleForFollow(world: {
   getSceneEntity: (id: string) => { getValue: (c: typeof Visibility, k: 'isVisible') => unknown } | undefined;
 }): boolean {
@@ -83,7 +89,6 @@ const RIFT_DODGE_CLEAR_M = 0.12;
 const RIFT_PANEL_HALF_HEIGHT_PER_SCALE_M = 2.79;
 /** Largest lift so the panel never flies out of reach. */
 const RIFT_DODGE_MAX_LIFT_M = 1.5;
-
 export class PanelSystem extends createSystem({}) {
   private readonly savedMainMenuPosition = new Float32Array(3);
   private readonly savedMainMenuScale = new Float32Array(3);
@@ -217,18 +222,22 @@ export class PanelSystem extends createSystem({}) {
     this.publishMenuFacingTest();
     // Lab panels replace the main menu in place, so they follow the player
     // with the same rules. Switching menus re-anchors it in front of the
-    // viewer. The nod lab's window follows too (owner, Nov 16: in MR it
-    // stayed world-locked while the other labs' windows followed the head).
+    // viewer; only one lab runs at a time. The nod lab's window follows too
+    // (Nov 16: in MR it stayed world-locked while the other labs' windows
+    // followed the head).
+    const labVisible =
+      this.world.getSceneEntity('lab-menu-panel')?.getValue(Visibility, 'isVisible') === true;
+    const baseId = labVisible ? 'lab-menu-panel' : 'main-menu-panel';
     const panelVisible = (id: string) =>
       this.world.getSceneEntity(id)?.getValue(Visibility, 'isVisible') ===
       true;
     const followId = panelVisible('nod-lab-panel')
       ? 'nod-lab-panel'
-      : riftVisibleForFollow(this.world)
-        ? 'rift-lab-panel'
-        : panelVisible('lab-menu-panel')
-          ? 'lab-menu-panel'
-          : 'main-menu-panel';
+      : thumbsVisibleForFollow(this.world)
+        ? 'thumbs-lab-panel'
+        : riftVisibleForFollow(this.world)
+          ? 'rift-lab-panel'
+          : baseId;
     if (followId !== this.followedMenuId) {
       this.followedMenuId = followId;
       this.menuAnchored = false;
@@ -524,4 +533,4 @@ export class PanelSystem extends createSystem({}) {
       }
     }
   }
-}
+      }

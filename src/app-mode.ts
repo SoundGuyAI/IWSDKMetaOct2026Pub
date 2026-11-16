@@ -1,5 +1,7 @@
 import { captureCypherCast } from './wall-tones/cypher-voice.js';
-import { hearingSubtitlesEnabled, colorNamesEnabled, setHearingSubtitles, setColorNames, voicesOffEnabled, setVoicesOff } from './wall-tones/accessibility.js';
+import { hearingSubtitlesEnabled, colorNamesEnabled, setHearingSubtitles, setColorNames, voicesOffEnabled, setVoicesOff, headGazePinchEnabled, setHeadGazePinch, nativeGazePinchEnabled, setNativeGazePinch } from './wall-tones/accessibility.js';
+import { GAZE_SOURCE_EVENT, gazeSourceStatusText, type GazeSourceStatus } from './wall-tones/gaze-source.js';
+import { gazePinchSettingsVisible } from './enter-xr-visibility.js';
 /**
  * Switches between the main menu and experience modes by toggling authored
  * scene node visibility. Mode selection lives on spatial UIKitML panels.
@@ -21,6 +23,7 @@ const RAY_TOGGLED_PANEL_IDS: ReadonlySet<string> = new Set([
   'lab-menu-panel',
   'lab-entry-panel',
   'rift-lab-panel',
+  'thumbs-lab-panel',
 ]);
 import {
   LAB_ENTRIES,
@@ -46,7 +49,8 @@ export type ExperienceMode =
   | 'walltones'
   | 'lab'
   | 'nodlab'
-  | 'riftlab';
+  | 'riftlab'
+  | 'thumbslab';
 
 const MODE_STORAGE_KEY = 'iwsdk-experience-mode';
 
@@ -72,6 +76,7 @@ function readStoredMode(): ExperienceMode {
     stored === 'lab' ||
     stored === 'nodlab' ||
     stored === 'riftlab' ||
+    stored === 'thumbslab' ||
     stored === 'menu'
   ) {
     return stored;
@@ -217,12 +222,14 @@ export class AppModeSystem extends createSystem({}) {
     const showLab = mode === 'lab';
     const showNodLab = mode === 'nodlab';
     const showRiftLab = mode === 'riftlab';
+    const showThumbsLab = mode === 'thumbslab';
 
     this.setNodeVisible('main-menu-panel', showMenu);
     this.setNodeVisible('wall-tones-panel', showWallTones);
     this.setNodeVisible('lab-menu-panel', showLab);
     this.setNodeVisible('nod-lab-panel', showNodLab);
     this.setNodeVisible('rift-lab-panel', showRiftLab);
+    this.setNodeVisible('thumbs-lab-panel', showThumbsLab);
     // The Lab entry floats beside the menu: visible exactly when the menu is.
     this.setNodeVisible('lab-entry-panel', showMenu);
 
@@ -338,6 +345,7 @@ export class AppModeSystem extends createSystem({}) {
     wallTonesButton?.addEventListener('click', () => this.startWallTonesFlat());
     xrButton?.addEventListener('click', () => this.enterXrIntoWallTones());
     this.bindNodLabBack();
+    this.bindThumbsLabBack();
     this.bindSettingsMenu(panel);
     if (wallTonesButton != null) {
       wallTonesButton.name = 'Btn_ModeWallTones';
@@ -354,6 +362,15 @@ export class AppModeSystem extends createSystem({}) {
     back?.addEventListener('click', () => this.setMode('menu'));
     if (back != null) {
       back.name = 'Btn_NodLabBackToMenu';
+    }
+  }
+
+  private bindThumbsLabBack(): void {
+    const panel = this.world.getSceneObject<UIKitMLAsset>('thumbs-lab-panel');
+    const back = panel?.getElementById('thumbs-lab-back-button');
+    back?.addEventListener('click', () => this.setMode('lab'));
+    if (back != null) {
+      back.name = 'Btn_ThumbsLabBackToMenu';
     }
   }
 
@@ -468,6 +485,22 @@ export class AppModeSystem extends createSystem({}) {
       setColorNames,
     );
     bindToggleRow('voices-off-row', 'voices-off-checkbox', voicesOffEnabled, setVoicesOff);
+    bindToggleRow(
+      'head-gaze-pinch-row',
+      'head-gaze-pinch-checkbox',
+      headGazePinchEnabled,
+      setHeadGazePinch,
+    );
+    bindToggleRow(
+      'native-gaze-pinch-row',
+      'native-gaze-pinch-checkbox',
+      nativeGazePinchEnabled,
+      setNativeGazePinch,
+    );
+    // Gaze + pinch options are VR-headset only (Oded, 2026-11-15): hide both rows on PC and phone menus; settings values and default-OFF behavior unchanged.
+    const gazeRowsDisplay = gazePinchSettingsVisible(typeof navigator === 'undefined' ? '' : navigator.userAgent) ? 'flex' : 'none';
+    setDisplay('head-gaze-pinch-row', gazeRowsDisplay);
+    setDisplay('native-gaze-pinch-row', gazeRowsDisplay);
     // Debug stat reset: two-step confirm, clears progression stats only.
     let resetArmed = false;
     let resetDisarm: number | undefined;
@@ -491,9 +524,22 @@ export class AppModeSystem extends createSystem({}) {
       panel.getElementById('hearing-subtitles-checkbox')?.setProperties({ checked: hearingSubtitlesEnabled() } as never);
       panel.getElementById('color-names-checkbox')?.setProperties({ checked: colorNamesEnabled() } as never);
       panel.getElementById('voices-off-checkbox')?.setProperties({ checked: voicesOffEnabled() } as never);
+      panel.getElementById('head-gaze-pinch-checkbox')?.setProperties({ checked: headGazePinchEnabled() } as never);
+      panel.getElementById('native-gaze-pinch-checkbox')?.setProperties({ checked: nativeGazePinchEnabled() } as never);
     };
     window.addEventListener('wall-tones-accessibility-change', syncAccessibility);
     this.cleanupFuncs.push(() => window.removeEventListener('wall-tones-accessibility-change', syncAccessibility));
+    // Native eye-gaze availability verdict, reported by WallTonesSystem so
+    // the experimental mode names its source accurately (no silent head
+    // fallback - the player sees what the headset really supplies).
+    const syncGazeSource = (event: Event) => {
+      const status = (event as CustomEvent<GazeSourceStatus>).detail;
+      panel
+        .getElementById<UIKit.Text>('native-gaze-status')
+        ?.setProperties({ text: `Eye gaze + pinch (experimental) - ${gazeSourceStatusText(status)}` });
+    };
+    window.addEventListener(GAZE_SOURCE_EVENT, syncGazeSource);
+    this.cleanupFuncs.push(() => window.removeEventListener(GAZE_SOURCE_EVENT, syncGazeSource));
     syncVoiceLabels();
   }
 
@@ -533,6 +579,7 @@ export class AppModeSystem extends createSystem({}) {
       lab: 'Wall Tones 2: Lab',
       nodlab: 'Wall Tones 2: nod yes/no lab',
       riftlab: 'Wall Tones 2: Rift Sealing Lab',
+      thumbslab: 'Wall Tones 2: thumbs yes/no lab',
     };
     document.title = titles[mode];
 
