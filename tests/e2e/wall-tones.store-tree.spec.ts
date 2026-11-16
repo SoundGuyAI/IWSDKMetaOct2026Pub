@@ -37,6 +37,9 @@ interface DebugSnap {
   autoplayBarsTotal: number;
   autoplayEnabled: boolean;
   unlockedAchievements: string[];
+  statusLineText: string;
+  autoplayControlLabel: string;
+  autoplaySlashVisible: boolean;
 }
 
 const readState = (page: Page): Promise<DebugSnap> =>
@@ -70,6 +73,9 @@ const readState = (page: Page): Promise<DebugSnap> =>
       autoplayBarsTotal: d.autoplayBarsTotal,
       autoplayEnabled: d.autoplayEnabled,
       unlockedAchievements: [...d.unlockedAchievements],
+      statusLineText: d.statusLineText,
+      autoplayControlLabel: d.autoplayControlLabel,
+      autoplaySlashVisible: d.autoplaySlashVisible,
     };
   });
 
@@ -230,17 +236,29 @@ test.describe('Wall Tones store skill tree', () => {
     let snap0 = await readState(page);
     expect(snap0.autoplayEnabled).toBe(true);
     expect(snap0.autoplayRowOpacity).toBe(1);
+    expect(snap0.autoplaySlashVisible).toBe(false);
     // Regression (user report 2026-11-15 23:35: "grayed out though I hit
     // AutoPlay enabled"): the toggle changed no economy key field, so the
-    // row never re-synced and the opacity froze. It must follow the toggle.
+    // row never re-synced and the off state froze. It must follow the
+    // toggle. Owner 2026-11-16 02:00: owned-but-off stays WHITE (opacity
+    // 1); the off signal is the diagonal slash plus the label.
     await dbg(page, 'pressAutoplayControl');
     snap0 = await readState(page);
     expect(snap0.autoplayEnabled).toBe(false);
-    expect(snap0.autoplayRowOpacity).toBe(0.6);
+    expect(snap0.autoplayRowOpacity).toBe(1);
+    expect(snap0.autoplaySlashVisible).toBe(true);
+    // User report 2026-11-16 01:58 ("it says auto play disengaged when it
+    // gets turned on"): the notice and the button label must follow the
+    // POST-toggle state. Off now, so both say off/disengaged.
+    expect(snap0.statusLineText).toBe('Auto play disengaged');
+    expect(snap0.autoplayControlLabel).toBe('Auto: off');
     await dbg(page, 'pressAutoplayControl');
     snap0 = await readState(page);
     expect(snap0.autoplayEnabled).toBe(true);
     expect(snap0.autoplayRowOpacity).toBe(1);
+    expect(snap0.autoplaySlashVisible).toBe(false);
+    expect(snap0.statusLineText).toBe('Auto play engaged');
+    expect(snap0.autoplayControlLabel).toBe('Auto: on');
     const barsTotalBeforeAutoplay = snap0.barsTotal;
     await submitPad(page, 0); // start tap
     // Owner feedback 2026-11-15 ("auto play doesn't play the pattern all
