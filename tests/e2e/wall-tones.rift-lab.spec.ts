@@ -84,6 +84,53 @@ test('Rift Sealing Lab opens from the Lab menu and runs the charge-seal loop', a
   expect(snap.modifierActive).toBe(snap.openRifts > 0);
 });
 
+test('geometry-collision sparks spray while sealing and hit surfaces (item 93)', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#wt-loading').waitFor({ state: 'detached', timeout: 60000 });
+  await page.mouse.click(1100, 320);
+  await expect.poll(() => mode(page)).toBe('lab');
+  await page.waitForFunction(() => window.__riftLabDebug != null);
+  await page.waitForTimeout(2000);
+  await page.mouse.move(640, 457);
+  await page.mouse.click(640, 457);
+  await expect.poll(() => mode(page)).toBe('riftlab');
+
+  await page.evaluate(() => window.__riftLabDebug!.start());
+  await page.evaluate(() => {
+    for (let i = 0; i < 12; i++) window.__riftLabDebug!.playNote('green', 'right');
+  });
+
+  // Flat desktop honesty check: no real room planes exist here, so the only
+  // collision surfaces are the session ground plane and the rift host wall.
+  await expect.poll(async () => (await snapshot(page)).geometryParticles.groundSurface).toBe(true);
+  let snap = await snapshot(page);
+  expect(snap.geometryParticles.roomPlaneSurfaces).toBe(0);
+  expect(snap.geometryParticles.riftHostSurfaces).toBe(1);
+
+  // Click the open rift: notes fly, the seal flight sprays sparks.
+  const [nx, ny] = snap.targets[0].ndc;
+  const canvas = await page.locator('canvas').first().boundingBox();
+  const x = canvas!.x + ((nx + 1) / 2) * canvas!.width;
+  const y = canvas!.y + ((1 - ny) / 2) * canvas!.height;
+  await page.mouse.click(x, y);
+
+  // During the flight the pool is alive and emitting.
+  await expect.poll(async () => (await snapshot(page)).geometryParticles.emitted).toBeGreaterThan(0);
+  // Sparks arc out, fall and hit the ground and/or the rift host wall.
+  await expect.poll(async () => (await snapshot(page)).geometryParticles.collisions, {
+    timeout: 15000,
+  }).toBeGreaterThan(0);
+  snap = await snapshot(page);
+  expect(snap.geometryParticles.roomImpacts).toBe(0);
+  expect(
+    snap.geometryParticles.groundImpacts + snap.geometryParticles.riftHostImpacts,
+  ).toBe(snap.geometryParticles.collisions);
+  // The pool drains once sparks burn out.
+  await expect.poll(async () => (await snapshot(page)).geometryParticles.alive, {
+    timeout: 15000,
+  }).toBe(0);
+});
+
 test('Rift Lab Back returns to the Lab menu', async ({ page }) => {
   await page.goto('/');
   await page.locator('#wt-loading').waitFor({ state: 'detached', timeout: 60000 });
