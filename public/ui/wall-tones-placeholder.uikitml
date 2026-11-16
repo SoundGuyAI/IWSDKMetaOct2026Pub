@@ -97,6 +97,20 @@
     margin-bottom: 12px;
   }
 
+  .autoplay-icon-wrap {
+    position-type: relative;
+  }
+
+  .autoplay-slash {
+    position-type: absolute;
+    position-top: 50%;
+    position-left: 0px;
+    width: 100%;
+    height: 2px;
+    background-color: #cc2222;
+    transform-rotate-z: -45;
+  }
+
   .control-button {
     flex-direction: column;
     justify-content: center;
@@ -238,8 +252,11 @@
       <ButtonLabel>Play</ButtonLabel>
     </Button>
     <Button id="control-autoplay-button" class="button control-button" size="sm">
-      <ButtonIcon><FastForward></FastForward></ButtonIcon>
-      <ButtonLabel>Auto</ButtonLabel>
+      <div class="autoplay-icon-wrap">
+        <ButtonIcon><FastForward></FastForward></ButtonIcon>
+        <div id="control-autoplay-slash" class="autoplay-slash" style="display: none"> </div>
+      </div>
+      <ButtonLabel id="control-autoplay-label">Auto</ButtonLabel>
     </Button>
     <Button id="control-speed-button" class="button control-button" size="sm">
       <ButtonIcon><Gauge></Gauge></ButtonIcon>
