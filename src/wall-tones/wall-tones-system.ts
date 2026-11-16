@@ -16,6 +16,8 @@ import { MovementTracker, formatMetersNumber, movementUiVisible, readLifetimeMov
 import {
 AdditiveBlending,
 ConeGeometry,
+DepthOccludable,
+OcclusionShadersMode,
 PlaneGeometry,
 Matrix4,
 Raycaster,
@@ -43,6 +45,7 @@ createSystem,
 type Entity,
 } from '@iwsdk/core';
 import { XRHandVisualAdapter } from '@iwsdk/xr-input';
+import { recordXrEvent } from './xr-diagnostics.js';
 import type { ExperienceMode } from '../app-mode.js';
 import { playAutoplayDisengagedCue, playAutoplayEngagedCue, playAutoplayRoundCue, playErrorTone, playPadTone, playPadToneFromUserAction, primeWallTonesAudioFromGesture, suspendAudioContext, needsExplicitMobileSoundUnlock, isHtmlAudioPoolUnlocked } from './audio.js';
 import {
@@ -659,10 +662,38 @@ if (!entity?.object3D || !panel) return;
 const housing = this.world.getSceneEntity('wall-tones-armband-housing');
 if (!this.armband) {
   this.armband = new ArmbandDisplay(panel);
+  // Depth occlusion diagnostics: ask the DepthSensingSystem to soft-occlude
+  // the armband panel by real-world geometry (hand in front of the floating
+  // panel). UIKit panels use custom shaders, which the SDK notes may be
+  // incompatible; the attach and the session's depth-sensing grant are
+  // logged so on-device runs show what actually happened.
+  try {
+    entity.addComponent(DepthOccludable, { mode: OcclusionShadersMode.SoftOcclusion });
+    const depthSession = this.xrManager.getSession();
+    const enabled = (depthSession as unknown as { enabledFeatures?: string[] } | null)?.enabledFeatures;
+    const granted = Array.isArray(enabled) && enabled.includes('depth-sensing');
+    recordXrEvent('armband-depth-occludable', `attach soft granted=${granted}`);
+  } catch (error) {
+    recordXrEvent('armband-depth-occludable', `attach failed ${String(error).slice(0, 80)}`);
+  }
   const bind = (id: string, action: () => void) => {
     const button = panel.getElementById(id);
     if (!button) return;
     button.name = id;
+    // Button input diagnostics: count every pointer phase so on-device runs
+    // show whether hover/down/up fire and which pointer type delivers them,
+    // without changing behavior.
+    const counts = { over: 0, down: 0, up: 0, click: 0 };
+    const diag = (phase: 'over' | 'down' | 'up' | 'click') => (event: unknown) => {
+      counts[phase] += 1;
+      if (phase === 'over') return; // too chatty; folded into the next log line
+      const pointerType = (event as { pointerType?: string } | null)?.pointerType ?? '?';
+      recordXrEvent('armband-btn', `${id} ${phase} type=${pointerType} over=${counts.over} down=${counts.down} up=${counts.up} click=${counts.click}`);
+    };
+    button.addEventListener('pointerover' as never, diag('over') as never);
+    button.addEventListener('pointerdown' as never, diag('down') as never);
+    button.addEventListener('pointerup' as never, diag('up') as never);
+    button.addEventListener('click' as never, diag('click') as never);
     button.addEventListener('click', action);
     this.cleanupFuncs.push(() => button.removeEventListener('click', action));
   };

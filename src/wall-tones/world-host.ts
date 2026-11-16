@@ -1,4 +1,5 @@
 import {
+  DepthSensingSystem,
   ReferenceSpaceType,
   SessionMode,
   World,
@@ -48,6 +49,11 @@ function registerArSystems(world: World): void {
   world.registerSystem(WallTonesSystem);
   world.registerSystem(RiftLabSystem);
   world.registerSystem(ThumbsLabSystem);
+  // Depth-sensing occlusion for the AR world (armband panel/hand layering).
+  // Registration alone changes nothing until an entity carries
+  // DepthOccludable; the runtime grants depth data only when the session
+  // feature is requested below AND the UA/user allow it.
+  world.registerSystem(DepthSensingSystem);
 }
 
 function buildArWorldOptions(): WorldOptions {
@@ -83,6 +89,10 @@ function buildArWorldOptions(): WorldOptions {
         hitTest: true,
         // Ask the UA for the unbounded space; granted only where supported.
         unbounded: true,
+        // Real-world depth for soft occlusion (armband panel vs hand/pads).
+        // Optional: when the UA declines, the session still starts and the
+        // DepthOccludable attach stays a logged no-op via recordXrEvent.
+        depthSensing: { usage: 'gpu-optimized', format: 'float32' },
       },
     },
     features: {
