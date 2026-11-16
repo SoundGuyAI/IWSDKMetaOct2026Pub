@@ -6,8 +6,9 @@
  * notes charge the hands with energy shown as note particles in the four pad
  * colors orbiting both hands, densest on the firing one (his 12:20). Sealing
  * aims a hand-energy beam at a rift: open palm in XR (his 12:15), drag from
- * the fixed charge spot on mobile (settled 12:25). Final animated rift art
- * (particles/shaders/glows) is a later dedicated PR.
+ * the fixed charge spot on mobile (settled 12:25). Layered sealing-beam /
+ * hand-aura / neon-note visuals live in rift-seal-beam.ts, rift-hand-aura.ts
+ * and rift-note-visuals.ts (visual-only; gameplay hooks unchanged).
  *
  * Settled inputs (13:38): desktop clicks the rift itself with enough energy
  * (notes fly pointer-to-rift, no hold); the enough-energy gate is shared by
@@ -24,8 +25,10 @@
 
 import {
   createSystem,
+  RayInteractable,
   UIKit,
   UIKitMLAsset,
+  Visibility,
   VisibilityState,
   XRPlane,
   type Entity,
@@ -51,11 +54,8 @@ import { riftAimRays, riftTargetPositions } from './rift-targets.js';
 import {
   AdditiveBlending,
   BufferGeometry,
-  CanvasTexture,
   Color,
   Group,
-  Line,
-  LineBasicMaterial,
   Mesh,
   MeshBasicMaterial,
   PlaneGeometry,
@@ -68,16 +68,16 @@ import {
   CircleGeometry,
   Float32BufferAttribute,
   Raycaster,
-  SRGBColorSpace,
   Vector2,
   Vector3,
   Vector4,
-  type Texture,
-} from 'three';
+} from '@iwsdk/core';
 import {
   PAD_COLORS,
   PAD_COLOR_NAMES,
+  MAX_ENERGY,
   RiftLabGame,
+  type HandSide,
   type PadColorName,
   type Rift,
 } from './rift-energy.js';
@@ -88,6 +88,9 @@ import {
   SEAL_HOLD_MS,
   isOverLabPanel,
 } from './rift-energy.js';
+import { RiftHandAura } from './rift-hand-aura.js';
+import { glowDotTexture, noteGlyphMaterial, noteGlyphTexture } from './rift-note-visuals.js';
+import { RiftSealBeam } from './rift-seal-beam.js';
 
 /** Virtual hand anchors in flat mode (meters, hub scene space). */
 const FLAT_RIGHT_HAND = new Vector3(0.45, 1.35, -1.9);
@@ -142,60 +145,8 @@ const WALL_RIFT_INSET_M = 0.3;
 const WALL_RIFT_SPACING_M = 1.4;
 const WALL_RIFT_OFFSET_M = 0.03;
 
-const noteGlyphTextureCache = new Map<string, Texture>();
-/**
- * Colored note-glyph sprite. Additive-blend dots washed to white on the
- * bright room (14:38 live check, and his 13:41 correction: the dots must be
- * colorful musical notes); a per-color glyph texture with normal blending
- * stays readable.
- */
-let glowDotTextureCache: Texture | null = null;
-/** Soft round dot: hot core, halo, tinted by vertex color. */
-function glowDotTexture(): Texture {
-  if (glowDotTextureCache == null) {
-    const canvas = document.createElement('canvas');
-    canvas.width = 64;
-    canvas.height = 64;
-    const ctx = canvas.getContext('2d');
-    if (ctx != null) {
-      const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-      g.addColorStop(0, 'rgba(255,255,255,1)');
-      g.addColorStop(0.18, 'rgba(255,255,255,0.95)');
-      g.addColorStop(0.4, 'rgba(255,255,255,0.35)');
-      g.addColorStop(1, 'rgba(255,255,255,0)');
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, 64, 64);
-    }
-    glowDotTextureCache = new CanvasTexture(canvas);
-  }
-  return glowDotTextureCache;
-}
-
-function noteGlyphTexture(color: PadColorName): Texture {
-  let tex = noteGlyphTextureCache.get(color);
-  if (tex == null) {
-    const canvas = document.createElement('canvas');
-    canvas.width = 64;
-    canvas.height = 64;
-    const ctx = canvas.getContext('2d');
-    if (ctx != null) {
-      ctx.font = 'bold 52px serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.shadowColor = PAD_COLORS[color];
-      ctx.shadowBlur = 8;
-      ctx.fillStyle = PAD_COLORS[color];
-      ctx.strokeStyle = PAD_COLORS[color];
-      ctx.lineWidth = 3;
-      ctx.strokeText('\u266A', 32, 36);
-      ctx.fillText('\u266A', 32, 36);
-    }
-    tex = new CanvasTexture(canvas);
-    tex.colorSpace = SRGBColorSpace;
-    noteGlyphTextureCache.set(color, tex);
-  }
-  return tex;
-}
+/** Experimental palm PointLight while the seal beam fires. Toggle via debug. */
+const EXPERIMENT_PALM_LIGHT = true;
 
 export interface RiftLabDebugSnapshot {
   active: boolean;
@@ -234,6 +185,10 @@ declare global {
         joints: number[],
         grip: number[],
       ) => void;
+      /** Experimental palm PointLight while sealing; toggle for MR washout. */
+      setPalmLight: (on: boolean) => void;
+      /** Visual QA: hold a mid-seal pose with the layered beam visible. */
+      previewSeal: (progress?: number) => void;
     };
   }
 }
@@ -330,22 +285,22 @@ void main() {
   float halo = exp(-max(d, 0.0) * 9.0) * 0.5 * keep;
   float inside = 1.0 - smoothstep(-0.015, 0.015, d);
 
-  // Void: night sky with a drifting city/tower skyline inside the hole.
-  vec2 vp = hp / max(edge, 0.001);
-  float sky = clamp(0.5 + vp.y * 0.5, 0.0, 1.0);
-  vec3 voidCol = mix(vec3(0.02, 0.02, 0.06), vec3(0.10, 0.07, 0.22), sky);
-  float col_i = floor((vp.x + uTime * 0.02) * 9.0);
-  float towerH = -0.25 + 0.55 * hash(col_i) * hash(col_i * 1.7 + 3.0);
-  if (vp.y < towerH && vp.y > -1.0) voidCol = vec3(0.015, 0.015, 0.04);
-  float star = step(0.992, hash(floor(vp.x * 40.0) + floor(vp.y * 40.0) * 57.0 + floor(uTime * 1.5)));
-  voidCol += star * rim * 0.9;
+  // Dark void (ref 15): nearly black interior; rim/crack carry the color.
+  // Soft seal stitch: a vertical hot seam that brightens while sealing.
+  float stitch = exp(-abs(p.x) * 55.0) * (0.35 + 0.9 * uSeal) * open * keep;
+  float stitchPulse = 0.75 + 0.25 * noise1(uTime * 8.0 + a);
+  vec3 voidCol = vec3(0.01, 0.01, 0.015);
+  float star = step(0.995, hash(floor(hp.x * 36.0) + floor(hp.y * 36.0) * 57.0));
+  voidCol += star * rim * 0.35 * inside;
 
   // Wall damage around the hole darkens the plaster.
   float scorch = exp(-max(d, 0.0) * 9.0) * 0.38 * keep * open;
-  vec3 col = voidCol * inside + rim * (line * 1.3 + crack * 1.2) + rim * halo * 0.6;
+  float sealHot = line * (1.0 + 1.4 * uSeal) + stitch * stitchPulse;
+  vec3 col = voidCol * inside + rim * (sealHot * 1.35 + crack * 1.35) + rim * halo * (0.6 + 0.5 * uSeal);
   col = mix(col, vec3(0.02, 0.02, 0.03), (1.0 - inside) * scorch);
-  col *= 1.0;
-  float alpha = clamp(inside * 0.96 + line + halo * 0.8 + crack + scorch, 0.0, 1.0);
+  // Focal sealing glow near the hole centre.
+  col += mix(rim, vec3(1.0), 0.55) * uSeal * exp(-hr * 3.5) * 0.55;
+  float alpha = clamp(inside * 0.96 + sealHot + halo * 0.8 + crack + scorch, 0.0, 1.0);
   float vig = 1.0 - smoothstep(0.82, 1.0, length(vUv));
   gl_FragColor = vec4(col, alpha * vig);
 }`;
@@ -414,7 +369,15 @@ export class RiftLabSystem extends createSystem({
   /** True while the active beam was opened by an XR open palm (so only XR
    * logic stops it on palm close / tracking loss). */
   private xrBeamActive = false;
-  private beamLine: Line | null = null;
+  private sealBeam: RiftSealBeam | null = null;
+  private handAura: RiftHandAura | null = null;
+  private readonly beamEnd = new Vector3();
+  private readonly beamHitPoint = new Vector3();
+  private beamTimeSec = 0;
+  private experimentPalmLight = EXPERIMENT_PALM_LIGHT;
+  /** Optional forced beam origin for visual QA (keeps the beam from collapsing). */
+  private debugBeamOrigin: Vector3 | null = null;
+  private readonly debugBeamOriginScratch = new Vector3(0.25, 1.25, -0.35);
   private readonly palmAnchorLeft = new Vector3();
   private readonly palmAnchorRight = new Vector3();
   private readonly headPos = new Vector3();
@@ -436,7 +399,18 @@ export class RiftLabSystem extends createSystem({
 
   init(): void {
     this.root.visible = false;
+    try {
+      this.sealBeam = new RiftSealBeam();
+      this.handAura = new RiftHandAura();
+      this.root.add(this.sealBeam.root);
+      this.root.add(this.handAura.root);
+    } catch (error) {
+      console.warn('[rift-lab] seal visual layers failed to construct', error);
+    }
     this.world.scene.add(this.root);
+    // Install the debug bridge before the panel gate so visual QA can still
+    // drive the Lab when scene lookup races or the panel bind is delayed.
+    this.installDebugBridge();
     this.panel = this.world.getSceneObject<UIKitMLAsset>('rift-lab-panel') ?? null;
     if (this.panel == null) {
       console.warn('[rift-lab] rift-lab-panel scene object missing');
@@ -582,9 +556,13 @@ export class RiftLabSystem extends createSystem({
       delete window.__riftLabDebug;
     });
 
+    this.renderPanel('Press Start. Successful notes charge your hands.');
+  }
+
+  private installDebugBridge(): void {
     window.__riftLabDebug = {
       snapshot: () => this.debugSnapshot(),
-      enter: () => this.setActive(true),
+      enter: () => this.debugEnterLab(),
       start: () => this.startRun(),
       playNote: (color, hand) => this.playNote(color, hand),
       spawnRift: () => this.spawnRift(),
@@ -598,8 +576,39 @@ export class RiftLabSystem extends createSystem({
           grip,
         );
       },
+      setPalmLight: (on: boolean) => {
+        this.experimentPalmLight = on;
+      },
+      previewSeal: (progress) => this.debugPreviewSeal(progress ?? 0.55),
     };
-    this.renderPanel('Press Start. Successful notes charge your hands.');
+  }
+
+  /** Visual QA entry: show the Lab panel chrome and hide the main menu. */
+  private debugEnterLab(): void {
+    const show = (id: string, visible: boolean) => {
+      const entity = this.world.getSceneEntity(id);
+      if (entity == null) return;
+      entity.setValue(Visibility, 'isVisible', visible);
+      if (visible && !entity.hasComponent(RayInteractable)) {
+        entity.addComponent(RayInteractable);
+      } else if (!visible && entity.hasComponent(RayInteractable)) {
+        entity.removeComponent(RayInteractable);
+      }
+    };
+    show('main-menu-panel', false);
+    show('lab-entry-panel', false);
+    show('lab-menu-panel', false);
+    show('wall-tones-panel', false);
+    show('rift-lab-panel', true);
+    try {
+      window.sessionStorage.setItem('iwsdk-experience-mode', 'riftlab');
+    } catch {
+      // sessionStorage can throw in locked-down embeds.
+    }
+    window.dispatchEvent(
+      new CustomEvent('experience-mode-changed', { detail: { mode: 'riftlab' } }),
+    );
+    this.setActive(true);
   }
 
   private setActive(active: boolean): void {
@@ -760,9 +769,15 @@ export class RiftLabSystem extends createSystem({
     stopBeamHum();
     this.dragging = false;
     this.xrBeamActive = false;
-    if (this.beamLine != null) {
-      this.beamLine.visible = false;
-    }
+    this.debugBeamOrigin = null;
+    this.debugSealP = null;
+    this.sealBeam?.update({
+      origin: this.beamEnd,
+      end: this.beamEnd,
+      hitStrength: 0,
+      timeSec: this.beamTimeSec,
+      visible: false,
+    });
     this.game.stopBeam();
     for (const id of [...this.riftViews.keys()]) {
       this.removeRiftView(id);
@@ -942,6 +957,7 @@ export class RiftLabSystem extends createSystem({
         transparent: true,
         depthWrite: false,
         toneMapped: false,
+        blending: AdditiveBlending,
       }),
     );
     sparks.frustumCulled = false;
@@ -958,9 +974,10 @@ export class RiftLabSystem extends createSystem({
             transparent: true,
             depthWrite: false,
             toneMapped: false,
+            opacity: 1,
           }),
         );
-        sprite.scale.setScalar(0.085);
+        sprite.scale.setScalar(0.1);
         sprite.position.z = 0.02;
         group.add(sprite);
         trail.push({
@@ -1162,6 +1179,9 @@ export class RiftLabSystem extends createSystem({
    * otherwise. */
   private beamRay(out: { origin: Vector3; direction: Vector3 }): void {
     out.origin.copy(this.handAnchor(this.game.getFiringHand()));
+    if (this.debugBeamOrigin != null) {
+      out.origin.copy(this.debugBeamOrigin);
+    }
     if (!this.isImmersive() && this.flatTouchInput && this.dragging) {
       // The dragged orb leaves from its resting corner toward the finger.
       out.origin.copy(this.restingOrbPoint(this.touchOrbPoint));
@@ -1194,27 +1214,15 @@ export class RiftLabSystem extends createSystem({
     out.direction.copy(target.sub(out.origin)).normalize();
   }
 
-  private ensureBeamLine(): Line {
-    if (this.beamLine == null) {
-      this.beamLine = new Line(
-        new BufferGeometry().setFromPoints([new Vector3(), new Vector3()]),
-        new LineBasicMaterial({
-          color: new Color('#ffe9a8'),
-          blending: AdditiveBlending,
-          transparent: true,
-          opacity: 0.9,
-        }),
-      );
-      this.beamLine.visible = false;
-      this.root.add(this.beamLine);
-    }
-    return this.beamLine;
-  }
-
   private readonly beamRayScratch = {
     origin: new Vector3(),
     direction: new Vector3(),
   };
+
+  private firingHandSide(): HandSide | null {
+    if (!this.game.isBeamActive()) return null;
+    return this.game.getFiringHand();
+  }
 
   update(delta: number): void {
     if (!this.active) {
@@ -1233,12 +1241,7 @@ export class RiftLabSystem extends createSystem({
       if (mesh == null) {
         mesh = new Mesh(
           new PlaneGeometry(NOTE_SIZE_M * 2.4, NOTE_SIZE_M * 2.4),
-          new MeshBasicMaterial({
-            map: noteGlyphTexture(note.color),
-            transparent: true,
-            depthWrite: false,
-            toneMapped: false,
-          }),
+          noteGlyphMaterial(note.color),
         );
         this.noteMeshes.set(note.id, mesh);
         this.root.add(mesh);
@@ -1408,32 +1411,58 @@ export class RiftLabSystem extends createSystem({
       }
 
       // Beam: live palm aim in XR (open palm), the flat aim point otherwise.
+      this.beamTimeSec += delta;
+      let hitStrength = 0;
       if (this.game.isBeamActive()) {
         const ray = this.beamRayScratch;
         this.beamRay(ray);
-        const line = this.ensureBeamLine();
-        line.visible = true;
         startBeamHum();
-        const end = ray.origin
-          .clone()
-          .add(ray.direction.clone().multiplyScalar(3.5));
-        line.geometry.setFromPoints([ray.origin, end]);
+        this.beamEnd.copy(ray.origin).addScaledVector(ray.direction, 3.5);
         for (const view of this.riftViews.values()) {
-          const toRift = view.position.clone().sub(ray.origin);
-          const along = toRift.dot(ray.direction);
+          this.beamHitPoint.copy(view.position).sub(ray.origin);
+          const along = this.beamHitPoint.dot(ray.direction);
           if (along <= 0) continue;
-          const closest = ray.origin
-            .clone()
-            .add(ray.direction.clone().multiplyScalar(along));
-          if (closest.distanceTo(view.position) <= BEAM_HIT_RADIUS_M) {
+          this.beamHitPoint.copy(ray.origin).addScaledVector(ray.direction, along);
+          if (this.beamHitPoint.distanceTo(view.position) <= BEAM_HIT_RADIUS_M) {
+            this.beamEnd.copy(view.position);
+            hitStrength =
+              view.rift.state === 'sealing'
+                ? 0.55 + 0.45 * Math.min(1, view.rift.sealProgressMs / SEAL_HOLD_MS)
+                : 0.75;
             this.game.applyBeamOnRift(view.rift.id, delta * 1000);
             break;
           }
         }
+        this.sealBeam?.update({
+          origin: ray.origin,
+          end: this.beamEnd,
+          hitStrength,
+          timeSec: this.beamTimeSec,
+          visible: true,
+        });
       } else {
         stopBeamHum();
-        if (this.beamLine != null) this.beamLine.visible = false;
+        this.sealBeam?.update({
+          origin: this.beamEnd,
+          end: this.beamEnd,
+          hitStrength: 0,
+          timeSec: this.beamTimeSec,
+          visible: false,
+        });
       }
+
+      // Hand aura: four-color filaments / embers around charged palms.
+      // Flat mode shares one charge origin; keep a single aura there so left
+      // and right filaments do not stack on the cursor.
+      const immersiveHands = this.isImmersive();
+      this.handAura?.update({
+        left: immersiveHands ? this.handAnchor('left') : null,
+        right: this.handAnchor('right'),
+        firing: this.firingHandSide(),
+        energy01: Math.min(1, this.game.getEnergy() / MAX_ENERGY),
+        timeSec: this.beamTimeSec,
+        usePalmLight: this.experimentPalmLight,
+      });
 
       // Spent energy leaves the hands once no seal is in flight.
       if (![...this.riftViews.values()].some((v) => v.rift.state === 'sealing')) {
@@ -1499,6 +1528,39 @@ export class RiftLabSystem extends createSystem({
     this.removeRiftView(first);
     void playRiftSeal();
     this.renderPanel('Rift sealed.');
+  }
+
+  /** Hold a mid-seal visual without completing the seal (screenshot QA). */
+  private debugPreviewSeal(progress: number): void {
+    if (this.riftViews.size === 0) this.spawnRift();
+    // Prefer the rift closest to frame center so the beam is on-camera.
+    let bestId: number | null = null;
+    let bestScore = Number.POSITIVE_INFINITY;
+    this.world.camera.updateMatrixWorld();
+    for (const [id, view] of this.riftViews) {
+      const ndc = view.position.clone().project(this.world.camera);
+      const score = ndc.x * ndc.x + ndc.y * ndc.y;
+      if (score < bestScore) {
+        bestScore = score;
+        bestId = id;
+      }
+    }
+    if (bestId == null) return;
+    const view = this.riftViews.get(bestId);
+    if (view != null) {
+      const ndc = view.position.clone().project(this.world.camera);
+      this.aimNdc = { x: ndc.x, y: ndc.y };
+    }
+    if (!this.game.isBeamActive()) {
+      this.game.startBeam({ kind: 'mobile-drag', dx: 0, dy: 0 });
+    }
+    // Keep the beam origin near the player so the layered shaft is visible in
+    // flat screenshots (desktop note anchors sit on the cursor/rift).
+    this.debugBeamOrigin = this.debugBeamOriginScratch;
+    const clamped = Math.max(0.05, Math.min(0.95, progress));
+    this.game.applyBeamOnRift(bestId, SEAL_HOLD_MS * clamped);
+    this.debugSealP = clamped;
+    this.renderPanel('Preview seal visuals.');
   }
 
   private debugSnapshot(): RiftLabDebugSnapshot {
