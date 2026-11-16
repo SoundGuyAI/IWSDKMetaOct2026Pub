@@ -4,7 +4,7 @@ Proposed full submission copy for review. Not yet applied to Devpost.
 
 ## Tagline
 
-Play a musical memory game at your table in mixed reality. Watch, listen, and repeat the sequence with your hands.
+Remember the pattern. Earn energy. Close the Rifts. A seated, hands-first musical memory game with a mystery in your room.
 
 ## Inspiration
 
@@ -14,11 +14,15 @@ This time, I wanted to bring the game into mixed reality and turn the room aroun
 
 ## What it does
 
-Like Simon, four colored pads play a growing sequence of tones. Watch, listen, and repeat the pattern by touching the pads in order. Each completed pattern adds another note. How long can you keep up before the walls win?
+It starts like Simon: four colored pads play a growing sequence of tones. Watch, listen, and repeat the pattern by touching the pads in order. Each completed pattern adds another note.
+
+But remembering the music is only the beginning. Making progress through the patterns earns energy. As you advance, the game opens Rifts in your room, and you spend that energy to close them. The memory challenge and the mystery are connected: playing the patterns gives you the energy you need to deal with what appears around you.
 
 For seated play, place the four pads on a table and repeat the sequence by touching them with your tracked fingertips. You can also place the pads on walls or in the air. Wall placement is an alternative for players who want to move around, rather than a requirement for playing.
 
 There's also a desktop mode for playing and testing without a headset, plus a choice of recorded male and female host voices. The spoken guidance should help you understand what to do while leaving room to concentrate on the musical pattern.
+
+If you want a look at features introduced later in the story without playing all the way through, the Lab offers a more technical way to try them. It also contains spoilers. Play the main game first if you'd rather discover the surprises as you progress.
 
 ## How we built it
 
