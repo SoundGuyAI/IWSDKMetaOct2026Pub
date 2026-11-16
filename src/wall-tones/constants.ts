@@ -142,6 +142,15 @@ export const TABLE_PAD_SIZE_LADDER_M = [
 ];
 export const SCAN_WAIT_S = 3;
 export const WRONG_RESET_DELAY_S = 0.9;
+/** Missed-hit comparison rows: notes shown per Expected/Hit row, the last one
+ * being the position where the two rows differ (owner 2026-11-15: up to 5
+ * notes, e.g. right RRRBG vs played RRRBY; a 5 vs 10 window is still being
+ * weighed). */
+export const WRONG_HIT_ROW_NOTES = 5;
+/** Missed-hit history row: notes leading up to the miss shown above the
+ * Expected/Hit comparison rows; a leading "…" prefixes it only when the full
+ * chain is longer than this, never for 10 or fewer (owner 2026-11-15). */
+export const WRONG_HIT_HISTORY_MAX = 10;
 /** Silence after the start intro finishes, before the first pad tone. */
 export const POST_INTRO_DELAY_S = 0.85;
 /** Short beat after a successful round before the next sequence plays. */

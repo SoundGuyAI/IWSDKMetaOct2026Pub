@@ -14,8 +14,9 @@ const backgroundUrl = moduleUrl(source('cypher-background'));
 const { BACKGROUND_PROGRESS_KEY } = await import(backgroundUrl);
 const progressUrl = moduleUrl(source('cypher-progress'));
 const { CYPHER_PROGRESS_KEY, CypherProgress } = await import(progressUrl);
-// Resolve the one runtime dependency when loading source directly under node.
-const economyJs = ts.transpileModule(source('economy'), { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace("'./cypher-progress.js'", JSON.stringify(progressUrl)).replace("'./cypher-background.js'", JSON.stringify(backgroundUrl));
+const movementUrl = moduleUrl(source('movement'));
+// Resolve the runtime dependencies when loading source directly under node.
+const economyJs = ts.transpileModule(source('economy'), { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace("'./cypher-progress.js'", JSON.stringify(progressUrl)).replace("'./cypher-background.js'", JSON.stringify(backgroundUrl)).replace("'./movement.js'", JSON.stringify(movementUrl));
 const { resetWallTonesStats } = await import('data:text/javascript;base64,' + Buffer.from(economyJs).toString('base64'));
 
 test('settings stat reset clears economy and Cypher story but keeps preferences', () => {
