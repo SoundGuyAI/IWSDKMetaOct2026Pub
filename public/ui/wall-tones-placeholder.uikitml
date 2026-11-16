@@ -328,8 +328,11 @@
       <ButtonLabel id="control-autoplay-label">Auto</ButtonLabel>
     </Button>
     <Button id="control-speed-button" class="button control-button" size="sm">
-      <ButtonIcon><Gauge></Gauge></ButtonIcon>
-      <ButtonLabel>Speed</ButtonLabel>
+      <div class="autoplay-icon-wrap">
+        <ButtonIcon><Gauge></Gauge></ButtonIcon>
+        <div id="control-speed-slash" class="autoplay-slash" style="display: none"> </div>
+      </div>
+      <ButtonLabel id="control-speed-label">Speed</ButtonLabel>
     </Button>
     <Button id="control-multiplier-button" class="button control-button" size="sm">
       <ButtonIcon><Zap></Zap></ButtonIcon>
