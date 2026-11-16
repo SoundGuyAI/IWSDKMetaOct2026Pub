@@ -312,6 +312,7 @@ Review found and fixed: (1) `buySaver` ignored `?demoBars` / `spend()` while Sto
 
 - New items 92, 93 and 94 (Rift Lab follow-ups): 92 film-melt rift shader (future idea), 93 MR geometry-hit particles as a new PR only after he approves the current Rift Lab PR, 94 concept-art energy beam (new PR only after the current Rift Lab PR is merged; private prototype only, unverified). Each gets its own separate PR (his 19:29 message); none are bundled into the Rift Lab PR. All backlog only, nothing started. Numbers are the next free ones across branches on 2026-11-14 and may need renumbering when other PRs merge.
 
+- Item 81 update (2026-11-16): scrolling passed the owner device check, but Store tile selection failed. Reworking taps on store-scroll-dragclick without changing PR95: movement below 14 list pixels selects on release, larger drags only scroll. Local repeated-drag and small-jitter tap regression tests pass. Full checks and a new physical headset test are pending; not merged.
 ## Review update - 2026-11-16, 02:05 Asia/Jerusalem
 
 - New item 103 (his 2026-11-16 02:03 voice note, wamid.HBgMOTcyNTQ0OTYzNzU3FQIAEhgUM0EyOEYwNEU1QTc4QTgzMTZCMTIA): Skip during a Cypher line should count the line as heard and advance, so she does not repeat it. Scope clarified 02:05 (wamid.HBgMOTcyNTQ0OTYzNzU3FQIAEhgUM0E3NzYwMDM0NDIxMzYwOERDREEA): also the narrator lines inside the Cypher story. Backlog only - no implementation, no PR authorized by this ask.
