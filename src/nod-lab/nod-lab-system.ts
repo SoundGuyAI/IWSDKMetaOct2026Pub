@@ -838,6 +838,11 @@ export class NodLabSystem extends createSystem({}) {
       this.recStartedAt = performance.now() / 1000;
       this.recDetectorHeadset.reset();
       this.recDetectorFlat.reset();
+      // reset() does not re-enable, and a detector disables itself after
+      // each reported event - without this only the first gesture of a
+      // recording session would ever register (found live, Nov 16).
+      this.recDetectorHeadset.setEnabled(true);
+      this.recDetectorFlat.setEnabled(true);
       this.transientStatus = {
         text: 'Recording gestures. Nod or shake, then stop.',
         until: performance.now() + 2500,
@@ -943,6 +948,10 @@ export class NodLabSystem extends createSystem({}) {
         src: `rec-${src}`,
       });
       this.flashAnswerButton(event.answer);
+      // The detector disables itself when it reports; re-arm so the next
+      // gesture in the same recording also registers (cooldown still
+      // applies, so one physical nod cannot double-report).
+      recDetector.setEnabled(true);
     }
   }
 
