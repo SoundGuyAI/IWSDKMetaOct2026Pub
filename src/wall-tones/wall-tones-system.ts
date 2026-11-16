@@ -7,8 +7,9 @@ import { shouldAnnounceRecord } from './record-feedback.js';
 import { BarFloatPool } from './bar-floats.js';
 import { AchievementCelebration } from './achievement-celebration.js';
 import { achievementIconSrc, achievementTileSrc } from './achievement-icons.js';
+import { hearingSubtitlesEnabled, colorNamesEnabled, currentSpokenCaption, voicesOffEnabled, gazePinchMode } from './accessibility.js';
+import { GAZE_SOURCE_EVENT, classifyGazeSource, type GazeSourceStatus } from './gaze-source.js';
 import { MovementTracker, formatMetersNumber, movementUiVisible, readLifetimeMovementMeters } from './movement.js';
-import { hearingSubtitlesEnabled, colorNamesEnabled, currentSpokenCaption, voicesOffEnabled } from './accessibility.js';
 import {
 ConeGeometry,
 Matrix4,
@@ -528,6 +529,11 @@ private readonly panelDragSkipHands = new Set<string>();
 private readonly panelDragActiveHands = new Set<string>();
 private readonly rayPressLatched = new Set<number>();
 private readonly gazeSelectLatched = new Set<string>();
+// Native eye-gaze mode (experimental) source watch state.
+private gazeSourceStatus: GazeSourceStatus | null = null;
+private gazeSourceWatchElapsed = 0;
+private gazeSourceMaxSeparationDeg = 0;
+private gazeSourceLastSampleAt = 0;
 /** Last time a drag ended; briefly suppresses the ray dodge at the drop point. */
 private panelDragDoneAt = 0;
 private blinkCuePad: PadRuntime | null = null;
@@ -580,8 +586,13 @@ const onAccessibilityChange = () => {
 if (voicesOffEnabled()) {
 this.speech.cancel();
 }
+this.applyGazePinchMode();
 };
 window.addEventListener('wall-tones-accessibility-change', onAccessibilityChange);
+// Backlog 77+79: GazeSystem.init flips gazeEnabled on at startup (the
+// project config requests gazeTracking). Default the native pipeline OFF
+// unless the player explicitly chose the experimental native mode.
+this.applyGazePinchMode();
 this.wasNonImmersive =
 this.world.visibilityState.peek() === VisibilityState.NonImmersive;
 this.cleanupFuncs.push(
@@ -666,6 +677,7 @@ this.tickHeadCaption();
 // Backlog 30 research sampling runs before the experience-active gate so
 // walking in the MR menus counts in the session estimate too.
 this.tickMovementTracking();
+this.tickGazeSourceWatch();
 if (!this.experienceActive) {
 return;
 }
@@ -3237,6 +3249,17 @@ this.handlePadInput(pad.padIndex);
 // (b) Gaze: a head-forward ray against the pads, committed by a pinch from
 // either hand. A pinch aimed at the panel, or one whose hand ray already
 // rests on a pad, belongs to that target instead.
+// Backlog 79: the gaze path is optional (Settings > Accessibility, default
+// off 2026-11-15): head-direction hover read as wrong selection and any
+// pinch could commit the pad under the head ray (bug 77). Hand-ray (a) and
+// fingertip input are unaffected by the setting.
+// Backlog 77+79 native mode: this custom head reader runs ONLY in the
+// explicit "head" mode. The experimental "native" mode uses the IWSDK
+// GazeSystem pipeline instead - never a silent fallback to this path.
+if (gazePinchMode() !== 'head') {
+this.gazeSelectLatched.clear();
+return;
+}
 const gazePad = this.findGazeHoveredPad();
 if (gazePad != null && !gazePad.hoverInside) {
 gazePad.hoverInside = true;
@@ -3290,6 +3313,120 @@ return this.findPadAlongRay();
 }
 
 // Closest play pad under the head-forward gaze ray, or null.
+/**
+ * Backlog 77+79: apply the Settings gaze+pinch mode. "native" enables the
+ * IWSDK GazeSystem pipeline (GazeSystem.init turned it on at startup
+ * because the project config requests gazeTracking); every other mode
+ * keeps it off so native gaze never silently replaces the head path or
+ * the ordinary hand rays.
+ */
+private applyGazePinchMode(): void {
+this.input.xr.gazeEnabled = gazePinchMode() === 'native';
+if (gazePinchMode() !== 'native') {
+this.setGazeSourceStatus(null);
+}
+}
+
+/**
+ * While the experimental native mode is on, sample the WebXR gaze input
+ * source and report what the headset really supplies (GAZE_SOURCE_EVENT):
+ * no session, no gaze source, head-directed stand-in, or real eye
+ * tracking (the gaze ray separates from the head ray). Throttled to 4 Hz.
+ */
+private tickGazeSourceWatch(): void {
+if (gazePinchMode() !== 'native') {
+return;
+}
+const now = performance.now();
+if (now - this.gazeSourceLastSampleAt < 250) {
+return;
+}
+this.gazeSourceLastSampleAt = now;
+const xr = this.world.renderer.xr;
+const inSession = xr.isPresenting === true;
+let hasGazeSource = false;
+if (inSession) {
+const session = xr.getSession();
+const sources = session?.inputSources ?? [];
+for (let i = 0; i < sources.length; i += 1) {
+if (sources[i]?.targetRayMode === 'gaze') {
+hasGazeSource = true;
+break;
+}
+}
+if (hasGazeSource) {
+this.gazeSourceWatchElapsed += 0.25;
+this.sampleGazeHeadSeparation(session!, sources);
+}
+} else {
+this.gazeSourceWatchElapsed = 0;
+this.gazeSourceMaxSeparationDeg = 0;
+}
+this.setGazeSourceStatus(
+classifyGazeSource(
+hasGazeSource,
+inSession,
+this.gazeSourceMaxSeparationDeg,
+this.gazeSourceWatchElapsed,
+),
+);
+}
+
+/** Compare the raw gaze ray direction with the head (viewer) forward. */
+private sampleGazeHeadSeparation(
+session: XRSession,
+sources: XRInputSourceArray | readonly XRInputSource[],
+): void {
+const xr = this.world.renderer.xr;
+const frame = xr.getFrame?.();
+const refSpace = xr.getReferenceSpace?.();
+if (frame == null || refSpace == null) {
+return;
+}
+let gazeSource: XRInputSource | undefined;
+for (let i = 0; i < sources.length; i += 1) {
+if (sources[i]?.targetRayMode === 'gaze') {
+gazeSource = sources[i];
+break;
+}
+}
+if (gazeSource == null) {
+return;
+}
+const gazePose = frame.getPose(gazeSource.targetRaySpace, refSpace);
+const viewerPose = frame.getViewerPose(refSpace);
+const view = viewerPose?.views[0];
+if (gazePose == null || view == null) {
+return;
+}
+const g = gazePose.transform.orientation;
+const h = view.transform.orientation;
+this.tipLocal.set(0, 0, -1);
+this.tipScratch.set(0, 0, -1);
+const gazeDir = this.tipLocal
+.applyQuaternion(this.headQuat.set(g.x, g.y, g.z, g.w))
+.clone();
+const headDir = this.tipScratch
+.applyQuaternion(this.headQuat.set(h.x, h.y, h.z, h.w))
+.clone();
+const dot = Math.min(1, Math.max(-1, gazeDir.dot(headDir)));
+const angleDeg = (Math.acos(dot) * 180) / Math.PI;
+if (angleDeg > this.gazeSourceMaxSeparationDeg) {
+this.gazeSourceMaxSeparationDeg = angleDeg;
+}
+void session;
+}
+
+private setGazeSourceStatus(status: GazeSourceStatus | null): void {
+if (this.gazeSourceStatus === status) {
+return;
+}
+this.gazeSourceStatus = status;
+if (status != null) {
+window.dispatchEvent(new CustomEvent(GAZE_SOURCE_EVENT, { detail: status }));
+}
+}
+
 private findGazeHoveredPad(): PadRuntime | null {
 this.player.head.getWorldPosition(this.rayOrigin);
 this.player.head.getWorldQuaternion(this.headQuat);

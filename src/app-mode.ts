@@ -1,5 +1,7 @@
 import { captureCypherCast } from './wall-tones/cypher-voice.js';
-import { hearingSubtitlesEnabled, colorNamesEnabled, setHearingSubtitles, setColorNames, voicesOffEnabled, setVoicesOff } from './wall-tones/accessibility.js';
+import { hearingSubtitlesEnabled, colorNamesEnabled, setHearingSubtitles, setColorNames, voicesOffEnabled, setVoicesOff, headGazePinchEnabled, setHeadGazePinch, nativeGazePinchEnabled, setNativeGazePinch } from './wall-tones/accessibility.js';
+import { GAZE_SOURCE_EVENT, gazeSourceStatusText, type GazeSourceStatus } from './wall-tones/gaze-source.js';
+import { gazePinchSettingsVisible } from './enter-xr-visibility.js';
 /**
  * Switches between the main menu and experience modes by toggling authored
  * scene node visibility. Mode selection lives on spatial UIKitML panels.
@@ -467,6 +469,22 @@ export class AppModeSystem extends createSystem({}) {
       setColorNames,
     );
     bindToggleRow('voices-off-row', 'voices-off-checkbox', voicesOffEnabled, setVoicesOff);
+    bindToggleRow(
+      'head-gaze-pinch-row',
+      'head-gaze-pinch-checkbox',
+      headGazePinchEnabled,
+      setHeadGazePinch,
+    );
+    bindToggleRow(
+      'native-gaze-pinch-row',
+      'native-gaze-pinch-checkbox',
+      nativeGazePinchEnabled,
+      setNativeGazePinch,
+    );
+    // Gaze + pinch options are VR-headset only (Oded, 2026-11-15): hide both rows on PC and phone menus; settings values and default-OFF behavior unchanged.
+    const gazeRowsDisplay = gazePinchSettingsVisible(typeof navigator === 'undefined' ? '' : navigator.userAgent) ? 'flex' : 'none';
+    setDisplay('head-gaze-pinch-row', gazeRowsDisplay);
+    setDisplay('native-gaze-pinch-row', gazeRowsDisplay);
     // Debug stat reset: two-step confirm, clears progression stats only.
     let resetArmed = false;
     let resetDisarm: number | undefined;
@@ -490,9 +508,22 @@ export class AppModeSystem extends createSystem({}) {
       panel.getElementById('hearing-subtitles-checkbox')?.setProperties({ checked: hearingSubtitlesEnabled() } as never);
       panel.getElementById('color-names-checkbox')?.setProperties({ checked: colorNamesEnabled() } as never);
       panel.getElementById('voices-off-checkbox')?.setProperties({ checked: voicesOffEnabled() } as never);
+      panel.getElementById('head-gaze-pinch-checkbox')?.setProperties({ checked: headGazePinchEnabled() } as never);
+      panel.getElementById('native-gaze-pinch-checkbox')?.setProperties({ checked: nativeGazePinchEnabled() } as never);
     };
     window.addEventListener('wall-tones-accessibility-change', syncAccessibility);
     this.cleanupFuncs.push(() => window.removeEventListener('wall-tones-accessibility-change', syncAccessibility));
+    // Native eye-gaze availability verdict, reported by WallTonesSystem so
+    // the experimental mode names its source accurately (no silent head
+    // fallback - the player sees what the headset really supplies).
+    const syncGazeSource = (event: Event) => {
+      const status = (event as CustomEvent<GazeSourceStatus>).detail;
+      panel
+        .getElementById<UIKit.Text>('native-gaze-status')
+        ?.setProperties({ text: `Eye gaze + pinch (experimental) - ${gazeSourceStatusText(status)}` });
+    };
+    window.addEventListener(GAZE_SOURCE_EVENT, syncGazeSource);
+    this.cleanupFuncs.push(() => window.removeEventListener(GAZE_SOURCE_EVENT, syncGazeSource));
     syncVoiceLabels();
   }
 
