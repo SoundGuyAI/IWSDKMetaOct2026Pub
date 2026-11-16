@@ -78,6 +78,27 @@ export const TILT_STILL_EVENTS_TO_TRACK = 12;
 /** Per-event convergence toward the resting pose while still. */
 export const TILT_REST_TRACK_ALPHA = 0.2;
 /**
+ * Rotate baseline-relative (pitch, yaw) into the screen's frame. The
+ * tracker works on raw device axes (beta = device-x tilt, gamma = device-y
+ * tilt), but the owner reads "tilt forward/back" relative to the SCREEN:
+ * in landscape the nod axis is the device's gamma, not beta - without this
+ * rotation a landscape nod fed the yaw (shake) axis and answered "no"
+ * (the owner's Nov 16 iPhone report). Gestures are symmetric (forward OR
+ * back both count), so only the axis assignment matters, not the sign.
+ */
+export function rotateToScreenFrame(
+  pitchDeg: number,
+  yawDeg: number,
+  orientationAngleDeg: number,
+): GestureAngleSample {
+  const theta = (orientationAngleDeg * Math.PI) / 180;
+  return {
+    pitchDeg: pitchDeg * Math.cos(theta) + yawDeg * Math.sin(theta),
+    yawDeg: -pitchDeg * Math.sin(theta) + yawDeg * Math.cos(theta),
+  };
+}
+
+/**
  * Baseline-relative device orientation (beta = pitch, gamma = roll).
  *
  * The baseline is not frozen at arm time: a phone handed around or used
@@ -106,8 +127,15 @@ export class TiltBaselineTracker {
     this.stillEvents = 0;
   }
 
-  /** Null angles (desktop laptops, some browsers) produce no sample. */
-  feed(betaDeg: number | null, gammaDeg: number | null): GestureAngleSample | null {
+  /** Null angles (desktop laptops, some browsers) produce no sample.
+   * `orientationAngleDeg` is the screen orientation (0 portrait, 90/180/
+   * 270); the baseline-relative result is rotated into the screen frame
+   * so "forward/back" means the same gesture in portrait and landscape. */
+  feed(
+    betaDeg: number | null,
+    gammaDeg: number | null,
+    orientationAngleDeg = 0,
+  ): GestureAngleSample | null {
     if (betaDeg == null || gammaDeg == null) {
       return null;
     }
@@ -122,10 +150,14 @@ export class TiltBaselineTracker {
       if (this.baseBeta == null) {
         this.baseBeta = betaDeg;
       }
-      return {
-        pitchDeg: betaDeg - this.baseBeta,
-        yawDeg: 0,
-      };
+      // In the gimbal zone gamma is untrusted, so yaw is frozen BEFORE
+      // the rotation: a landscape phone near vertical cannot read shakes
+      // reliably (documented limit), nods keep working in portrait.
+      return rotateToScreenFrame(
+        betaDeg - this.baseBeta,
+        0,
+        orientationAngleDeg,
+      );
     }
     if (this.baseBeta == null || this.baseGamma == null) {
       this.baseBeta = betaDeg;
@@ -166,10 +198,11 @@ export class TiltBaselineTracker {
     }
     this.lastBeta = betaDeg;
     this.lastGamma = gammaDeg;
-    return {
-      pitchDeg: betaDeg - this.baseBeta,
-      yawDeg: gammaDeg - this.baseGamma,
-    };
+    return rotateToScreenFrame(
+      betaDeg - this.baseBeta,
+      gammaDeg - this.baseGamma,
+      orientationAngleDeg,
+    );
   }
 }
 
@@ -185,10 +218,15 @@ export function attachTiltTracker(
   tracker: TiltBaselineTracker,
   armed: () => boolean,
   onSample: (sample: GestureAngleSample, nowSec: number) => void,
+  getOrientationAngleDeg: () => number = () => 0,
 ): () => void {
   const onOrientation = (event: Event) => {
     const orientation = event as DeviceOrientationEvent;
-    const sample = tracker.feed(orientation.beta, orientation.gamma);
+    const sample = tracker.feed(
+      orientation.beta,
+      orientation.gamma,
+      getOrientationAngleDeg(),
+    );
     if (sample == null || !armed()) {
       return;
     }
