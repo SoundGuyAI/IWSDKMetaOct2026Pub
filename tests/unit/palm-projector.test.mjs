@@ -4,7 +4,7 @@ import ts from 'typescript';
 import {readFileSync} from 'node:fs';
 const src = readFileSync('src/wall-tones/palm-projector.ts','utf8');
 const js = ts.transpileModule(src,{compilerOptions:{module:ts.ModuleKind.ESNext}}).outputText;
-const {palmPanelPose, extendedFingerCount, PALM_PANEL_LIFT} = await import('data:text/javascript;base64,'+Buffer.from(js).toString('base64'));
+const {palmPanelPose, extendedFingerCount, PALM_PANEL_LIFT, PALM_SURFACE_LIFT} = await import('data:text/javascript;base64,'+Buffer.from(js).toString('base64'));
 // Left hand, palm up, fingers forward (+z), thumb side +x. Realistic metric proportions.
 const openLeftUp = {
   wrist:{x:0,y:0,z:0},
@@ -16,8 +16,15 @@ test('open flat palm up reads openFlat with normal up and panel above mid-palm',
   assert.equal(p.openFlat,true);
   assert.ok(p.normal.y > 0.95, `normal.y ${p.normal.y}`);
   assert.ok(Math.abs(p.center.y - PALM_PANEL_LIFT) < 1e-9, `center.y ${p.center.y}`);
-  assert.ok(Math.abs(p.center.z - 0.045) < 1e-9, `center.z ${p.center.z}`);
+  // knuckle line average: (0.085+0.09+0.085+0.075)/4 = 0.08375, halved with the wrist.
+  assert.ok(Math.abs(p.center.z - 0.041875) < 1e-9, `center.z ${p.center.z}`);
   assert.ok(p.along.z > 0.95);
+  // Nov 16 feedback: the projector must root at the palm's surface center, not the wrist joint.
+  assert.ok(Math.abs(p.origin.y - PALM_SURFACE_LIFT) < 1e-9, `origin.y ${p.origin.y}`);
+  assert.ok(Math.abs(p.origin.z - 0.041875) < 1e-9, `origin.z ${p.origin.z}`);
+  const wristDist = Math.hypot(p.origin.x, p.origin.y, p.origin.z);
+  assert.ok(wristDist > 0.03, `origin too close to the wrist joint (${wristDist}m)`);
+  assert.ok(PALM_SURFACE_LIFT < PALM_PANEL_LIFT, 'origin sits below the panel');
 });
 test('panel lift keeps the hand and its outline clear when looking up (Nov 16 feedback)',()=>{
   assert.ok(PALM_PANEL_LIFT >= 0.17, `lift ${PALM_PANEL_LIFT} too low`);
