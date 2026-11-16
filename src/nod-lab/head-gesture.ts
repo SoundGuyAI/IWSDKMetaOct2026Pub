@@ -42,10 +42,21 @@ export interface HeadGestureConfig {
   readonly returnToBaselineRad: number | null;
 }
 
+/**
+ * Headset tuning, from the owner's Nov 16 Quest 3 recording-session capture:
+ * the on-panel baseline-relative pitch during nods that FAILED to register
+ * read 9-13.8 deg, while nods that registered read 15-19 deg - the old
+ * 14 deg peak sat above most of the owner's real nods (14 answers in ~73s
+ * of continuous trying). Activation/reversal/peak now match the flat-mode
+ * values the owner's Nov 15 iPhone dataset produced (same person's nods);
+ * dominance stays 1.6 (no headset evidence against it yet: the capture
+ * cannot separate dominance rejects from peak rejects) and the anti-double
+ * -count guard only blocks after a QUALIFYING commit (see tracker comment).
+ */
 export const DEFAULT_HEAD_GESTURE_CONFIG: HeadGestureConfig = {
-  activationRad: (8 * Math.PI) / 180,
-  reversalRad: (6 * Math.PI) / 180,
-  minPeakRad: (14 * Math.PI) / 180,
+  activationRad: (6 * Math.PI) / 180,
+  reversalRad: (4 * Math.PI) / 180,
+  minPeakRad: (10 * Math.PI) / 180,
   windowSec: 1.4,
   axisDominanceRatio: 1.6,
   cooldownSec: 1.2,
@@ -88,6 +99,13 @@ export class AxisOscillationTracker {
   private lastCommitted: CommittedExtreme | null = null;
   private pendingCycle: CommittedExtreme | null = null;
   private recentExcursion = 0;
+  // After any commit, the angle must first come back within activation of
+  // baseline before a new extreme can arm. Without this, the return stroke
+  // of one slow movement re-arms at the held angle and its chained commit
+  // reads as a fresh fast gesture (the "slow look down" case), while with
+  // the old unconditional block a weak first stroke poisoned the real nod
+  // behind it (the owner's Nov 16 Quest recording).
+  private awaitingReturn = false;
 
   constructor(private readonly config: HeadGestureConfig) {}
 
@@ -98,6 +116,7 @@ export class AxisOscillationTracker {
     this.lastCommitted = null;
     this.pendingCycle = null;
     this.recentExcursion = 0;
+    this.awaitingReturn = false;
   }
 
   /** Total absolute excursion seen within the gesture window. */
@@ -126,6 +145,12 @@ export class AxisOscillationTracker {
       }
     }
     if (this.direction === 0) {
+      if (this.awaitingReturn) {
+        if (Math.abs(angle) >= this.config.activationRad) {
+          return null;
+        }
+        this.awaitingReturn = false;
+      }
       if (Math.abs(angle) >= this.config.activationRad) {
         this.direction = Math.sign(angle);
         this.extreme = angle;
@@ -150,12 +175,16 @@ export class AxisOscillationTracker {
       const qualifies =
         committed.amplitude >= this.config.minPeakRad && withinWindow;
       if (this.config.returnToBaselineRad == null) {
-        // Headset path: unchanged anti-double-count guard (no hardware
-        // evidence against it; headset testing is still pending).
+        // Headset path: anti-double-count guard, but only a QUALIFYING
+        // commit blocks the next stroke. A sub-peak or expired commit that
+        // also blocked would poison natural multi-stroke nodding: in the
+        // owner's Nov 16 Quest recording a weak first stroke within the
+        // window kept the real following nod from ever reporting (the same
+        // failure the flat path's Nov 15 rework fixed there).
         if (qualifies && this.lastCommitted == null) {
           completed = committed.amplitude;
+          this.lastCommitted = committed;
         }
-        this.lastCommitted = committed;
       } else {
         // Flat path: a committed cycle completes when its return stroke
         // reaches baseline, so the only thing to guard is the awaiting
@@ -169,10 +198,12 @@ export class AxisOscillationTracker {
         }
       }
       // Re-arm from the current angle so the return stroke does not
-      // immediately register as a new opposite extreme.
+      // immediately register as a new opposite extreme; the angle must
+      // first come back near baseline before the next extreme can arm.
       this.direction = 0;
       this.extreme = 0;
       this.armedAt = -1;
+      this.awaitingReturn = true;
     }
     return completed;
   }
