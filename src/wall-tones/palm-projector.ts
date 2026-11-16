@@ -146,6 +146,58 @@ export class PalmJointsSmoother {
   reset(): void { for (const key of Object.keys(this.filters)) delete this.filters[key]; }
 }
 
+/** Cone top (panel-side) radius of the projector beam, meters. */
+export const BEAM_TOP_RADIUS = 0.055;
+/** Cone base (palm-side) radius of the projector beam, meters. */
+export const BEAM_BOTTOM_RADIUS = 0.006;
+/** Clearance kept between the beam's tilted top rim and the panel plane. */
+export const BEAM_TOP_MARGIN = 0.006;
+/** Most the beam may shorten to fit under the panel (fraction of full length). */
+export const BEAM_MAX_SHORTEN_RATIO = 0.35;
+/** Smallest top-radius scale applied while fitting under the panel. */
+export const BEAM_MIN_RADIUS_SCALE = 0.12;
+
+export interface BeamPanelFit {
+  /** Beam length along its direction (meters). */
+  length: number;
+  /** Scale applied to the cone's radii so its tilted rim stays under the panel. */
+  radiusScale: number;
+}
+
+/**
+ * Fit the projector beam under the head-facing panel plane. The cone's top
+ * disc is tilted against that plane; every rim point must stay on the palm
+ * side of it (rim margin BEAM_TOP_MARGIN) so no part of the cone floats
+ * between the panel and the head.
+ *
+ * Nov 16 hardware feedback: the previous fit only shortened the beam
+ * (len = full - (r*sin+margin)/cos), which collapsed it to a 2 cm stub exactly
+ * at the tilted hand angles where the user looked for it - the beam "went
+ * away" at those angles. This fit caps the shortening at
+ * BEAM_MAX_SHORTEN_RATIO of the full length and shrinks the top radius for
+ * the remaining tilt, so the beam keeps its reach at every angle.
+ *
+ * cosTheta is dot(beamDirection, panelNormal). At or below ~0 the beam runs
+ * across or away from the panel face: the rim spills toward the head like
+ * light hitting the panel edge, which reads fine, so the cone keeps its full
+ * radius and only a fixed margin applies.
+ */
+export function fitBeamUnderPanel(fullLength: number, cosTheta: number): BeamPanelFit {
+  if (cosTheta <= 1e-3) {
+    return { length: Math.max(0.02, fullLength - BEAM_TOP_MARGIN), radiusScale: 1 };
+  }
+  const sinTheta = Math.sqrt(Math.max(0, 1 - cosTheta * cosTheta));
+  const shortenNeeded = (BEAM_TOP_RADIUS * sinTheta + BEAM_TOP_MARGIN) / cosTheta;
+  const maxShorten = BEAM_MAX_SHORTEN_RATIO * fullLength;
+  if (shortenNeeded <= maxShorten) {
+    return { length: Math.max(0.02, fullLength - shortenNeeded), radiusScale: 1 };
+  }
+  const length = Math.max(0.02, fullLength - maxShorten);
+  const radiusFit = (maxShorten * cosTheta - BEAM_TOP_MARGIN) / Math.max(sinTheta, 1e-3);
+  const radiusScale = Math.min(1, Math.max(BEAM_MIN_RADIUS_SCALE, radiusFit / BEAM_TOP_RADIUS));
+  return { length, radiusScale };
+}
+
 /**
  * Band-mode joint frame as a constant rotation on top of the anatomical frame
  * A = [wrist->middle-MCP, palm normal, their cross]. Measured Nov 2026 from the
