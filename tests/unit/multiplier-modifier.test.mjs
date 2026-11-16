@@ -115,6 +115,20 @@ test('multiplier: factor is level+1 while enabled, 1 while off; toggle mirrors A
   assert.equal(eco.getMultiplierFactor(), 1, 'disabled earns normal');
 });
 
+test('multiplier: the owned tier drives the payout - X3 and X4 scale awards by 3 and 4, not just X2', () => {
+  const eco = ecoWith(0);
+  eco.debugGrantMultiplierLevel(2); // X3
+  assert.equal(eco.getMultiplierFactor(), 3);
+  assert.equal(eco.awardForPress(1), 3, 'press Bars triple at X3');
+  const round3 = eco.completePattern(5, false);
+  assert.deepEqual(round3, { completion: 3, bonus: 0 }, 'completion triples at X3');
+  eco.debugGrantMultiplierLevel(3); // X4
+  assert.equal(eco.getMultiplierFactor(), 4);
+  assert.equal(eco.awardForPress(1), 4, 'press Bars quadruple at X4');
+  const round4 = eco.completePattern(5, true);
+  assert.deepEqual(round4, { completion: 4, bonus: 20 }, 'completion 1x4 and bonus (rate x streak 5)x4 at X4');
+});
+
 test('multiplier: every Bar award scales - presses, completion and record bonus', () => {
   const eco = ecoWith(0);
   eco.debugGrantMultiplierLevel(1); // X2
