@@ -236,6 +236,8 @@ statusLineText: string;
 sequenceRowVisible: boolean;
 controlRowVisible: boolean;
 autoplayRowOpacity: number;
+autoplayControlLabel: string;
+autoplaySlashVisible: boolean;
 sequenceArrowAt: number;
 sequenceBoxesShown: number;
 sequenceUnknownShown: number;
@@ -1730,6 +1732,15 @@ return system.lastControlRowVisible;
 },
 get autoplayRowOpacity() {
 return system.lastAutoplayRowOpacity;
+},
+get autoplayControlLabel() {
+return String(system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('control-autoplay-label')?.properties.peek().text ?? '');
+},
+get autoplaySlashVisible() {
+return (system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('control-autoplay-slash')?.properties.peek()
+.display ?? 'none') !== 'none';
 },
 get sequenceArrowAt() {
 return system.lastSequenceArrowAt;
@@ -4227,17 +4238,30 @@ const greyed = 0.45;
 panel
 .getElementById('control-play-button')
 ?.setProperties({ opacity: this.economy.getPlayLevel() > 0 ? 1 : greyed });
-// Unowned: greyed like the other locked modifiers. Owned but switched off:
-// mid opacity so it reads as owned-but-idle, not locked.
+// Unowned: greyed like the other locked modifiers. Owned is always
+// white, on or off (owner 2026-11-16 02:00: "when the auto play is
+// disengaged the button still needs to be white and not greyed out");
+// the OFF signal is the diagonal slash through the icon plus the label.
 this.lastAutoplayRowOpacity =
-this.economy.getAutoplayLevel() < 1
-? greyed
-: this.economy.isAutoplayEnabled()
-? 1
-: 0.6;
+this.economy.getAutoplayLevel() < 1 ? greyed : 1;
 panel
 .getElementById('control-autoplay-button')
 ?.setProperties({ opacity: this.lastAutoplayRowOpacity });
+const autoplayOwned = this.economy.getAutoplayLevel() > 0;
+const autoplayOn = this.economy.isAutoplayEnabled();
+panel
+.getElementById('control-autoplay-slash')
+?.setProperties({
+display: autoplayOwned && !autoplayOn ? 'flex' : 'none',
+});
+// State in words too (user report 2026-11-16 01:58: button + text were
+// confusing): the label says on/off. Unowned stays the plain greyed
+// Store shortcut.
+panel
+.getElementById<UIKit.Text>('control-autoplay-label')
+?.setProperties({
+text: !autoplayOwned ? 'Auto' : autoplayOn ? 'Auto: on' : 'Auto: off',
+});
 panel
 .getElementById('control-speed-button')
 ?.setProperties({ opacity: greyed });
@@ -4268,15 +4292,21 @@ if (this.economy.getAutoplayLevel() < 1) {
 this.openStoreAtTile('autoplay');
 return;
 }
-const disabled = this.economy.isAutoplayEnabled();
-this.economy.setAutoplayDisabled(disabled);
-this.statusText = disabled ? 'Auto play engaged' : 'Auto play disengaged';
+// Branch on the POST-toggle state (user report 2026-11-16 01:58:
+// "it says auto play disengaged when it gets turned on" - text and
+// voice notice followed the pre-toggle state, i.e. were reversed).
+const wasEnabled = this.economy.isAutoplayEnabled();
+this.economy.setAutoplayDisabled(wasEnabled);
+const nowEnabled = !wasEnabled;
+this.statusText = nowEnabled
+? 'Auto play engaged'
+: 'Auto play disengaged';
 this.renderPanel();
 const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
 if (panel != null) {
 this.syncControlRow(panel);
 }
-if (disabled) {
+if (nowEnabled) {
 await playAutoplayEngagedCue();
 } else {
 await playAutoplayDisengagedCue();
