@@ -111,12 +111,20 @@ assert.ok(placement.rise>0.12,'panel floats higher above the palm');
 const originCheck=await page.evaluate(()=>{
  const s=window.__armbandHarness.system;
  const o=s.armbandLastPose.origin;const b=s.armbandGlow.position;
- const wrist=s.armband.position;
- return {mismatch:Math.hypot(o.x-b.x,o.y-b.y,o.z-b.z),wristDist:Math.hypot(b.x-wrist.x,b.y-wrist.y,b.z-wrist.z)};
+ // Real wrist BONE (nearest 'wrist' bone to the origin), not the cuff anchor.
+ const V=s.armbandBeamBase.constructor;let wrist=null;
+ window.__armbandHarness.world.scene.traverse(n=>{if(n.isBone&&n.name==='wrist'){const p=new V();n.getWorldPosition(p);const d=Math.hypot(p.x-b.x,p.y-b.y,p.z-b.z);if(!wrist||d<wrist.d)wrist={d};}});
+ // Geometric cone apex (local narrow end, transform incl. scale) vs glow orb.
+ const apex=new V(0,-0.5,0);s.armbandBeam.localToWorld(apex);
+ return {mismatch:Math.hypot(o.x-b.x,o.y-b.y,o.z-b.z),wristDist:wrist?wrist.d:-1,
+  apexToGlow:Math.hypot(apex.x-b.x,apex.y-b.y,apex.z-b.z)};
 });
 console.log('ORIGIN',originCheck);
 assert.ok(originCheck.mismatch<0.005,'beam/glow root tracks the palm-origin pose');
-assert.ok(originCheck.wristDist>0.03,'projector root is clear of the wrist joint');
+assert.ok(originCheck.wristDist>0.015,'projector root is clear of the wrist joint bone');
+// The cone apex is embedded 8mm behind the orb center; anything past the orb
+// radius (~13mm with pulse) means the beam root visibly floats off the orb.
+assert.ok(originCheck.apexToGlow<0.013,'beam cone apex sits inside the glow orb');
 // (b) the glow is a fresnel-shaded orb, not a flat additive disc;
 const glowMat=await page.evaluate(()=>{const m=window.__armbandHarness.system.armbandGlow.material;return {shader:m.isShaderMaterial===true,fresnel:(m.fragmentShader||'').includes('facing')};});
 assert.ok(glowMat.shader&&glowMat.fresnel,'glow uses the fresnel shader');
