@@ -89,6 +89,7 @@ import {
   isOverLabPanel,
 } from './rift-energy.js';
 import { RiftHandAura } from './rift-hand-aura.js';
+import { noteFrontVisibility, RiftHandOccluders } from './rift-hand-occluders.js';
 import { glowDotTexture, noteGlyphMaterial, noteGlyphTexture } from './rift-note-visuals.js';
 import { RiftSealBeam } from './rift-seal-beam.js';
 
@@ -405,8 +406,12 @@ export class RiftLabSystem extends createSystem({
   private xrBeamActive = false;
   private sealBeam: RiftSealBeam | null = null;
   private handAura: RiftHandAura | null = null;
+  private handOccluders: RiftHandOccluders | null = null;
   private readonly beamEnd = new Vector3();
   private readonly beamHitPoint = new Vector3();
+  private readonly noteOccPalm = new Vector3();
+  private readonly noteOccCam = new Vector3();
+  private readonly noteOccNote = new Vector3();
   private beamTimeSec = 0;
   private experimentPalmLight = EXPERIMENT_PALM_LIGHT;
   /** Optional forced beam origin for visual QA (keeps the beam from collapsing). */
@@ -436,8 +441,10 @@ export class RiftLabSystem extends createSystem({
     try {
       this.sealBeam = new RiftSealBeam();
       this.handAura = new RiftHandAura();
+      this.handOccluders = new RiftHandOccluders();
       this.root.add(this.sealBeam.root);
       this.root.add(this.handAura.root);
+      this.root.add(this.handOccluders.root);
     } catch (error) {
       console.warn('[rift-lab] seal visual layers failed to construct', error);
     }
@@ -1273,9 +1280,11 @@ export class RiftLabSystem extends createSystem({
       seen.add(note.id);
       let mesh = this.noteMeshes.get(note.id);
       if (mesh == null) {
+        // Clone so per-note opacity can fade notes behind the palm without
+        // changing every note that shares that pad color.
         mesh = new Mesh(
           new PlaneGeometry(NOTE_SIZE_M * 2.4, NOTE_SIZE_M * 2.4),
-          noteGlyphMaterial(note.color),
+          noteGlyphMaterial(note.color).clone(),
         );
         this.noteMeshes.set(note.id, mesh);
         this.root.add(mesh);
@@ -1351,6 +1360,22 @@ export class RiftLabSystem extends createSystem({
       mesh.scale.setScalar(noteScale * (1 + (glowScale - 1) * 0.3));
       // Notes face the viewer (billboard), in XR and flat alike.
       mesh.quaternion.copy(this.world.camera.quaternion);
+      // Soft fade when the note sits on the far side of the palm from the
+      // camera; depth occluders also hide notes that pass through the hand.
+      const front = noteFrontVisibility(
+        mesh.position.x,
+        mesh.position.y,
+        mesh.position.z,
+        this.palms[note.hand],
+        this.world.camera,
+        this.noteOccPalm,
+        this.noteOccCam,
+        this.noteOccNote,
+      );
+      const mat = mesh.material as MeshBasicMaterial;
+      mat.opacity = 0.2 + 0.8 * front;
+      mat.depthTest = true;
+      mesh.visible = front > 0.05 || this.palms[note.hand] == null;
     }
     for (const [id, mesh] of this.noteMeshes) {
       if (!seen.has(id)) {
@@ -1358,6 +1383,8 @@ export class RiftLabSystem extends createSystem({
         this.noteMeshes.delete(id);
       }
     }
+
+    this.handOccluders?.update(this.palms.left, this.palms.right);
 
     this.reflowFlatRifts();
     // Animate the fractures and publish target positions for the panel dodge.

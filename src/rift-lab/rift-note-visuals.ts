@@ -90,6 +90,8 @@ export function noteGlyphMaterial(color: PadColorName): MeshBasicMaterial {
     mat = new MeshBasicMaterial({
       map: noteGlyphTexture(color),
       transparent: true,
+      // depthTest on so invisible hand occluders can hide notes behind the palm.
+      depthTest: true,
       depthWrite: false,
       toneMapped: false,
       opacity: 1,
