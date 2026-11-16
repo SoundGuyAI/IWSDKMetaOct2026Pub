@@ -88,6 +88,14 @@ import {
   SEAL_HOLD_MS,
   isOverLabPanel,
 } from './rift-energy.js';
+import {
+  createGeometryParticlePool,
+  emitSpray,
+  planeSurface,
+  stepGeometryParticles,
+  type CollisionSurface,
+  type GeometryParticlePool,
+} from './rift-geometry-particles.js';
 
 /** Virtual hand anchors in flat mode (meters, hub scene space). */
 const FLAT_RIGHT_HAND = new Vector3(0.45, 1.35, -1.9);
@@ -133,6 +141,14 @@ const RIFT_SPAWN_INTERVAL_MS = 6000;
 const MAX_OPEN_RIFTS = 3;
 /** Beam hit test: ray-to-rift distance under this counts as contact. */
 const BEAM_HIT_RADIUS_M = 0.3;
+/** Geometry-collision spark pool (backlog item 93): one shared Points draw. */
+const GEO_POOL_MAX = 240;
+/** Sparks per second sprayed out of a rift while it is sealing. */
+const GEO_SPRAY_RATE = 34;
+/** Burst size when a rift finishes sealing. */
+const GEO_SEAL_BURST = 80;
+/** Room/rift-host collision surfaces refresh this often (ms). */
+const GEO_SURFACE_REFRESH_MS = 400;
 
 const NOTE_SIZE_M = 0.034;
 /** Real-wall rift placement: reachable band around eye height. */
@@ -207,6 +223,18 @@ export interface RiftLabDebugSnapshot {
   beamActive: boolean;
   status: string;
   palms: Record<'left' | 'right', PalmPose | null>;
+  /** Item 93: collision spark pool state and where impacts landed. */
+  geometryParticles: {
+    alive: number;
+    emitted: number;
+    collisions: number;
+    roomImpacts: number;
+    groundImpacts: number;
+    riftHostImpacts: number;
+    roomPlaneSurfaces: number;
+    riftHostSurfaces: number;
+    groundSurface: boolean;
+  };
   targets: { id: number; position: number[]; ndc: number[] }[];
   noteOriginNdc: number[];
   /** On-screen radius (CSS px) the dragged note cloud is sized to. */
@@ -248,6 +276,8 @@ interface RiftView {
   sparkSeeds: Float32Array;
   trail: { sprite: Sprite; spine: number; offset: number; speed: number; wig: number }[];
   debris: { mesh: Mesh; ang: number; spin: number; speed: number }[];
+  /** Fractional spark accumulator for the sealing spray (item 93). */
+  sprayAcc: number;
 }
 
 const SPARK_COUNT = 56;
@@ -433,6 +463,23 @@ export class RiftLabSystem extends createSystem({
   private roomCaptureAttempted = false;
   private awaitingWalls = false;
   private mrButton: unknown = null;
+  /** Item 93: shared world-space spark pool with room-geometry collision. */
+  private readonly geoPool: GeometryParticlePool =
+    createGeometryParticlePool(GEO_POOL_MAX);
+  private geoPoints: Points | null = null;
+  private readonly geoSurfaces: CollisionSurface[] = [];
+  private lastGeoSurfaceRefreshAt = 0;
+  private readonly geoScratchNormal = new Vector3();
+  private readonly geoScratchOrigin = new Vector3();
+  private readonly geoScratchU = new Vector3();
+  private readonly geoScratchV = new Vector3();
+  /** Prebuilt per-pad-color RGB triples so spray emission never allocates. */
+  private readonly geoColors = Object.fromEntries(
+    Object.entries(PAD_COLORS).map(([name, css]) => {
+      const c = new Color(css);
+      return [name, [c.r, c.g, c.b] as [number, number, number]];
+    }),
+  ) as Record<PadColorName, [number, number, number]>;
 
   init(): void {
     this.root.visible = false;
@@ -463,6 +510,33 @@ export class RiftLabSystem extends createSystem({
     panel
       .getElementById('rift-lab-mr-button')
       ?.addEventListener('click', () => this.enterMixedReality());
+
+    // Item 93: one additive Points cloud for all collision sparks, world
+    // space inside the Lab root, preallocated so update() never allocates.
+    const geoGeometry = new BufferGeometry();
+    geoGeometry.setAttribute(
+      'position',
+      new Float32BufferAttribute(this.geoPool.pos, 3),
+    );
+    geoGeometry.setAttribute(
+      'color',
+      new Float32BufferAttribute(this.geoPool.col, 3),
+    );
+    this.geoPoints = new Points(
+      geoGeometry,
+      new PointsMaterial({
+        size: 0.05,
+        map: glowDotTexture(),
+        vertexColors: true,
+        blending: AdditiveBlending,
+        transparent: true,
+        depthWrite: false,
+        toneMapped: false,
+      }),
+    );
+    this.geoPoints.frustumCulled = false;
+    this.geoPoints.visible = false;
+    this.root.add(this.geoPoints);
 
     const canvas = this.world.renderer.domElement;
     const onPointerDown = (event: PointerEvent) => {
@@ -760,6 +834,7 @@ export class RiftLabSystem extends createSystem({
     stopBeamHum();
     this.dragging = false;
     this.xrBeamActive = false;
+    this.clearGeometryParticles();
     if (this.beamLine != null) {
       this.beamLine.visible = false;
     }
@@ -1003,6 +1078,7 @@ export class RiftLabSystem extends createSystem({
       sparkSeeds,
       trail,
       debris,
+      sprayAcc: 0,
     });
     this.renderPanel();
   }
@@ -1450,6 +1526,23 @@ export class RiftLabSystem extends createSystem({
       if (cleared > 0) {
         for (const [id, view] of this.riftViews) {
           if (view.rift.state === 'sealed') {
+            // Item 93: the sealed rift throws one last spark burst that
+            // rains onto the room geometry.
+            this.riftOutwardNormal(view, this.geoScratchNormal);
+            const col = new Color(PAD_COLORS[view.rift.edgeColors[0]]);
+            emitSpray(
+              this.geoPool,
+              view.position.x,
+              view.position.y,
+              view.position.z,
+              this.geoScratchNormal.x,
+              this.geoScratchNormal.y,
+              this.geoScratchNormal.z,
+              GEO_SEAL_BURST,
+              [col.r, col.g, col.b],
+              1.1,
+              2.4,
+            );
             this.removeRiftView(id);
           }
         }
@@ -1458,8 +1551,164 @@ export class RiftLabSystem extends createSystem({
       }
     }
 
+    this.updateGeometryParticles(delta);
+
     if (performance.now() - this.lastUiUpdate >= 250) {
       this.renderPanel();
+    }
+  }
+
+  private riftOutwardNormal(view: RiftView, out: Vector3): Vector3 {
+    view.group.updateWorldMatrix(true, false);
+    return out.set(0, 0, 1).transformDirection(view.group.matrixWorld).normalize();
+  }
+
+  private clearGeometryParticles(): void {
+    this.geoPool.life.fill(0);
+    this.geoPool.col.fill(0);
+    this.geoPool.alive = 0;
+    if (this.geoPoints != null) {
+      this.geoPoints.visible = false;
+      const colAttr = this.geoPoints.geometry.getAttribute('color');
+      if (colAttr != null) colAttr.needsUpdate = true;
+    }
+  }
+
+  /**
+   * Item 93 collision surfaces. Real room planes come from the XRPlane
+   * query and only in mixed reality (never synthesized on desktop, like the
+   * no-pretend-walls rift placement rule). The y=0 session-space ground and
+   * each rift's host wall plane are known in every mode.
+   */
+  private refreshGeometrySurfaces(): void {
+    this.geoSurfaces.length = 0;
+    this.geoSurfaces.push(planeSurface('ground', 0, 1, 0, 0, 0, 0));
+    for (const view of this.riftViews.values()) {
+      this.riftOutwardNormal(view, this.geoScratchNormal);
+      this.geoSurfaces.push(
+        planeSurface(
+          'rift-host',
+          this.geoScratchNormal.x,
+          this.geoScratchNormal.y,
+          this.geoScratchNormal.z,
+          view.position.x,
+          view.position.y,
+          view.position.z,
+        ),
+      );
+    }
+    if (!this.isMixedReality()) return;
+    let roomCount = 0;
+    for (const entity of this.queries.planes.entities) {
+      if (roomCount >= 16) break;
+      const plane = entity.getValue(XRPlane, '_plane') as
+        | { polygon?: DOMPointReadOnly[] }
+        | undefined;
+      const object3D = entity.object3D;
+      if (plane == null || object3D == null) continue;
+      object3D.updateWorldMatrix(true, false);
+      // IWSDK plane meshes are thin boxes in local XZ; local +Y is the
+      // plane normal (same convention as plane-placement.ts).
+      const n = this.geoScratchNormal
+        .set(0, 1, 0)
+        .transformDirection(object3D.matrixWorld)
+        .normalize();
+      const u = this.geoScratchU
+        .set(1, 0, 0)
+        .transformDirection(object3D.matrixWorld)
+        .normalize();
+      const v = this.geoScratchV
+        .set(0, 0, 1)
+        .transformDirection(object3D.matrixWorld)
+        .normalize();
+      const o = object3D.getWorldPosition(this.geoScratchOrigin);
+      let minU = Number.NEGATIVE_INFINITY;
+      let maxU = Number.POSITIVE_INFINITY;
+      let minV = Number.NEGATIVE_INFINITY;
+      let maxV = Number.POSITIVE_INFINITY;
+      const polygon = plane.polygon;
+      if (polygon != null && polygon.length > 0) {
+        minU = Number.POSITIVE_INFINITY;
+        maxU = Number.NEGATIVE_INFINITY;
+        minV = Number.POSITIVE_INFINITY;
+        maxV = Number.NEGATIVE_INFINITY;
+        for (const point of polygon) {
+          minU = Math.min(minU, point.x);
+          maxU = Math.max(maxU, point.x);
+          minV = Math.min(minV, point.z);
+          maxV = Math.max(maxV, point.z);
+        }
+      }
+      this.geoSurfaces.push({
+        nx: n.x,
+        ny: n.y,
+        nz: n.z,
+        d: n.x * o.x + n.y * o.y + n.z * o.z,
+        px: o.x,
+        py: o.y,
+        pz: o.z,
+        ux: u.x,
+        uy: u.y,
+        uz: u.z,
+        vx: v.x,
+        vy: v.y,
+        vz: v.z,
+        minU,
+        maxU,
+        minV,
+        maxV,
+        kind: 'room',
+      });
+      roomCount++;
+    }
+  }
+
+  /** Item 93: spray from sealing rifts, advance the pool, publish buffers. */
+  private updateGeometryParticles(delta: number): void {
+    const now = performance.now();
+    if (
+      now - this.lastGeoSurfaceRefreshAt >= GEO_SURFACE_REFRESH_MS &&
+      (this.geoPool.alive > 0 || this.riftViews.size > 0)
+    ) {
+      this.lastGeoSurfaceRefreshAt = now;
+      this.refreshGeometrySurfaces();
+    }
+    if (this.running) {
+      for (const view of this.riftViews.values()) {
+        if (view.rift.state !== 'sealing') continue;
+        view.sprayAcc += delta * GEO_SPRAY_RATE;
+        const count = Math.floor(view.sprayAcc);
+        if (count <= 0) continue;
+        view.sprayAcc -= count;
+        this.riftOutwardNormal(view, this.geoScratchNormal);
+        const rgb =
+          this.geoColors[
+            view.rift.edgeColors[Math.floor(Math.random() * 4)]!
+          ];
+        emitSpray(
+          this.geoPool,
+          view.position.x + this.geoScratchNormal.x * 0.05,
+          view.position.y + this.geoScratchNormal.y * 0.05,
+          view.position.z + this.geoScratchNormal.z * 0.05,
+          this.geoScratchNormal.x,
+          this.geoScratchNormal.y,
+          this.geoScratchNormal.z,
+          count,
+          rgb,
+        );
+      }
+    }
+    stepGeometryParticles(this.geoPool, delta, this.geoSurfaces);
+    const points = this.geoPoints;
+    if (points != null) {
+      const visible = this.geoPool.alive > 0;
+      points.visible = visible;
+      if (visible) {
+        const posAttr = points.geometry.getAttribute('position');
+        const colAttr = points.geometry.getAttribute('color');
+        if (posAttr != null) posAttr.needsUpdate = true;
+        if (colAttr != null) colAttr.needsUpdate = true;
+      }
     }
   }
 
@@ -1523,6 +1772,20 @@ export class RiftLabSystem extends createSystem({
       cameraPos: this.world.camera.getWorldPosition(new Vector3()).toArray(),
       cameraDir: this.world.camera.getWorldDirection(new Vector3()).toArray(),
       palms: this.palms,
+      geometryParticles: {
+        alive: this.geoPool.alive,
+        emitted: this.geoPool.emitted,
+        collisions: this.geoPool.collisions,
+        roomImpacts: this.geoPool.roomImpacts,
+        groundImpacts: this.geoPool.groundImpacts,
+        riftHostImpacts: this.geoPool.riftHostImpacts,
+        roomPlaneSurfaces: this.geoSurfaces.filter((s) => s.kind === 'room')
+          .length,
+        riftHostSurfaces: this.geoSurfaces.filter(
+          (s) => s.kind === 'rift-host',
+        ).length,
+        groundSurface: this.geoSurfaces.some((s) => s.kind === 'ground'),
+      },
       targets: [...this.riftViews.values()].map((v) => ({
         id: v.rift.id,
         position: v.position.toArray(),
@@ -1530,4 +1793,4 @@ export class RiftLabSystem extends createSystem({
       })),
     };
   }
-}
+  }
