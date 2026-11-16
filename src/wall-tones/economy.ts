@@ -33,6 +33,8 @@ const REPLAY_PAID_KEY = 'wall-tones-replays-paid';
 const SAVERS_KEY = 'wall-tones-savers';
 const PLAY_LEVEL_KEY = 'wall-tones-play-level';
 const INDEX_OWNED_KEY = 'wall-tones-index-owned';
+const MULTIPLIER_LEVEL_KEY = 'wall-tones-multiplier-level';
+const MULTIPLIER_DISABLED_KEY = 'wall-tones-multiplier-disabled';
 
 // Skill-tree store prices (owner-approved 2026-11-11 as starting balance for
 // testing, not final). Hint: 25/50/100 Bars then doubling. Open-ended by
@@ -81,6 +83,28 @@ export const PLAY_MAX_LEVEL = 4;
 export const PLAY_TONES_PER_LEVEL = 5;
 export const PLAY_PRICING_SET = true;
 export const PLAY_COSTS: readonly number[] = [500, 1000, 2000, 4000];
+
+/** Multiplier modifier (backlog 97 + 70): X2 double score (his 2026-11-11
+ * store request: "Multiplier modifier (where you get double score)"). Since
+ * Total Score IS lifetime Bars earned, the multiplier scales the Bar awards
+ * themselves. Levels X3/X4 sit above X2 (backlog 70, 2026-11-12 11:48):
+ * their costs must grow "really high exponentially and not the regular
+ * progression". He never supplied prices or a formula - the ladder below is
+ * a PROPOSAL for his approval (x5 growth instead of the regular doubling),
+ * not approved economy. Unsettled and flagged in the PR: unlock gate (none
+ * for now, Replay/Saver precedent) and whether AutoPlay-credited rounds
+ * also multiply (they do here). Achievement side is constrained by his
+ * settled 2026-11-15 rule ("auto play shouldn't award achievements... saved
+ * to the human player"): AutoPlay-earned Bars land in autoplayBarsTotal and
+ * NEVER count toward Bars/Total Score achievements, multiplier or not -
+ * that split already exists and this modifier does not weaken it. The one
+ * achievement question left to him: doubled Bars from HUMAN rounds count
+ * double toward lifetime Bars/Total Score (that IS "double score" here,
+ * since Total Score == lifetime human-earned Bars). */
+export const MULTIPLIER_MAX_LEVEL = 3;
+/** Proposed ladder for his approval: X2 1,000 / X3 5,000 / X4 25,000 (x5
+ * growth per his "really high exponentially, not the regular progression"). */
+export const MULTIPLIER_COSTS: readonly number[] = [1000, 5000, 25000];
 
 /** Index pointer (owner 2026-11-12: "same row as play, unlocking after hint
  * level 3"; added to this PR by his 2026-11-13 ask). An indicator for where
@@ -234,6 +258,8 @@ REPLAY_PAID_KEY,
 SAVERS_KEY,
 PLAY_LEVEL_KEY,
 INDEX_OWNED_KEY,
+MULTIPLIER_LEVEL_KEY,
+MULTIPLIER_DISABLED_KEY,
 // Backlog 30 research totals (fractional meters; economy's number helpers
 // do not own them).
 ...MOVEMENT_STORAGE_KEYS,
@@ -263,6 +289,8 @@ export class WallTonesEconomy {
   private savers = readNumber(SAVERS_KEY);
   private playLevel = readNumber(PLAY_LEVEL_KEY);
   private indexOwned = readNumber(INDEX_OWNED_KEY) === 1;
+  private multiplierLevel = readNumber(MULTIPLIER_LEVEL_KEY);
+  private multiplierDisabled = readNumber(MULTIPLIER_DISABLED_KEY) === 1;
   /** In-memory test Bars from the ?demoBars URL flag. Never persisted, never
    * counted in lifetime totals, and always spent before real Bars so the
    * saved balance stays untouched (owner-approved preview aid 2026-11-11). */
@@ -436,6 +464,13 @@ export class WallTonesEconomy {
 
   private award(amount: number, streak: number, achievementStreak?: number, countAsEarned = true): number {
     if (amount <= 0) return 0;
+    // Multiplier (backlog 97): every Bar award scales by the owned factor
+    // while enabled. FLAGGED for him: AutoPlay-credited awards
+    // (countAsEarned false) multiply too - unsettled. AutoPlay-multiplied
+    // Bars still land in autoplayBarsTotal, so they can never unlock human
+    // achievements (his 2026-11-15 rule); only the autoplay-multiply choice
+    // itself is provisional.
+    amount *= this.getMultiplierFactor();
     this.bars += amount;
     if (countAsEarned) {
       this.barsTotal += amount;
@@ -610,6 +645,54 @@ export class WallTonesEconomy {
   debugGrantIndex(): void {
     this.indexOwned = true;
     writeNumber(INDEX_OWNED_KEY, 1);
+  }
+
+  /** Owned Multiplier level (0 = not owned; 1 = X2, 2 = X3, 3 = X4). */
+  getMultiplierLevel(): number {
+    return this.multiplierLevel;
+  }
+
+  /** Score/Bars factor at the owned level: level 1 doubles, 2 triples,
+   * 3 quadruples; 1 while not enabled. */
+  getMultiplierFactor(): number {
+    if (!this.isMultiplierEnabled()) return 1;
+    return this.multiplierLevel + 1;
+  }
+
+  /** Multiplier applies while owned AND switched on (the enable/disable
+   * toggle mirrors the settled AutoPlay pattern; owning keeps it on). */
+  isMultiplierEnabled(): boolean {
+    return this.multiplierLevel > 0 && !this.multiplierDisabled;
+  }
+
+  /** Switch the Multiplier on/off. No-op below ownership. */
+  setMultiplierDisabled(disabled: boolean): void {
+    this.multiplierDisabled = disabled;
+    writeNumber(MULTIPLIER_DISABLED_KEY, disabled ? 1 : 0);
+  }
+
+  /** Cost of Multiplier level `level` (1-based). PROPOSED prices, his to
+   * approve (backlog 70). */
+  multiplierCost(level: number): number {
+    return MULTIPLIER_COSTS[Math.min(Math.max(level, 1), MULTIPLIER_MAX_LEVEL) - 1]!;
+  }
+
+  /** Buy the next Multiplier level. Three levels max (X2/X3/X4); proposed
+   * prices, no unlock gate for now (see the constants block). */
+  buyNextMultiplierLevel(): boolean {
+    if (this.multiplierLevel >= MULTIPLIER_MAX_LEVEL) return false;
+    const cost = this.multiplierCost(this.multiplierLevel + 1);
+    if (!this.spend(cost)) return false;
+    this.multiplierLevel += 1;
+    writeNumber(MULTIPLIER_LEVEL_KEY, this.multiplierLevel);
+    this.countPurchase();
+    return true;
+  }
+
+  /** Test-only: seed the Multiplier level without a purchase. */
+  debugGrantMultiplierLevel(level: number): void {
+    this.multiplierLevel = Math.min(Math.max(Math.floor(level), 0), MULTIPLIER_MAX_LEVEL);
+    writeNumber(MULTIPLIER_LEVEL_KEY, this.multiplierLevel);
   }
 
   /** Index pointer owned (one-time item). */

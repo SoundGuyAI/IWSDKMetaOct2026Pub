@@ -160,6 +160,7 @@ import {
   AUTOPLAY_UNLOCK_PLAY_LEVEL,
   PLAY_UNLOCK_HINT_LEVEL,
   PLAY_MAX_LEVEL,
+  MULTIPLIER_MAX_LEVEL,
   INDEX_COST,
   LISTEN_COST,
   REPLAY_FREE_CAP,
@@ -303,6 +304,7 @@ buyHint: () => void;
 buyListen: () => void;
 buyAutoplay: () => void;
 buyPlay: () => void;
+buyMultiplier: () => void;
 buyReplay: () => void;
 buySaver: () => void;
 buyTopSecret: () => void;
@@ -316,6 +318,9 @@ readonly achievementsButtonScreen: { x: number; y: number } | null;
 repeatPattern: () => void;
 /** Test-only: the control-row Play button path (greyed -> Store). */
 pressPlay: () => void;
+/** Test-only: the control-row Multiplier button path (greyed -> Store,
+ * owned -> on/off toggle). */
+pressMultiplierControl: () => void;
 /** Test-only: selects a store tile like a tap on its tile. */
 selectStoreTile: (id: string) => void;
 storePointerTargets: Record<string, { x: number; y: number }>;
@@ -336,6 +341,7 @@ hintUnlocked: boolean;
 autoplayLevel: number;
 autoplayUnlocked: boolean;
 playLevel: number;
+multiplierLevel: number;
 replaysFree: number;
 replaysPaid: number;
 replaysTotal: number;
@@ -347,6 +353,7 @@ grantBars: (amount: number) => void;
 grantSavers: (units: number) => void;
 /** Test-only: seed the Play level while its prices are unset. */
 grantPlayLevel: (level: number) => void;
+grantMultiplierLevel: (level: number) => void;
 /** Test-only: grant the Index pointer while its price is unset. */
 grantIndex: () => void;
 /** Test-only: press the control-row Autoplay button (toggle when owned). */
@@ -1273,7 +1280,7 @@ panel
 ?.addEventListener('click', () => this.openStoreAtTile('speed'));
 panel
 .getElementById('control-multiplier-button')
-?.addEventListener('click', () => this.openStoreAtTile('multiplier'));
+?.addEventListener('click', () => void this.onMultiplierControl());
 panel
 .getElementById('rescan-room-button')
 ?.addEventListener('click', () => void this.onRescanRoom());
@@ -2432,6 +2439,10 @@ buyPlay: () => {
 system.forceSelectStoreTile('play');
 system.onBuySelected();
 },
+buyMultiplier: () => {
+system.forceSelectStoreTile('multiplier');
+system.onBuySelected();
+},
 buyIndex: () => {
 system.forceSelectStoreTile('index');
 system.onBuySelected();
@@ -2460,6 +2471,9 @@ void system.onRepeatPattern();
 pressPlay: () => {
 void system.onPlayControl();
 },
+pressMultiplierControl: () => {
+void system.onMultiplierControl();
+},
 get ownsTopSecret() {
 return system.economy.ownsTopSecret();
 },
@@ -2477,6 +2491,9 @@ return system.economy.autoplayUnlocked();
 },
 get playLevel() {
 return system.economy.getPlayLevel();
+},
+get multiplierLevel() {
+return system.economy.getMultiplierLevel();
 },
 get ownsIndex() {
 return system.economy.ownsIndex();
@@ -2550,6 +2567,9 @@ system.debugGrantSavers(units);
 },
 grantPlayLevel: (level: number) => {
 system.debugGrantPlayLevel(level);
+},
+grantMultiplierLevel: (level: number) => {
+system.economy.debugGrantMultiplierLevel(level);
 },
 grantIndex: () => {
 system.economy.debugGrantIndex();
@@ -5018,9 +5038,28 @@ text: !autoplayOwned ? 'Auto' : autoplayOn ? 'Auto: on' : 'Auto: off',
 panel
 .getElementById('control-speed-button')
 ?.setProperties({ opacity: greyed });
+// Multiplier (backlog 97): unowned stays the greyed Store shortcut;
+// owned is always white with the owned factor as the label (X2/X3/X4),
+// the OFF signal is the slash plus ': off' (same settled pattern as
+// AutoPlay).
+const multiplierOwned = this.economy.getMultiplierLevel() > 0;
+const multiplierOn = this.economy.isMultiplierEnabled();
+const multiplierLabel = `X${this.economy.getMultiplierLevel() + 1}`;
 panel
 .getElementById('control-multiplier-button')
-?.setProperties({ opacity: greyed });
+?.setProperties({ opacity: multiplierOwned ? 1 : greyed });
+panel
+.getElementById('control-multiplier-slash')
+?.setProperties({ display: multiplierOwned && !multiplierOn ? 'flex' : 'none' });
+panel
+.getElementById<UIKit.Text>('control-multiplier-label')
+?.setProperties({
+text: !multiplierOwned
+? 'X2'
+: multiplierOn
+? multiplierLabel
+: `${multiplierLabel}: off`,
+});
 }
 
 /** Control-row shortcut (owner rule 2026-11-12): a greyed button opens the
@@ -5074,6 +5113,31 @@ this.openStoreAtTile('play');
 return;
 }
 await this.onPlayTones();
+}
+
+/** Control-row Multiplier button (backlog 97): unowned -> Store shortcut;
+ * owned -> toggles the score multiplier on/off, mirroring the settled
+ * AutoPlay toggle pattern. Caption only: no voice notice was requested.
+ * The toggle is proposed UX - he never specified the owned-button action,
+ * confirm on review. */
+private async onMultiplierControl(): Promise<void> {
+if (this.economy.getMultiplierLevel() < 1) {
+this.openStoreAtTile('multiplier');
+return;
+}
+// Branch on the POST-toggle state (the AutoPlay 2026-11-16 lesson:
+// pre-toggle branching reversed the feedback).
+const wasEnabled = this.economy.isMultiplierEnabled();
+this.economy.setMultiplierDisabled(wasEnabled);
+const nowEnabled = !wasEnabled;
+this.statusText = nowEnabled
+? `Multiplier X${this.economy.getMultiplierLevel() + 1} engaged`
+: 'Multiplier disengaged';
+this.renderPanel();
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+if (panel != null) {
+this.syncControlRow(panel);
+}
 }
 
 /**
@@ -5482,6 +5546,7 @@ icon: boolean;
 const hintLevel = eco.getHintLevel();
 const autoplayLevel = eco.getAutoplayLevel();
 const playLevel = eco.getPlayLevel();
+const multiplierLevel = eco.getMultiplierLevel();
 const replaysTotal = eco.getReplaysTotal();
 const savers = eco.getSavers();
 const bars = eco.getBars();
@@ -5568,10 +5633,23 @@ state: eco.ownsTopSecret() ? 'on' : 'off',
 price: eco.ownsTopSecret() ? 'Owned' : `${TOP_SECRET_COST}`,
 icon: !eco.ownsTopSecret(),
 },
+// Multiplier (backlog 97/70): live tile on this branch. Ungated, PROPOSED
+// prices X2 1,000 / X3 5,000 / X4 25,000 (x5 growth per his "really high
+// exponentially", 2026-11-12) - his to approve.
+{
+id: 'multiplier',
+name: multiplierLevel > 0 ? `X${multiplierLevel + 1}` : 'x2',
+badge: multiplierLevel > 0 ? String(multiplierLevel) : '',
+state: multiplierLevel > 0 ? 'on' : 'off',
+price:
+multiplierLevel >= MULTIPLIER_MAX_LEVEL
+? 'Max'
+: `X${multiplierLevel + 2} - ${eco.multiplierCost(multiplierLevel + 1)}`,
+icon: multiplierLevel < MULTIPLIER_MAX_LEVEL,
+},
 // Room for the modifiers the owner listed (2026-11-11): 5th/6th pads, the
-// story hack, double-score multiplier and the speed modifier. Their
-// phrasing is just "Locked" (owner ask 2026-11-12).
-{ id: 'multiplier', name: 'x2', badge: '?', state: 'off', price: 'Locked', icon: false },
+// story hack and the speed modifier. Their phrasing is just "Locked"
+// (owner ask 2026-11-12).
 { id: 'speed', name: 'Speed', badge: '?', state: 'off', price: 'Locked', icon: false },
 { id: 'pads56', name: 'Pad 5', badge: '?', state: 'off', price: 'Locked', icon: false },
 { id: 'narrator', name: 'Hack', badge: '?', state: 'off', price: 'Locked', icon: false },
@@ -5878,10 +5956,22 @@ buyText = `Top Secret - ${TOP_SECRET_COST}`;
 cost = TOP_SECRET_COST;
 }
 break;
+case 'multiplier': {
+titleText = `Multiplier - X${multiplierLevel + 1}`;
+bodyText =
+(multiplierLevel === 0
+? 'Doubles every Bar you earn while it is on. '
+: `Every Bar you earn is multiplied by ${multiplierLevel + 1} while it is on. `) +
+'Higher levels go X3 then X4 with steep costs. Proposed prices - his to approve.';
+if (multiplierLevel < MULTIPLIER_MAX_LEVEL) {
+cost = eco.multiplierCost(multiplierLevel + 1);
+buyText = `X${multiplierLevel + 2} - ${cost}`;
+}
+break;
+}
 default:
 titleText =
-sel === 'multiplier' ? 'Multiplier x2'
-: sel === 'speed' ? 'Speed'
+sel === 'speed' ? 'Speed'
 : sel === 'pads56' ? 'Pad 5'
 : 'Hack';
 bodyText = sel === 'pads56' ? 'Locked. Pad 6 is bought after Pad 5.' : 'Locked.';
@@ -5919,7 +6009,7 @@ flexWrap: 'wrap',
 gap: 8,
 width: TREE_W,
 });
-for (const id of ['multiplier', 'speed', 'pads56', 'narrator']) {
+for (const id of ['speed', 'pads56', 'narrator']) {
 bottomRow.add(makeTile(byId.get(id)!));
 }
 // Rows in display order; the detail card overlays the viewport bottom
@@ -5980,7 +6070,9 @@ h: ROW_CONN_H,
 // No standalone 'Locked' caption between Autoplay and the modifiers row:
 // each future tile already says 'Locked' under its name, and a floating
 // label here reads as Autoplay's own state even after purchase.
-{ ids: ['multiplier', 'speed', 'pads56', 'narrator'], node: bottomRow, h: ROW_TILE_H },
+// Multiplier sits on its own row with level pips (same as Play).
+{ ids: ['multiplier'], node: chainRow(byId.get('multiplier')!, multiplierLevel, 0xf59a4a), h: ROW_CHAIN_H },
+{ ids: ['speed', 'pads56', 'narrator'], node: bottomRow, h: ROW_TILE_H },
 { ids: ['secret'], node: soloRow(byId.get('secret')!), h: ROW_TILE_H },
 ];
 // The detail card itself. popup-card geometry (uikitml px): 12 padding +
@@ -6614,11 +6706,16 @@ if (id === 'play' && this.economy.getPlayLevel() >= PLAY_MAX_LEVEL) {
 deny('Play is at its top level.');
 return;
 }
+if (id === 'multiplier' && this.economy.getMultiplierLevel() >= MULTIPLIER_MAX_LEVEL) {
+deny('Multiplier is at its top level.');
+return;
+}
 const ok =
 id === 'listen' ? this.economy.buyListen()
 : id === 'hint' ? this.economy.buyNextHintLevel()
 : id === 'autoplay' ? this.economy.buyNextAutoplayLevel()
 : id === 'play' ? this.economy.buyNextPlayLevel()
+: id === 'multiplier' ? this.economy.buyNextMultiplierLevel()
 : id === 'index' ? this.economy.buyIndex()
 : id === 'replay' ? this.economy.buyReplay()
 : id === 'saver' ? this.economy.buySaver(SAVER_PRICE_BARS)
