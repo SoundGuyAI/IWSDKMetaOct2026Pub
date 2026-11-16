@@ -129,3 +129,10 @@ Armband verification update (Nov 13): typecheck/build and 102 unit tests pass. Q
 - [x] Restore small-movement taps on release while ignoring duplicate clicks; keep repeated drags scrolling without selection.
 - [ ] Full local/CI checks and deployed preview verification.
 - [ ] Owner headset retest, including tile details and Buy after repeated up/up/down drags. No merge approval. PR95 unchanged.
+
+## MR geometry-collision particles (backlog 93) - in progress 2026-11-17
+- [x] Pure physics pool `src/rift-lab/rift-geometry-particles.ts`: gravity, spray emission, bounded/unbounded plane collision with restitution+friction, impact flash, bounce/life caps, per-surface-kind counters. No per-frame allocations; one shared Points draw.
+- [x] Wired into the Rift Sealing Lab: spray while a rift seals, burst on sealed; collision surfaces are the y=0 session ground, each rift's host wall plane, and real detected XRPlane room surfaces (MR only - no pretend walls, same rule as rift placement).
+- [x] Unit tests `tests/unit/rift-geometry-particles.test.mjs` (7) and a flat-mode e2e in the rift-lab spec asserting emission, collisions and surface-kind honesty.
+- [ ] Owner approval of the particle look on the PR preview; real-room XRPlane collision unverified until a Quest test (desktop proves ground/host collision only).
+- [ ] Codex review, full local/CI checks, deployed preview verification. No merge or production promotion without owner go-ahead.
