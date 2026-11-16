@@ -20,6 +20,7 @@ const RAY_TOGGLED_PANEL_IDS: ReadonlySet<string> = new Set([
   'lab-menu-panel',
   'lab-entry-panel',
   'rift-lab-panel',
+  'thumbs-lab-panel',
 ]);
 import {
   LAB_ENTRIES,
@@ -44,7 +45,8 @@ export type ExperienceMode =
   | 'meditation'
   | 'walltones'
   | 'lab'
-  | 'riftlab';
+  | 'riftlab'
+  | 'thumbslab';
 
 const MODE_STORAGE_KEY = 'iwsdk-experience-mode';
 
@@ -69,6 +71,7 @@ function readStoredMode(): ExperienceMode {
     stored === 'walltones' ||
     stored === 'lab' ||
     stored === 'riftlab' ||
+    stored === 'thumbslab' ||
     stored === 'menu'
   ) {
     return stored;
@@ -213,11 +216,13 @@ export class AppModeSystem extends createSystem({}) {
     const showWallTones = mode === 'walltones';
     const showLab = mode === 'lab';
     const showRiftLab = mode === 'riftlab';
+    const showThumbsLab = mode === 'thumbslab';
 
     this.setNodeVisible('main-menu-panel', showMenu);
     this.setNodeVisible('wall-tones-panel', showWallTones);
     this.setNodeVisible('lab-menu-panel', showLab);
     this.setNodeVisible('rift-lab-panel', showRiftLab);
+    this.setNodeVisible('thumbs-lab-panel', showThumbsLab);
     // The Lab entry floats beside the menu: visible exactly when the menu is.
     this.setNodeVisible('lab-entry-panel', showMenu);
 
@@ -331,6 +336,7 @@ export class AppModeSystem extends createSystem({}) {
     const xrButton = panel.getElementById('xr-button');
     wallTonesButton?.addEventListener('click', () => this.startWallTonesFlat());
     xrButton?.addEventListener('click', () => this.enterXrIntoWallTones());
+    this.bindThumbsLabBack();
     this.bindSettingsMenu(panel);
     if (wallTonesButton != null) {
       wallTonesButton.name = 'Btn_ModeWallTones';
@@ -339,6 +345,15 @@ export class AppModeSystem extends createSystem({}) {
       xrButton.name = 'Btn_EnterXrWallTones';
     }
     return panel;
+  }
+
+  private bindThumbsLabBack(): void {
+    const panel = this.world.getSceneObject<UIKitMLAsset>('thumbs-lab-panel');
+    const back = panel?.getElementById('thumbs-lab-back-button');
+    back?.addEventListener('click', () => this.setMode('lab'));
+    if (back != null) {
+      back.name = 'Btn_ThumbsLabBackToMenu';
+    }
   }
 
   /**
@@ -516,6 +531,7 @@ export class AppModeSystem extends createSystem({}) {
       walltones: 'Wall Tones 2: too fast to wall',
       lab: 'Wall Tones 2: Lab',
       riftlab: 'Wall Tones 2: Rift Sealing Lab',
+      thumbslab: 'Wall Tones 2: thumbs yes/no lab',
     };
     document.title = titles[mode];
 

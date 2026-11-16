@@ -57,6 +57,19 @@ async function bootFeedbackGame(page: Page, subtitles: boolean): Promise<string[
   return clips;
 }
 
+/** The complete Game Over wrong-hit layout ordering predicate: Hit row
+ * strictly below the Expected row, left edges aligned within 1px. False
+ * while the popup is display:none and its Yoga nodes have no computed
+ * layout, so polling it also waits out the post-open layout pass. */
+async function popupRowOrderingValid(page: Page): Promise<boolean> {
+  const tops = await page.evaluate(() => (window as any).__wallTonesDebug.wrongHitPopupRowTops);
+  return (
+    tops != null &&
+    tops.hitTop > tops.expectedTop &&
+    Math.abs(tops.hitLeft - tops.expectedLeft) <= 1
+  );
+}
+
 for (const improvedBest of [false, true]) {
   test(`miss feedback and failure-only speech after ${improvedBest ? 'a new best' : 'an immediate miss'}`, async ({ page }, testInfo) => {
     const clips = await bootFeedbackGame(page, improvedBest);
@@ -108,7 +121,12 @@ for (const improvedBest of [false, true]) {
     await expect.poll(() => page.evaluate(() => (window as any).__wallTonesDebug.gameOverOpen), { timeout: 30000 }).toBe(true);
     expect(await page.evaluate(() => (window as any).__wallTonesDebug.wrongHitRowVisible)).toBe(true);
     // Owner 2026-11-15 19:01: in Game Over the Hit row sits on its own line
-    // below the Expected row, both sharing a left edge.
+    // below the Expected row, both sharing a left edge. The popup leaves
+    // display:none in the same call stack that sets gameOverOpen, and Yoga
+    // lays the row out on the next frame, so the layout-dependent read must
+    // poll the complete ordering predicate rather than read once (main CI
+    // run 1171: both tops read 0 on a loaded runner, failing the assertion).
+    await expect.poll(() => popupRowOrderingValid(page), { timeout: 10000 }).toBe(true);
     const rowTops = await page.evaluate(() => (window as any).__wallTonesDebug.wrongHitPopupRowTops);
     expect(rowTops).not.toBeNull();
     expect(rowTops.hitTop).toBeGreaterThan(rowTops.expectedTop);
@@ -171,3 +189,19 @@ for (const improvedBest of [false, true]) {
     await expect.poll(() => page.evaluate(() => (window as any).__wallTonesDebug.wrongHitRowVisible)).toBe(false);
   });
 }
+
+test('game-over wrong-hit ordering predicate rejects while the popup layout is invalid', async ({ page }) => {
+  await bootFeedbackGame(page, false);
+  // Inject a miss without replaying rounds; the Game Over popup stays closed.
+  await page.evaluate(() => {
+    (window as any).__wallTonesDebug.debugSetWrongHit({ hit: 1, expected: 0, preceding: [], truncated: false });
+  });
+  // The popup row sits inside the still-hidden Game Over popup, so its Yoga
+  // nodes have no computed layout: the ordering predicate must be false and
+  // stay false - a bounded poll rejects rather than passing vacuously.
+  const raw = await page.evaluate(() => (window as any).__wallTonesDebug.wrongHitPopupRowTops);
+  expect(raw == null || raw.hitTop <= raw.expectedTop || Math.abs(raw.hitLeft - raw.expectedLeft) > 1).toBe(true);
+  await expect(
+    expect.poll(() => popupRowOrderingValid(page), { timeout: 1000 }).toBe(true),
+  ).rejects.toThrow();
+});
