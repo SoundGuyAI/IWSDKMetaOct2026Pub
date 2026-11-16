@@ -123,3 +123,9 @@ Armband verification update (Nov 13): typecheck/build and 102 unit tests pass. Q
 - Four recordings: Puck/Laomedeia narrator and opposite-gender Kore/Algenib Cypher. Embedded MP3s keep the code and assets atomic. Exact transcript checked.
 - On Lab entry: narrator welcome, radio open, Cypher nudge, radio close. Leaving Lab cancels the queue. Existing voices-off/subtitle settings apply.
 - Local typecheck, build and 114 unit tests pass. Real-click entry plus both cast sequences pass. Full local regression suite and fresh merge-ready CI still required before merge. Expanded version needs owner preview review.
+
+## Store scroll selection regression - 2026-11-16
+- [x] Reproduce the failure with a two-pixel touch-ray movement.
+- [x] Restore small-movement taps on release while ignoring duplicate clicks; keep repeated drags scrolling without selection.
+- [ ] Full local/CI checks and deployed preview verification.
+- [ ] Owner headset retest, including tile details and Buy after repeated up/up/down drags. No merge approval. PR95 unchanged.
