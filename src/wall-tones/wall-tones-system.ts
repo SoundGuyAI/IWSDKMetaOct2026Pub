@@ -7,7 +7,9 @@ import { shouldAnnounceRecord } from './record-feedback.js';
 import { BarFloatPool } from './bar-floats.js';
 import { AchievementCelebration } from './achievement-celebration.js';
 import { achievementIconSrc, achievementTileSrc } from './achievement-icons.js';
-import { hearingSubtitlesEnabled, colorNamesEnabled, currentSpokenCaption, voicesOffEnabled } from './accessibility.js';
+import { hearingSubtitlesEnabled, colorNamesEnabled, currentSpokenCaption, voicesOffEnabled, gazePinchMode } from './accessibility.js';
+import { GAZE_SOURCE_EVENT, classifyGazeSource, type GazeSourceStatus } from './gaze-source.js';
+import { MovementTracker, formatMetersNumber, movementUiVisible, readLifetimeMovementMeters } from './movement.js';
 import {
 ConeGeometry,
 Matrix4,
@@ -87,6 +89,8 @@ TOUCH_PRESS_DEPTH_M,
 TOUCH_PRESS_SCALE,
 TOUCH_TIP_GRIP_MAX_M,
 WALL_TONE_PADS,
+WRONG_HIT_HISTORY_MAX,
+WRONG_HIT_ROW_NOTES,
 WRONG_RESET_DELAY_S,
 type WallTonePadId,
 } from './constants.js';
@@ -186,6 +190,13 @@ return eco;
 /** Stable hand order — never allocate per XR frame. */
 const XR_HANDS = ['right', 'left'] as const;
 
+/** Reconcile cache for a missed-hit square row (panel info row / Game Over popup). */
+type WrongHitRowCache = {
+row: UIKit.Container | null;
+key: string;
+children: (UIKit.Container | UIKit.Text)[];
+};
+
 const FLAT_BACKDROP_NODE_IDS = [
 'studio-floor',
 'stage',
@@ -233,6 +244,14 @@ gameOverNewRun: () => void;
 idleReplaySpent: boolean;
 /** Status line text currently shown (test-only). */
 statusLineText: string;
+wrongHitRowVisible: boolean;
+wrongHitPreceding: number[] | null;
+wrongHitExpected: number | null;
+wrongHitHit: number | null;
+wrongHitTruncated: boolean;
+debugSetWrongHit(state: { hit: number; expected: number; preceding: number[]; truncated: boolean }): void;
+wrongHitPopupRowTops: { expectedTop: number; hitTop: number; expectedLeft: number; hitLeft: number } | null;
+wrongHitPopupDebugLayout: { index: number; kind: string; text?: string; layout?: { top: number; left: number; width: number; height: number } }[];
 sequenceRowVisible: boolean;
 controlRowVisible: boolean;
 autoplayRowOpacity: number;
@@ -255,6 +274,11 @@ celebrationText: string | null;
 celebrationSfxPlays: number;
 infoRowVisible: boolean;
 scoreInfoVisible: boolean;
+/** Backlog 30 research bridge: menu line visibility + tracker readings. */
+movementRowVisible: boolean;
+movementSessionHeadMeters: number;
+movementSessionPadMeters: number;
+movementLifetimeMeters: number;
 gameExplanationDisplay: unknown;
 scoringUiDisplays: Record<string, string | null>;
 toggleStore: () => void;
@@ -385,6 +409,16 @@ this.speech.speak('chooseMode');
 
 private readonly game = new WallTonesSequence();
 private readonly economy = withDemoBarsFlag(new WallTonesEconomy());
+/** Backlog 30 research: MR headset-movement + pad-reach estimates. Session
+ * values show on the menu's movement line (MR only); lifetime totals feed
+ * the provisional Movement achievement. */
+private readonly movement = new MovementTracker();
+private movementRowHeadDm = -1;
+private movementRowPadDm = -1;
+private movementRowTotalDm = -1;
+private movementAchvWholeMeters = -1;
+/** Last display state pushed to the menu movement row, exposed for e2e. */
+public lastMovementRowVisible = false;
 private storeOpen = false;
 private achievementsOpen = false;
 /** Game Over popup shown after a wrong note; New run starts the next run. */
@@ -520,8 +554,15 @@ const panel = this.sequenceIconPendingPanel;
 if (panel) this.reconcileSequenceIcons(panel);
 };
 private accessibilityPanel: UIKitMLAsset | undefined;
-private accessibilityState: { show: boolean; flat: boolean; active: boolean; caption: string; phase: string; flow: string; status: string; names: boolean; sequence: number[]; reveal: number; shown: number; listen: boolean } | undefined;
+private accessibilityState: { show: boolean; flat: boolean; active: boolean; caption: string; phase: string; flow: string; status: string; names: boolean; sequence: number[]; reveal: number; shown: number; listen: boolean; wrong: string } | undefined;
 private sequenceIconRow: UIKit.Container | null = null;
+/** Item 75 follow-up (owner 2026-11-15): a missed hit is shown as color
+ * squares instead of color words - up to the last 10 notes leading up to the
+ * miss, then Expected:/Hit: with their squares. */
+private wrongHit: { hit: number; expected: number; preceding: number[]; truncated: boolean } | null = null;
+private readonly wrongHitPanelCache: WrongHitRowCache = { row: null, key: '', children: [] };
+private readonly wrongHitPopupCache: WrongHitRowCache = { row: null, key: '', children: [] };
+private lastWrongHitRowVisible = false;
 /** Setup HUD is world-anchored; look-away past a threshold re-snaps it. */
 private panelWorldAnchored = false;
 private panelSnapActive = false;
@@ -535,6 +576,11 @@ private readonly panelDragSkipHands = new Set<string>();
 private readonly panelDragActiveHands = new Set<string>();
 private readonly rayPressLatched = new Set<number>();
 private readonly gazeSelectLatched = new Set<string>();
+// Native eye-gaze mode (experimental) source watch state.
+private gazeSourceStatus: GazeSourceStatus | null = null;
+private gazeSourceWatchElapsed = 0;
+private gazeSourceMaxSeparationDeg = 0;
+private gazeSourceLastSampleAt = 0;
 /** Last time a drag ended; briefly suppresses the ray dodge at the drop point. */
 private panelDragDoneAt = 0;
 private blinkCuePad: PadRuntime | null = null;
@@ -587,8 +633,13 @@ const onAccessibilityChange = () => {
 if (voicesOffEnabled()) {
 this.speech.cancel();
 }
+this.applyGazePinchMode();
 };
 window.addEventListener('wall-tones-accessibility-change', onAccessibilityChange);
+// Backlog 77+79: GazeSystem.init flips gazeEnabled on at startup (the
+// project config requests gazeTracking). Default the native pipeline OFF
+// unless the player explicitly chose the experimental native mode.
+this.applyGazePinchMode();
 this.wasNonImmersive =
 this.world.visibilityState.peek() === VisibilityState.NonImmersive;
 this.cleanupFuncs.push(
@@ -670,6 +721,10 @@ this.speech.speak('lookAround');
 update(delta: number): void {
 this.updateAccessibilityCaptions();
 this.tickHeadCaption();
+// Backlog 30 research sampling runs before the experience-active gate so
+// walking in the MR menus counts in the session estimate too.
+this.tickMovementTracking();
+this.tickGazeSourceWatch();
 if (!this.experienceActive) {
 return;
 }
@@ -1724,6 +1779,56 @@ get statusLineText() {
 return String(system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel')
 ?.getElementById('wall-tones-status')?.properties.peek().text ?? '');
 },
+get wrongHitRowVisible() {
+return system.lastWrongHitRowVisible;
+},
+get wrongHitPreceding() {
+return system.wrongHit == null ? null : [...system.wrongHit.preceding];
+},
+get wrongHitExpected() {
+return system.wrongHit?.expected ?? null;
+},
+get wrongHitHit() {
+return system.wrongHit?.hit ?? null;
+},
+get wrongHitTruncated() {
+return system.wrongHit?.truncated ?? false;
+},
+// Test-only: replace the captured miss state so truncation rendering is
+// exercisable without replaying 11 rounds.
+debugSetWrongHit(state: { hit: number; expected: number; preceding: number[]; truncated: boolean }) {
+system.wrongHit = state;
+// renderPanel is event-driven, so push a render for the injected state to
+// become visible without waiting for the next game event.
+(system as unknown as { renderPanel(): void }).renderPanel();
+},
+// Yoga-computed positions inside the Game Over wrong-hit row (test-only):
+// proves the Hit row sits on its own line below the Expected row, both
+// sharing a left edge (owner 2026-11-15 19:01). null until laid out.
+get wrongHitPopupRowTops() {
+const cache = system.wrongHitPopupCache;
+const expectedLabelIndex = 0;
+const hitLabelIndex = WRONG_HIT_ROW_NOTES * 2 + 3;
+if (cache.children.length <= hitLabelIndex) return null;
+const layoutOf = (child: unknown): { top: number; left: number } | null => {
+const yoga = (child as { node?: Record<string, { getComputedLayout?: () => { top: number; left: number } }> } | undefined)?.node?.['yogaNode'];
+const layout = yoga?.getComputedLayout?.();
+return layout == null ? null : { top: layout.top, left: layout.left };
+};
+const expectedLayout = layoutOf(cache.children[expectedLabelIndex]);
+const hitLayout = layoutOf(cache.children[hitLabelIndex]);
+return expectedLayout == null || hitLayout == null
+? null
+: { expectedTop: expectedLayout.top, hitTop: hitLayout.top, expectedLeft: expectedLayout.left, hitLeft: hitLayout.left };
+},
+get wrongHitPopupDebugLayout() {
+const cache = system.wrongHitPopupCache;
+return cache.children.map((child, index) => {
+const yoga = (child as unknown as { node?: Record<string, { getComputedLayout?: () => { top: number; left: number; width: number; height: number } }>; text?: string })?.node?.['yogaNode'];
+const layout = yoga?.getComputedLayout?.();
+return { index, kind: system.wrongHitChildKind(index), text: (child as unknown as { text?: string }).text, layout };
+});
+},
 get sequenceRowVisible() {
 return system.lastSequenceRowVisible;
 },
@@ -1813,6 +1918,18 @@ return system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel')
 },
 get scoreInfoVisible() {
 return system.lastScoreInfoVisible;
+},
+get movementRowVisible() {
+return system.lastMovementRowVisible;
+},
+get movementSessionHeadMeters() {
+return system.movement.getSessionHeadMeters();
+},
+get movementSessionPadMeters() {
+return system.movement.getSessionPadMeters();
+},
+get movementLifetimeMeters() {
+return readLifetimeMovementMeters();
 },
 get scoringUiDisplays() {
 const panel = system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
@@ -2914,6 +3031,8 @@ private clearPads(): void {
 disposePadRuntimes(this.pads);
 this.ghostPad?.entity.dispose({ disposeResources: true });
 this.ghostPad = null;
+// Backlog 30 research: a new layout means the old pad-reach anchor is stale.
+this.movement.resetPadAnchor();
 }
 
 /**
@@ -3241,7 +3360,7 @@ enter >= TOUCH_ENTER_FRAMES
 pad.fingerInside = true;
 pad.pointerArmed = false;
 pad.pressCooldownUntil = now + TOUCH_PRESS_COOLDOWN_S;
-this.handlePadInput(pad.padIndex);
+this.handlePadInput(pad.padIndex, true);
 }
 this.syncPadProximityVisual(pad, now);
 }
@@ -3287,6 +3406,17 @@ this.handlePadInput(pad.padIndex);
 // (b) Gaze: a head-forward ray against the pads, committed by a pinch from
 // either hand. A pinch aimed at the panel, or one whose hand ray already
 // rests on a pad, belongs to that target instead.
+// Backlog 79: the gaze path is optional (Settings > Accessibility, default
+// off 2026-11-15): head-direction hover read as wrong selection and any
+// pinch could commit the pad under the head ray (bug 77). Hand-ray (a) and
+// fingertip input are unaffected by the setting.
+// Backlog 77+79 native mode: this custom head reader runs ONLY in the
+// explicit "head" mode. The experimental "native" mode uses the IWSDK
+// GazeSystem pipeline instead - never a silent fallback to this path.
+if (gazePinchMode() !== 'head') {
+this.gazeSelectLatched.clear();
+return;
+}
 const gazePad = this.findGazeHoveredPad();
 if (gazePad != null && !gazePad.hoverInside) {
 gazePad.hoverInside = true;
@@ -3340,6 +3470,120 @@ return this.findPadAlongRay();
 }
 
 // Closest play pad under the head-forward gaze ray, or null.
+/**
+ * Backlog 77+79: apply the Settings gaze+pinch mode. "native" enables the
+ * IWSDK GazeSystem pipeline (GazeSystem.init turned it on at startup
+ * because the project config requests gazeTracking); every other mode
+ * keeps it off so native gaze never silently replaces the head path or
+ * the ordinary hand rays.
+ */
+private applyGazePinchMode(): void {
+this.input.xr.gazeEnabled = gazePinchMode() === 'native';
+if (gazePinchMode() !== 'native') {
+this.setGazeSourceStatus(null);
+}
+}
+
+/**
+ * While the experimental native mode is on, sample the WebXR gaze input
+ * source and report what the headset really supplies (GAZE_SOURCE_EVENT):
+ * no session, no gaze source, head-directed stand-in, or real eye
+ * tracking (the gaze ray separates from the head ray). Throttled to 4 Hz.
+ */
+private tickGazeSourceWatch(): void {
+if (gazePinchMode() !== 'native') {
+return;
+}
+const now = performance.now();
+if (now - this.gazeSourceLastSampleAt < 250) {
+return;
+}
+this.gazeSourceLastSampleAt = now;
+const xr = this.world.renderer.xr;
+const inSession = xr.isPresenting === true;
+let hasGazeSource = false;
+if (inSession) {
+const session = xr.getSession();
+const sources = session?.inputSources ?? [];
+for (let i = 0; i < sources.length; i += 1) {
+if (sources[i]?.targetRayMode === 'gaze') {
+hasGazeSource = true;
+break;
+}
+}
+if (hasGazeSource) {
+this.gazeSourceWatchElapsed += 0.25;
+this.sampleGazeHeadSeparation(session!, sources);
+}
+} else {
+this.gazeSourceWatchElapsed = 0;
+this.gazeSourceMaxSeparationDeg = 0;
+}
+this.setGazeSourceStatus(
+classifyGazeSource(
+hasGazeSource,
+inSession,
+this.gazeSourceMaxSeparationDeg,
+this.gazeSourceWatchElapsed,
+),
+);
+}
+
+/** Compare the raw gaze ray direction with the head (viewer) forward. */
+private sampleGazeHeadSeparation(
+session: XRSession,
+sources: XRInputSourceArray | readonly XRInputSource[],
+): void {
+const xr = this.world.renderer.xr;
+const frame = xr.getFrame?.();
+const refSpace = xr.getReferenceSpace?.();
+if (frame == null || refSpace == null) {
+return;
+}
+let gazeSource: XRInputSource | undefined;
+for (let i = 0; i < sources.length; i += 1) {
+if (sources[i]?.targetRayMode === 'gaze') {
+gazeSource = sources[i];
+break;
+}
+}
+if (gazeSource == null) {
+return;
+}
+const gazePose = frame.getPose(gazeSource.targetRaySpace, refSpace);
+const viewerPose = frame.getViewerPose(refSpace);
+const view = viewerPose?.views[0];
+if (gazePose == null || view == null) {
+return;
+}
+const g = gazePose.transform.orientation;
+const h = view.transform.orientation;
+this.tipLocal.set(0, 0, -1);
+this.tipScratch.set(0, 0, -1);
+const gazeDir = this.tipLocal
+.applyQuaternion(this.headQuat.set(g.x, g.y, g.z, g.w))
+.clone();
+const headDir = this.tipScratch
+.applyQuaternion(this.headQuat.set(h.x, h.y, h.z, h.w))
+.clone();
+const dot = Math.min(1, Math.max(-1, gazeDir.dot(headDir)));
+const angleDeg = (Math.acos(dot) * 180) / Math.PI;
+if (angleDeg > this.gazeSourceMaxSeparationDeg) {
+this.gazeSourceMaxSeparationDeg = angleDeg;
+}
+void session;
+}
+
+private setGazeSourceStatus(status: GazeSourceStatus | null): void {
+if (this.gazeSourceStatus === status) {
+return;
+}
+this.gazeSourceStatus = status;
+if (status != null) {
+window.dispatchEvent(new CustomEvent(GAZE_SOURCE_EVENT, { detail: status }));
+}
+}
+
 private findGazeHoveredPad(): PadRuntime | null {
 this.player.head.getWorldPosition(this.rayOrigin);
 this.player.head.getWorldQuaternion(this.headQuat);
@@ -3656,7 +3900,7 @@ this.blinkCueRoot.quaternion.setFromUnitVectors(this.handUp, this.toPanel);
 this.blinkCueRoot.visible = true;
 }
 
-private handlePadInput(padIndex: number): void {
+private handlePadInput(padIndex: number, physicalTouch = false): void {
 if (this.flatAwaitingStart && this.useDesktopPath()) {
 void this.startFlatPlayFromPad(padIndex);
 return;
@@ -3688,11 +3932,19 @@ void playPadTone(padIndex);
 window.setTimeout(() => flashPad(pad, false), 350);
 }
 if (padIndex !== expected) {
-void this.onWrongInput();
+void this.onWrongInput(padIndex, expected);
 return;
 }
 // Any instruction still finishing is obsolete once a correct pad is hit.
 this.speech.cancel();
+// Backlog 30 research: pad-reach estimate between correct presses (MR only;
+// flat pads are a fixed on-screen grid, not a reach). Physical fingertip
+// touches only: ray, gaze and pinch presses are far input, the hand never
+// travelled to the pad, so they add no reach (Quest feedback Nov 14).
+if (pad != null && physicalTouch) {
+pad.root.getWorldPosition(this.padWorldPos);
+this.movement.noteCorrectPadPress(this.padWorldPos.x, this.padWorldPos.y, this.padWorldPos.z, !this.isFlatView());
+}
 const previousBest = this.game.bestStreak;
 const completed = this.game.onCorrectInput();
 if (this.game.bestStreak > previousBest) {
@@ -3922,12 +4174,7 @@ this.welcomeSpoken = true;
 this.beginRoundWithIntro(leadIn);
 }
 
-/** Praise a failed run only if it beat the best from before that run. */
-private runEarnedCheer(): boolean {
-return this.game.runImprovedBest;
-}
-
-private async onWrongInput(): Promise<void> {
+private async onWrongInput(hit: number, expected: number): Promise<void> {
 this.setCypherSeam(false);
 this.firstRun = false;
 this.roundBarsEarned = 0;
@@ -3938,17 +4185,34 @@ this.barsFirstEarnedPending = false;
 this.hideRoundBarsCard();
 this.game.phase = 'resetting';
 this.inputNeedsClear = true;
-const cheer = this.runEarnedCheer();
-await playErrorTone();
-this.statusText = 'Try again';
+// Capture the actual mismatch before any reset, shown as color squares (owner
+// 2026-11-15: squares instead of words; two stacked lines - Expected above
+// Hit, each up to WRONG_HIT_ROW_NOTES notes with the final position
+// differing, e.g. right RRRBG vs played RRRBY - that do not grow the panel;
+// the pattern row stays hidden after a failure) in the info row and Game Over
+// popup, even without a purchased hint or subtitles (item 75). The status text
+// element stays blank while the rows show.
+const missStep = this.game.inputStep;
+this.wrongHit = {
+hit,
+expected,
+preceding: this.game.sequence.slice(Math.max(0, missStep - WRONG_HIT_HISTORY_MAX), missStep),
+// Owner 2026-11-15 18:35: the pattern (history) row is no longer displayed
+// after a failure; the state still keeps the last 10 notes so the comparison
+// row can show its 4-note lead-in.
+truncated: missStep > WRONG_HIT_HISTORY_MAX,
+};
+this.statusText = '';
 this.renderPanel();
+this.speech.cancel();
+await playErrorTone();
 // Codex P2: a wrong press can cross a Pad presses threshold; announce the
 // unlock on this path too, not only on the reward path.
 this.showAchievementToasts();
 this.playbackQueue = this.playbackQueue.then(async () => {
-await this.speech.speakAsync(
-cheer ? randomCheerClip() : randomWrongClip(),
-);
+// A personal best does not turn a missed note into a success (item 60a).
+// Keep the existing failure recordings; the full wording review is separate.
+await this.speech.speakAsync(randomWrongClip());
 await this.wait(WRONG_RESET_DELAY_S);
 if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
@@ -3958,7 +4222,7 @@ return;
 this.storeOpen = false;
 this.achievementsOpen = false;
 this.gameOverOpen = true;
-this.statusText = 'Game Over';
+// Keep hit-versus-expected visible while the Game Over popup is open.
 this.syncMenuPopupVisibility();
 this.renderGameOverSummary();
 this.renderPanel();
@@ -3967,6 +4231,7 @@ this.renderPanel();
 
 private renderGameOverSummary(): void {
 const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+if (panel) this.renderWrongHitRows(panel);
 panel
 ?.getElementById<UIKit.Text>('gameover-summary')
 ?.setProperties({
@@ -4033,8 +4298,10 @@ return;
 }
 this.gameOverOpen = false;
 this.syncMenuPopupVisibility();
+this.wrongHit = null;
 this.game.inputStep = 0;
 this.game.phase = 'playback';
+this.statusText = 'Replaying pattern...';
 this.idleReplayQueued = false;
 this.renderPanel();
 this.playbackQueue = this.playbackQueue.then(async () => {
@@ -4049,7 +4316,9 @@ return;
 }
 this.gameOverOpen = false;
 this.syncMenuPopupVisibility();
+this.wrongHit = null;
 this.game.onWrongInput();
+this.statusText = 'Get ready...';
 this.renderPanel();
 this.playbackQueue = this.playbackQueue.then(async () => {
 if (!this.experienceActive || this.flowPhase !== 'playing') {
@@ -4461,6 +4730,58 @@ await this.playSequence();
 });
 }
 
+/** Backlog 30 research: one headset sample per frame into the movement
+ * tracker, plus the change-keyed menu line refresh (per-frame text writes
+ * would re-layout the panel every frame). */
+private tickMovementTracking(): void {
+const immersive = !this.isFlatView();
+this.player.head.getWorldPosition(this.viewer);
+this.movement.noteHeadPosition(this.viewer.x, this.viewer.y, this.viewer.z, immersive, performance.now() / 1000);
+const headDm = Math.round(this.movement.getSessionHeadMeters() * 10);
+const padDm = Math.round(this.movement.getSessionPadMeters() * 10);
+const totalDm = Math.round((this.movement.getLifetimeHeadMeters() + this.movement.getLifetimePadMeters()) * 10);
+// Owner scoping (Nov 11): the movement line is MR-only and follows the
+// score rows' visibility (hidden during placement setup).
+const rowVisible = immersive && this.experienceActive && this.lastScoreInfoVisible;
+if (
+headDm !== this.movementRowHeadDm ||
+padDm !== this.movementRowPadDm ||
+totalDm !== this.movementRowTotalDm ||
+rowVisible !== this.lastMovementRowVisible
+) {
+this.movementRowHeadDm = headDm;
+this.movementRowPadDm = padDm;
+this.movementRowTotalDm = totalDm;
+this.lastMovementRowVisible = rowVisible;
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+panel?.getElementById('wall-tones-movement-row')?.setProperties({
+display: rowVisible ? 'flex' : 'none',
+});
+panel?.getElementById('wall-tones-movement-total-row')?.setProperties({
+display: rowVisible ? 'flex' : 'none',
+});
+if (rowVisible) {
+panel?.getElementById<UIKit.Text>('wall-tones-movement-head')?.setProperties({
+text: formatMetersNumber(headDm / 10),
+});
+panel?.getElementById<UIKit.Text>('wall-tones-movement-pad')?.setProperties({
+text: formatMetersNumber(padDm / 10),
+});
+panel?.getElementById<UIKit.Text>('wall-tones-movement-total')?.setProperties({
+text: formatMetersNumber(totalDm / 10),
+});
+}
+}
+// Movement thresholds can be crossed by walking between presses, so the
+// economy re-checks achievements on each new whole meter.
+const wholeMeters = Math.floor(this.movement.getLifetimeHeadMeters() + this.movement.getLifetimePadMeters());
+if (wholeMeters !== this.movementAchvWholeMeters) {
+this.movementAchvWholeMeters = wholeMeters;
+this.economy.noteExternalProgress(this.game.streak);
+this.showAchievementToasts();
+}
+}
+
 private renderPanel(): void {
 const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
 if (panel == null) {
@@ -4476,13 +4797,17 @@ panel
 .getElementById<UIKit.Text>('wall-tones-best-streak')
 ?.setProperties({ text: String(this.game.bestStreak) });
 this.renderSequenceIcons(panel);
+this.renderWrongHitRows(panel);
 // Owner ask 2026-11-12 11:40: the Listen/Hint titles stay hidden until the
 // matching store item is owned; a non-breaking space reserves the line so
-// the panel never shrinks.
+// the panel never shrinks. A missed hit blanks the line: the mismatch shows
+// as color squares in the wrong-hit row instead of words (owner 2026-11-15).
 panel
 .getElementById<UIKit.Text>('wall-tones-status')
 ?.setProperties({
-text: this.game.phase === 'input'
+text: this.wrongHitVisible()
+? '\u00a0'
+: this.game.phase === 'input'
 ? (performance.now() < this.idleNudgeUntil
 ? 'Still there?'
 : this.economy.getHintRevealCount() > 0
@@ -5262,6 +5587,7 @@ bars: 'Bars',
 score: 'Score',
 store: 'Store',
 presses: 'Presses',
+movement: 'Movement',
 secret: 'Secret',
 };
 // Details are a floating overlay on top of the grid, so the window keeps one
@@ -5338,7 +5664,13 @@ movement: 'achvMovement',
 };
 
 type TileCat = { id: string; label: string; description: string; levels: readonly number[]; hidden?: boolean; glyph?: string };
-const tileCats: TileCat[] = [...ACHIEVEMENT_CATEGORIES];
+const showMovement = movementUiVisible({
+immersive: this.world.visibilityState.peek() !== VisibilityState.NonImmersive,
+userAgent: typeof navigator === 'undefined' ? undefined : navigator.userAgent,
+});
+const tileCats: TileCat[] = showMovement
+? [...ACHIEVEMENT_CATEGORIES]
+: ACHIEVEMENT_CATEGORIES.filter((c) => c.id !== 'movement');
 if (demoParam === 'many') {
 const glyphs = ['streak', 'bars', 'store', 'presses', 'score', 'secret'];
 for (let i = 0; i < 6; i++) {
@@ -5892,6 +6224,116 @@ this.lastSequenceBoxesShown = shown;
 this.lastSequenceUnknownShown = unknownShown;
 }
 
+/** The missed-hit squares stay up from the miss until the run restarts. */
+private wrongHitVisible(): boolean {
+return this.wrongHit != null && (this.gameOverOpen || this.game.phase === 'resetting');
+}
+
+/** Reconcile both missed-hit square rows (panel info row + Game Over popup). */
+private renderWrongHitRows(panel: UIKitMLAsset): void {
+this.reconcileWrongHitRow(this.wrongHitPanelCache, panel, 'wall-tones-wronghit-row');
+this.reconcileWrongHitRow(this.wrongHitPopupCache, panel, 'gameover-wronghit-row');
+this.lastWrongHitRowVisible = this.wrongHitVisible();
+}
+
+/** Child kinds at fixed plan indices, identical for the panel info row and the
+ * Game Over popup. Owner 2026-11-15 19:01: two stacked lines that do not grow
+ * the panel - the pattern (history) row stays hidden after a failure, so the
+ * Expected and Hit lines fit in the freed space. Plan: Expected label, a
+ * leading ellipsis (owner 2026-11-15 23:23: a "..." prefix on each five-note
+ * row when earlier notes are hidden, so a long chain reads as a tail),
+ * up to WRONG_HIT_ROW_NOTES square/name pairs whose final square is the note
+ * the game expected, a full-width break, then the Hit label, its ellipsis,
+ * and pairs whose final square is the pad actually hit (right RRRBG vs
+ * played RRRBY). Fixed label width lines up the square columns of the two
+ * rows; the ellipsis is the same text in both rows, so alignment holds
+ * whether it shows or not. */
+private wrongHitChildKind(index: number): 'label' | 'square' | 'text' | 'break' {
+const hitBreak = WRONG_HIT_ROW_NOTES * 2 + 2;
+if (index === hitBreak) return 'break';
+if (index === 0 || index === hitBreak + 1) return 'label';
+const offset = index < hitBreak ? index - 2 : index - hitBreak - 3;
+return offset % 2 === 0 ? 'square' : 'text';
+}
+
+/** Children are created once in ascending index order so the row layout order
+ * always matches the fixed plan; later passes only update properties. */
+private wrongHitChild(
+cache: WrongHitRowCache,
+row: UIKit.Container,
+index: number,
+): UIKit.Container | UIKit.Text {
+while (cache.children.length <= index) {
+const index = cache.children.length;
+const kind = this.wrongHitChildKind(index);
+const child =
+kind === 'square'
+? new UIKit.Container({ width: 16, height: 16, borderRadius: 2, flexShrink: 0 })
+: kind === 'break'
+? new UIKit.Container({ width: '100%', height: 0, flexShrink: 0 })
+: kind === 'label'
+? // Fixed label width lines up the square columns of the two rows.
+new UIKit.Text({ fontSize: 15, color: 0xffffff, width: 72, flexShrink: 0 })
+: new UIKit.Text({ fontSize: 15, color: 0xffffff });
+row.add(child);
+cache.children.push(child);
+}
+return cache.children[index]!;
+}
+
+private reconcileWrongHitRow(
+cache: WrongHitRowCache,
+panel: UIKitMLAsset,
+rowId: string,
+): void {
+const row = panel.getElementById<UIKit.Container>(rowId);
+if (row == null) return;
+const wrong = this.wrongHitVisible() ? this.wrongHit : null;
+const names = colorNamesEnabled();
+const key =
+wrong == null
+? 'hidden'
+: `${wrong.preceding.join(',')}|${wrong.expected}|${wrong.hit}|${wrong.truncated ? 1 : 0}|${names ? 1 : 0}`;
+if (cache.row === row && cache.key === key) return;
+if (cache.row !== row) {
+cache.row = row;
+cache.children.length = 0;
+}
+cache.key = key;
+row.setProperties({ display: wrong != null ? 'flex' : 'none' });
+const leadIn = wrong ? wrong.preceding.slice(-(WRONG_HIT_ROW_NOTES - 1)) : [];
+// Owner 2026-11-15 23:23: when the captured chain has more notes than the
+// row shows, a leading "..." marks it as the tail of a longer run.
+const tail = wrong != null && wrong.preceding.length > WRONG_HIT_ROW_NOTES - 1;
+const hitBreak = WRONG_HIT_ROW_NOTES * 2 + 2;
+this.wrongHitChild(cache, row, hitBreak);
+const groups = [
+{ label: 0, dots: 1, pairs: 2, text: 'Expected:', finalId: wrong?.expected },
+{ label: hitBreak + 1, dots: hitBreak + 2, pairs: hitBreak + 3, text: 'Hit:', finalId: wrong?.hit },
+];
+for (const plan of groups) {
+this.wrongHitChild(cache, row, plan.label).setProperties({
+display: wrong == null ? 'none' : 'flex',
+text: plan.text,
+});
+this.wrongHitChild(cache, row, plan.dots).setProperties({
+display: tail ? 'flex' : 'none',
+text: '...',
+});
+for (let i = 0; i < WRONG_HIT_ROW_NOTES; i++) {
+const id = i < WRONG_HIT_ROW_NOTES - 1 ? leadIn[i] : plan.finalId;
+this.wrongHitChild(cache, row, plan.pairs + i * 2).setProperties({
+display: id == null ? 'none' : 'flex',
+backgroundColor: id == null ? 0 : WALL_TONE_PADS[id].color,
+});
+this.wrongHitChild(cache, row, plan.pairs + i * 2 + 1).setProperties({
+display: id != null && names ? 'flex' : 'none',
+text: id == null ? '' : WALL_TONE_PADS[id].name,
+});
+}
+}
+}
+
 private trackFlatLayout(value: number): void {
 const i = this.flatLayoutCursor++;
 if (this.flatLayoutValues[i] !== value) {
@@ -5984,17 +6426,21 @@ for (let i = 0; i < this.game.sequence.length; i++) {
 if (previous.sequence[i] !== this.game.sequence[i]) { sequenceChanged = true; break; }
 }
 }
+const wrongKey = this.wrongHit == null
+? ''
+: `${this.wrongHit.preceding.join(',')}|${this.wrongHit.expected}|${this.wrongHit.hit}|${this.wrongHit.truncated ? 1 : 0}`;
 const accessibilityChanged = this.accessibilityPanel !== panel || !previous ||
 previous.show !== show || previous.flat !== flat ||
 previous.active !== this.experienceActive || previous.caption !== caption ||
 previous.phase !== this.game.phase || previous.flow !== this.flowPhase || previous.status !== this.statusText ||
 previous.names !== names || previous.reveal !== this.economy.getHintRevealCount() ||
-previous.shown !== this.playbackShownCount || previous.listen !== this.economy.ownsListen() || sequenceChanged;
+previous.shown !== this.playbackShownCount || previous.listen !== this.economy.ownsListen() ||
+previous.wrong !== wrongKey || sequenceChanged;
 if (accessibilityChanged) {
 this.accessibilityPanel = panel;
 this.accessibilityState = { show, flat, active: this.experienceActive, caption,
 phase: this.game.phase, flow: this.flowPhase, status: this.statusText, names, sequence: [...this.game.sequence],
-reveal: this.economy.getHintRevealCount(), shown: this.playbackShownCount, listen: this.economy.ownsListen() };
+reveal: this.economy.getHintRevealCount(), shown: this.playbackShownCount, listen: this.economy.ownsListen(), wrong: wrongKey };
 if (panel && this.experienceActive) this.renderSequenceIcons(panel);
 // Bug fix (user report): the info row holds the Your Turn hint boxes; it
 // used to be hidden unless subtitles were on AND the session was immersive,
@@ -6085,8 +6531,12 @@ const seqVisible = this.experienceActive &&
 ((captionListening && this.economy.ownsListen()) ||
 (this.game.phase === 'input' && captionReveal > 0));
 // Same owner ask as the panel status: no Listen/Hint title before purchase;
-// the blank line keeps the strip height unchanged.
-const info = !this.experienceActive
+// the blank line keeps the strip height unchanged. A missed hit blanks the
+// label: the mismatch shows as color squares instead of words (owner 2026-11-15).
+const captionWrong = this.wrongHitVisible() ? this.wrongHit : null;
+const info = captionWrong != null
+? '\u00a0'
+: !this.experienceActive
 ? ''
 : this.game.phase === 'input'
 ? (captionReveal > 0 ? 'Hint:' : '\u00a0')
@@ -6098,6 +6548,50 @@ this.flatCaptions.replaceChildren();
 const line = document.createElement('div');
 Object.assign(line.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexWrap: 'wrap' });
 const label = document.createElement('span'); label.textContent = info; line.append(label);
+if (captionWrong) {
+// Owner 2026-11-15 19:01: two stacked lines that do not grow the panel - the
+// right pattern (Expected) above what was played (Hit), each up to
+// WRONG_HIT_ROW_NOTES notes with the final one differing (e.g. RRRBG vs
+// RRRBY). The pattern (history) row stays hidden after a failure.
+const namesOn = colorNamesEnabled();
+const leadIn = captionWrong.preceding.slice(-(WRONG_HIT_ROW_NOTES - 1));
+// Owner 2026-11-15 23:23: a leading "..." on each row when the captured
+// chain has more notes than the row shows, marking it as a tail.
+const tailHidden = captionWrong.preceding.length > WRONG_HIT_ROW_NOTES - 1;
+const appendSquares = (rowEl: HTMLElement, ids: number[]) => {
+for (const id of ids) {
+const square = document.createElement('span');
+Object.assign(square.style, { width: '16px', height: '16px', borderRadius: '2px', background: `#${WALL_TONE_PADS[id].color.toString(16).padStart(6, '0')}`, display: 'inline-block', flexShrink: '0' });
+square.setAttribute('aria-label', WALL_TONE_PADS[id].name);
+square.setAttribute('data-wronghit', '1');
+rowEl.append(square);
+if (namesOn) {
+const word = document.createElement('span');
+word.textContent = WALL_TONE_PADS[id].name;
+rowEl.append(word);
+}
+}
+};
+const appendGroup = (labelText: string, finalId: number, rowName: string) => {
+const group = document.createElement('div');
+Object.assign(group.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexBasis: '100%' });
+group.setAttribute('data-wronghit-row', rowName);
+const groupLabel = document.createElement('span');
+Object.assign(groupLabel.style, { display: 'inline-block', width: '72px', textAlign: 'left' });
+groupLabel.textContent = labelText;
+group.append(groupLabel);
+if (tailHidden) {
+const dots = document.createElement('span');
+dots.textContent = '...';
+dots.setAttribute('data-wronghit-tail', '1');
+group.append(dots);
+}
+appendSquares(group, [...leadIn, finalId]);
+line.append(group);
+};
+appendGroup('Expected:', captionWrong.expected, 'expected');
+appendGroup('Hit:', captionWrong.hit, 'hit');
+}
 if (seqVisible) for (let i = 0; i < this.game.sequence.length; i++) {
 if (captionListening && i >= this.playbackShownCount) break;
 const unknown = captionYourTurn && i >= captionReveal;
