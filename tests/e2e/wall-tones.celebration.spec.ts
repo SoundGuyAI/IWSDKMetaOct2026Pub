@@ -249,14 +249,79 @@ test.describe('Wall Tones achievement unlock celebration (item 54)', () => {
   test('a Movement unlock celebration shows the drawn glyph (the category has no PNG art)', async ({
     page,
   }) => {
+    test.slow();
     await abortSpeech(page);
     // Seed lifetime movement past the first Movement threshold (10 m); the
     // economy's boot-time achievement check then queues Movement 10. Custom
     // boot instead of bootWallTones: the seed must survive the storage clear.
+    //
+    // The show fires DURING boot: its clock advances by frame delta, so on a
+    // loaded CI runner one slow frame (delta >= show duration) plays it start
+    // to finish before the debug bridge even exists - a post-boot poll of the
+    // live overlay can then never observe it (PR75 union-tree CI flake, Nov
+    // 16). Record the real show from before the page scripts run instead, and
+    // assert the durable unlock plus the recorded overlay facts.
     await page.addInitScript(() => {
       window.sessionStorage.setItem('iwsdk-experience-mode', 'walltones');
       window.localStorage.clear();
       window.localStorage.setItem('wall-tones-move-head-m', '12');
+      const seen = { title: false, name: false, glyphLoaded: false };
+      (
+        window as unknown as { __movementCelebrationSeen: typeof seen }
+      ).__movementCelebrationSeen = seen;
+      const inspect = (overlay: Element): void => {
+        // The title is one span per letter; the space glyph can be a
+        // non-breaking space, so match it with \s+.
+        if (/ACHIEVEMENT\s+UNLOCKED/.test(overlay.textContent ?? '')) {
+          seen.title = true;
+        }
+        if (
+          overlay.querySelector('.wt-achv-name')?.textContent?.trim() ===
+          'Movement 10'
+        ) {
+          seen.name = true;
+        }
+        // Regression (owner report, Nov 15): the badge disc stayed empty
+        // because Movement has no embedded PNG art; it must show the drawn
+        // glyph, really loaded (naturalWidth > 0), not a broken image.
+        const img = overlay.querySelector<HTMLImageElement>(
+          '.wt-achv-badge-disc img',
+        );
+        if (img != null) {
+          if (img.naturalWidth > 0) {
+            seen.glyphLoaded = true;
+          } else {
+            img.addEventListener(
+              'load',
+              () => {
+                seen.glyphLoaded = true;
+              },
+              { once: true },
+            );
+          }
+        }
+      };
+      new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+          for (const node of mutation.addedNodes) {
+            if (!(node instanceof Element)) continue;
+            // The whole overlay (title letters, name, badge img) is built
+            // synchronously and appended once, so addedNodes carry every
+            // fact even when a same-frame teardown detaches it again.
+            if (node.classList.contains('wt-achv-celebration')) {
+              inspect(node);
+            } else {
+              const overlay = node.querySelector('.wt-achv-celebration');
+              if (overlay != null) inspect(overlay);
+            }
+          }
+        }
+        // Observe the Document itself: an init script runs before
+        // document.documentElement exists.
+      }).observe(document, {
+        childList: true,
+        subtree: true,
+      });
     });
     await page.goto('/');
     await page.waitForFunction(
@@ -268,30 +333,48 @@ test.describe('Wall Tones achievement unlock celebration (item 54)', () => {
       { timeout: 60_000 },
     );
 
+    // Durable proof the boot-time achievement check fired from the seed.
     await expect
-      .poll(async () => (await readCelebration(page)).celebrationText, {
-        timeout: 15_000,
-      })
-      .toBe('ACHIEVEMENT UNLOCKED|Movement 10');
-
-    const overlay = page.locator('.wt-achv-celebration');
-    await expect(overlay).toBeVisible();
-    await expect(overlay.locator('.wt-achv-name')).toHaveText('Movement 10');
-    // Regression (owner report, Nov 15): the badge disc stayed empty because
-    // Movement has no embedded PNG art; it must show the drawn glyph, really
-    // loaded (naturalWidth > 0), not a broken image.
-    const icon = overlay.locator('.wt-achv-badge-disc img');
-    await expect(icon).toBeAttached();
-    await expect
-      .poll(async () =>
-        icon.evaluate((el) => (el as HTMLImageElement).naturalWidth),
+      .poll(
+        async () =>
+          page.evaluate(
+            () =>
+              (
+                window as unknown as {
+                  __wallTonesDebug: { unlockedAchievements: string[] };
+                }
+              ).__wallTonesDebug.unlockedAchievements,
+          ),
+        { timeout: 30_000 },
       )
-      .toBeGreaterThan(0);
+      .toContain('movement-10');
+
+    // The recorded show: the title, the achievement name and the drawn glyph
+    // really loaded - every fact the live-overlay assertions checked, without
+    // the boot-timing observation window.
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(
+            () =>
+              (
+                window as unknown as {
+                  __movementCelebrationSeen: {
+                    title: boolean;
+                    name: boolean;
+                    glyphLoaded: boolean;
+                  };
+                }
+              ).__movementCelebrationSeen,
+          ),
+        { timeout: 30_000 },
+      )
+      .toEqual({ title: true, name: true, glyphLoaded: true });
 
     // The show completes and the queue empties.
     await expect
       .poll(async () => (await readCelebration(page)).celebrationActive, {
-        timeout: 15_000,
+        timeout: 30_000,
       })
       .toBe(false);
     await expect(page.locator('.wt-achv-celebration')).toHaveCount(0);
