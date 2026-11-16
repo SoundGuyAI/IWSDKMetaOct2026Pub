@@ -332,8 +332,11 @@
       <ButtonLabel>Speed</ButtonLabel>
     </Button>
     <Button id="control-multiplier-button" class="button control-button" size="sm">
-      <ButtonIcon><Zap></Zap></ButtonIcon>
-      <ButtonLabel>X2</ButtonLabel>
+      <div class="autoplay-icon-wrap">
+        <ButtonIcon><Zap></Zap></ButtonIcon>
+        <div id="control-multiplier-slash" class="autoplay-slash" style="display: none"> </div>
+      </div>
+      <ButtonLabel id="control-multiplier-label">X2</ButtonLabel>
     </Button>
   </div>
   <Button id="skip-voice-button" class="button" style="display: none">
