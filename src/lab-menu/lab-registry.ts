@@ -20,7 +20,7 @@ export interface LabEntry {
 }
 
 export const LAB_ENTRIES: readonly LabEntry[] = [
-  { id: 'nod', label: 'Nod Yes/No Lab', available: false },
+  { id: 'nod', label: 'Nod Yes/No Lab', mode: 'nodlab', available: true },
   // Rift Sealing Lab connects itself here (feature-PR one-liner, see header).
   { id: 'rift', label: 'Rift Sealing Lab', mode: 'riftlab', available: true },
   { id: 'thumbs', label: 'Thumbs Yes/No Lab', mode: 'thumbslab', available: true },

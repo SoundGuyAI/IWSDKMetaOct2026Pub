@@ -28,7 +28,7 @@ Generation/publish route: the established chunk + `decode-voice-clips`
 workflow (see the story clips). The tar for lab clips must extract into
 `public/audio/speech/cypher-lab/<set>/`.
 
-## Lines (16 per set, same wording both sets)
+## Lines (25 per set, same wording both sets)
 
 | id | text |
 | --- | --- |
@@ -48,6 +48,15 @@ workflow (see the story clips). The tar for lab clips must extract into
 | `retry-2` | Still nothing. Widening the band. Can you hear me now? |
 | `retry-3` | No? Rerouting through the relay. Can you hear me now? |
 | `retry-4` | Not yet. Pushing full power. Can you hear me now? |
+| `no-input-1` | Nothing. No movement on my end. The link is still open. Try again. |
+| `no-input-2` | I saw nothing. Could be the link, could be you didn't move. Again. |
+| `no-input-3` | Still no movement. Widening the band anyway. Show me once more. |
+| `no-input-4` | No nod, no shake. Giving the channel a moment. Try again. |
+| `intro-nod-desktop` | Connection check. This channel only goes one way. I can see you through the link, but I cannot hear you. So move your mouse up or down for yes, left or right for no. First question. Can you hear me? |
+| `intro-nod-tilt` | Connection check. This channel only goes one way. I can see you through the link, but I cannot hear you. So tilt your phone forward or back for yes, left or right for no. First question. Can you hear me? |
+| `remind-desktop` | Move your mouse up or down for yes, left or right for no. |
+| `remind-headset` | Nod your head for yes. Shake it for no. |
+| `remind-tilt` | Tilt your phone forward or back for yes, left or right for no. |
 
 ## Canon constraints (from the reviewed Act 1 draft)
 

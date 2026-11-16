@@ -20,6 +20,7 @@ import {
 const RAY_TOGGLED_PANEL_IDS: ReadonlySet<string> = new Set([
   'main-menu-panel',
   'wall-tones-panel',
+  'nod-lab-panel',
   'lab-menu-panel',
   'lab-entry-panel',
   'rift-lab-panel',
@@ -48,6 +49,7 @@ export type ExperienceMode =
   | 'meditation'
   | 'walltones'
   | 'lab'
+  | 'nodlab'
   | 'riftlab'
   | 'thumbslab';
 
@@ -73,6 +75,7 @@ function readStoredMode(): ExperienceMode {
     stored === 'meditation' ||
     stored === 'walltones' ||
     stored === 'lab' ||
+    stored === 'nodlab' ||
     stored === 'riftlab' ||
     stored === 'thumbslab' ||
     stored === 'menu'
@@ -218,16 +221,19 @@ export class AppModeSystem extends createSystem({}) {
     const showMeditation = mode === 'meditation';
     const showWallTones = mode === 'walltones';
     const showLab = mode === 'lab';
+    const showNodLab = mode === 'nodlab';
     const showRiftLab = mode === 'riftlab';
     const showThumbsLab = mode === 'thumbslab';
 
     this.setNodeVisible('main-menu-panel', showMenu);
     this.setNodeVisible('wall-tones-panel', showWallTones);
     this.setNodeVisible('lab-menu-panel', showLab);
+    this.setNodeVisible('nod-lab-panel', showNodLab);
     this.setNodeVisible('rift-lab-panel', showRiftLab);
     this.setNodeVisible('thumbs-lab-panel', showThumbsLab);
     // The Lab entry floats beside the menu: visible exactly when the menu is.
     this.setNodeVisible('lab-entry-panel', showMenu);
+
 
     for (const nodeId of DEMO_NODE_IDS) {
       this.setNodeVisible(nodeId, showDemo);
@@ -339,6 +345,7 @@ export class AppModeSystem extends createSystem({}) {
     const xrButton = panel.getElementById('xr-button');
     wallTonesButton?.addEventListener('click', () => this.startWallTonesFlat());
     xrButton?.addEventListener('click', () => this.enterXrIntoWallTones());
+    this.bindNodLabBack();
     this.bindThumbsLabBack();
     this.bindSettingsMenu(panel);
     if (wallTonesButton != null) {
@@ -348,6 +355,15 @@ export class AppModeSystem extends createSystem({}) {
       xrButton.name = 'Btn_EnterXrWallTones';
     }
     return panel;
+  }
+
+  private bindNodLabBack(): void {
+    const panel = this.world.getSceneObject<UIKitMLAsset>('nod-lab-panel');
+    const back = panel?.getElementById('nod-lab-back-button');
+    back?.addEventListener('click', () => this.setMode('menu'));
+    if (back != null) {
+      back.name = 'Btn_NodLabBackToMenu';
+    }
   }
 
   private bindThumbsLabBack(): void {
@@ -578,6 +594,7 @@ export class AppModeSystem extends createSystem({}) {
       meditation: 'Breath & gaze rest',
       walltones: 'Wall Tones 2: too fast to wall',
       lab: 'Wall Tones 2: Lab',
+      nodlab: 'Wall Tones 2: nod yes/no lab',
       riftlab: 'Wall Tones 2: Rift Sealing Lab',
       thumbslab: 'Wall Tones 2: thumbs yes/no lab',
     };

@@ -13,6 +13,7 @@ import { GuidedSensingSystem } from '../guided-sensing.js';
 import { PanelSystem } from '../panel.js';
 import { RobotSystem } from '../robot.js';
 import { WallTonesSystem } from './wall-tones-system.js';
+import { NodLabSystem } from '../nod-lab/nod-lab-system.js';
 import { RiftLabSystem } from '../rift-lab/rift-lab-system.js';
 import { ThumbsLabSystem } from '../thumbs-lab/thumbs-lab-system.js';
 
@@ -38,6 +39,7 @@ function registerHubSystems(world: World): void {
   world.registerSystem(RobotSystem);
   world.registerSystem(PanelSystem);
   world.registerSystem(WallTonesSystem);
+  world.registerSystem(NodLabSystem);
   world.registerSystem(RiftLabSystem);
   world.registerSystem(ThumbsLabSystem);
 }
@@ -46,6 +48,7 @@ function registerArSystems(world: World): void {
   world.registerSystem(AppModeSystem);
   world.registerSystem(PanelSystem);
   world.registerSystem(WallTonesSystem);
+  world.registerSystem(NodLabSystem);
   world.registerSystem(RiftLabSystem);
   world.registerSystem(ThumbsLabSystem);
 }

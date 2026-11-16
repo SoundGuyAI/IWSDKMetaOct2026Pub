@@ -220,19 +220,24 @@ export class PanelSystem extends createSystem({}) {
 
   private updateMenuFollow(delta: number): void {
     this.publishMenuFacingTest();
-    // The Lab menu replaces the main menu in place, so it follows the player
-    // with the same rules. Switching menus re-anchors it in front of the viewer.
+    // Lab panels replace the main menu in place, so they follow the player
+    // with the same rules. Switching menus re-anchors it in front of the
+    // viewer; only one lab runs at a time. The nod lab's window follows too
+    // (Nov 16: in MR it stayed world-locked while the other labs' windows
+    // followed the head).
     const labVisible =
       this.world.getSceneEntity('lab-menu-panel')?.getValue(Visibility, 'isVisible') === true;
     const baseId = labVisible ? 'lab-menu-panel' : 'main-menu-panel';
-    // The Thumbs Lab panel replaces the Lab menu in place, so it follows the
-    // player with the same rules as the menus and the other lab windows. The
-    // Rift Lab panel follows the same way; only one lab runs at a time.
-    const followId = thumbsVisibleForFollow(this.world)
-      ? 'thumbs-lab-panel'
-      : riftVisibleForFollow(this.world)
-        ? 'rift-lab-panel'
-        : baseId;
+    const panelVisible = (id: string) =>
+      this.world.getSceneEntity(id)?.getValue(Visibility, 'isVisible') ===
+      true;
+    const followId = panelVisible('nod-lab-panel')
+      ? 'nod-lab-panel'
+      : thumbsVisibleForFollow(this.world)
+        ? 'thumbs-lab-panel'
+        : riftVisibleForFollow(this.world)
+          ? 'rift-lab-panel'
+          : baseId;
     if (followId !== this.followedMenuId) {
       this.followedMenuId = followId;
       this.menuAnchored = false;
@@ -498,6 +503,7 @@ export class PanelSystem extends createSystem({}) {
     scale[1] = flatScale;
     scale[2] = flatScale;
 
+
     // The Lab menu replaces the main menu in place, so it shares its flat layout.
     const labMenu = this.world.getSceneEntity('lab-menu-panel');
     if (labMenu != null) {
@@ -517,6 +523,7 @@ export class PanelSystem extends createSystem({}) {
     const labEntry = this.world.getSceneEntity('lab-entry-panel');
     if (labEntry != null) {
       const ePos = labEntry.getVectorView(Transform, 'position');
+
       if (isCompactFlatViewport()) {
         ePos[0] = 0;
         ePos[1] = 3.55;

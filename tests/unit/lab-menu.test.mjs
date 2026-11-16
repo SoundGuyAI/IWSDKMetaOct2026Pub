@@ -12,14 +12,11 @@ const js = ts.transpileModule(source, {
 }).outputText;
 const lab = await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
 
-test('foundation ships the known demos; connected rows open their mode', () => {
+test('nod and rift labs are connected through the registry; thumbs ships not connected', () => {
   assert.deepEqual(lab.LAB_ENTRIES.map((e) => e.id), ['nod', 'rift', 'thumbs']);
-  for (const entry of lab.LAB_ENTRIES) {
-    if (!entry.available) {
-      assert.equal(lab.labRowTarget(entry), null);
-      assert.match(lab.labRowLabel(entry), /not connected/);
-    }
-  }
+  const nod = lab.LAB_ENTRIES[0];
+  assert.equal(lab.labRowTarget(nod), 'nodlab');
+  assert.equal(lab.labRowLabel(nod), 'Nod Yes/No Lab');
   const rift = lab.LAB_ENTRIES.find((e) => e.id === 'rift');
   assert.equal(lab.labRowTarget(rift), 'riftlab');
   const thumbs = lab.LAB_ENTRIES.find((e) => e.id === 'thumbs');
