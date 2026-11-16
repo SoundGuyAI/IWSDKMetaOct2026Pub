@@ -6,11 +6,14 @@ import {
 } from '@iwsdk/core';
 import projectOptions from 'virtual:iwsdk-project';
 import { showXrEntryGate } from './xr-entry.js';
+import { recordXrEvent } from './xr-diagnostics.js';
+import { removeDestroyedWorldCanvas } from './world-canvas.js';
 import { AppModeSystem, type ExperienceMode } from '../app-mode.js';
 import { GuidedSensingSystem } from '../guided-sensing.js';
 import { PanelSystem } from '../panel.js';
 import { RobotSystem } from '../robot.js';
 import { WallTonesSystem } from './wall-tones-system.js';
+import { RiftLabSystem } from '../rift-lab/rift-lab-system.js';
 
 export { backToMenuDestroysWorld } from './back-to-menu-policy.js';
 
@@ -34,12 +37,14 @@ function registerHubSystems(world: World): void {
   world.registerSystem(RobotSystem);
   world.registerSystem(PanelSystem);
   world.registerSystem(WallTonesSystem);
+  world.registerSystem(RiftLabSystem);
 }
 
 function registerArSystems(world: World): void {
   world.registerSystem(AppModeSystem);
   world.registerSystem(PanelSystem);
   world.registerSystem(WallTonesSystem);
+  world.registerSystem(RiftLabSystem);
 }
 
 function buildArWorldOptions(): WorldOptions {
@@ -111,8 +116,13 @@ async function destroyActiveWorld(): Promise<void> {
   } catch {
     // Session may already be ending during a world swap.
   }
+  const staleCanvas = activeWorld.renderer?.domElement;
   activeWorld.destroy();
   activeWorld = null;
+  // See world-canvas.ts: a stale canvas would swallow the next world's clicks.
+  if (removeDestroyedWorldCanvas(staleCanvas)) {
+    recordXrEvent('stale-canvas-removed');
+  }
 }
 
 export async function bootHubWorld(container: HTMLElement): Promise<World> {
@@ -129,17 +139,21 @@ export async function bootHubWorld(container: HTMLElement): Promise<World> {
  * Tear down the hub and boot the AR/passthrough Wall Tones world, then enter XR once.
  * Call this while still NonImmersive (e.g. from Enter XR) so mode select never mid-session destroys XR.
  */
-export async function switchToWallTonesArWorld(entry: 'menu' | 'setup' = 'setup'): Promise<World> {
+export async function switchToWallTonesArWorld(entry: 'menu' | 'setup' | 'riftlab' = 'setup'): Promise<World> {
   const run = switchChain.then(async () => {
     if (sceneContainer == null) {
       throw new Error('Scene container is not initialized');
     }
+    recordXrEvent('switch-to-ar', `entry=${entry} kind=${activeKind} reuse=${activeKind === 'walltones-ar' && activeWorld != null}`);
     if (activeKind === 'walltones-ar' && activeWorld != null) {
       showXrEntryGate(activeWorld);
       return activeWorld;
     }
-    sessionStorage.setItem(MODE_STORAGE_KEY, entry === 'menu' ? 'menu' : 'walltones');
-    if (entry === 'menu') {
+    sessionStorage.setItem(
+      MODE_STORAGE_KEY,
+      entry === 'menu' ? 'menu' : entry === 'riftlab' ? 'riftlab' : 'walltones',
+    );
+    if (entry === 'menu' || entry === 'riftlab') {
       sessionStorage.removeItem('wall-tones-awaiting-mode');
       sessionStorage.removeItem('wall-tones-setup-mode');
     }

@@ -18,12 +18,28 @@ let down = false;
 let startX = 0;
 let startY = 0;
 let dragged = false;
+let tapAction: (() => void) | undefined;
+let releasedTap = false;
+let releasedAt = 0;
 
 const attached = new WeakSet<object>();
 
 /** A new press began on a tile: forget any earlier drag. */
-export const resetStorePress = (): void => {
+export const resetStorePress = (action?: () => void): void => {
   dragged = false;
+  releasedTap = false;
+  tapAction = action;
+};
+
+/** A release already handled this tap; ignore its synthetic follow-up click.
+ * Rebuilding the tree blocks the main thread, so the same release's click can
+ * arrive over a second later. The next pointerdown always clears this token;
+ * the timeout only protects later click-only input that has no pointerdown.
+ */
+export const storeTapHandledOnRelease = (now = performance.now()): boolean => {
+  const handled = releasedTap && now - releasedAt < 3000;
+  releasedTap = false;
+  return handled;
 };
 
 /**
@@ -34,7 +50,8 @@ export const resetStorePress = (): void => {
  *    object for every move of every drag, so after the first few px the flag
  *    stays set and the drag stalls (and later drags never start). The Store
  *    list has no nested scroller to protect, so clear the flag every step.
- * 2. A pointer-driven scroll step means the press is a drag, not a tap.
+ * 2. Click suppression is decided by press movement, not a scroll callback.
+ *    Even a stationary XR ray can produce tiny scroll deltas from hand jitter.
  */
 export function storeListOnScroll(
   newX: number,
@@ -47,10 +64,6 @@ export function storeListOnScroll(
     for (const sym of Object.getOwnPropertySymbols(ne)) {
       if (sym.description === 'was-scrolled') (ne as Record<symbol, unknown>)[sym] = undefined;
     }
-  }
-  if (event != null) {
-    const cur = scrollPosition?.value;
-    if (cur == null || cur[0] !== newX || cur[1] !== newY) dragged = true;
   }
   return undefined;
 }
@@ -92,6 +105,18 @@ export function attachStoreDragGuard(list: ListLike): void {
   const end = (): void => {
     down = false;
   };
-  list.addEventListener('pointerup', end);
-  list.addEventListener('pointercancel', end);
+  list.addEventListener('pointerup', () => {
+    const action = down && !dragged ? tapAction : undefined;
+    tapAction = undefined;
+    down = false;
+    if (action != null) {
+      releasedTap = true;
+      releasedAt = performance.now();
+      action();
+    }
+  });
+  list.addEventListener('pointercancel', () => {
+    tapAction = undefined;
+    end();
+  });
 }

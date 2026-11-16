@@ -163,6 +163,7 @@
     <div id="wall-tones-info-row" style="flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px">
       <div id="wall-tones-status" class="status">Ready</div>
       <div id="wall-tones-sequence-icons" style="display: none; flex-direction: row; flex-wrap: wrap; gap: 5px; align-items: center; max-width: 280px"></div>
+      <div id="wall-tones-wronghit-row" style="display: none; flex-direction: row; flex-wrap: wrap; gap: 5px; align-items: center; max-width: 280px"></div>
     </div>
     <!-- Seeded initial text: without it uikitml compiles no Text child and
          the caption setter silently no-ops (fallback when the head-locked
@@ -269,6 +270,8 @@
   <div id="gameover-popup" class="popup-overlay" style="display: none">
     <div class="popup-card">
       <div class="heading" style="font-size: 22px">Game Over</div>
+      <!-- No justify-content here: centering would give each wrapped line its own center, breaking the column alignment between the history/Expected/Hit lines (reviewer pixel pass 2026-11-15). -->
+      <div id="gameover-wronghit-row" style="display: none; flex-direction: row; flex-wrap: wrap; gap: 5px; align-items: center"></div>
       <div id="gameover-summary" class="status">You reached 0. Best 0.</div>
       <div id="gameover-saver-status" class="status">Streak savers: 0</div>
       <Button id="gameover-use-saver-button" class="button">

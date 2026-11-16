@@ -19,8 +19,12 @@ import {
   PANEL_FOLLOW_SLERP,
   PANEL_FOLLOW_Y_OFFSET_M,
   PANEL_LOOK_AWAY_DEG,
+  PANEL_RAY_BLOCK_DEG,
+  PANEL_RAY_DODGE_HOLD_MS,
   PANEL_SNAP_ARRIVE_M,
 } from './wall-tones/constants.js';
+import { riftAimRays, riftTargetPositions } from './rift-lab/rift-targets.js';
+import { riftBlockingLineY, type Ray } from './rift-lab/rift-dodge.js';
 import { horizontalLookAway } from './wall-tones/panel-placement.js';
 import { enterXrButtonVisible } from './enter-xr-visibility.js';
 
@@ -62,13 +66,33 @@ function isCompactFlatViewport(): boolean {
   return false;
 }
 
+function riftVisibleForFollow(world: {
+  getSceneEntity: (id: string) => { getValue: (c: typeof Visibility, k: 'isVisible') => unknown } | undefined;
+}): boolean {
+  return world.getSceneEntity('rift-lab-panel')?.getValue(Visibility, 'isVisible') === true;
+}
+
+/** Gap kept between the lifted panel's bottom edge and the blocking sightline. */
+const RIFT_DODGE_CLEAR_M = 0.12;
+/**
+ * Rift Lab panel half height per unit of entity scale, meters. Measured from
+ * the real render (desktop scale 0.34 at 3.75 m, 70 deg vertical fov: panel
+ * 1.90 m tall, so 2.79 per unit scale). UIKit sizes the panel, so this is a
+ * measurement, not a layout read; the panel is center-anchored.
+ */
+const RIFT_PANEL_HALF_HEIGHT_PER_SCALE_M = 2.79;
+/** Largest lift so the panel never flies out of reach. */
+const RIFT_DODGE_MAX_LIFT_M = 1.5;
+
 export class PanelSystem extends createSystem({}) {
   private readonly savedMainMenuPosition = new Float32Array(3);
   private readonly savedMainMenuScale = new Float32Array(3);
+  private readonly savedMainMenuOrientation = new Float32Array(4);
   private mainMenuLayoutSaved = false;
   /** When true, flat (non-immersive) layout should be applied. */
   private flatLayoutActive = false;
   private menuAnchored = false;
+  private followedMenuId = 'main-menu-panel';
   private menuSnapping = false;
   private readonly menuViewer = new Vector3();
   private readonly menuForward = new Vector3();
@@ -85,8 +109,124 @@ export class PanelSystem extends createSystem({}) {
    * same placement rules as the in-game panel (distance, height offset, scale,
    * look-away threshold, eased snap). Flat layouts are untouched.
    */
+  /** Rift Lab panel only: vertical offset currently applied by the ray dodge. */
+  private riftDodgeAppliedY = 0;
+  private riftDodgeLift = 0;
+  private riftDodgeLineY = 0;
+  private riftDodgeUntil = 0;
+  private readonly riftRayOrigin = new Vector3();
+  private readonly riftRayDir = new Vector3();
+  private readonly riftRayQuat = new Quaternion();
+  private readonly riftScratchA = new Vector3();
+  private readonly riftScratchB = new Vector3();
+
+  /**
+   * Rift Lab panel follows the player like the menus (his 23:48 Quest test),
+   * and, like the setup window, swings up out of the way while a hand ray
+   * points at a rift through it (the ray stays clear for the target).
+   */
   update(delta: number): void {
-    const entity = this.world.getSceneEntity('main-menu-panel');
+    const riftEntity = this.world.getSceneEntity('rift-lab-panel');
+    const riftShown =
+      riftEntity?.getValue(Visibility, 'isVisible') === true;
+    if (riftEntity != null && this.riftDodgeAppliedY !== 0) {
+      // Undo last frame's dodge so the follow logic works on the true base.
+      riftEntity.getVectorView(Transform, 'position')[1]! -= this.riftDodgeAppliedY;
+      this.riftDodgeAppliedY = 0;
+    }
+    this.updateMenuFollow(delta);
+    if (riftEntity == null || !riftShown) {
+      this.riftDodgeUntil = 0;
+      this.riftDodgeLift = 0;
+      return;
+    }
+    const position = riftEntity.getVectorView(Transform, 'position');
+    const immersive =
+      this.world.xrEnabled &&
+      this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
+    if (!immersive) return;
+    const now = performance.now();
+    const lineY = this.riftBlockingLineY(position);
+    if (lineY != null) {
+      this.riftDodgeUntil = now + PANEL_RAY_DODGE_HOLD_MS;
+      this.riftDodgeLineY = lineY;
+    }
+    // Ease the lift like the setup panel's lerp. The target puts the panel's
+    // BOTTOM edge above the blocking sightline (eye line to the rift, aim ray)
+    // plus a margin, using the panel's estimated half height; held after the ray
+    // leaves, then eased back down.
+    let targetLift = 0;
+    if (now < this.riftDodgeUntil) {
+      const bottomOffset =
+        RIFT_PANEL_HALF_HEIGHT_PER_SCALE_M *
+        riftEntity.getVectorView(Transform, 'scale')[1]!;
+      targetLift = Math.min(
+        RIFT_DODGE_MAX_LIFT_M,
+        Math.max(
+          0,
+          this.riftDodgeLineY + RIFT_DODGE_CLEAR_M + bottomOffset - position[1]!,
+        ),
+      );
+    }
+    const alpha = 1 - Math.exp(-delta * 9);
+    this.riftDodgeLift += (targetLift - this.riftDodgeLift) * alpha;
+    if (Math.abs(this.riftDodgeLift) < 0.001) this.riftDodgeLift = 0;
+    this.riftDodgeAppliedY = this.riftDodgeLift;
+    position[1]! += this.riftDodgeLift;
+  }
+
+  /**
+   * True when the Rift Lab panel is in the way: (1) an open-hand aim ray (the
+   * beam aims along the palm, published in riftAimRays) or the UI pointer ray
+   * passes near a rift while crossing the panel's footprint, or (2) the panel
+   * sits between the viewer's eyes and a rift (it occludes the target).
+   */
+  /** See rift-dodge.ts: aim ray / UI ray / eye line crossing the panel. */
+  private riftBlockingLineY(panelPos: ArrayLike<number>): number | null {
+    if (riftTargetPositions.length === 0) return null;
+    const aimRays: Ray[] = riftAimRays.map((r) => ({
+      origin: [r.ox, r.oy, r.oz] as const,
+      dir: [r.dx, r.dy, r.dz] as const,
+    }));
+    const uiRays: Ray[] = [];
+    for (const hand of ['right', 'left'] as const) {
+      const space = this.player.raySpaces[hand];
+      space.updateWorldMatrix(true, false);
+      space.getWorldPosition(this.riftRayOrigin);
+      space.getWorldQuaternion(this.riftRayQuat);
+      this.riftRayDir.set(0, 0, -1).applyQuaternion(this.riftRayQuat);
+      uiRays.push({
+        origin: [this.riftRayOrigin.x, this.riftRayOrigin.y, this.riftRayOrigin.z],
+        dir: [this.riftRayDir.x, this.riftRayDir.y, this.riftRayDir.z],
+      });
+    }
+    this.player.head.getWorldPosition(this.riftScratchA);
+    return riftBlockingLineY({
+      eye: [this.riftScratchA.x, this.riftScratchA.y, this.riftScratchA.z],
+      panel: [panelPos[0]!, panelPos[1]!, panelPos[2]!],
+      targets: riftTargetPositions.map((t) => [t.x, t.y, t.z] as const),
+      aimRays,
+      uiRays,
+      blockDeg: PANEL_RAY_BLOCK_DEG,
+      lateralM: 0.5,
+      riftTopM: 0.45,
+    });
+  }
+
+  private updateMenuFollow(delta: number): void {
+    this.publishMenuFacingTest();
+    // The Lab menu replaces the main menu in place, so it follows the player
+    // with the same rules. Switching menus re-anchors it in front of the viewer.
+    const labVisible =
+      this.world.getSceneEntity('lab-menu-panel')?.getValue(Visibility, 'isVisible') === true;
+    const baseId = labVisible ? 'lab-menu-panel' : 'main-menu-panel';
+    const followId = riftVisibleForFollow(this.world) ? 'rift-lab-panel' : baseId;
+    if (followId !== this.followedMenuId) {
+      this.followedMenuId = followId;
+      this.menuAnchored = false;
+      this.menuSnapping = false;
+    }
+    const entity = this.world.getSceneEntity(followId);
     const immersive =
       this.world.xrEnabled &&
       this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
@@ -262,6 +402,41 @@ export class PanelSystem extends createSystem({}) {
     }
   }
 
+  private menuFacingTestPublished = false;
+
+  /**
+   * Test-only (needs ?menuFacingTest=1): lets the XR re-entry spec turn the
+   * main menu and read its yaw back, to prove the flat layout restores the
+   * authored facing after a session ends. Inert without the URL flag.
+   */
+  private publishMenuFacingTest(): void {
+    if (
+      this.menuFacingTestPublished ||
+      typeof window === 'undefined' ||
+      !window.location.search.includes('menuFacingTest=1')
+    ) {
+      return;
+    }
+    this.menuFacingTestPublished = true;
+    const yawOf = (q: ArrayLike<number>): number =>
+      (2 * Math.atan2(q[1]!, q[3]!) * 180) / Math.PI;
+    (window as unknown as Record<string, unknown>).__menuFacingTest = {
+      turn: (deg: number) => {
+        const e = this.world.getSceneEntity('main-menu-panel');
+        const o = e?.getVectorView(Transform, 'orientation');
+        if (o == null) return false;
+        const h = (deg * Math.PI) / 360;
+        o.set([0, Math.sin(h), 0, Math.cos(h)]);
+        return true;
+      },
+      yaw: () => {
+        const e = this.world.getSceneEntity('main-menu-panel');
+        const o = e?.getVectorView(Transform, 'orientation');
+        return o == null ? null : yawOf(o);
+      },
+    };
+  }
+
   private applyMainMenuFlatLayout(): void {
     const entity = this.world.getSceneEntity('main-menu-panel');
     if (entity == null) {
@@ -269,11 +444,18 @@ export class PanelSystem extends createSystem({}) {
     }
     const position = entity.getVectorView(Transform, 'position');
     const scale = entity.getVectorView(Transform, 'scale');
+    const orientation = entity.getVectorView(Transform, 'orientation');
     if (!this.mainMenuLayoutSaved) {
       this.savedMainMenuPosition.set(position);
       this.savedMainMenuScale.set(scale);
+      this.savedMainMenuOrientation.set(orientation);
       this.mainMenuLayoutSaved = true;
     }
+    // The immersive follow (update) rotates the menu to face the headset.
+    // Coming back to the flat page must restore the authored facing too, or
+    // the menu stays turned toward wherever the player stood in XR and is
+    // only visible from some angles (Quest report 2026-11-14).
+    orientation.set(this.savedMainMenuOrientation);
     if (!this.flatLayoutActive) {
       position[0] = this.savedMainMenuPosition[0]!;
       position[1] = this.savedMainMenuPosition[1]!;
@@ -303,5 +485,33 @@ export class PanelSystem extends createSystem({}) {
     scale[0] = flatScale;
     scale[1] = flatScale;
     scale[2] = flatScale;
+
+    // The Lab menu replaces the main menu in place, so it shares its flat layout.
+    const labMenu = this.world.getSceneEntity('lab-menu-panel');
+    if (labMenu != null) {
+      const lPos = labMenu.getVectorView(Transform, 'position');
+      const lScale = labMenu.getVectorView(Transform, 'scale');
+      lPos[0] = layout.position[0];
+      lPos[1] = layout.position[1];
+      lPos[2] = layout.position[2];
+      lScale[0] = flatScale;
+      lScale[1] = flatScale;
+      lScale[2] = flatScale;
+    }
+
+    // Lab entry placement per flat layout: desktop has free space to the right
+    // of the hub; compact phone viewports width-fill the hub, so the entry
+    // moves above it to stay on-screen. XR keeps the scene default.
+    const labEntry = this.world.getSceneEntity('lab-entry-panel');
+    if (labEntry != null) {
+      const ePos = labEntry.getVectorView(Transform, 'position');
+      if (isCompactFlatViewport()) {
+        ePos[0] = 0;
+        ePos[1] = 3.55;
+      } else {
+        ePos[0] = 4.15;
+        ePos[1] = 0;
+      }
+    }
   }
 }

@@ -174,3 +174,33 @@ test.describe('Wall Tones store touch/XR-style drag scrolls repeatedly', () => {
     expect(await readSelected(page)).toBeNull();
   });
 });
+
+
+test('a small touch-ray jitter still selects tiles before and after scrolling', async ({ page }) => {
+  await shareWasScrolledFlag(page);
+  await abortSpeech(page);
+  await bootWallTones(page);
+  await dbg(page, 'toggleStore');
+  await expect.poll(async () => (await readScroll(page)).maxY).toBeGreaterThan(100);
+  const target = () => page.evaluate(() => (window as any).__wallTonesDebug.storePointerTargets['store-tile-replay']);
+  await expect.poll(async () => (await target())?.x ?? 0).toBeGreaterThan(0);
+  const t = await target();
+  // Real rays drift a little between press and release. This is a tap,
+  // even when the scroll container reports a tiny delta during the press.
+  await touchDrag(page, t.x, t.y, t.y - 2, 2);
+  await expect.poll(() => readSelected(page), { timeout: 5000 }).toBe('replay');
+  // A second tap closes the same tile exactly once (no release+click toggle).
+  const t2 = await target();
+  await touchDrag(page, t2.x, t2.y, t2.y, 0);
+  await expect.poll(() => readSelected(page)).toBeNull();
+  const t3 = await target();
+  await touchDrag(page, t3.x, t3.y + 20, t3.y - 40);
+  expect(await readSelected(page)).toBeNull();
+  // Scroll back, then select through the same jittery input again.
+  await page.evaluate(() => (window as any).__wallTonesDebug.scrollStore(-100000));
+  await page.waitForTimeout(400);
+  const t4 = await target();
+  await touchDrag(page, t4.x, t4.y, t4.y - 2, 2);
+  await expect.poll(() => readSelected(page)).toBe('replay');
+  await page.screenshot({ path: '/tmp/store-selected.png' });
+});

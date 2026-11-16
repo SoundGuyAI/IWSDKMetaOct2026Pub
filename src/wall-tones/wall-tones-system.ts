@@ -87,6 +87,8 @@ TOUCH_PRESS_DEPTH_M,
 TOUCH_PRESS_SCALE,
 TOUCH_TIP_GRIP_MAX_M,
 WALL_TONE_PADS,
+WRONG_HIT_HISTORY_MAX,
+WRONG_HIT_ROW_NOTES,
 WRONG_RESET_DELAY_S,
 type WallTonePadId,
 } from './constants.js';
@@ -159,6 +161,7 @@ import {
   resetStorePress,
   storeListOnScroll,
   storePressWasDrag,
+  storeTapHandledOnRelease,
 } from './store-drag-guard.js';
 import { STORE_SCROLL_STEP, clampStoreScroll, storeScrollEnabled } from './store-scroll.js';
 import { SAVER_PRICE_BARS, saverRetryPlan, saverUnitsForStreak } from './consumable-values.js';
@@ -189,6 +192,13 @@ return eco;
 
 /** Stable hand order — never allocate per XR frame. */
 const XR_HANDS = ['right', 'left'] as const;
+
+/** Reconcile cache for a missed-hit square row (panel info row / Game Over popup). */
+type WrongHitRowCache = {
+row: UIKit.Container | null;
+key: string;
+children: (UIKit.Container | UIKit.Text)[];
+};
 
 const FLAT_BACKDROP_NODE_IDS = [
 'studio-floor',
@@ -230,6 +240,14 @@ gameOverNewRun: () => void;
 idleReplaySpent: boolean;
 /** Status line text currently shown (test-only). */
 statusLineText: string;
+wrongHitRowVisible: boolean;
+wrongHitPreceding: number[] | null;
+wrongHitExpected: number | null;
+wrongHitHit: number | null;
+wrongHitTruncated: boolean;
+debugSetWrongHit(state: { hit: number; expected: number; preceding: number[]; truncated: boolean }): void;
+wrongHitPopupRowTops: { expectedTop: number; hitTop: number; expectedLeft: number; hitLeft: number } | null;
+wrongHitPopupDebugLayout: { index: number; kind: string; text?: string; layout?: { top: number; left: number; width: number; height: number } }[];
 sequenceRowVisible: boolean;
 sequenceBoxesShown: number;
 sequenceUnknownShown: number;
@@ -323,6 +341,22 @@ type FlowPhase =
 | 'wall-picking'
 | 'air-placement'
 | 'playing';
+
+/** Store tile -> its narrator explanation line (owner-approved words
+ * 2026-11-15). Locked teasers x2/Speed/Pads 5-6 stay silent on purpose;
+ * Hack is the one locked tile with a line. play/index activate when
+ * PR #87's tiles land. */
+const STORE_ITEM_CLIPS: Partial<Record<string, WallTonesClipId>> = {
+listen: 'storeItemListen',
+hint: 'storeItemHint',
+play: 'storeItemPlay',
+autoplay: 'storeItemAutoplay',
+index: 'storeItemIndex',
+replay: 'storeItemReplay',
+saver: 'storeItemSaver',
+secret: 'storeItemSecret',
+narrator: 'storeItemHack',
+};
 
 export class WallTonesSystem extends createSystem({
 pads: { required: [WallTonePad] },
@@ -472,8 +506,15 @@ const panel = this.sequenceIconPendingPanel;
 if (panel) this.reconcileSequenceIcons(panel);
 };
 private accessibilityPanel: UIKitMLAsset | undefined;
-private accessibilityState: { show: boolean; flat: boolean; active: boolean; caption: string; phase: string; flow: string; status: string; names: boolean; sequence: number[]; reveal: number; shown: number; listen: boolean } | undefined;
+private accessibilityState: { show: boolean; flat: boolean; active: boolean; caption: string; phase: string; flow: string; status: string; names: boolean; sequence: number[]; reveal: number; shown: number; listen: boolean; wrong: string } | undefined;
 private sequenceIconRow: UIKit.Container | null = null;
+/** Item 75 follow-up (owner 2026-11-15): a missed hit is shown as color
+ * squares instead of color words - up to the last 10 notes leading up to the
+ * miss, then Expected:/Hit: with their squares. */
+private wrongHit: { hit: number; expected: number; preceding: number[]; truncated: boolean } | null = null;
+private readonly wrongHitPanelCache: WrongHitRowCache = { row: null, key: '', children: [] };
+private readonly wrongHitPopupCache: WrongHitRowCache = { row: null, key: '', children: [] };
+private lastWrongHitRowVisible = false;
 /** Setup HUD is world-anchored; look-away past a threshold re-snaps it. */
 private panelWorldAnchored = false;
 private panelSnapActive = false;
@@ -1669,6 +1710,56 @@ return system.idleReplayUsedRunId === system.game.runId;
 get statusLineText() {
 return String(system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel')
 ?.getElementById('wall-tones-status')?.properties.peek().text ?? '');
+},
+get wrongHitRowVisible() {
+return system.lastWrongHitRowVisible;
+},
+get wrongHitPreceding() {
+return system.wrongHit == null ? null : [...system.wrongHit.preceding];
+},
+get wrongHitExpected() {
+return system.wrongHit?.expected ?? null;
+},
+get wrongHitHit() {
+return system.wrongHit?.hit ?? null;
+},
+get wrongHitTruncated() {
+return system.wrongHit?.truncated ?? false;
+},
+// Test-only: replace the captured miss state so truncation rendering is
+// exercisable without replaying 11 rounds.
+debugSetWrongHit(state: { hit: number; expected: number; preceding: number[]; truncated: boolean }) {
+system.wrongHit = state;
+// renderPanel is event-driven, so push a render for the injected state to
+// become visible without waiting for the next game event.
+(system as unknown as { renderPanel(): void }).renderPanel();
+},
+// Yoga-computed positions inside the Game Over wrong-hit row (test-only):
+// proves the Hit row sits on its own line below the Expected row, both
+// sharing a left edge (owner 2026-11-15 19:01). null until laid out.
+get wrongHitPopupRowTops() {
+const cache = system.wrongHitPopupCache;
+const expectedLabelIndex = 0;
+const hitLabelIndex = WRONG_HIT_ROW_NOTES * 2 + 3;
+if (cache.children.length <= hitLabelIndex) return null;
+const layoutOf = (child: unknown): { top: number; left: number } | null => {
+const yoga = (child as { node?: Record<string, { getComputedLayout?: () => { top: number; left: number } }> } | undefined)?.node?.['yogaNode'];
+const layout = yoga?.getComputedLayout?.();
+return layout == null ? null : { top: layout.top, left: layout.left };
+};
+const expectedLayout = layoutOf(cache.children[expectedLabelIndex]);
+const hitLayout = layoutOf(cache.children[hitLabelIndex]);
+return expectedLayout == null || hitLayout == null
+? null
+: { expectedTop: expectedLayout.top, hitTop: hitLayout.top, expectedLeft: expectedLayout.left, hitLeft: hitLayout.left };
+},
+get wrongHitPopupDebugLayout() {
+const cache = system.wrongHitPopupCache;
+return cache.children.map((child, index) => {
+const yoga = (child as unknown as { node?: Record<string, { getComputedLayout?: () => { top: number; left: number; width: number; height: number } }>; text?: string })?.node?.['yogaNode'];
+const layout = yoga?.getComputedLayout?.();
+return { index, kind: system.wrongHitChildKind(index), text: (child as unknown as { text?: string }).text, layout };
+});
 },
 get sequenceRowVisible() {
 return system.lastSequenceRowVisible;
@@ -3583,7 +3674,7 @@ void playPadTone(padIndex);
 window.setTimeout(() => flashPad(pad, false), 350);
 }
 if (padIndex !== expected) {
-void this.onWrongInput();
+void this.onWrongInput(padIndex, expected);
 return;
 }
 // Any instruction still finishing is obsolete once a correct pad is hit.
@@ -3801,12 +3892,7 @@ this.welcomeSpoken = true;
 this.beginRoundWithIntro(leadIn);
 }
 
-/** Praise a failed run only if it beat the best from before that run. */
-private runEarnedCheer(): boolean {
-return this.game.runImprovedBest;
-}
-
-private async onWrongInput(): Promise<void> {
+private async onWrongInput(hit: number, expected: number): Promise<void> {
 this.setCypherSeam(false);
 this.firstRun = false;
 this.roundBarsEarned = 0;
@@ -3817,17 +3903,34 @@ this.barsFirstEarnedPending = false;
 this.hideRoundBarsCard();
 this.game.phase = 'resetting';
 this.inputNeedsClear = true;
-const cheer = this.runEarnedCheer();
-await playErrorTone();
-this.statusText = 'Try again';
+// Capture the actual mismatch before any reset, shown as color squares (owner
+// 2026-11-15: squares instead of words; two stacked lines - Expected above
+// Hit, each up to WRONG_HIT_ROW_NOTES notes with the final position
+// differing, e.g. right RRRBG vs played RRRBY - that do not grow the panel;
+// the pattern row stays hidden after a failure) in the info row and Game Over
+// popup, even without a purchased hint or subtitles (item 75). The status text
+// element stays blank while the rows show.
+const missStep = this.game.inputStep;
+this.wrongHit = {
+hit,
+expected,
+preceding: this.game.sequence.slice(Math.max(0, missStep - WRONG_HIT_HISTORY_MAX), missStep),
+// Owner 2026-11-15 18:35: the pattern (history) row is no longer displayed
+// after a failure; the state still keeps the last 10 notes so the comparison
+// row can show its 4-note lead-in.
+truncated: missStep > WRONG_HIT_HISTORY_MAX,
+};
+this.statusText = '';
 this.renderPanel();
+this.speech.cancel();
+await playErrorTone();
 // Codex P2: a wrong press can cross a Pad presses threshold; announce the
 // unlock on this path too, not only on the reward path.
 this.showAchievementToasts();
 this.playbackQueue = this.playbackQueue.then(async () => {
-await this.speech.speakAsync(
-cheer ? randomCheerClip() : randomWrongClip(),
-);
+// A personal best does not turn a missed note into a success (item 60a).
+// Keep the existing failure recordings; the full wording review is separate.
+await this.speech.speakAsync(randomWrongClip());
 await this.wait(WRONG_RESET_DELAY_S);
 if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
@@ -3837,7 +3940,7 @@ return;
 this.storeOpen = false;
 this.achievementsOpen = false;
 this.gameOverOpen = true;
-this.statusText = 'Game Over';
+// Keep hit-versus-expected visible while the Game Over popup is open.
 this.syncMenuPopupVisibility();
 this.renderGameOverSummary();
 this.renderPanel();
@@ -3846,6 +3949,7 @@ this.renderPanel();
 
 private renderGameOverSummary(): void {
 const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+if (panel) this.renderWrongHitRows(panel);
 panel
 ?.getElementById<UIKit.Text>('gameover-summary')
 ?.setProperties({
@@ -3912,8 +4016,10 @@ return;
 }
 this.gameOverOpen = false;
 this.syncMenuPopupVisibility();
+this.wrongHit = null;
 this.game.inputStep = 0;
 this.game.phase = 'playback';
+this.statusText = 'Replaying pattern...';
 this.idleReplayQueued = false;
 this.renderPanel();
 this.playbackQueue = this.playbackQueue.then(async () => {
@@ -3928,7 +4034,9 @@ return;
 }
 this.gameOverOpen = false;
 this.syncMenuPopupVisibility();
+this.wrongHit = null;
 this.game.onWrongInput();
+this.statusText = 'Get ready...';
 this.renderPanel();
 this.playbackQueue = this.playbackQueue.then(async () => {
 if (!this.experienceActive || this.flowPhase !== 'playing') {
@@ -4160,13 +4268,17 @@ panel
 .getElementById<UIKit.Text>('wall-tones-best-streak')
 ?.setProperties({ text: String(this.game.bestStreak) });
 this.renderSequenceIcons(panel);
+this.renderWrongHitRows(panel);
 // Owner ask 2026-11-12 11:40: the Listen/Hint titles stay hidden until the
 // matching store item is owned; a non-breaking space reserves the line so
-// the panel never shrinks.
+// the panel never shrinks. A missed hit blanks the line: the mismatch shows
+// as color squares in the wrong-hit row instead of words (owner 2026-11-15).
 panel
 .getElementById<UIKit.Text>('wall-tones-status')
 ?.setProperties({
-text: this.game.phase === 'input'
+text: this.wrongHitVisible()
+? '\u00a0'
+: this.game.phase === 'input'
 ? (performance.now() < this.idleNudgeUntil
 ? 'Still there?'
 : this.economy.getHintRevealCount() > 0
@@ -4478,11 +4590,11 @@ text: t.price,
 );
 }
 tile.name = `store-tile-${t.id}`;
-tile.addEventListener('pointerdown', () => resetStorePress());
+tile.addEventListener('pointerdown', () => resetStorePress(() => this.selectStoreTile(t.id)));
 tile.addEventListener('click', (event) => {
 event.stopPropagation();
 // A pinch/ray drag that ends over a tile is a scroll, not a selection.
-if (storePressWasDrag()) return;
+if (storePressWasDrag() || storeTapHandledOnRelease()) return;
 this.selectStoreTile(t.id);
 });
 return tile;
@@ -4967,6 +5079,18 @@ popup.setProperties({ display: 'none' });
 // progress, no stored data and no achievement rules are touched.
 const demoParam = typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('demoAchievements');
 const demoLevels: Record<string, number> = { streak: 3, bars: 4, score: 1, presses: 2 };
+/** Achievement category -> its narrator line (owner-approved words
+ * 2026-11-15). The hidden Secret achievement stays silent; movement
+ * activates when PR #72's category lands. */
+const ACHV_CLIPS: Partial<Record<string, WallTonesClipId>> = {
+streak: 'achvStreak',
+bars: 'achvBars',
+score: 'achvScore',
+store: 'achvStore',
+presses: 'achvPresses',
+movement: 'achvMovement',
+};
+
 type TileCat = { id: string; label: string; description: string; levels: readonly number[]; hidden?: boolean; glyph?: string };
 const tileCats: TileCat[] = [...ACHIEVEMENT_CATEGORIES];
 if (demoParam === 'many') {
@@ -5057,6 +5181,10 @@ if (stickyCat != null) tileSetters.get(stickyCat)?.(false);
 show(e.uv);
 stickyCat = cat.id;
 setSel(true);
+// Narrator line on tap/click pin-open only - never on hover/gaze, which
+// opens details passively (owner-approved words 2026-11-15).
+const achvClip = ACHV_CLIPS[cat.id];
+if (achvClip != null) this.speech.speak(achvClip);
 });
 list.add(tile);
 }
@@ -5261,10 +5389,10 @@ private onToggleStore(): void {
 this.storeOpen = !this.storeOpen;
 if (this.storeOpen) this.achievementsOpen = false;
 this.syncMenuPopupVisibility();
-if (this.storeOpen && this.economy.takeFirstTime('store-open')) {
-// Approved onboarding pair: welcome, then how hints work (once ever).
-this.speech.speak('storeWelcome');
-this.speech.speak('storeHints');
+if (this.storeOpen && !voicesOffEnabled() && this.economy.takeFirstTime('store-intro-v2')) {
+// General store intro (owner-approved words 2026-11-15, WhatsApp review):
+// once ever on any platform, replacing the old hint-only open pair.
+this.speech.speak('storeIntro');
 }
 this.renderPanel();
 }
@@ -5293,6 +5421,10 @@ private storeSelected: string | null = null;
  * achievements popup). */
 private selectStoreTile(id: string): void {
 this.storeSelected = this.storeSelected === id ? null : id;
+if (this.storeSelected != null) {
+const clip = STORE_ITEM_CLIPS[this.storeSelected];
+if (clip != null) this.speech.speak(clip);
+}
 this.renderPanel();
 // A new selection resets the status line, so a previous tile's "Bought."
 // or denial never lingers over another item's details.
@@ -5424,6 +5556,116 @@ this.lastSequenceBoxesShown = shown;
 this.lastSequenceUnknownShown = unknownShown;
 }
 
+/** The missed-hit squares stay up from the miss until the run restarts. */
+private wrongHitVisible(): boolean {
+return this.wrongHit != null && (this.gameOverOpen || this.game.phase === 'resetting');
+}
+
+/** Reconcile both missed-hit square rows (panel info row + Game Over popup). */
+private renderWrongHitRows(panel: UIKitMLAsset): void {
+this.reconcileWrongHitRow(this.wrongHitPanelCache, panel, 'wall-tones-wronghit-row');
+this.reconcileWrongHitRow(this.wrongHitPopupCache, panel, 'gameover-wronghit-row');
+this.lastWrongHitRowVisible = this.wrongHitVisible();
+}
+
+/** Child kinds at fixed plan indices, identical for the panel info row and the
+ * Game Over popup. Owner 2026-11-15 19:01: two stacked lines that do not grow
+ * the panel - the pattern (history) row stays hidden after a failure, so the
+ * Expected and Hit lines fit in the freed space. Plan: Expected label, a
+ * leading ellipsis (owner 2026-11-15 23:23: a "..." prefix on each five-note
+ * row when earlier notes are hidden, so a long chain reads as a tail),
+ * up to WRONG_HIT_ROW_NOTES square/name pairs whose final square is the note
+ * the game expected, a full-width break, then the Hit label, its ellipsis,
+ * and pairs whose final square is the pad actually hit (right RRRBG vs
+ * played RRRBY). Fixed label width lines up the square columns of the two
+ * rows; the ellipsis is the same text in both rows, so alignment holds
+ * whether it shows or not. */
+private wrongHitChildKind(index: number): 'label' | 'square' | 'text' | 'break' {
+const hitBreak = WRONG_HIT_ROW_NOTES * 2 + 2;
+if (index === hitBreak) return 'break';
+if (index === 0 || index === hitBreak + 1) return 'label';
+const offset = index < hitBreak ? index - 2 : index - hitBreak - 3;
+return offset % 2 === 0 ? 'square' : 'text';
+}
+
+/** Children are created once in ascending index order so the row layout order
+ * always matches the fixed plan; later passes only update properties. */
+private wrongHitChild(
+cache: WrongHitRowCache,
+row: UIKit.Container,
+index: number,
+): UIKit.Container | UIKit.Text {
+while (cache.children.length <= index) {
+const index = cache.children.length;
+const kind = this.wrongHitChildKind(index);
+const child =
+kind === 'square'
+? new UIKit.Container({ width: 16, height: 16, borderRadius: 2, flexShrink: 0 })
+: kind === 'break'
+? new UIKit.Container({ width: '100%', height: 0, flexShrink: 0 })
+: kind === 'label'
+? // Fixed label width lines up the square columns of the two rows.
+new UIKit.Text({ fontSize: 15, color: 0xffffff, width: 72, flexShrink: 0 })
+: new UIKit.Text({ fontSize: 15, color: 0xffffff });
+row.add(child);
+cache.children.push(child);
+}
+return cache.children[index]!;
+}
+
+private reconcileWrongHitRow(
+cache: WrongHitRowCache,
+panel: UIKitMLAsset,
+rowId: string,
+): void {
+const row = panel.getElementById<UIKit.Container>(rowId);
+if (row == null) return;
+const wrong = this.wrongHitVisible() ? this.wrongHit : null;
+const names = colorNamesEnabled();
+const key =
+wrong == null
+? 'hidden'
+: `${wrong.preceding.join(',')}|${wrong.expected}|${wrong.hit}|${wrong.truncated ? 1 : 0}|${names ? 1 : 0}`;
+if (cache.row === row && cache.key === key) return;
+if (cache.row !== row) {
+cache.row = row;
+cache.children.length = 0;
+}
+cache.key = key;
+row.setProperties({ display: wrong != null ? 'flex' : 'none' });
+const leadIn = wrong ? wrong.preceding.slice(-(WRONG_HIT_ROW_NOTES - 1)) : [];
+// Owner 2026-11-15 23:23: when the captured chain has more notes than the
+// row shows, a leading "..." marks it as the tail of a longer run.
+const tail = wrong != null && wrong.preceding.length > WRONG_HIT_ROW_NOTES - 1;
+const hitBreak = WRONG_HIT_ROW_NOTES * 2 + 2;
+this.wrongHitChild(cache, row, hitBreak);
+const groups = [
+{ label: 0, dots: 1, pairs: 2, text: 'Expected:', finalId: wrong?.expected },
+{ label: hitBreak + 1, dots: hitBreak + 2, pairs: hitBreak + 3, text: 'Hit:', finalId: wrong?.hit },
+];
+for (const plan of groups) {
+this.wrongHitChild(cache, row, plan.label).setProperties({
+display: wrong == null ? 'none' : 'flex',
+text: plan.text,
+});
+this.wrongHitChild(cache, row, plan.dots).setProperties({
+display: tail ? 'flex' : 'none',
+text: '...',
+});
+for (let i = 0; i < WRONG_HIT_ROW_NOTES; i++) {
+const id = i < WRONG_HIT_ROW_NOTES - 1 ? leadIn[i] : plan.finalId;
+this.wrongHitChild(cache, row, plan.pairs + i * 2).setProperties({
+display: id == null ? 'none' : 'flex',
+backgroundColor: id == null ? 0 : WALL_TONE_PADS[id].color,
+});
+this.wrongHitChild(cache, row, plan.pairs + i * 2 + 1).setProperties({
+display: id != null && names ? 'flex' : 'none',
+text: id == null ? '' : WALL_TONE_PADS[id].name,
+});
+}
+}
+}
+
 private trackFlatLayout(value: number): void {
 const i = this.flatLayoutCursor++;
 if (this.flatLayoutValues[i] !== value) {
@@ -5516,17 +5758,21 @@ for (let i = 0; i < this.game.sequence.length; i++) {
 if (previous.sequence[i] !== this.game.sequence[i]) { sequenceChanged = true; break; }
 }
 }
+const wrongKey = this.wrongHit == null
+? ''
+: `${this.wrongHit.preceding.join(',')}|${this.wrongHit.expected}|${this.wrongHit.hit}|${this.wrongHit.truncated ? 1 : 0}`;
 const accessibilityChanged = this.accessibilityPanel !== panel || !previous ||
 previous.show !== show || previous.flat !== flat ||
 previous.active !== this.experienceActive || previous.caption !== caption ||
 previous.phase !== this.game.phase || previous.flow !== this.flowPhase || previous.status !== this.statusText ||
 previous.names !== names || previous.reveal !== this.economy.getHintRevealCount() ||
-previous.shown !== this.playbackShownCount || previous.listen !== this.economy.ownsListen() || sequenceChanged;
+previous.shown !== this.playbackShownCount || previous.listen !== this.economy.ownsListen() ||
+previous.wrong !== wrongKey || sequenceChanged;
 if (accessibilityChanged) {
 this.accessibilityPanel = panel;
 this.accessibilityState = { show, flat, active: this.experienceActive, caption,
 phase: this.game.phase, flow: this.flowPhase, status: this.statusText, names, sequence: [...this.game.sequence],
-reveal: this.economy.getHintRevealCount(), shown: this.playbackShownCount, listen: this.economy.ownsListen() };
+reveal: this.economy.getHintRevealCount(), shown: this.playbackShownCount, listen: this.economy.ownsListen(), wrong: wrongKey };
 if (panel && this.experienceActive) this.renderSequenceIcons(panel);
 // Bug fix (user report): the info row holds the Your Turn hint boxes; it
 // used to be hidden unless subtitles were on AND the session was immersive,
@@ -5617,8 +5863,12 @@ const seqVisible = this.experienceActive &&
 ((captionListening && this.economy.ownsListen()) ||
 (this.game.phase === 'input' && captionReveal > 0));
 // Same owner ask as the panel status: no Listen/Hint title before purchase;
-// the blank line keeps the strip height unchanged.
-const info = !this.experienceActive
+// the blank line keeps the strip height unchanged. A missed hit blanks the
+// label: the mismatch shows as color squares instead of words (owner 2026-11-15).
+const captionWrong = this.wrongHitVisible() ? this.wrongHit : null;
+const info = captionWrong != null
+? '\u00a0'
+: !this.experienceActive
 ? ''
 : this.game.phase === 'input'
 ? (captionReveal > 0 ? 'Hint:' : '\u00a0')
@@ -5630,6 +5880,50 @@ this.flatCaptions.replaceChildren();
 const line = document.createElement('div');
 Object.assign(line.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexWrap: 'wrap' });
 const label = document.createElement('span'); label.textContent = info; line.append(label);
+if (captionWrong) {
+// Owner 2026-11-15 19:01: two stacked lines that do not grow the panel - the
+// right pattern (Expected) above what was played (Hit), each up to
+// WRONG_HIT_ROW_NOTES notes with the final one differing (e.g. RRRBG vs
+// RRRBY). The pattern (history) row stays hidden after a failure.
+const namesOn = colorNamesEnabled();
+const leadIn = captionWrong.preceding.slice(-(WRONG_HIT_ROW_NOTES - 1));
+// Owner 2026-11-15 23:23: a leading "..." on each row when the captured
+// chain has more notes than the row shows, marking it as a tail.
+const tailHidden = captionWrong.preceding.length > WRONG_HIT_ROW_NOTES - 1;
+const appendSquares = (rowEl: HTMLElement, ids: number[]) => {
+for (const id of ids) {
+const square = document.createElement('span');
+Object.assign(square.style, { width: '16px', height: '16px', borderRadius: '2px', background: `#${WALL_TONE_PADS[id].color.toString(16).padStart(6, '0')}`, display: 'inline-block', flexShrink: '0' });
+square.setAttribute('aria-label', WALL_TONE_PADS[id].name);
+square.setAttribute('data-wronghit', '1');
+rowEl.append(square);
+if (namesOn) {
+const word = document.createElement('span');
+word.textContent = WALL_TONE_PADS[id].name;
+rowEl.append(word);
+}
+}
+};
+const appendGroup = (labelText: string, finalId: number, rowName: string) => {
+const group = document.createElement('div');
+Object.assign(group.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexBasis: '100%' });
+group.setAttribute('data-wronghit-row', rowName);
+const groupLabel = document.createElement('span');
+Object.assign(groupLabel.style, { display: 'inline-block', width: '72px', textAlign: 'left' });
+groupLabel.textContent = labelText;
+group.append(groupLabel);
+if (tailHidden) {
+const dots = document.createElement('span');
+dots.textContent = '...';
+dots.setAttribute('data-wronghit-tail', '1');
+group.append(dots);
+}
+appendSquares(group, [...leadIn, finalId]);
+line.append(group);
+};
+appendGroup('Expected:', captionWrong.expected, 'expected');
+appendGroup('Hit:', captionWrong.hit, 'hit');
+}
 if (seqVisible) for (let i = 0; i < this.game.sequence.length; i++) {
 if (captionListening && i >= this.playbackShownCount) break;
 const unknown = captionYourTurn && i >= captionReveal;
