@@ -35,6 +35,7 @@ export type WallTonesClipId =
   | 'newBest2'
   | 'newBest3'
   | 'barsFirstEarn'
+  | 'palmProjector'
   | 'storeWelcome'
   | 'storeHints'
   | 'storeIntro'
@@ -119,6 +120,7 @@ export const WALL_TONES_CLIP_FILES: Record<WallTonesClipId, string> = {
   milestone15: 'milestone-15.mp3',
   milestone20: 'milestone-20.mp3',
   barsFirstEarn: 'bars-first-earn.mp3',
+  palmProjector: 'palm-projector.mp3',
   storeWelcome: 'store-welcome.mp3',
   storeHints: 'store-hints.mp3',
   storeIntro: 'store-intro.mp3',
