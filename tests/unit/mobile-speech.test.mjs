@@ -230,3 +230,72 @@ test('Lab lines keep captured opposite cast, exact captions and mobile cancellat
   assert.equal(speech.isBusy(), false);
   assert.equal(h.instances.length, 1);
 });
+
+
+test('story progress fires at actual element playback start once, not enqueue or completion', async () => {
+  const h = await loadSpeech();
+  await h.gesture(() => h.speech.startMobileWelcomeFromGesture());
+  h.speech.unlockSpeechFromGesture();
+  const voice = new h.speech.WallTonesSpeech();
+  let started = 0;
+  const line = voice.speakStoryLine('C01', undefined, () => started++);
+  assert.equal(started, 0, 'queueing is not hearing');
+  await Promise.resolve();
+  assert.equal(started, 0, 'calling play is not proof of playback');
+  h.instances[0].onplaying();
+  assert.equal(started, 1);
+  h.instances[0].onplaying();
+  assert.equal(started, 1, 'a resumed media event must not consume another line');
+  voice.cancel();
+  await line;
+  assert.equal(started, 1, 'Skip neither rewinds nor double-counts');
+});
+
+test('cancel before playback and queued story cancellation do not mark unheard lines', async () => {
+  const h = await loadSpeech();
+  await h.gesture(() => h.speech.startMobileWelcomeFromGesture());
+  h.speech.unlockSpeechFromGesture();
+  const voice = new h.speech.WallTonesSpeech();
+  let started = 0;
+  const first = voice.speakBackgroundLine('R01', { cypher: 'female', narrator: 'male' }, () => started++);
+  const queued = voice.speakStoryLine('C02', undefined, () => started++);
+  await Promise.resolve();
+  const stalePlaying = h.instances[0].onplaying;
+  voice.cancel();
+  stalePlaying();
+  await Promise.all([first, queued]);
+  assert.equal(started, 0);
+});
+
+test('caption-only story starts consume the displayed line; silent mode retains progression', async () => {
+  const h = await loadSpeech({ subtitles: true });
+  globalThis.__voicesOff = true;
+  const voice = new h.speech.WallTonesSpeech();
+  let started = 0;
+  const line = voice.speakStoryLine('N01', undefined, () => started++);
+  await Promise.resolve();
+  assert.equal(started, 1, 'story narrator follows the same start contract');
+  voice.cancel();
+  await line;
+  globalThis.__subtitles = false;
+  await voice.speakBackgroundLine('R01', { cypher: 'female', narrator: 'male' }, () => started++);
+  assert.equal(started, 2, 'voices-off without captions must not strand the storyline');
+});
+
+
+test('Web Audio start consumes a story line; failed source start does not', async () => {
+  const h = await loadSpeech();
+  const voice = new h.speech.WallTonesSpeech();
+  let started = 0;
+  const clip = { url: 'https://example.test/story.mp3', text: 'Story', onStarted() { started++; } };
+  const source = { connect() {}, start() {}, stop() {} };
+  const context = { destination: {}, createBufferSource() { return source; } };
+  const playing = voice.playBuffer(context, { duration: 1 }, clip);
+  assert.equal(started, 1);
+  source.onended();
+  await playing;
+  assert.equal(started, 1);
+  source.start = () => { throw new Error('failed start'); };
+  await voice.playBuffer(context, { duration: 1 }, clip);
+  assert.equal(started, 1);
+});
