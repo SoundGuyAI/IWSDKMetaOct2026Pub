@@ -120,39 +120,54 @@ test('disabled flow reports nothing and re-enables clean', () => {
 test('hand gap tracker pauses short tracking loss, resets at the threshold', () => {
   const tracker = new GameOverHandGapTracker(1.0);
   assert.equal(tracker.note(true, 10), null);
+  assert.equal(tracker.observedNow(10), 10);
   assert.equal(tracker.note(false, 10.2), 'pause');
   assert.equal(tracker.note(false, 10.8), 'pause');
   assert.ok(Math.abs(tracker.gapSec(10.8) - 0.6) < 1e-9);
   assert.equal(tracker.note(true, 11.0), null);
+  // The 0.8s untracked stretch is subtracted from observed time.
+  assert.ok(Math.abs(tracker.observedNow(11.0) - 10.2) < 1e-9);
   assert.equal(tracker.gapSec(11.0), 0);
   assert.equal(tracker.note(false, 12.0), 'pause');
   assert.equal(tracker.note(false, 13.0), 'reset'); // 1.0s stretch hits the threshold
   assert.equal(tracker.note(false, 13.5), 'reset'); // stays reset while no hands
+  // A restart drops the paused-time bookkeeping: observed time is wall time.
+  assert.equal(tracker.observedNow(13.5), 13.5);
+  assert.equal(tracker.note(true, 14.0), null);
+  assert.equal(tracker.observedNow(14.0), 14.0);
   tracker.reset();
-  assert.equal(tracker.note(false, 14.0), 'pause');
+  assert.equal(tracker.note(false, 15.0), 'pause');
 });
 
-test('a short tracking gap pauses the flow without losing a hold', () => {
+test('a short tracking gap pauses the hold: unseen time never counts', () => {
   const flow = new GameOverThumbsFlow();
   flow.setEnabled(true);
   flow.setRetryAvailable(true);
   const tracker = new GameOverHandGapTracker(1.0);
+  // Mirrors the system's wiring: note() gates the frame, feed() gets
+  // observed time.
   const feed = (left, right, now) => {
     const gap = tracker.note(left != null || right != null, now);
     if (gap === 'reset') { flow.reset(); return null; }
     if (gap === 'pause') return null;
-    return flow.feed(left, right, now);
+    return flow.feed(left, right, tracker.observedNow(now));
   };
-  // Both thumbs up for about a second, then tracking drops for 0.8s
-  // (< threshold): frames are skipped, the hold survives.
+  // Both thumbs up, observed for about a second (hold needs 1.5s).
   for (let t = 0; t < 1.0; t += 0.1) assert.equal(feed('up', 'up', t), null);
+  // 0.8s with no tracked hand (< threshold): pause, no reset.
   for (let t = 1.0; t < 1.8; t += 0.1) assert.equal(feed(null, null, t), null);
   assert.equal(flow.isEnabled, true);
-  // Hands back, still both up: the interrupted hold completes instead of
-  // restarting from zero.
-  let event = null;
-  for (let t = 1.8; t < 2.2 && event == null; t += 0.1) event = feed('up', 'up', t);
-  assert.equal(event, 'retry');
+  // Tracking returns, thumbs still up. The deliberate hold must not complete
+  // on time it could not see: no instant retry on reacquisition, and none
+  // before 1.5s of OBSERVED holding (wall 2.3s here).
+  assert.equal(feed('up', 'up', 1.8), null);
+  assert.equal(feed('up', 'up', 2.2), null);
+  let eventAt = null;
+  for (let t = 2.3; t < 3.0 && eventAt == null; t += 0.1) {
+    if (feed('up', 'up', t) != null) eventAt = t;
+  }
+  assert.ok(eventAt != null, 'retry fires once the held time is actually observed');
+  assert.ok(eventAt >= 2.2, `retry fired at ${eventAt}: unseen gap time counted toward the hold`);
 });
 
 test('a tracking gap at the threshold restarts the gesture', () => {
@@ -164,7 +179,7 @@ test('a tracking gap at the threshold restarts the gesture', () => {
     const gap = tracker.note(left != null || right != null, now);
     if (gap === 'reset') { flow.reset(); return null; }
     if (gap === 'pause') return null;
-    return flow.feed(left, right, now);
+    return flow.feed(left, right, tracker.observedNow(now));
   };
   for (let t = 0; t < 1.0; t += 0.1) assert.equal(feed('up', 'up', t), null);
   // 1.2s with no tracked hand: the tracker asks for a restart.
