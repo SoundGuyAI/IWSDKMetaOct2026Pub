@@ -33,6 +33,9 @@ const REPLAY_PAID_KEY = 'wall-tones-replays-paid';
 const SAVERS_KEY = 'wall-tones-savers';
 const PLAY_LEVEL_KEY = 'wall-tones-play-level';
 const INDEX_OWNED_KEY = 'wall-tones-index-owned';
+const SPEED_LEVEL_KEY = 'wall-tones-speed-level';
+const SPEED_DISABLED_KEY = 'wall-tones-speed-disabled';
+const SPEED_SELECTED_KEY = 'wall-tones-speed-selected';
 const MULTIPLIER_LEVEL_KEY = 'wall-tones-multiplier-level';
 const MULTIPLIER_DISABLED_KEY = 'wall-tones-multiplier-disabled';
 
@@ -84,6 +87,23 @@ export const PLAY_TONES_PER_LEVEL = 5;
 export const PLAY_PRICING_SET = true;
 export const PLAY_COSTS: readonly number[] = [500, 1000, 2000, 4000];
 
+/** Speed modifier (backlog 96, his proposal 2026-11-14 18:43, verbatim in
+ * WALL_TONES_TODO.md): four levels; the beginning of the pattern plays faster
+ * during the Listen playback, covering only the first N notes where N is the
+ * higher of the Play/Autoplay note counts (capped at the pattern length). He
+ * flagged both open points himself: the per-level curve ("maybe half ... i
+ * don't know if it's too much") and the base price ("like in the thousands"),
+ * so the values below are PROVISIONAL TEST VALUES for the preview, not
+ * approved economy. No unlock prerequisite was specified, so it is ungated
+ * for now like Replay/Saver ("no prerequisites for now", 2026-11-11) - his
+ * call if it needs a gate. */
+export const SPEED_MAX_LEVEL = 4;
+/** Provisional ladder ("base price ... in the thousands"), doubling per
+ * level until the balance pass settles it. */
+export const SPEED_COSTS: readonly number[] = [1000, 2000, 4000, 8000];
+/** Note-time divisor per owned level (his "maybe half ... in each level"
+ * proposal: level 4 reaches 16x, his own flagged concern). */
+export const SPEED_NOTE_TIME_DIVISOR = 2;
 /** Multiplier modifier (backlog 97 + 70): X2 double score (his 2026-11-11
  * store request: "Multiplier modifier (where you get double score)"). Since
  * Total Score IS lifetime Bars earned, the multiplier scales the Bar awards
@@ -225,6 +245,23 @@ function writeNumber(key: string, value: number): void {
   }
 }
 
+/** Selected Speed strength for the cycle control (his 2026-11-17 ask: the
+ * panel button cycles the bought speeds, off at the end of the cycle).
+ * Migrates the retired on/off flag: with no stored selection, an owned
+ * Speed starts at full strength unless it was switched off. */
+function readSpeedSelected(): number {
+  try {
+    const raw = globalThis.localStorage?.getItem(SPEED_SELECTED_KEY);
+    if (raw != null) {
+      const value = Number(raw);
+      return Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;
+    }
+    return readNumber(SPEED_DISABLED_KEY) === 1 ? 0 : readNumber(SPEED_LEVEL_KEY);
+  } catch {
+    return 0;
+  }
+}
+
 function readStringArray(key: string): string[] {
   try {
     const raw = globalThis.localStorage?.getItem(key);
@@ -267,6 +304,9 @@ REPLAY_PAID_KEY,
 SAVERS_KEY,
 PLAY_LEVEL_KEY,
 INDEX_OWNED_KEY,
+SPEED_LEVEL_KEY,
+SPEED_DISABLED_KEY,
+SPEED_SELECTED_KEY,
 MULTIPLIER_LEVEL_KEY,
 MULTIPLIER_DISABLED_KEY,
 // Backlog 30 research totals (fractional meters; economy's number helpers
@@ -298,6 +338,8 @@ export class WallTonesEconomy {
   private savers = readNumber(SAVERS_KEY);
   private playLevel = readNumber(PLAY_LEVEL_KEY);
   private indexOwned = readNumber(INDEX_OWNED_KEY) === 1;
+  private speedLevel = readNumber(SPEED_LEVEL_KEY);
+  private speedSelected = readSpeedSelected();
   private multiplierLevel = readNumber(MULTIPLIER_LEVEL_KEY);
   private multiplierDisabled = readNumber(MULTIPLIER_DISABLED_KEY) === 1;
   /** In-memory test Bars from the ?demoBars URL flag. Never persisted, never
@@ -656,6 +698,68 @@ export class WallTonesEconomy {
     writeNumber(INDEX_OWNED_KEY, 1);
   }
 
+  /** Owned Speed level (0 = not owned). */
+  getSpeedLevel(): number {
+    return this.speedLevel;
+  }
+
+  /** Speed applies while owned AND a strength is selected (the panel
+   * button cycles the bought speeds with off at the end of the cycle, his
+   * 2026-11-17 ask). */
+  isSpeedEnabled(): boolean {
+    return this.speedLevel > 0 && this.getSpeedSelectedLevel() > 0;
+  }
+
+  /** Selected Speed strength, clamped to ownership: 0 = off. */
+  getSpeedSelectedLevel(): number {
+    return Math.min(this.speedSelected, this.speedLevel);
+  }
+
+  /** Cycle the selection 1 -> 2 -> ... -> owned -> off -> 1. Returns the
+   * new selection (0 = off). No-op below ownership. */
+  cycleSpeedSelection(): number {
+    if (this.speedLevel < 1) return 0;
+    const current = this.getSpeedSelectedLevel();
+    const next = current >= this.speedLevel ? 0 : current + 1;
+    this.speedSelected = next;
+    writeNumber(SPEED_SELECTED_KEY, next);
+    return next;
+  }
+
+  /** Cost of Speed level `level` (1-based). Provisional test prices. */
+  speedCost(level: number): number {
+    return SPEED_COSTS[Math.min(Math.max(level, 1), SPEED_MAX_LEVEL) - 1]!;
+  }
+
+  /** Note-time multiplier for covered notes: 1/2^selected on his "half
+   * each level" proposal; 1 (normal time) while off. */
+  speedNoteTimeFactor(): number {
+    if (!this.isSpeedEnabled()) return 1;
+    return 1 / SPEED_NOTE_TIME_DIVISOR ** this.getSpeedSelectedLevel();
+  }
+
+  /** Listen-playback notes Speed covers at the current Play/Autoplay
+   * ownership (his rule: the higher of the two note counts). Without Play
+   * or Autoplay this is 0 and Speed has no effect - flagged for him. */
+  speedCoveredNoteCount(): number {
+    return Math.max(this.getPlayNoteCount(), this.getAutoplayNoteCount());
+  }
+
+  /** Buy the next Speed level. Four levels max; provisional prices, no
+   * unlock gate for now (see the constants block). */
+  buyNextSpeedLevel(): boolean {
+    if (this.speedLevel >= SPEED_MAX_LEVEL) return false;
+    const cost = this.speedCost(this.speedLevel + 1);
+    if (!this.spend(cost)) return false;
+    this.speedLevel += 1;
+    writeNumber(SPEED_LEVEL_KEY, this.speedLevel);
+    // Owning (or upgrading) selects the new full strength.
+    this.speedSelected = this.speedLevel;
+    writeNumber(SPEED_SELECTED_KEY, this.speedSelected);
+    this.countPurchase();
+    return true;
+  }
+
   /** Owned Multiplier level (0 = not owned; 1 = X2, 2 = X3, 3 = X4, 4 = X8). */
   getMultiplierLevel(): number {
     return this.multiplierLevel;
@@ -696,6 +800,14 @@ export class WallTonesEconomy {
     writeNumber(MULTIPLIER_LEVEL_KEY, this.multiplierLevel);
     this.countPurchase();
     return true;
+  }
+
+  /** Test-only: seed the Speed level without a purchase. */
+  debugGrantSpeedLevel(level: number): void {
+    this.speedLevel = Math.min(Math.max(Math.floor(level), 0), SPEED_MAX_LEVEL);
+    this.speedSelected = this.speedLevel;
+    writeNumber(SPEED_SELECTED_KEY, this.speedSelected);
+    writeNumber(SPEED_LEVEL_KEY, this.speedLevel);
   }
 
   /** Test-only: seed the Multiplier level without a purchase. */
@@ -851,4 +963,4 @@ export class WallTonesEconomy {
     writeStringArray(FIRST_FLAGS_KEY, [...this.firstFlags]);
     return true;
   }
-  }
+}
