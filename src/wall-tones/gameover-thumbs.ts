@@ -196,3 +196,39 @@ export class GameOverThumbsFlow {
     return event;
   }
 }
+
+/** Tracks stretches of frames with no tracked hand while the Game Over
+ * popup is open (Quest auto-switches hand sources off while controllers are
+ * active, so tracking comes and goes mid-popup). A short no-hand stretch
+ * pauses the gesture flow; once the stretch reaches resetAfterSec the
+ * caller restarts the gesture. */
+export class GameOverHandGapTracker {
+  private noHandsSince = -1;
+
+  constructor(private readonly resetAfterSec: number) {}
+
+  /** One frame. Returns null when a hand is tracked (feed the flow), 'pause'
+   * during a short no-hand stretch (skip the frame), or 'reset' once the
+   * stretch reaches the threshold (restart the gesture). */
+  note(handsTracked: boolean, now: number): 'pause' | 'reset' | null {
+    if (handsTracked) {
+      this.noHandsSince = -1;
+      return null;
+    }
+    if (this.noHandsSince < 0) {
+      this.noHandsSince = now;
+      return 'pause';
+    }
+    return now - this.noHandsSince >= this.resetAfterSec ? 'reset' : 'pause';
+  }
+
+  /** Length of the current no-hand stretch in seconds; 0 while tracked. */
+  gapSec(now: number): number {
+    return this.noHandsSince < 0 ? 0 : Math.max(0, now - this.noHandsSince);
+  }
+
+  /** Forget the current stretch (popup open/close, world swap). */
+  reset(): void {
+    this.noHandsSince = -1;
+  }
+}
