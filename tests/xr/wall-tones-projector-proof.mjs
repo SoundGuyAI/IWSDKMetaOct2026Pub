@@ -73,6 +73,41 @@ await page.evaluate(async()=>{ const p=window.__armbandHarness.world.getSceneObj
 await page.evaluate(async()=>{ await window.IWER_DEVICE.remote.dispatch('look_at',{device:'headset',target:window.__armbandHarness.world.getSceneObject('wall-tones-armband').position}); });
 await page.waitForTimeout(400);
 await page.screenshot({path:join(evidenceDir,'armband-projector-open-closeup.png')});
+// Nov 16 regression: from this side/closeup view the beam direction is steep
+// against the head-facing panel normal (small cosTheta). The old fit collapsed
+// the cone to a 2 cm stub here; the radius-fit must keep its reach.
+const beamFit=await page.evaluate(()=>{
+ const s=window.__armbandHarness.system;const b=s.armbandBeam;
+ const d=new b.position.constructor(0,1,0).applyQuaternion(b.quaternion);
+ const base=s.armbandGlow.position;const panel=s.armbandSmoothPos;
+ return {len:b.scale.y-0.008,radiusScale:b.scale.x,
+  fullLen:Math.hypot(panel.x-base.x,panel.y-base.y,panel.z-base.z),
+  cos:Math.abs(d.dot(s.armbandPanelZ))};
+});
+console.log('BEAM_FIT',beamFit);
+assert.ok(beamFit.cos<0.5,`closeup view really is a steep angle (cos ${beamFit.cos})`);
+assert.ok(beamFit.len>0.55*beamFit.fullLen,`beam keeps its reach at steep angles (len ${beamFit.len} of ${beamFit.fullLen})`);
+assert.ok(beamFit.len>0.1,'beam no longer collapses to the 2 cm stub');
+// Down-axis view: head above the palm looking straight along the beam. The
+// hollow cone projects almost nothing here; the view-aligned veil must fill
+// in so the beam still reads (Nov 16: beam gone at exactly these angles).
+await page.evaluate(async()=>{ const g=window.__armbandHarness.system.armbandGlow.position; await window.IWER_DEVICE.remote.dispatch('set_device_state',{state:{headset:{position:{x:g.x,y:g.y+0.42,z:g.z+0.05},orientation:{x:0,y:0,z:0,w:1}}}}); });
+await page.evaluate(async()=>{ await window.IWER_DEVICE.remote.dispatch('look_at',{device:'headset',target:window.__armbandHarness.system.armbandGlow.position}); });
+await page.waitForTimeout(500);
+const veil=await page.evaluate(()=>{const s=window.__armbandHarness.system;return {visible:s.armbandBeamVeil?.visible,strength:s.armbandBeamVeilMat?.uniforms.uStrength.value,sx:s.armbandBeamVeil?.scale.x};});
+console.log('VEIL_AXIAL',veil);
+assert.equal(veil.visible,true,'veil fills in when looking down the beam axis');
+assert.ok(veil.strength>0.5,`veil strength ${veil.strength} at axial view`);
+assert.ok(veil.sx>=0.045,'veil never foreshortens below a readable blob');
+await page.screenshot({path:join(evidenceDir,'armband-projector-beam-axial.png')});
+// Back at a side view the cone carries the look alone and the veil steps out.
+await page.evaluate(async()=>{ const p=window.__armbandHarness.world.getSceneObject('wall-tones-armband').position; await window.IWER_DEVICE.remote.dispatch('set_device_state',{state:{headset:{position:{x:p.x,y:p.y+0.04,z:p.z+0.24},orientation:{x:0,y:0,z:0,w:1}}}}); });
+await page.evaluate(async()=>{ await window.IWER_DEVICE.remote.dispatch('look_at',{device:'headset',target:window.__armbandHarness.world.getSceneObject('wall-tones-armband').position}); });
+await page.waitForTimeout(500);
+const veilSide=await page.evaluate(()=>{const s=window.__armbandHarness.system;return {visible:s.armbandBeamVeil?.visible,strength:s.armbandBeamVeilMat?.uniforms.uStrength.value};});
+console.log('VEIL_SIDE',veilSide);
+assert.equal(veilSide.visible,false,'veil stays off at side angles');
+await page.screenshot({path:join(evidenceDir,'armband-projector-beam-side.png')});
 // Restore the head so later steps run from the player pose.
 await page.evaluate(async()=>await window.IWER_DEVICE.remote.dispatch('set_device_state',{state:{headset:{position:{x:0,y:1.6,z:0},orientation:{x:0,y:0,z:0,w:1}}}}));
 // Fist -> folds away.
@@ -140,6 +175,24 @@ assert.ok(layering.minOrder>=20,'panel draws after the pad glows (renderOrder 12
 assert.equal(layering.badMats,0,'panel materials ignore depth (render in front)');
 assert.ok(Math.abs(placement.awayApplied-0.06)<0.01,'head-away offset applied in full');
 assert.ok(placement.awayGain>0.015,'panel sits farther from the head than the palm');
+// Nov 16 hardware feedback: button presses on the floating panel do not land.
+// Exercise the same hand-ray click path the band spec proves, now against the
+// floating projector panel, and log every pointer event that fires.
+await page.evaluate(()=>{ const p=window.__armbandHarness.world.getSceneObject('wall-tones-armband');window.__projClickLog=[];for(const name of ['armband-modifiers','armband-repeat']) for(const type of ['click','pointerdown','pointerup'])p.getElementById(name)?.addEventListener(type,e=>window.__projClickLog.push({name,type,pointer:e.pointerType})); });
+const projClick=await page.evaluate(async()=>{
+ const r=window.IWER_DEVICE.remote;
+ const target=r.executeListTargets({}).targets.find(t=>t.name==='armband-modifiers')?.position;
+ if(!target) return {error:'no-target'};
+ await r.dispatch('look_at',{device:'hand-right',target});
+ await new Promise(res=>setTimeout(res,300));
+ await r.dispatch('select',{device:'hand-right',duration:.15});
+ await new Promise(res=>setTimeout(res,250));
+ return {store:window.__wallTonesDebug.storeOpen,events:window.__projClickLog};
+});
+console.log('PROJECTOR_CLICK',projClick);
+assert.equal(projClick.store,true,'Modifiers button opens the store from the floating panel');
+assert.ok(projClick.events?.some(e=>e.name==='armband-modifiers'&&e.type==='click'),'click event reached the Modifiers button');
+await page.evaluate(()=>{ window.__armbandHarness.system.storeOpen=false; });
 // Jitter: physical tracking noise (~+-5 mm at ~8 Hz) must not shake the panel
 // or flap the open gate. Return to the jitter base pose and settle first.
 await page.evaluate(async()=>await window.IWER_DEVICE.remote.runSequence({device:'hand-left',idleHand:'keep',body:'fixed',gaze:'fixed',steps:[{position:{x:-.12,y:1.32,z:-.42},anchor:'wrist',orientation:{fingers:'forward',palm:'up'},duration:.2}]}));

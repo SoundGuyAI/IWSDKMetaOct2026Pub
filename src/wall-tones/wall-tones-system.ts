@@ -1,6 +1,6 @@
 import { hintWindowStart, HINT_WINDOW_SIZE } from './hint-window.js';
 import { armbandHand, armbandDisplayMode, ArmbandDisplay, ARMBAND_SCALE } from './armband.js';
-import { BAND_JOINT_ROTATION, PALM_PANEL_HEAD_AWAY, PALM_PANEL_LIFT, PalmJointsSmoother, palmOpenState, palmPanelPose, palmProjectorPromptDue, type PalmJoints, type PalmVec } from './palm-projector.js';
+import { BAND_JOINT_ROTATION, BEAM_BOTTOM_RADIUS, BEAM_TOP_RADIUS, fitBeamUnderPanel, PALM_PANEL_HEAD_AWAY, PALM_PANEL_LIFT, PalmJointsSmoother, palmOpenState, palmPanelPose, palmProjectorPromptDue, type PalmJoints, type PalmVec } from './palm-projector.js';
 import { BackgroundProgress } from './cypher-background.js';
 import { getVoiceGender } from './speech.js';
 import { CypherProgress, type CypherWindow } from './cypher-progress.js';
@@ -16,6 +16,7 @@ import { MovementTracker, formatMetersNumber, movementUiVisible, readLifetimeMov
 import {
 AdditiveBlending,
 ConeGeometry,
+PlaneGeometry,
 Matrix4,
 Raycaster,
 CylinderGeometry,
@@ -404,6 +405,7 @@ narrator: 'storeItemHack',
 // so the cut disc is hidden inside the orb and the beam reads as growing out
 // of it rather than touching it.
 const ARM_BAND_BEAM_EMBED = 0.008;
+const Z_AXIS = new Vector3(0, 0, 1);
 
 export class WallTonesSystem extends createSystem({
 pads: { required: [WallTonePad] },
@@ -667,14 +669,12 @@ if (!this.armband) {
   bind('armband-repeat', () => {
     if (this.armbandUsable() && this.game.phase === 'input' && this.economy.getReplaysTotal() > 0) void this.onRepeatPattern();
   });
-  bind('armband-modifiers', () => { if (this.armbandUsable()) this.onToggleStore(); });
-  const upgrade = (id: string) => {
-    if (!this.armbandUsable()) return;
-    if (!this.storeOpen) this.onToggleStore();
-    this.forceSelectStoreTile(id);
-  };
-  bind('armband-hint-button', () => upgrade('hint'));
-  bind('armband-autoplay', () => upgrade('autoplay'));
+  // Play modifier (item 66): same action as the panel's Play control.
+  bind('armband-play', () => { if (this.armbandUsable()) void this.onPlayControl(); });
+  // New Run on the wrist while Game Over owns the retry decision; Skip Voice
+  // while narration is playing (mirrors the panel button's relevance rule).
+  bind('armband-newrun', () => { if (this.armbandTrackable() && this.gameOverOpen) this.onGameOverNewRun(); });
+  bind('armband-skip-voice', () => { if (this.armbandTrackable()) this.onSkipVoice(); });
 }
 const hand = armbandHand();
 const adapter = this.input.xr.visualAdapters[hand].peek();
@@ -783,6 +783,7 @@ entity.object3D.visible = tracked && panelShown;
 if (housing?.object3D) housing.object3D.visible = tracked && armbandDisplayMode() === 'band';
 if (!tracked || !panelShown) {
   if (this.armbandBeam) this.armbandBeam.visible = false;
+  if (this.armbandBeamVeil) this.armbandBeamVeil.visible = false;
   if (this.armbandGlow) this.armbandGlow.visible = false;
   return;
 }
@@ -850,6 +851,7 @@ if (floating) {
   scale[0] = scale[1] = scale[2] = ARMBAND_SCALE;
   // Band mode has no beam; hide it if the session flipped from projector.
   if (this.armbandBeam) this.armbandBeam.visible = false;
+  if (this.armbandBeamVeil) this.armbandBeamVeil.visible = false;
   if (this.armbandGlow) this.armbandGlow.visible = false;
 }
 if (housing) {
@@ -865,7 +867,8 @@ this.armband.render({ streak: this.game.streak, best: this.game.bestStreak,
   hintCount: this.economy.getHintRevealCount(), listen: this.economy.ownsListen(),
   playbackShown: this.playbackShownCount, replays: this.economy.getReplaysTotal(),
   autoplay: this.economy.getAutoplayLevel(), colorNames: colorNamesEnabled(),
-  gameOver: this.gameOverOpen, bars: this.economy.getBars() });
+  gameOver: this.gameOverOpen, bars: this.economy.getBars(),
+  narrationBusy: this.speech.isBusy(), playLevel: this.economy.getPlayLevel() });
 }
 
 /** The band stays on the wrist for the whole run, including the Game Over popup. */
@@ -896,8 +899,15 @@ private readonly armbandBeamDir = new Vector3();
 private readonly armbandBeamAxis = new Vector3(0, 1, 0);
 private armbandBeam: Mesh | undefined;
 private armbandBeamMat: ShaderMaterial | undefined;
+private armbandBeamVeil: Mesh | undefined;
+private armbandBeamVeilMat: ShaderMaterial | undefined;
 private armbandGlow: Mesh | undefined;
 private armbandBeamTime = 0;
+private readonly armbandVeilMid = new Vector3();
+private readonly armbandVeilCamDir = new Vector3();
+private readonly armbandVeilViewDir = new Vector3();
+private readonly armbandHeadQuatInv = new Quaternion();
+private readonly armbandVeilSpin = new Quaternion();
 private armbandLastPose: import('./palm-projector.js').PalmPanelPose | undefined;
 private readonly armbandPanelX = new Vector3();
 private readonly armbandPanelY = new Vector3();
@@ -907,7 +917,7 @@ private readonly armbandJointMatrix = new Matrix4();
 /** The palm-center light beam + emitter glow for projector mode (concept art: rays from the open palm). */
 private ensureArmbandBeam(): void {
   if (this.armbandBeam) return;
-  const geo = new CylinderGeometry(0.055, 0.006, 1, 24, 1, true);
+  const geo = new CylinderGeometry(BEAM_TOP_RADIUS, BEAM_BOTTOM_RADIUS, 1, 24, 1, true);
   this.armbandBeamMat = new ShaderMaterial({
     transparent: true,
     depthWrite: false,
@@ -939,6 +949,39 @@ private ensureArmbandBeam(): void {
   // cone where they overlap (Nov 16 user feedback).
   this.armbandBeam.renderOrder = -1;
   this.world.scene.add(this.armbandBeam);
+  // View-aligned veil: the cone above is a hollow shell, so looking along the
+  // beam axis (the natural reading pose: palm up, panel billboarded at the
+  // head) projects almost none of its surface and the beam vanishes (Nov 16
+  // hardware feedback). This quad fully faces the head and stretches along
+  // the screen projection of the beam, so it reads at every angle - it can
+  // only foreshorten into a soft blob, never a zero-width line. It fades in
+  // as the view turns axial and stays off at side angles, where the cone
+  // carries the volumetric look on its own.
+  this.armbandBeamVeilMat = new ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    blending: AdditiveBlending,
+    side: DoubleSide,
+    uniforms: { uTime: { value: 0 }, uStrength: { value: 0 } },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: [
+      'uniform float uTime; uniform float uStrength; varying vec2 vUv;',
+      'void main(){',
+      '  float across = 1.0 - abs(vUv.y * 2.0 - 1.0);',
+      '  float body = smoothstep(0.0, 0.14, across);',
+      '  float ends = smoothstep(0.0, 0.06, vUv.x) * (1.0 - smoothstep(0.72, 1.0, vUv.x));',
+      '  float rays = 0.55 + 0.45 * sin(vUv.y * 18.0 - uTime * 7.0 + sin(vUv.x * 9.0 + uTime * 2.5) * 1.5);',
+      '  float pulse = 0.75 + 0.25 * sin(uTime * 11.0 + vUv.x * 25.0);',
+      '  vec3 color = mix(vec3(0.30, 1.0, 0.65), vec3(0.55, 1.0, 0.9), vUv.x);',
+      '  float a = uStrength * body * ends * pulse * (0.45 + 0.55 * rays);',
+      '  gl_FragColor = vec4(color * a, a);',
+      '}',
+    ].join('\n'),
+  });
+  this.armbandBeamVeil = new Mesh(new PlaneGeometry(1, 1), this.armbandBeamVeilMat);
+  this.armbandBeamVeil.visible = false;
+  this.armbandBeamVeil.renderOrder = -1;
+  this.world.scene.add(this.armbandBeamVeil);
   // Fresnel falloff so the emitter reads as a small glowing orb from every
   // angle; a flat additive fill looked like a 2D disc from the side (Nov 16
   // user feedback).
@@ -978,17 +1021,17 @@ private updateArmbandBeam(floating: { open: number; center: PalmVec; normal: Pal
   this.armbandBeamDir.copy(this.armbandSmoothPos).sub(this.armbandBeamBase);
   const fullLen = Math.max(this.armbandBeamDir.length(), 0.001);
   this.armbandBeamDir.normalize();
-  // Stop the cone just under the panel. Its wide top disc (radius 0.055) is
-  // tilted against the head-facing panel plane, so ending exactly at the
-  // panel center let the rim poke through to the head side and draw over the
-  // buttons (Nov 16 user feedback). Gap = r*tan(theta) + margin/cos(theta)
-  // keeps every rim point on the palm side of the plane.
+  // Stop the cone just under the panel. Its wide top disc (radius
+  // BEAM_TOP_RADIUS) is tilted against the head-facing panel plane, so ending
+  // exactly at the panel center let the rim poke through to the head side and
+  // draw over the buttons (Nov 16 user feedback). fitBeamUnderPanel keeps
+  // every rim point on the palm side of the plane while capping how much the
+  // beam shortens: the old length-only fit collapsed the beam to a stub at
+  // tilted hand angles, hiding it exactly where the user looked for it (Nov
+  // 16 hardware feedback). The top radius shrinks to absorb the rest.
   const cosTheta = this.armbandBeamDir.dot(this.armbandPanelZ);
-  let len = fullLen;
-  if (cosTheta > 1e-3) {
-    const sinTheta = Math.sqrt(Math.max(0, 1 - cosTheta * cosTheta));
-    len = Math.max(0.02, fullLen - (0.055 * sinTheta + 0.006) / cosTheta);
-  }
+  const fit = fitBeamUnderPanel(fullLen, cosTheta);
+  const len = fit.length;
   // The cone's local axis is +Y, so map THAT onto the beam direction.
   // setFromUnitVectors(handUp, dir) only aligned the grip's up with the beam:
   // the cone axis stayed rotated away by the grip twist and its base visibly
@@ -996,7 +1039,7 @@ private updateArmbandBeam(floating: { open: number; center: PalmVec; normal: Pal
   // inside the orb so the beam reads as growing out of it, not touching it.
   beam.position.copy(this.armbandBeamBase).addScaledVector(this.armbandBeamDir, (len - ARM_BAND_BEAM_EMBED) * 0.5);
   beam.quaternion.setFromUnitVectors(this.armbandBeamAxis, this.armbandBeamDir);
-  beam.scale.set(1, len + ARM_BAND_BEAM_EMBED, 1);
+  beam.scale.set(fit.radiusScale, len + ARM_BAND_BEAM_EMBED, fit.radiusScale);
   this.armbandBeamMat!.uniforms.uTime!.value = this.armbandBeamTime;
   (this.armbandGlow!.material as ShaderMaterial).uniforms.uTime!.value = this.armbandBeamTime;
   this.armbandBeamMat!.uniforms.uStrength!.value = e;
@@ -1005,6 +1048,31 @@ private updateArmbandBeam(floating: { open: number; center: PalmVec; normal: Pal
   const pulse = 1 + 0.18 * Math.sin(this.armbandBeamTime * 9);
   glow.scale.set(pulse, pulse, pulse);
   glow.visible = beam.visible;
+  this.updateArmbandBeamVeil(len, e);
+}
+
+/** Screen-facing beam veil: always read, even looking straight down the cone. */
+private updateArmbandBeamVeil(len: number, e: number): void {
+  const veil = this.armbandBeamVeil!;
+  this.player.head.getWorldQuaternion(this.armbandHeadQuatInv).invert();
+  // Beam direction in head space: x right, y up, z behind the viewer.
+  this.armbandVeilCamDir.copy(this.armbandBeamDir).applyQuaternion(this.armbandHeadQuatInv);
+  const projected = Math.hypot(this.armbandVeilCamDir.x, this.armbandVeilCamDir.y);
+  this.armbandVeilMid.copy(this.armbandBeamBase).addScaledVector(this.armbandBeamDir, len * 0.5);
+  this.armbandVeilViewDir.copy(this.armbandVeilMid).sub(this.viewer).normalize();
+  const axial = Math.abs(this.armbandBeamDir.dot(this.armbandVeilViewDir));
+  // Only the near-axial zone: at side angles the cone carries the look alone.
+  const strength = e * Math.min(1, Math.max(0, (axial - 0.6) / 0.3));
+  veil.position.copy(this.armbandVeilMid);
+  this.player.head.getWorldQuaternion(veil.quaternion);
+  this.armbandVeilSpin.setFromAxisAngle(Z_AXIS, Math.atan2(this.armbandVeilCamDir.y, this.armbandVeilCamDir.x));
+  veil.quaternion.multiply(this.armbandVeilSpin);
+  // Foreshortened length in the screen plane, floored so the axial view keeps
+  // a soft glowing blob where the beam points straight at the head.
+  veil.scale.set(Math.max(0.045, len * projected), 0.032, 1);
+  this.armbandBeamVeilMat!.uniforms.uTime!.value = this.armbandBeamTime;
+  this.armbandBeamVeilMat!.uniforms.uStrength!.value = strength;
+  veil.visible = e > 0.05 && strength > 0.01;
 }
 
 /** World-space palm joints for projector mode; null when any joint pose is missing. */
