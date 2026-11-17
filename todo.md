@@ -129,3 +129,9 @@ Armband verification update (Nov 13): typecheck/build and 102 unit tests pass. Q
 - [x] Restore small-movement taps on release while ignoring duplicate clicks; keep repeated drags scrolling without selection.
 - [ ] Full local/CI checks and deployed preview verification.
 - [ ] Owner headset retest, including tile details and Buy after repeated up/up/down drags. No merge approval. PR95 unchanged.
+
+## Accessibility settings layout fix (Nov 17) - separate PR in progress
+- [x] Fix: MR armband hand/mode buttons were accidentally nested inside the head-gaze checkbox row (bad merge in 228fd6b), rendering on one colliding line on Quest. Restored to their own container row; gaze rows keep their own rows.
+- [x] Armband controls keep Quest-only visibility (setDisplay on the new row, same rule as the gaze rows) - desktop/phone dialog unchanged from current main.
+- [x] Regression test: armband buttons are standalone rows, not nested in the gaze row.
+- [ ] CI, Codex review, his preview test on Quest. No merge without his go-ahead.
