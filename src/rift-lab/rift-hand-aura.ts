@@ -23,8 +23,8 @@ import { PAD_COLOR_NAMES, type HandSide } from './rift-energy.js';
 import { glowDotTexture, neonPadHex } from './rift-note-visuals.js';
 
 const FILAMENT_COUNT = 4;
-const FILAMENT_SEGMENTS = 24;
-const EMBER_COUNT = 28;
+const FILAMENT_SEGMENTS = 32;
+const EMBER_COUNT = 40;
 
 export interface HandAuraUpdate {
   left: Vector3 | null;
@@ -88,8 +88,10 @@ export class RiftHandAura {
       const mat = new MeshBasicMaterial({
         color: neonPadHex(colorName),
         transparent: true,
-        opacity: 0.9,
+        opacity: 0.95,
         blending: AdditiveBlending,
+        // Palm depth occluders would otherwise eat the spiral near the hand.
+        depthTest: false,
         depthWrite: false,
         toneMapped: false,
         side: DoubleSide,
@@ -119,10 +121,11 @@ export class RiftHandAura {
     const embers = new Points(
       emberGeo,
       new PointsMaterial({
-        size: 0.045,
+        size: 0.065,
         map: glowDotTexture(),
         vertexColors: true,
         transparent: true,
+        depthTest: false,
         depthWrite: false,
         blending: AdditiveBlending,
         toneMapped: false,
@@ -138,10 +141,11 @@ export class RiftHandAura {
         map: glowDotTexture(),
         color: 0xffffff,
         transparent: true,
+        depthTest: false,
         depthWrite: false,
         blending: AdditiveBlending,
         toneMapped: false,
-        opacity: 0.7,
+        opacity: 0.85,
       }),
     );
     core.scale.setScalar(0.1);
@@ -169,22 +173,23 @@ export class RiftHandAura {
       return;
     }
     bundle.group.visible = true;
-    const dens = firing ? 1 : 0.55;
-    const radius = 0.05 + energy01 * 0.04 * dens;
+    const dens = firing ? 1 : 0.7;
+    // Big enough glowy spiral that it reads past the palm occluders in XR.
+    const radius = 0.09 + energy01 * 0.08 * dens;
 
     for (let i = 0; i < bundle.filaments.length; i++) {
       const f = bundle.filaments[i];
-      f.mat.opacity = (firing ? 0.95 : 0.6) * Math.min(1, energy01 * 1.4);
-      const spin = timeSec * (2.8 + i * 0.5) + f.phase;
+      f.mat.opacity = (firing ? 1 : 0.75) * Math.min(1, energy01 * 1.6);
+      const spin = timeSec * (4.2 + i * 0.75) + f.phase;
       for (let k = 0; k <= FILAMENT_SEGMENTS; k++) {
         const u = k / FILAMENT_SEGMENTS;
-        const ang = f.phase + u * Math.PI * 2 * 1.7 + spin;
-        const rad = radius * (0.65 + 0.4 * Math.sin(u * 5 + spin));
-        const y = (u - 0.5) * radius * 1.7;
+        const ang = f.phase + u * Math.PI * 2 * 2.4 + spin;
+        const rad = radius * (0.7 + 0.5 * Math.sin(u * 6 + spin));
+        const y = (u - 0.5) * radius * 2.1;
         const cx = palm.x + Math.cos(ang) * rad;
         const cy = palm.y + y;
         const cz = palm.z + Math.sin(ang) * rad;
-        const hw = 0.01 * dens;
+        const hw = 0.018 * dens * (1.1 - u * 0.3);
         const sx = -Math.sin(ang) * hw;
         const sz = Math.cos(ang) * hw;
         const o = k * 6;
@@ -207,9 +212,9 @@ export class RiftHandAura {
         continue;
       }
       const seed = bundle.emberSeeds;
-      const ang = seed[i * 4 + 1] + timeSec * seed[i * 4 + 2] * 2.2;
-      const rad = seed[i * 4 + 3] * dens * (0.7 + 0.5 * energy01);
-      const lift = ((seed[i * 4] + timeSec * 0.15) % 1) * radius * 1.4 - radius * 0.4;
+      const ang = seed[i * 4 + 1] + timeSec * seed[i * 4 + 2] * 3.4;
+      const rad = seed[i * 4 + 3] * dens * (1.2 + 0.8 * energy01);
+      const lift = ((seed[i * 4] + timeSec * 0.22) % 1) * radius * 1.8 - radius * 0.5;
       const o = i * 3;
       bundle.emberPos[o] = palm.x + Math.cos(ang) * rad;
       bundle.emberPos[o + 1] = palm.y + lift;
@@ -218,8 +223,8 @@ export class RiftHandAura {
     (bundle.embers.geometry.getAttribute('position') as Float32BufferAttribute).needsUpdate = true;
 
     bundle.core.position.copy(palm);
-    bundle.core.scale.setScalar((firing ? 0.12 : 0.07) * (0.7 + 0.5 * energy01));
-    (bundle.core.material as SpriteMaterial).opacity = firing ? 0.9 : 0.45;
+    bundle.core.scale.setScalar((firing ? 0.2 : 0.12) * (0.75 + 0.55 * energy01));
+    (bundle.core.material as SpriteMaterial).opacity = firing ? 1 : 0.6;
 
     if (usePalmLight && firing) {
       bundle.light.visible = true;

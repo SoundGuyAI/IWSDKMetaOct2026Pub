@@ -1100,7 +1100,10 @@ export class RiftLabSystem extends createSystem({
   }
 
   /** Open-palm beam control (his 12:15 input): an open palm with enough
-   * energy starts the beam; closing the hand or losing tracking stops it. */
+   * energy starts the beam; closing the hand or losing tracking stops it.
+   * Only the active firing/dominant hand can start it — a closed right hand
+   * plus an open left was blinking because hold checked firingHand while
+   * start used whichever palm was open. */
   private updateXrBeam(): void {
     if (this.palms.left == null && this.palms.right == null) {
       if (this.xrBeamActive) {
@@ -1113,7 +1116,8 @@ export class RiftLabSystem extends createSystem({
       return;
     }
     if (this.xrBeamActive) {
-      const palm = this.palms[this.game.getFiringHand()];
+      const beamHand = this.game.getBeamHand() ?? this.game.getFiringHand();
+      const palm = this.palms[beamHand];
       if (palm == null || !palm.holdOpen) {
         this.xrBeamActive = false;
         this.game.stopBeam();
@@ -1126,17 +1130,16 @@ export class RiftLabSystem extends createSystem({
     if (this.game.isBeamActive()) {
       return; // a flat (drag) beam is already running
     }
-    for (const hand of ['right', 'left'] as const) {
-      const palm = this.palms[hand];
-      if (palm != null && palm.open && this.game.canFireBeam()) {
-        this.xrBeamActive = this.game.startBeam({
-          kind: 'xr-open-palm',
-          hand,
-        });
-        if (this.xrBeamActive) {
-          this.renderPanel('Palm beam firing. Aim at a rift.');
-          break;
-        }
+    // Dominant / firing hand only: the other open palm must not start a beam.
+    const hand = this.game.getFiringHand();
+    const palm = this.palms[hand];
+    if (palm != null && palm.open && this.game.canFireBeam()) {
+      this.xrBeamActive = this.game.startBeam({
+        kind: 'xr-open-palm',
+        hand,
+      });
+      if (this.xrBeamActive) {
+        this.renderPanel('Palm beam firing. Aim at a rift.');
       }
     }
   }
@@ -1219,7 +1222,8 @@ export class RiftLabSystem extends createSystem({
   /** Beam ray for the active beam: live palm aim in XR, flat aim point
    * otherwise. */
   private beamRay(out: { origin: Vector3; direction: Vector3 }): void {
-    out.origin.copy(this.handAnchor(this.game.getFiringHand()));
+    const beamHand = this.game.getBeamHand() ?? this.game.getFiringHand();
+    out.origin.copy(this.handAnchor(beamHand));
     if (this.debugBeamOrigin != null) {
       out.origin.copy(this.debugBeamOrigin);
     }
@@ -1228,7 +1232,7 @@ export class RiftLabSystem extends createSystem({
       out.origin.copy(this.restingOrbPoint(this.touchOrbPoint));
     }
     if (this.xrBeamActive) {
-      const palm = this.palms[this.game.getFiringHand()];
+      const palm = this.palms[beamHand];
       if (palm != null) {
         out.direction.set(
           palm.direction[0],
@@ -1262,7 +1266,7 @@ export class RiftLabSystem extends createSystem({
 
   private firingHandSide(): HandSide | null {
     if (!this.game.isBeamActive()) return null;
-    return this.game.getFiringHand();
+    return this.game.getBeamHand() ?? this.game.getFiringHand();
   }
 
   update(delta: number): void {
@@ -1331,51 +1335,78 @@ export class RiftLabSystem extends createSystem({
         (view) => view.rift.state === 'sealing',
       );
       let noteScale = 1;
+      let inSealFlight = false;
       if (sealingView != null) {
-        // Notes stream from the hand/pointer into the rift (the earlier
-        // motion mockup): staggered launches, a curved swirling arc, shrinking
-        // as they are absorbed, so it reads as a flow and not one lump.
+        // Torrent of notes from the hand into the rift beside the beam:
+        // staggered launches, swirling around the beam axis, shrinking as
+        // they are absorbed.
         const flightMs = this.game.isBeamActive()
           ? SEAL_HOLD_MS
           : DESKTOP_NOTES_FLIGHT_MS;
         const p =
           this.debugSealP ?? Math.min(1, sealingView.rift.sealProgressMs / flightMs);
-        const delay = ((note.id * 0.6180339) % 1) * 0.45;
-        const u = Math.min(1, Math.max(0, (p - delay) / 0.55));
+        const delay = ((note.id * 0.6180339) % 1) * 0.35;
+        const u = Math.min(1, Math.max(0, (p - delay) / 0.65));
         const e = u * u * (3 - 2 * u);
+        inSealFlight = e > 0.02;
         const dx = sealingView.position.x - ox;
         const dy = sealingView.position.y - oy;
         const dz = sealingView.position.z - oz;
-        const arc = Math.sin(Math.PI * e) * 0.16 * (0.5 + ((note.id * 0.37) % 1));
-        const ph = note.id * 2.1 + e * 9;
+        // Spiral around the hand→rift corridor so the torrent reads next to
+        // the beam rather than collapsing into a single lump.
+        const swirl = note.id * 1.7 + e * 14 + this.beamTimeSec * 3;
+        const rad = Math.sin(Math.PI * e) * (0.08 + 0.1 * ((note.id * 0.37) % 1));
+        // Perpendicular basis from the flight direction.
+        const fl = Math.hypot(dx, dy, dz) || 1;
+        const fx = dx / fl;
+        const fy = dy / fl;
+        const fz = dz / fl;
+        const hx = Math.abs(fy) < 0.9 ? 0 : 1;
+        const hy = hx === 0 ? 1 : 0;
+        let ux = fy * 0 - fz * hy;
+        let uy = fz * hx - fx * 0;
+        let uz = fx * hy - fy * hx;
+        const ul = Math.hypot(ux, uy, uz) || 1;
+        ux /= ul;
+        uy /= ul;
+        uz /= ul;
+        const vx = fy * uz - fz * uy;
+        const vy = fz * ux - fx * uz;
+        const vz = fx * uy - fy * ux;
         mesh.position.set(
-          ox + dx * e + Math.cos(ph) * arc,
-          oy + dy * e + Math.sin(ph) * arc + arc * 0.6,
-          oz + dz * e,
+          ox + dx * e + (ux * Math.cos(swirl) + vx * Math.sin(swirl)) * rad,
+          oy + dy * e + (uy * Math.cos(swirl) + vy * Math.sin(swirl)) * rad,
+          oz + dz * e + (uz * Math.cos(swirl) + vz * Math.sin(swirl)) * rad,
         );
-        noteScale = 1 - 0.75 * Math.max(0, (e - 0.7) / 0.3);
+        noteScale = 1.15 - 0.85 * Math.max(0, (e - 0.55) / 0.45);
       } else {
         mesh.position.set(ox, oy, oz);
       }
       mesh.scale.setScalar(noteScale * (1 + (glowScale - 1) * 0.3));
       // Notes face the viewer (billboard), in XR and flat alike.
       mesh.quaternion.copy(this.world.camera.quaternion);
-      // Soft fade when the note sits on the far side of the palm from the
-      // camera; depth occluders also hide notes that pass through the hand.
-      const front = noteFrontVisibility(
-        mesh.position.x,
-        mesh.position.y,
-        mesh.position.z,
-        this.palms[note.hand],
-        this.world.camera,
-        this.noteOccPalm,
-        this.noteOccCam,
-        this.noteOccNote,
-      );
       const mat = mesh.material as MeshBasicMaterial;
-      mat.opacity = 0.2 + 0.8 * front;
       mat.depthTest = true;
-      mesh.visible = front > 0.05 || this.palms[note.hand] == null;
+      if (inSealFlight) {
+        // Keep the torrent fully visible while notes race to the rift.
+        mat.opacity = 1;
+        mesh.visible = true;
+      } else {
+        // Soft fade when the note sits on the far side of the palm from the
+        // camera; depth occluders also hide notes that pass through the hand.
+        const front = noteFrontVisibility(
+          mesh.position.x,
+          mesh.position.y,
+          mesh.position.z,
+          this.palms[note.hand],
+          this.world.camera,
+          this.noteOccPalm,
+          this.noteOccCam,
+          this.noteOccNote,
+        );
+        mat.opacity = 0.2 + 0.8 * front;
+        mesh.visible = front > 0.05 || this.palms[note.hand] == null;
+      }
     }
     for (const [id, mesh] of this.noteMeshes) {
       if (!seen.has(id)) {
@@ -1423,11 +1454,20 @@ export class RiftLabSystem extends createSystem({
         const sd = view.sparkSeeds;
         const life = (age * 0.35 * sd[i * 3 + 2] + sd[i * 3]) % 1;
         const ang = sd[i * 3 + 1] + age * 0.4;
-        // Sparks drift out of the crack; while sealing they are pulled in.
+        // Sparks leave the portal in 3D (radial + out of the wall plane),
+        // not stuck on a flat disc. Sealing pulls them back into the hole.
         const rr = sealing
-          ? (1 - life) * 0.2
-          : (0.04 + life * 0.26) * (0.4 + 0.6 * u.uOpen.value);
-        pos.setXYZ(i, Math.cos(ang) * rr * 0.65, Math.sin(ang) * rr * 1.1, 0);
+          ? (1 - life) * 0.22
+          : (0.04 + life * 0.28) * (0.4 + 0.6 * u.uOpen.value);
+        const outZ = sealing
+          ? (1 - life) * 0.18 * sd[i * 3 + 2]
+          : life * (0.12 + 0.45 * sd[i * 3 + 2]);
+        pos.setXYZ(
+          i,
+          Math.cos(ang) * rr * 0.7,
+          Math.sin(ang) * rr * 1.05,
+          outZ,
+        );
       }
       pos.needsUpdate = true;
       const sealU = u.uSeal.value as number;
@@ -1437,14 +1477,25 @@ export class RiftLabSystem extends createSystem({
         if (sealing) f = 1 - f;
         const rr = (0.3 + f * 0.58) * (0.35 + 0.65 * u.uOpen.value);
         const base = spineAng[t.spine] + Math.sin(rr * 9 + t.wig * 6 + age * 1.3) * 0.12;
-        t.sprite.position.set(Math.cos(base) * rr * 0.95, Math.sin(base) * rr * 1.1, 0.02);
+        // Trail notes also lift off the wall into the room.
+        const lift = sealing ? (1 - f) * 0.12 : f * 0.2;
+        t.sprite.position.set(
+          Math.cos(base) * rr * 0.95,
+          Math.sin(base) * rr * 1.1,
+          0.02 + lift,
+        );
         const m = t.sprite.material as SpriteMaterial;
         m.opacity = Math.min(1, f * 6, (1 - f) * 4) * (1 - 0.7 * sealU);
         t.sprite.scale.setScalar(0.085 * (0.7 + 0.5 * Math.sin(age * 4 + t.wig * 9)));
       }
       for (const dbr of view.debris) {
         const dd = 0.3 + ((age * dbr.speed + dbr.ang) % 0.6) * 0.5;
-        dbr.mesh.position.set(Math.cos(dbr.ang) * dd * 0.9, Math.sin(dbr.ang) * dd * 1.05, 0.015);
+        const lift = 0.02 + ((age * 0.15 + dbr.ang) % 1) * 0.12;
+        dbr.mesh.position.set(
+          Math.cos(dbr.ang) * dd * 0.9,
+          Math.sin(dbr.ang) * dd * 1.05,
+          lift,
+        );
         dbr.mesh.rotation.z = age * dbr.spin;
         (dbr.mesh.material as MeshBasicMaterial).opacity = 1 - sealU;
       }

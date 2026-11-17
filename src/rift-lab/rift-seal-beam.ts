@@ -24,11 +24,11 @@ import {
 import { PAD_COLOR_NAMES } from './rift-energy.js';
 import { glowDotTexture, neonPadHex } from './rift-note-visuals.js';
 
-const SPIRAL_COUNT = 3;
-const SPIRAL_SEGMENTS = 40;
-const SPARK_COUNT = 56;
+const SPIRAL_COUNT = 4;
+const SPIRAL_SEGMENTS = 48;
+const SPARK_COUNT = 72;
 const PALM_WISP_COUNT = 4;
-const PALM_WISP_SEGMENTS = 12;
+const PALM_WISP_SEGMENTS = 16;
 /** Hold each pad color this long, then snap to the next (not a gradual lerp). */
 const COLOR_BEAT_SEC = 0.55;
 
@@ -117,6 +117,7 @@ export class RiftSealBeam {
       color: 0xffffff,
       transparent: true,
       opacity: 0.95,
+      depthTest: false,
       depthWrite: false,
       toneMapped: false,
       side: DoubleSide,
@@ -124,8 +125,9 @@ export class RiftSealBeam {
     this.coreOuterMat = new MeshBasicMaterial({
       color: 0xffffff,
       transparent: true,
-      opacity: 0.45,
+      opacity: 0.5,
       blending: AdditiveBlending,
+      depthTest: false,
       depthWrite: false,
       toneMapped: false,
       side: DoubleSide,
@@ -147,8 +149,9 @@ export class RiftSealBeam {
       const mat = new MeshBasicMaterial({
         color: this.padColors[i % 4].clone(),
         transparent: true,
-        opacity: 0.9,
+        opacity: 0.95,
         blending: AdditiveBlending,
+        depthTest: false,
         depthWrite: false,
         toneMapped: false,
         side: DoubleSide,
@@ -161,9 +164,10 @@ export class RiftSealBeam {
         pos,
         mat,
         phase: (i / SPIRAL_COUNT) * Math.PI * 2,
-        turns: 2.2 + i * 0.65,
-        radius: 0.04 + i * 0.018,
-        halfWidth: 0.01 + i * 0.003,
+        turns: 3.0 + i * 0.85,
+        // Wide enough to read past the core tubes in XR.
+        radius: 0.07 + i * 0.035,
+        halfWidth: 0.016 + i * 0.006,
       });
     }
 
@@ -186,10 +190,11 @@ export class RiftSealBeam {
     this.sparks = new Points(
       sparkGeo,
       new PointsMaterial({
-        size: 0.09,
+        size: 0.1,
         map: glowDotTexture(),
         vertexColors: true,
         transparent: true,
+        depthTest: false,
         depthWrite: false,
         blending: AdditiveBlending,
         toneMapped: false,
@@ -205,6 +210,7 @@ export class RiftSealBeam {
         map: glowDotTexture(),
         color: 0xffffff,
         transparent: true,
+        depthTest: false,
         depthWrite: false,
         blending: AdditiveBlending,
         toneMapped: false,
@@ -216,14 +222,15 @@ export class RiftSealBeam {
         map: glowDotTexture(),
         color: 0xffffff,
         transparent: true,
+        depthTest: false,
         depthWrite: false,
         blending: AdditiveBlending,
         toneMapped: false,
-        opacity: 0.7,
+        opacity: 0.85,
       }),
     );
-    this.palmCore.scale.setScalar(0.18);
-    this.palmHalo.scale.setScalar(0.32);
+    this.palmCore.scale.setScalar(0.22);
+    this.palmHalo.scale.setScalar(0.4);
     this.root.add(this.palmHalo, this.palmCore);
 
     for (let i = 0; i < PALM_WISP_COUNT; i++) {
@@ -231,8 +238,9 @@ export class RiftSealBeam {
       const mat = new MeshBasicMaterial({
         color: this.padColors[i % 4].clone(),
         transparent: true,
-        opacity: 0.95,
+        opacity: 1,
         blending: AdditiveBlending,
+        depthTest: false,
         depthWrite: false,
         toneMapped: false,
         side: DoubleSide,
@@ -245,9 +253,9 @@ export class RiftSealBeam {
         pos,
         mat,
         phase: (i / PALM_WISP_COUNT) * Math.PI * 2,
-        turns: 1.4,
-        radius: 0.05,
-        halfWidth: 0.012,
+        turns: 2.2,
+        radius: 0.09,
+        halfWidth: 0.018,
       });
     }
 
@@ -255,6 +263,7 @@ export class RiftSealBeam {
       map: glowDotTexture(),
       color: 0xffffff,
       transparent: true,
+      depthTest: false,
       depthWrite: false,
       blending: AdditiveBlending,
       toneMapped: false,
@@ -333,11 +342,11 @@ export class RiftSealBeam {
       sp.mat.color.copy(this.padColors[s % 4]);
       // Active beat color dominates the leading spiral.
       if (s === 0) sp.mat.color.copy(beamCol);
-      const spin = state.timeSec * (4.0 + s * 0.9) + sp.phase;
+      const spin = state.timeSec * (5.5 + s * 1.2) + sp.phase;
       for (let i = 0; i <= SPIRAL_SEGMENTS; i++) {
         const u = i / SPIRAL_SEGMENTS;
         const ang = sp.phase + u * sp.turns * Math.PI * 2 + spin;
-        const rad = sp.radius * (0.75 + 0.35 * Math.sin(u * 11 + spin * 1.3));
+        const rad = sp.radius * (0.85 + 0.45 * Math.sin(u * 11 + spin * 1.3));
         const cx = origin.x + this.tmpA.x * len * u + this.tmpB.x * Math.cos(ang) * rad + this.tmpC.x * Math.sin(ang) * rad;
         const cy = origin.y + this.tmpA.y * len * u + this.tmpB.y * Math.cos(ang) * rad + this.tmpC.y * Math.sin(ang) * rad;
         const cz = origin.z + this.tmpA.z * len * u + this.tmpB.z * Math.cos(ang) * rad + this.tmpC.z * Math.sin(ang) * rad;
@@ -347,7 +356,7 @@ export class RiftSealBeam {
           .multiplyScalar(Math.cos(ang + Math.PI / 2))
           .addScaledVector(this.tmpC, Math.sin(ang + Math.PI / 2))
           .normalize()
-          .multiplyScalar(sp.halfWidth);
+          .multiplyScalar(sp.halfWidth * (1.15 - u * 0.25));
         writeRibbonSegment(sp.pos, i, cx, cy, cz, this.tmpSide.x, this.tmpSide.y, this.tmpSide.z);
       }
       (sp.mesh.geometry.getAttribute('position') as Float32BufferAttribute).needsUpdate = true;
@@ -385,12 +394,12 @@ export class RiftSealBeam {
     for (let i = 0; i < this.palmWisps.length; i++) {
       const w = this.palmWisps[i];
       w.mat.color.copy(this.padColors[i % 4]);
-      const spin = state.timeSec * (6 + i) + w.phase;
+      const spin = state.timeSec * (8 + i * 1.4) + w.phase;
       for (let k = 0; k <= PALM_WISP_SEGMENTS; k++) {
         const u = k / PALM_WISP_SEGMENTS;
-        const ang = w.phase + u * Math.PI * 2.8 + spin;
-        const rad = 0.02 + u * 0.07;
-        const along = u * 0.1;
+        const ang = w.phase + u * Math.PI * 3.4 + spin;
+        const rad = 0.035 + u * 0.11;
+        const along = u * 0.14;
         const cx =
           origin.x +
           this.tmpA.x * along +
