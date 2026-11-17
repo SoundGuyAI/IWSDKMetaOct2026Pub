@@ -10,13 +10,19 @@ import {
   type ThumbHandJoints,
 } from '../thumbs-lab/thumbs-gesture.js';
 import { playLabAnswerCue } from '../thumbs-lab/lab-cues.js';
+import { HeadNodShakeDetector } from '../nod-lab/head-gesture.js';
+import { Euler } from 'three';
 import { CypherLabVoice, cypherLabVoiceSet } from '../thumbs-lab/lab-voice.js';
 import {
   GESTURE_ANSWER_TIMEOUT_S,
   GESTURE_CHECK_END,
   GESTURE_CHECK_INTRO,
+  NOD_CHECK_INTRO,
+  NOD_CHECK_NO,
+  NOD_CHECK_YES,
   gestureRetryLine,
   shouldRunGestureCheck,
+  shouldRunNodCheck,
 } from './gesture-check.js';
 import { captureCypherCast } from './cypher-voice.js';
 import {selectionPanelPose, horizontalLookAway, panelOverlapsPad, rectangleInsidePolygon} from './panel-placement.js';
@@ -541,10 +547,15 @@ private mrAwaitingStart = false;
 private readonly thumbStartDetector = new ThumbGestureDetector();
 /** Active story gesture-check listen; resolved by update() hand sampling. */
 private gestureListen: {
-detector: ThumbGestureDetector;
+kind: 'thumbs' | 'nod';
+detector: ThumbGestureDetector | HeadNodShakeDetector;
 deadline: number;
 resolve: (answer: 'yes' | 'no' | null) => void;
 } | null = null;
+private readonly nodBaselineQuat = new Quaternion();
+private readonly nodHeadQuat = new Quaternion();
+private readonly nodRelQuat = new Quaternion();
+private readonly nodRelEuler = new Euler();
 private readonly cypherLabVoice = new CypherLabVoice();
 /** After playback, ignore touches until every pad is clear (avoids stuck finger auto-hitting). */
 private inputNeedsClear = false;
@@ -4647,6 +4658,11 @@ if (this.canRunGestureCheck(window.id)) {
 await this.playGestureCheckWindow(intact);
 return;
 }
+// Immersive: the codename window ends with the nod-answered q3 prompt.
+if (this.canRunNodCheck(window.id)) {
+await this.playNodCheckWindow(window, intact);
+return;
+}
 const cast = captureCypherCast(getVoiceGender());
 if (window.seam === 'closed') this.setCypherSeam(false);
 if (window.fault) {
@@ -4798,7 +4814,15 @@ return;
 }
 const listen = this.gestureListen;
 if (listen != null) {
-const event = listen.detector.feed(left, right, now);
+let event: { answer: 'yes' | 'no' } | null = null;
+if (listen.kind === 'nod') {
+const angles = this.sampleHeadAngles();
+event = angles == null
+? null
+: (listen.detector as HeadNodShakeDetector).feed(angles.pitch, angles.yaw, now);
+} else {
+event = (listen.detector as ThumbGestureDetector).feed(left, right, now);
+}
 if (event != null) {
 this.gestureListen = null;
 listen.resolve(event.answer);
@@ -4810,6 +4834,18 @@ this.gestureListen = null;
 listen.resolve(null);
 }
 }
+}
+
+/** Baseline-relative headset pitch/yaw (radians) for the nod detector. */
+private sampleHeadAngles(): { pitch: number; yaw: number } | null {
+const session = this.xrManager.getSession();
+if (session == null || session.visibilityState !== 'visible') {
+return null;
+}
+this.player.head.getWorldQuaternion(this.nodHeadQuat);
+this.nodRelQuat.copy(this.nodBaselineQuat).invert().multiply(this.nodHeadQuat);
+this.nodRelEuler.setFromQuaternion(this.nodRelQuat, 'YXZ');
+return { pitch: this.nodRelEuler.x, yaw: this.nodRelEuler.y };
 }
 
 /** Read one hand's thumb-classifier joints from the live XR frame. */
@@ -4891,11 +4927,78 @@ break;
 return shouldRunGestureCheck(windowId, immersive, handTracking);
 }
 
+/** The codename nod prompt needs only the headset pose: immersive play. */
+private canRunNodCheck(windowId: string): boolean {
+const immersive =
+this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
+return shouldRunNodCheck(windowId, immersive);
+}
+
+private awaitNodAnswer(): Promise<'yes' | 'no' | null> {
+return new Promise((resolve) => {
+// Re-anchor the head baseline at the moment the prompt starts listening,
+// so a nod is measured from the resting pose (same rule as the nod lab).
+this.player.head.getWorldQuaternion(this.nodBaselineQuat);
+const detector = new HeadNodShakeDetector();
+detector.setEnabled(true);
+this.gestureListen = {
+kind: 'nod',
+detector,
+deadline: performance.now() / 1000 + GESTURE_ANSWER_TIMEOUT_S,
+resolve,
+};
+});
+}
+
+/**
+ * Immersive codename window: C05-C06 play as recorded, then Cypher asks the
+ * lab's q3 ("Will you keep helping me?") and the player answers with a head
+ * nod for yes / head shake for no. A detected answer plays the lab
+ * recognition chime (owner, Nov 17: the expected gesture plays the lab sound
+ * cue) and Cypher replies with the matching q3 branch line; about six idle
+ * seconds count as a "no" (lab rule). One prompt, no retries, so play is
+ * never wedged; the your-machine window then fulfils q3's "next window"
+ * promise. Interrupts leave unspoken lines uncompleted, as before.
+ */
+private async playNodCheckWindow(window: CypherWindow, intact: () => boolean): Promise<void> {
+const set = cypherLabVoiceSet();
+const cast = captureCypherCast(getVoiceGender());
+// Same entry effect as the recorded codename window.
+await this.speech.speakStoryEffect('open');
+if (!intact()) {
+return;
+}
+for (const id of window.lines) {
+if (!intact()) {
+return;
+}
+await this.speech.speakStoryLine(id, cast);
+if (intact()) this.cypherProgress.lineCompleted();
+}
+await this.cypherLabVoice.speak(set, NOD_CHECK_INTRO);
+if (!intact()) {
+return;
+}
+const answer = await this.awaitNodAnswer();
+this.gestureListen = null;
+if (!intact()) {
+return;
+}
+if (answer != null) {
+await playLabAnswerCue(answer);
+}
+await this.cypherLabVoice.speak(set, answer === 'yes' ? NOD_CHECK_YES : NOD_CHECK_NO);
+if (intact()) {
+await this.speech.speakStoryEffect('close');
+}
+}
+
 private awaitThumbAnswer(): Promise<'yes' | 'no' | null> {
 return new Promise((resolve) => {
 const detector = new ThumbGestureDetector();
 detector.setEnabled(true);
 this.gestureListen = {
+kind: 'thumbs',
 detector,
 deadline: performance.now() / 1000 + GESTURE_ANSWER_TIMEOUT_S,
 resolve,
