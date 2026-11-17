@@ -16,11 +16,17 @@ const sys = readFileSync(
 );
 
 test('multiplier wiring: control-row slash/label, handler, store and award hooks exist', () => {
-  for (const id of ['id="control-multiplier-slash"', 'id="control-multiplier-label"']) {
+  for (const id of [
+    'id="control-multiplier-slash"',
+    'id="control-multiplier-label"',
+    'id="wall-tones-round-card-extra"',
+  ]) {
     assert.ok(ui.includes(id), `uikitml missing ${id}`);
   }
   for (const snippet of [
     'onMultiplierControl',
+    'multiplierFactorForLevel',
+    'wall-tones-round-card-extra',
     'buyNextMultiplierLevel',
     'MULTIPLIER_MAX_LEVEL',
     "case 'multiplier'",
@@ -72,6 +78,8 @@ const {
   WallTonesEconomy,
   MULTIPLIER_MAX_LEVEL,
   MULTIPLIER_COSTS,
+  MULTIPLIER_FACTORS,
+  multiplierFactorForLevel,
 } = await import('data:text/javascript;base64,' + Buffer.from(js).toString('base64'));
 
 function ecoWith(bars) {
@@ -80,9 +88,13 @@ function ecoWith(bars) {
   return eco;
 }
 
-test('multiplier: proposed ladder X2 1000 / X3 5000 / X4 25000 (x5 growth), three levels, no gate', () => {
-  assert.equal(MULTIPLIER_MAX_LEVEL, 3);
-  assert.deepEqual([...MULTIPLIER_COSTS], [1000, 5000, 25000]);
+test('multiplier: proposed ladder X2 1000 / X3 5000 / X4 25000 / X8 125000 (x5 growth), four levels, no gate', () => {
+  assert.equal(MULTIPLIER_MAX_LEVEL, 4);
+  assert.deepEqual([...MULTIPLIER_FACTORS], [2, 3, 4, 8]);
+  assert.deepEqual([...MULTIPLIER_COSTS], [1000, 5000, 25000, 125000]);
+  assert.equal(multiplierFactorForLevel(0), 2, 'unowned labels name the first tier');
+  assert.equal(multiplierFactorForLevel(4), 8);
+  assert.equal(multiplierFactorForLevel(9), 8, 'labels clamp at the top tier');
   const eco = ecoWith(0);
   assert.equal(eco.getMultiplierLevel(), 0);
   assert.equal(eco.buyNextMultiplierLevel(), false, 'refused without Bars');
@@ -90,16 +102,17 @@ test('multiplier: proposed ladder X2 1000 / X3 5000 / X4 25000 (x5 growth), thre
   assert.equal(eco.buyNextMultiplierLevel(), true);
   assert.equal(eco.getMultiplierLevel(), 1);
   assert.equal(eco.getBars(), 0);
-  eco.debugGrant(40000);
+  eco.debugGrant(155000);
   assert.equal(eco.buyNextMultiplierLevel(), true);
   assert.equal(eco.buyNextMultiplierLevel(), true);
-  assert.equal(eco.getMultiplierLevel(), 3);
+  assert.equal(eco.buyNextMultiplierLevel(), true);
+  assert.equal(eco.getMultiplierLevel(), 4);
   assert.equal(eco.buyNextMultiplierLevel(), false, 'refused past the top level');
-  // 40000 - 5000 - 25000 = 10000
-  assert.equal(eco.getBars(), 10000);
+  // 155000 - 5000 - 25000 - 125000 = 0
+  assert.equal(eco.getBars(), 0);
 });
 
-test('multiplier: factor is level+1 while enabled, 1 while off; toggle mirrors AutoPlay', () => {
+test('multiplier: factor follows the X2/X3/X4/X8 ladder while enabled, 1 while off; toggle mirrors AutoPlay', () => {
   const eco = ecoWith(0);
   assert.equal(eco.getMultiplierFactor(), 1, 'unowned earns normal');
   assert.equal(eco.isMultiplierEnabled(), false);
@@ -108,6 +121,8 @@ test('multiplier: factor is level+1 while enabled, 1 while off; toggle mirrors A
   assert.equal(eco.getMultiplierFactor(), 2);
   eco.debugGrantMultiplierLevel(3);
   assert.equal(eco.getMultiplierFactor(), 4);
+  eco.debugGrantMultiplierLevel(4);
+  assert.equal(eco.getMultiplierFactor(), 8, 'fourth tier is X8, not X5');
   eco.debugGrantMultiplierLevel(9);
   assert.equal(eco.getMultiplierLevel(), MULTIPLIER_MAX_LEVEL, 'grant clamps at the top level');
   eco.setMultiplierDisabled(true);
@@ -115,7 +130,7 @@ test('multiplier: factor is level+1 while enabled, 1 while off; toggle mirrors A
   assert.equal(eco.getMultiplierFactor(), 1, 'disabled earns normal');
 });
 
-test('multiplier: the owned tier drives the payout - X3 and X4 scale awards by 3 and 4, not just X2', () => {
+test('multiplier: the owned tier drives the payout - X3, X4 and X8 scale awards by 3, 4 and 8, not just X2', () => {
   const eco = ecoWith(0);
   eco.debugGrantMultiplierLevel(2); // X3
   assert.equal(eco.getMultiplierFactor(), 3);
@@ -127,6 +142,11 @@ test('multiplier: the owned tier drives the payout - X3 and X4 scale awards by 3
   assert.equal(eco.awardForPress(1), 4, 'press Bars quadruple at X4');
   const round4 = eco.completePattern(5, true);
   assert.deepEqual(round4, { completion: 4, bonus: 20 }, 'completion 1x4 and bonus (rate x streak 5)x4 at X4');
+  eco.debugGrantMultiplierLevel(4); // X8
+  assert.equal(eco.getMultiplierFactor(), 8);
+  assert.equal(eco.awardForPress(1), 8, 'press Bars octuple at X8');
+  const round8 = eco.completePattern(5, true);
+  assert.deepEqual(round8, { completion: 8, bonus: 40 }, 'completion 1x8 and bonus (rate x streak 5)x8 at X8');
 });
 
 test('multiplier: every Bar award scales - presses, completion and record bonus', () => {
