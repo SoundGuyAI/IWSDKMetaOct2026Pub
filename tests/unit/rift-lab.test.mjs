@@ -157,6 +157,21 @@ test('the gate funds exactly one full seal (no impossible seal)', () => {
   assert.equal(game.getEnergy(), 0);
 });
 
+test('multi-frame beam drain seals when energy hits 0 (float-safe)', () => {
+  // Regression: per-frame applyBeamOnRift undershot SEAL_HOLD_MS by float
+  // when energy reached 0, abandoned the seal, and left mobile e2e flaky.
+  const game = new RiftLabGame(seq(0.5));
+  game.setStartingEnergy(SEAL_ENERGY_REQUIRED);
+  const rift = game.spawnRift();
+  assert.ok(game.startBeam({ kind: 'mobile-drag', dx: 0, dy: 0 }));
+  for (let i = 0; i < 200 && game.isBeamActive(); i++) {
+    game.applyBeamOnRift(rift.id, 1000 / 60);
+  }
+  assert.equal(rift.state, 'sealed');
+  assert.equal(game.getEnergy(), 0);
+  assert.equal(game.isBeamActive(), false);
+});
+
 test('clearSealed leaves open rifts untouched (respawn stays isolated)', () => {
   const game = new RiftLabGame(seq(0.5));
   for (let i = 0; i < 12; i++) game.addNoteEnergy('yellow');

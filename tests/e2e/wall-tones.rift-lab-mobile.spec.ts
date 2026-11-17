@@ -71,8 +71,30 @@ test('portrait touch: Start opens a rift and a corner drag seals it', async ({ p
       touchPoints: at(orbX + ((tx - orbX) * i) / 12, orbY + ((ty - orbY) * i) / 12),
     });
   }
+  // Hold on the live rift NDC (reflow can shift the spawn) past SEAL_HOLD_MS.
   await expect
-    .poll(() => page.evaluate(() => window.__riftLabDebug!.snapshot().status), { timeout: 15000 })
+    .poll(
+      async () => {
+        const live = await page.evaluate(() => {
+          const s = window.__riftLabDebug!.snapshot();
+          const t = s.targets[0];
+          return {
+            status: s.status,
+            energy: s.energy,
+            tx: t == null ? null : ((t.ndc[0] + 1) / 2) * window.innerWidth,
+            ty: t == null ? null : ((1 - t.ndc[1]) / 2) * window.innerHeight,
+          };
+        });
+        if (live.tx != null && live.ty != null) {
+          await cdp.send('Input.dispatchTouchEvent', {
+            type: 'touchMove',
+            touchPoints: at(live.tx, live.ty),
+          });
+        }
+        return live.status;
+      },
+      { timeout: 15000, intervals: [50, 50, 100] },
+    )
     .toBe('Rift sealed.');
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   expect((await page.evaluate(() => window.__riftLabDebug!.snapshot())).energy).toBe(0);

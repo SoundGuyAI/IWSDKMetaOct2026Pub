@@ -126,6 +126,13 @@ const TOUCH_ORB_ZONE = { maxXFrac: 0.4, minYFrac: 0.72 };
  * this many CSS px of its on-screen center (~10 mm radius on an iPhone 15 Pro,
  * which is 393 pt over 65.1 mm = ~6.0 px/mm; NN/g minimum touch target 1 cm). */
 const TOUCH_ORB_GRAB_RADIUS_PX = 64;
+/**
+ * Flat touch: the beam leaves the resting corner orb, so a pure camera-plane
+ * aim can miss the rift even when the finger sits on it. When the finger is
+ * within this NDC distance of a rift's projected center, soft-lock the beam
+ * onto that rift (portrait flake: orb→plane ray grazed past BEAM_HIT_RADIUS).
+ */
+const TOUCH_RIFT_LOCK_NDC = 0.42;
 /** Fingertip glow sizing (his 22:59 note: the finger hid the particles).
  * Adult index finger is 16-20 mm wide (MIT Touch Lab, 2003); the dragged
  * cloud is 50% wider than the 20 mm upper end, at ~6.0 CSS px/mm on an
@@ -437,6 +444,9 @@ export class RiftLabSystem extends createSystem({
     -TOUCH_ORB_SHELF_Y_M,
   );
   private readonly pointerNoteAnchor = new Vector3();
+  /** Scratch for flat-touch beam soft-lock / plane aim (no per-frame alloc). */
+  private readonly touchBeamTarget = new Vector3();
+  private readonly touchRiftNdc = new Vector3();
   private dragStart = { x: 0, y: 0 };
   private aimNdc = { x: 0, y: 0 };
   /** False until the pointer moves: default NDC (0,0) parked a Start-energy
@@ -1304,6 +1314,26 @@ export class RiftLabSystem extends createSystem({
     if (!this.isImmersive() && this.flatTouchInput && this.dragging) {
       // The dragged orb leaves from its resting corner toward the finger.
       out.origin.copy(this.restingOrbPoint(this.touchOrbPoint));
+      // Soft-lock when the finger is on a rift: corner-orb → camera-plane aim
+      // can graze past BEAM_HIT_RADIUS even though the finger covers the rift.
+      this.world.camera.updateMatrixWorld();
+      let bestDist = TOUCH_RIFT_LOCK_NDC;
+      let locked: Vector3 | null = null;
+      for (const view of this.riftViews.values()) {
+        this.touchRiftNdc.copy(view.position).project(this.world.camera);
+        const d = Math.hypot(
+          this.touchRiftNdc.x - this.aimNdc.x,
+          this.touchRiftNdc.y - this.aimNdc.y,
+        );
+        if (d <= bestDist) {
+          bestDist = d;
+          locked = view.position;
+        }
+      }
+      if (locked != null) {
+        out.direction.copy(locked).sub(out.origin).normalize();
+        return;
+      }
     }
     if (this.xrBeamActive) {
       const palm = this.palms[beamHand];
@@ -1319,7 +1349,7 @@ export class RiftLabSystem extends createSystem({
     // Aim through the rendered camera onto the rift plane so the beam lands
     // where the finger or cursor actually is (a fixed-extent guess missed
     // rifts on portrait screens).
-    const target = new Vector3(
+    this.touchBeamTarget.set(
       this.aimNdc.x * 2.2,
       1.6 + this.aimNdc.y * 1.2,
       -2.5,
@@ -1328,9 +1358,9 @@ export class RiftLabSystem extends createSystem({
     this.world.camera.updateMatrixWorld();
     this.desktopRay.setFromCamera(this.desktopNdc, this.world.camera);
     if (this.desktopRay.ray.intersectPlane(this.flatInputPlane, this.flatInputPoint)) {
-      target.copy(this.flatInputPoint);
+      this.touchBeamTarget.copy(this.flatInputPoint);
     }
-    out.direction.copy(target.sub(out.origin)).normalize();
+    out.direction.copy(this.touchBeamTarget.sub(out.origin)).normalize();
   }
 
   private readonly beamRayScratch = {

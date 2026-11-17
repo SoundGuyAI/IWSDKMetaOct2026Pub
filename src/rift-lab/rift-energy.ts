@@ -331,13 +331,17 @@ export class RiftLabGame {
     const applied = Math.min(drain, this.energy);
     this.energy -= applied;
     rift.state = 'sealing';
-    rift.sealProgressMs += dtMs * (applied / drain);
-    if (this.energy <= 0 && rift.sealProgressMs < SEAL_HOLD_MS) {
-      this.stopBeam();
-      return rift;
+    // dtMs==0 would 0/0; skip progress that frame.
+    if (drain > 0) {
+      rift.sealProgressMs += dtMs * (applied / drain);
     }
-    if (rift.sealProgressMs >= SEAL_HOLD_MS) {
+    // Gate funds exactly one seal (drain×hold == SEAL_ENERGY_REQUIRED). Across
+    // many frames, float can leave progress a hair under SEAL_HOLD_MS when
+    // energy hits 0 — the old abandon path stranded an almost-done mobile
+    // seal with status still "Ready…". Exhausting the charge completes it.
+    if (rift.sealProgressMs >= SEAL_HOLD_MS || this.energy <= 0) {
       rift.state = 'sealed';
+      this.energy = 0;
       this.stopBeam();
     }
     return rift;

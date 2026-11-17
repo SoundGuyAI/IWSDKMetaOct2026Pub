@@ -153,6 +153,7 @@ Armband verification update (Nov 13): typecheck/build and 102 unit tests pass. Q
 - [x] Beam mid-room false hits hardened (impact fleck rift-only; XR plane mesh raycasts skipped; occluders colorMask; hub demo props hidden outside Demo).
 - [x] Synthetic head-height ground plane fixed (owner Quest confirm 2026-11-17).
 - [x] PR144 review fixes (2026-11-17): drop redeclared `instanceColor` in spark/shard shaders; hide hub dressing (incl. studio-floor) only in Rift Lab; billboard welding/portal sparks; sync rift-lab desktop/mobile e2e with Start energy grant; Three color-mask cache for hand occluders; remove unused palmCore sprite; keep synthetic ground for spark bounce but exclude it from beam stop; skip scene-mesh beam stops during flat touch drag (unnamed floor/dome was killing orb→rift at ~0.1 m).
+- [x] PR #155: soft-lock flat-touch beam onto rift under finger; complete seal when beam charge hits 0 (multi-frame float used to abandon under SEAL_HOLD_MS); mobile e2e holds on live rift NDC.
 - [ ] Follow-up PR: visible white Start-energy sphere/cloud still at session-start pose (tracks energy; not colliding). Tracked in WALL_TONES_TODO.
 - [x] Local typecheck + unit + rift desktop/mobile e2e green on reconciled head (2026-11-17). Full suite + merge-ready CI still required before owner merge.
 
