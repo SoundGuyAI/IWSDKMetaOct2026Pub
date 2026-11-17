@@ -247,6 +247,75 @@ test.describe('Wall Tones desktop (flat mode)', () => {
     expect(await page.evaluate(() => (window as any).__wallTonesDebug.gameOverOpen)).toBe(false);
   });
 
+  test('Game Over: combined retry routes use vs buy by inventory, guards unaffordable', async ({
+    page,
+  }) => {
+    // Owner, Nov 17: one combined retry route for the button and the thumbs
+    // gestures - owned savers when stocked, otherwise buy-and-retry in the
+    // same press; unaffordable shows the red buy text and does nothing.
+    await bootWallTones(page);
+    await startFlatPlay(page);
+    const gameOver = async () => {
+      const s = await readDebug(page);
+      await submitPad(page, (s.sequence[0]! + 1) % 4);
+      await expect
+        .poll(() => page.evaluate(() => (window as any).__wallTonesDebug.gameOverOpen))
+        .toBe(true);
+    };
+    const label = () =>
+      page.evaluate(() => (window as any).__wallTonesDebug.gameOverRetryLabel);
+    const labelColor = () =>
+      page.evaluate(() => (window as any).__wallTonesDebug.gameOverRetryLabelColor);
+    const barsIcon = () =>
+      page.evaluate(() => (window as any).__wallTonesDebug.gameOverRetryBarsIconVisible);
+    const bars = () => page.evaluate(() => (window as any).__wallTonesDebug.bars);
+    const savers = () => page.evaluate(() => (window as any).__wallTonesDebug.savers);
+    const retry = () => page.evaluate(() => (window as any).__wallTonesDebug.gameOverRetry());
+
+    // Empty + unaffordable (0 savers, 0 Bars): red buy text, press is a no-op.
+    await gameOver();
+    expect(await label()).toBe('Buy 1 saver & retry - 18');
+    expect(await labelColor()).toBe(0xd43a3a);
+    expect(await barsIcon()).toBe(true);
+    await retry();
+    expect(await page.evaluate(() => (window as any).__wallTonesDebug.gameOverOpen)).toBe(true);
+    expect(await bars()).toBe(0);
+    expect(await savers()).toBe(0);
+    // New run still works from the guarded state.
+    await page.evaluate(() => (window as any).__wallTonesDebug.gameOverNewRun());
+    await expect
+      .poll(async () => {
+        const s = await readDebug(page);
+        return s.phase === 'input' && s.sequence.length === 1;
+      })
+      .toBe(true);
+
+    // Empty + affordable: same press buys exactly the missing saver (18 Bars).
+    await page.evaluate(() => (window as any).__wallTonesDebug.grantBars(40));
+    await gameOver();
+    let before = (await readDebug(page)).sequence.slice();
+    expect(await label()).toBe('Buy 1 saver & retry - 18');
+    expect(await labelColor()).toBe(0x1c1d20);
+    expect(await barsIcon()).toBe(true);
+    await retry();
+    await expect.poll(async () => (await readDebug(page)).phase).toBe('input');
+    expect((await readDebug(page)).sequence).toEqual(before);
+    expect(await bars()).toBe(22);
+    expect(await savers()).toBe(0);
+
+    // Stocked: the combined route spends the owned saver, no purchase.
+    await page.evaluate(() => (window as any).__wallTonesDebug.grantSavers(1));
+    await gameOver();
+    before = (await readDebug(page)).sequence.slice();
+    expect(await label()).toBe('Use 1 saver - retry same pattern');
+    expect(await barsIcon()).toBe(false);
+    await retry();
+    await expect.poll(async () => (await readDebug(page)).phase).toBe('input');
+    expect((await readDebug(page)).sequence).toEqual(before);
+    expect(await savers()).toBe(0);
+    expect(await bars()).toBe(22);
+  });
+
   test('stored voice choice controls which speech clips load', async ({
     page,
   }) => {
