@@ -129,3 +129,39 @@ test('nod-lab panel exposes the sensitivity toggle and orientation wiring', () =
   assert.match(system, /readOrientationAngleDeg/);
   assert.match(system, /nod-lab-flat-sensitivity/);
 });
+
+test('tilt tracker: nod registers with the phone held pointing up after moving from a lower hold (Nov 17 report)', () => {
+  // Owner's Nov 17 iPhone report: nods work at a normal holding angle,
+  // but after moving the phone to point up (beta past the 80 deg gimbal
+  // zone) and holding it there, nods stop registering. Inside the zone
+  // the beta baseline froze at the pre-zone pose, so every sample carried
+  // a constant pitch offset and the flat detector's return-to-baseline
+  // requirement could never be satisfied. The zone branch must keep
+  // converging the beta baseline to the resting pose (gamma stays 1:1,
+  // untrusted there).
+  const tracker = new TiltBaselineTracker();
+  const detector = new HeadNodShakeDetector(FLAT_HEAD_GESTURE_CONFIG);
+  detector.setEnabled(true);
+  let now = 0;
+  const events = [];
+  const feed = (beta, gamma) => {
+    const sample = tracker.feed(beta, gamma);
+    now += 1 / 60;
+    const event = detector.feed(sample.pitchDeg * D, sample.yawDeg * D, now);
+    if (event) events.push(event);
+  };
+  // Settle at a normal holding angle and confirm a nod registers there.
+  for (let i = 0; i < 120; i += 1) feed(45, 10);
+  for (const offset of [0, 4, 8, 12, 8, 4, 0]) feed(45 + offset, 10);
+  assert.equal(events.length, 1, 'nod at the normal hold');
+  // The detector disables itself after each reported gesture; the lab's
+  // next prompt re-arms it.
+  detector.setEnabled(true);
+  // Raise the phone to pointing up over ~1.5 s and hold it still for 3 s.
+  for (let i = 1; i <= 90; i += 1) feed(45 + (40 * i) / 90, 10);
+  for (let i = 0; i < 180; i += 1) feed(85, 10);
+  // Nod while pointing up: out-and-back around the new resting pose.
+  for (const offset of [0, 4, 8, 12, 8, 4, 0]) feed(85 + offset, 10);
+  assert.equal(events.length, 2, 'nod with the phone pointing up');
+  assert.equal(events[1]?.answer, 'yes');
+});
