@@ -112,3 +112,26 @@ The merge-ready procedure is an enduring rule for every merge, not work in this 
 - [x] Full local `npm run test:e2e` green before PR push (51 passed; pointer first-press retry hardened).
 - [ ] Headset verification called out separately (not claimed by desktop suite).
 
+
+- [ ] MR armband (backlog 7): Concept A approved Nov 13. Separate feat/mr-armband PR in progress; left/right Accessibility, functional controls, owned Hint/Listen cues and streak readout. No merge or production promotion. Backlog 76 tracks the >20 Hint policy; in-game board surface confirmed. Headset acceptance pending.
+
+Armband verification update (Nov 13): typecheck/build and 102 unit tests pass. Quest-emulator hand-ray assertion check passes (Modifiers open/close, one Replay spent, exact Hint/Autoplay upgrade selection, 20 owned cues, tracking-loss hide, right-arm preference, setup hide). Run with the app-only dev server active: `node tests/xr/wall-tones-armband.mjs` (optional `XR_URL` and `XR_EVIDENCE_DIR`). The test injects its setup access into intercepted dev responses only; no extra production debug access is added. Near-touch remains inconsistent in emulation and is not accepted. Physical headset acceptance remains required. Full desktop E2E: 59/59 pass, including slow tests (22.9 minutes). The existing mute-test fake now models removeEventListener for the new listener cleanup. Separate draft PR pending; physical headset and near-touch acceptance remain open.
+
+## PR90 Lab welcome update - 2026-11-14
+
+- Owner approved the narrator and Cypher welcome wording and requested adding both to still-open PR90. Implemented for PR90 preview review; product merge remains held for the expanded-preview test and fresh owner go-ahead.
+- Four recordings: Puck/Laomedeia narrator and opposite-gender Kore/Algenib Cypher. Embedded MP3s keep the code and assets atomic. Exact transcript checked.
+- On Lab entry: narrator welcome, radio open, Cypher nudge, radio close. Leaving Lab cancels the queue. Existing voices-off/subtitle settings apply.
+- Local typecheck, build and 114 unit tests pass. Real-click entry plus both cast sequences pass. Full local regression suite and fresh merge-ready CI still required before merge. Expanded version needs owner preview review.
+
+## Store scroll selection regression - 2026-11-16
+- [x] Reproduce the failure with a two-pixel touch-ray movement.
+- [x] Restore small-movement taps on release while ignoring duplicate clicks; keep repeated drags scrolling without selection.
+- [ ] Full local/CI checks and deployed preview verification.
+- [ ] Owner headset retest, including tile details and Buy after repeated up/up/down drags. No merge approval. PR95 unchanged.
+
+## Accessibility settings layout fix (Nov 17) - separate PR in progress
+- [x] Fix: MR armband hand/mode buttons were accidentally nested inside the head-gaze checkbox row (bad merge in 228fd6b), rendering on one colliding line on Quest. Restored to their own container row; gaze rows keep their own rows.
+- [x] Armband controls keep Quest-only visibility (setDisplay on the new row, same rule as the gaze rows) - desktop/phone dialog unchanged from current main.
+- [x] Regression test: armband buttons are standalone rows, not nested in the gaze row.
+- [ ] CI, Codex review, his preview test on Quest. No merge without his go-ahead.

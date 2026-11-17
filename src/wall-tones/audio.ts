@@ -1,4 +1,10 @@
 import { WALL_TONE_PADS, NOTE_DURATION_S } from './constants.js';
+import {
+  AUTOPLAY_CHIRP_MP3_BASE64,
+  AUTOPLAY_DISENGAGED_MP3_BASE64,
+  AUTOPLAY_ENGAGED_MP3_BASE64,
+  nextAutoplayPhraseBase64,
+} from './autoplay-cue.js';
 
 let sharedContext: AudioContext | null = null;
 const htmlToneCache = new Map<number, string>();
@@ -334,6 +340,60 @@ export async function playErrorTone(): Promise<void> {
   await new Promise<void>((resolve) => window.setTimeout(resolve, 320));
 }
 
+/**
+ * Achievement celebration sound effects (user ask, November 14: "There
+ * should also be some audio for the achievement, some sound effects
+ * associated with it."). Synthesized, no assets, no spoken words - voice
+ * stays milestone-only. Beats follow the approved show clock: a burst
+ * sparkle at 0s, a ping as the letters cascade in (~0.45s), a soft falling
+ * whoosh as the badge flies to the Achievements button (~2.2s) and a warm
+ * landing ding with the gold pulse (~2.55s). Returns true when scheduled.
+ */
+export async function playAchievementCelebrationSfx(): Promise<boolean> {
+  const context = await ensureAudioRunning();
+  if (context == null) return false;
+  const t0 = context.currentTime + 0.03;
+  const chime = (
+    frequencyHz: number,
+    at: number,
+    durationS: number,
+    peak: number,
+    type: OscillatorType = 'sine',
+  ): void => {
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = type;
+    oscillator.frequency.setValueAtTime(frequencyHz, at);
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.exponentialRampToValueAtTime(peak, at + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + durationS);
+    oscillator.connect(gain).connect(context.destination);
+    oscillator.start(at);
+    oscillator.stop(at + durationS + 0.05);
+  };
+  // Burst: bright two-note sparkle (A5, E6).
+  chime(880, t0, 0.16, 0.2, 'triangle');
+  chime(1318.51, t0 + 0.07, 0.2, 0.18, 'triangle');
+  // Letter cascade ping (A6).
+  chime(1760, t0 + 0.45, 0.22, 0.12);
+  // Fly: gentle falling whoosh.
+  const whoosh = context.createOscillator();
+  const whooshGain = context.createGain();
+  whoosh.type = 'triangle';
+  whoosh.frequency.setValueAtTime(1150, t0 + 2.2);
+  whoosh.frequency.exponentialRampToValueAtTime(520, t0 + 2.2 + 0.42);
+  whooshGain.gain.setValueAtTime(0.0001, t0 + 2.2);
+  whooshGain.gain.exponentialRampToValueAtTime(0.07, t0 + 2.2 + 0.05);
+  whooshGain.gain.exponentialRampToValueAtTime(0.0001, t0 + 2.2 + 0.42);
+  whoosh.connect(whooshGain).connect(context.destination);
+  whoosh.start(t0 + 2.2);
+  whoosh.stop(t0 + 2.2 + 0.47);
+  // Landing with the gold pulse: warm ding (G6 + C7).
+  chime(1567.98, t0 + 2.55, 0.5, 0.16);
+  chime(2093, t0 + 2.55, 0.35, 0.08);
+  return true;
+}
+
 export function suspendAudioContext(): void {
   void sharedContext?.close();
   sharedContext = null;
@@ -342,4 +402,76 @@ export function suspendAudioContext(): void {
   htmlErrorAudio = null;
   htmlPoolUnlocked = false;
   webAudioPrimed = false;
+  autoplayCueCache.clear();
+}
+
+// Auto Play cues (owner picks 2026-11-15): the robot chirp (audition
+// option 5) plus the gravelly android voice rotating five round phrases,
+// and the engaged/disengaged notices for the AutoPlay toggle. Ship as
+// embedded base64 - the exact clips reviewed - decoded in memory, so no
+// network fetch and no CSP connect-src path. The cues are decorative: any
+// failure stays silent and never blocks playback.
+const autoplayCueCache = new Map<string, Promise<AudioBuffer | null>>();
+
+function loadAutoplayCue(context: AudioContext, base64: string): Promise<AudioBuffer | null> {
+  let cached = autoplayCueCache.get(base64);
+  if (cached == null) {
+    // Manual base64 decode: no network fetch, so no CSP connect-src path.
+    cached = Promise.resolve()
+      .then(() => {
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        return bytes.buffer;
+      })
+      .then((buffer) => context.decodeAudioData(buffer))
+      .catch(() => null);
+    autoplayCueCache.set(base64, cached);
+  }
+  return cached;
+}
+
+/** Start one decoded cue clip. Never rejects. */
+async function startAutoplayClip(base64: string): Promise<void> {
+  try {
+    const context = await ensureAudioRunning();
+    if (context == null) {
+      return;
+    }
+    const buffer = await loadAutoplayCue(context, base64);
+    if (buffer == null) {
+      return;
+    }
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    gain.gain.value = 0.7;
+    source.buffer = buffer;
+    source.connect(gain).connect(context.destination);
+    source.start();
+  } catch {
+    // A silent cue must never interrupt the pattern.
+  }
+}
+
+/** AutoPlay round cue (owner 2026-11-15): the robot chirp plus the next
+ * rotating gravelly-voice phrase, started together. Resolves when the cues
+ * have started (or after a silent fallback); never rejects. */
+export async function playAutoplayRoundCue(): Promise<void> {
+  const phrase = nextAutoplayPhraseBase64();
+  await Promise.all([
+    startAutoplayClip(AUTOPLAY_CHIRP_MP3_BASE64),
+    startAutoplayClip(phrase),
+  ]);
+}
+
+/** Played once when the player switches AutoPlay on (owner 2026-11-15). */
+export async function playAutoplayEngagedCue(): Promise<void> {
+  await startAutoplayClip(AUTOPLAY_ENGAGED_MP3_BASE64);
+}
+
+/** Played once when the player switches AutoPlay off (owner 2026-11-15). */
+export async function playAutoplayDisengagedCue(): Promise<void> {
+  await startAutoplayClip(AUTOPLAY_DISENGAGED_MP3_BASE64);
 }

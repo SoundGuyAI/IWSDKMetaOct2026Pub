@@ -1,3 +1,4 @@
+import { LAB_INTRO_AUDIO } from '../lab-menu/intro-audio.js';
 import { CYPHER_BACKGROUND, type BackgroundLineId } from './cypher-background.js';
 import { captureCypherCast, type CypherCast } from './cypher-voice.js';
 import { findCypherLine, type CypherLineId } from './cypher-script.js';
@@ -34,8 +35,25 @@ export type WallTonesClipId =
   | 'newBest2'
   | 'newBest3'
   | 'barsFirstEarn'
+  | 'palmProjector'
   | 'storeWelcome'
   | 'storeHints'
+  | 'storeIntro'
+  | 'storeItemListen'
+  | 'storeItemHint'
+  | 'storeItemPlay'
+  | 'storeItemAutoplay'
+  | 'storeItemIndex'
+  | 'storeItemReplay'
+  | 'storeItemSaver'
+  | 'storeItemSecret'
+  | 'storeItemHack'
+  | 'achvStreak'
+  | 'achvBars'
+  | 'achvScore'
+  | 'achvStore'
+  | 'achvPresses'
+  | 'achvMovement'
   | 'cheer1'
   | 'cheer2'
   | 'cheer3'
@@ -102,8 +120,25 @@ export const WALL_TONES_CLIP_FILES: Record<WallTonesClipId, string> = {
   milestone15: 'milestone-15.mp3',
   milestone20: 'milestone-20.mp3',
   barsFirstEarn: 'bars-first-earn.mp3',
+  palmProjector: 'palm-projector.mp3',
   storeWelcome: 'store-welcome.mp3',
   storeHints: 'store-hints.mp3',
+  storeIntro: 'store-intro.mp3',
+  storeItemListen: 'store-item-listen.mp3',
+  storeItemHint: 'store-item-hint.mp3',
+  storeItemPlay: 'store-item-play.mp3',
+  storeItemAutoplay: 'store-item-autoplay.mp3',
+  storeItemIndex: 'store-item-index.mp3',
+  storeItemReplay: 'store-item-replay.mp3',
+  storeItemSaver: 'store-item-saver.mp3',
+  storeItemSecret: 'store-item-secret.mp3',
+  storeItemHack: 'store-item-hack.mp3',
+  achvStreak: 'achv-streak.mp3',
+  achvBars: 'achv-bars.mp3',
+  achvScore: 'achv-score.mp3',
+  achvStore: 'achv-store.mp3',
+  achvPresses: 'achv-presses.mp3',
+  achvMovement: 'achv-movement.mp3',
   hype1: 'hype-1.mp3',
   hype2: 'hype-2.mp3',
   hype3: 'hype-3.mp3',
@@ -462,6 +497,17 @@ export class WallTonesSpeech {
     const gender = line.speaker === 'cypher' ? cast.cypher : cast.narrator;
     const url = new URL(`audio/story/${line.speaker}/${gender}/${id.toLowerCase()}.mp3`, document.baseURI).href;
     return this.enqueueClip({ url, text: `${line.speaker === 'cypher' ? 'Cypher' : 'Narrator'}: ${line.text}` });
+  }
+
+  /** Device-neutral Lab welcome, using the same captured cast and speech queue. */
+  speakLabLine(speaker: 'narrator' | 'cypher', cast: Readonly<CypherCast>): Promise<void> {
+    const text = speaker === 'narrator'
+      ? 'Welcome to the Lab. These are features that will be added to the game. For now, you can try them here as demos.'
+      : "Hands. Heads. Voices. Funny how many ways a machine can learn to listen. Keep trying them. I'll be listening too.";
+    return this.enqueueClip({
+      url: LAB_INTRO_AUDIO[`${speaker}/${cast[speaker]}`],
+      text: `${speaker === 'cypher' ? 'Cypher' : 'Narrator'}: ${text}`,
+    });
   }
 
   speakBackgroundLine(id: BackgroundLineId, cast: Readonly<CypherCast>): Promise<void> {

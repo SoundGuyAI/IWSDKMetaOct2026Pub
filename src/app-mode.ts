@@ -1,4 +1,8 @@
-import { hearingSubtitlesEnabled, colorNamesEnabled, setHearingSubtitles, setColorNames, voicesOffEnabled, setVoicesOff } from './wall-tones/accessibility.js';
+import { armbandHand, setArmbandHand } from './wall-tones/armband.js';
+import { captureCypherCast } from './wall-tones/cypher-voice.js';
+import { hearingSubtitlesEnabled, colorNamesEnabled, setHearingSubtitles, setColorNames, voicesOffEnabled, setVoicesOff, headGazePinchEnabled, setHeadGazePinch, nativeGazePinchEnabled, setNativeGazePinch } from './wall-tones/accessibility.js';
+import { GAZE_SOURCE_EVENT, gazeSourceStatusText, type GazeSourceStatus } from './wall-tones/gaze-source.js';
+import { gazePinchSettingsVisible } from './enter-xr-visibility.js';
 /**
  * Switches between the main menu and experience modes by toggling authored
  * scene node visibility. Mode selection lives on spatial UIKitML panels.
@@ -16,7 +20,18 @@ import {
 const RAY_TOGGLED_PANEL_IDS: ReadonlySet<string> = new Set([
   'main-menu-panel',
   'wall-tones-panel',
+  'nod-lab-panel',
+  'lab-menu-panel',
+  'lab-entry-panel',
+  'rift-lab-panel',
+  'thumbs-lab-panel',
 ]);
+import {
+  LAB_ENTRIES,
+  labRowButtonId,
+  labRowLabel,
+  labRowTarget,
+} from './lab-menu/lab-registry.js';
 import { primeWallTonesAudioFromGesture } from './wall-tones/audio.js';
 import { resetWallTonesStats } from './wall-tones/economy.js';
 import { WALL_TONES_BUILD_LABEL } from './build-info.js';
@@ -28,7 +43,15 @@ import {
   type WallTonesVoiceGender,
 } from './wall-tones/speech.js';
 
-export type ExperienceMode = 'menu' | 'demo' | 'meditation' | 'walltones';
+export type ExperienceMode =
+  | 'menu'
+  | 'demo'
+  | 'meditation'
+  | 'walltones'
+  | 'lab'
+  | 'nodlab'
+  | 'riftlab'
+  | 'thumbslab';
 
 const MODE_STORAGE_KEY = 'iwsdk-experience-mode';
 
@@ -51,6 +74,10 @@ function readStoredMode(): ExperienceMode {
     stored === 'demo' ||
     stored === 'meditation' ||
     stored === 'walltones' ||
+    stored === 'lab' ||
+    stored === 'nodlab' ||
+    stored === 'riftlab' ||
+    stored === 'thumbslab' ||
     stored === 'menu'
   ) {
     return stored;
@@ -65,6 +92,17 @@ function persistMode(mode: ExperienceMode): void {
 export class AppModeSystem extends createSystem({}) {
   private mode: ExperienceMode = 'menu';
   private readonly voicePreview = new WallTonesSpeech();
+  private readonly labSpeech = new WallTonesSpeech();
+  private playLabIntro(): void {
+    this.voicePreview.cancel();
+    this.labSpeech.cancel();
+    const cast = captureCypherCast(getVoiceGender());
+    // Queue the whole window now: leaving Lab cancels all remaining lines.
+    void this.labSpeech.speakLabLine('narrator', cast);
+    void this.labSpeech.speakBackgroundEffect('open');
+    void this.labSpeech.speakLabLine('cypher', cast);
+    void this.labSpeech.speakBackgroundEffect('close');
+  }
 
   init(): void {
     this.mode = readStoredMode();
@@ -88,10 +126,15 @@ export class AppModeSystem extends createSystem({}) {
     }
     this.loadingStage('menu', 'Scene and renderer loaded. Wiring the menu controls.');
     const menuPanel = this.bindMainMenu();
+    this.bindLabMenu();
     this.bindWallTonesPlaceholder();
     this.bindDemoNav();
     this.bindWelcomeBack();
     this.applyMode(this.mode, false);
+    this.cleanupFuncs.push(() => this.labSpeech.cancel());
+    const muteLab = () => { if (voicesOffEnabled()) this.labSpeech.cancel(); };
+    window.addEventListener('wall-tones-accessibility-change', muteLab);
+    this.cleanupFuncs.push(() => window.removeEventListener('wall-tones-accessibility-change', muteLab));
     // Static splash in index.html stays up until the menu is usable: buttons
     // are wired (above) AND the menu text can actually render. Panel text
     // waits on the Inter MSDF font chunk, which can arrive seconds after
@@ -169,6 +212,7 @@ export class AppModeSystem extends createSystem({}) {
   }
 
   private applyMode(mode: ExperienceMode, dispatchEvent: boolean): void {
+    this.labSpeech.cancel();
     this.mode = mode;
     persistMode(mode);
 
@@ -176,9 +220,20 @@ export class AppModeSystem extends createSystem({}) {
     const showDemo = mode === 'demo';
     const showMeditation = mode === 'meditation';
     const showWallTones = mode === 'walltones';
+    const showLab = mode === 'lab';
+    const showNodLab = mode === 'nodlab';
+    const showRiftLab = mode === 'riftlab';
+    const showThumbsLab = mode === 'thumbslab';
 
     this.setNodeVisible('main-menu-panel', showMenu);
     this.setNodeVisible('wall-tones-panel', showWallTones);
+    this.setNodeVisible('lab-menu-panel', showLab);
+    this.setNodeVisible('nod-lab-panel', showNodLab);
+    this.setNodeVisible('rift-lab-panel', showRiftLab);
+    this.setNodeVisible('thumbs-lab-panel', showThumbsLab);
+    // The Lab entry floats beside the menu: visible exactly when the menu is.
+    this.setNodeVisible('lab-entry-panel', showMenu);
+
 
     for (const nodeId of DEMO_NODE_IDS) {
       this.setNodeVisible(nodeId, showDemo);
@@ -231,6 +286,56 @@ export class AppModeSystem extends createSystem({}) {
     });
   }
 
+  /** Lab entry button, Lab menu rows and Back. Rows come from the registry. */
+  private bindLabMenu(): void {
+    const entry = this.world.getSceneObject<UIKitMLAsset>('lab-entry-panel');
+    const entryButton = entry?.getElementById('lab-entry-button');
+    entryButton?.addEventListener('click', () => {
+      primeWallTonesAudioFromGesture();
+      unlockSpeechFromGesture();
+      this.setMode('lab');
+      this.playLabIntro();
+    });
+    if (entryButton != null) {
+      entryButton.name = 'Btn_Lab';
+    }
+
+    const menu = this.world.getSceneObject<UIKitMLAsset>('lab-menu-panel');
+    if (menu == null) {
+      return;
+    }
+    for (const lab of LAB_ENTRIES) {
+      const button = menu.getElementById(labRowButtonId(lab));
+      menu
+        .getElementById(`lab-row-${lab.id}-label`)
+        ?.setProperties({ text: labRowLabel(lab) } as never);
+      const target = labRowTarget(lab);
+      if (button == null) {
+        continue;
+      }
+      button.name = `Btn_Lab_${lab.id}`;
+      if (target == null) {
+        button.setProperties({ disabled: true } as never);
+        continue;
+      }
+      button.addEventListener('click', () => {
+        primeWallTonesAudioFromGesture();
+        unlockSpeechFromGesture();
+        this.setMode(target as ExperienceMode);
+      });
+    }
+    // Rift Lab Back returns to the Lab menu (it only stopped the run before).
+    this.world
+      .getSceneObject<UIKitMLAsset>('rift-lab-panel')
+      ?.getElementById('rift-lab-back-button')
+      ?.addEventListener('click', () => this.setMode('lab'));
+    const back = menu.getElementById('lab-menu-back-button');
+    back?.addEventListener('click', () => this.setMode('menu'));
+    if (back != null) {
+      back.name = 'Btn_LabBackToMenu';
+    }
+  }
+
   private bindMainMenu(): UIKitMLAsset | null {
     const panel = this.world.getSceneObject<UIKitMLAsset>('main-menu-panel');
     if (panel == null) {
@@ -240,6 +345,8 @@ export class AppModeSystem extends createSystem({}) {
     const xrButton = panel.getElementById('xr-button');
     wallTonesButton?.addEventListener('click', () => this.startWallTonesFlat());
     xrButton?.addEventListener('click', () => this.enterXrIntoWallTones());
+    this.bindNodLabBack();
+    this.bindThumbsLabBack();
     this.bindSettingsMenu(panel);
     if (wallTonesButton != null) {
       wallTonesButton.name = 'Btn_ModeWallTones';
@@ -248,6 +355,24 @@ export class AppModeSystem extends createSystem({}) {
       xrButton.name = 'Btn_EnterXrWallTones';
     }
     return panel;
+  }
+
+  private bindNodLabBack(): void {
+    const panel = this.world.getSceneObject<UIKitMLAsset>('nod-lab-panel');
+    const back = panel?.getElementById('nod-lab-back-button');
+    back?.addEventListener('click', () => this.setMode('menu'));
+    if (back != null) {
+      back.name = 'Btn_NodLabBackToMenu';
+    }
+  }
+
+  private bindThumbsLabBack(): void {
+    const panel = this.world.getSceneObject<UIKitMLAsset>('thumbs-lab-panel');
+    const back = panel?.getElementById('thumbs-lab-back-button');
+    back?.addEventListener('click', () => this.setMode('lab'));
+    if (back != null) {
+      back.name = 'Btn_ThumbsLabBackToMenu';
+    }
   }
 
   /**
@@ -326,18 +451,76 @@ export class AppModeSystem extends createSystem({}) {
       setDisplay('accessibility-dialog', 'none');
       setDisplay('settings-dialog', 'flex');
     });
-    panel.getElementById('hearing-subtitles-checkbox')?.setProperties({
-      checked: hearingSubtitlesEnabled(),
-      onCheckedChange: setHearingSubtitles,
-    } as never);
-    panel.getElementById('color-names-checkbox')?.setProperties({
-      checked: colorNamesEnabled(),
-      onCheckedChange: setColorNames,
-    } as never);
-    panel.getElementById('voices-off-checkbox')?.setProperties({
-      checked: voicesOffEnabled(),
-      onCheckedChange: setVoicesOff,
-    } as never);
+    // Backlog 78: the whole settings row toggles, not just the checkbox.
+    // The checkbox keeps its own click (controlled: it only calls
+    // onCheckedChange) and stops the bubble so the row handler below does
+    // not toggle a second time.
+    const bindToggleRow = (
+      rowId: string,
+      checkboxId: string,
+      isEnabled: () => boolean,
+      set: (value: boolean) => void,
+    ) => {
+      const checkbox = panel.getElementById(checkboxId);
+      checkbox?.setProperties({
+        checked: isEnabled(),
+        onCheckedChange: set,
+      } as never);
+      checkbox?.addEventListener('click', (event) => {
+        event.stopPropagation?.();
+      });
+      panel
+        .getElementById(rowId)
+        ?.addEventListener('click', () => set(!isEnabled()));
+    };
+    bindToggleRow(
+      'hearing-subtitles-row',
+      'hearing-subtitles-checkbox',
+      hearingSubtitlesEnabled,
+      setHearingSubtitles,
+    );
+    bindToggleRow(
+      'color-names-row',
+      'color-names-checkbox',
+      colorNamesEnabled,
+      setColorNames,
+    );
+    bindToggleRow('voices-off-row', 'voices-off-checkbox', voicesOffEnabled, setVoicesOff);
+    bindToggleRow(
+      'head-gaze-pinch-row',
+      'head-gaze-pinch-checkbox',
+      headGazePinchEnabled,
+      setHeadGazePinch,
+    );
+    bindToggleRow(
+      'native-gaze-pinch-row',
+      'native-gaze-pinch-checkbox',
+      nativeGazePinchEnabled,
+      setNativeGazePinch,
+    );
+    // Gaze + pinch options are VR-headset only (Oded, 2026-11-15): hide both rows on PC and phone menus; settings values and default-OFF behavior unchanged.
+    const gazeRowsDisplay = gazePinchSettingsVisible(typeof navigator === 'undefined' ? '' : navigator.userAgent) ? 'flex' : 'none';
+    setDisplay('head-gaze-pinch-row', gazeRowsDisplay);
+    setDisplay('native-gaze-pinch-row', gazeRowsDisplay);
+    // The armband hand/mode controls only matter in MR: same VR-headset-only
+    // visibility (previously inherited from an accidental nesting inside the
+    // head-gaze row that made them collide on one line).
+    setDisplay('armband-settings-row', gazeRowsDisplay);
+    const syncArmbandHand = () => panel.getElementById('armband-hand-setting-label')?.setProperties({
+      text: `MR armband: ${armbandHand() === 'left' ? 'Left' : 'Right'} hand`,
+    });
+    const handButton = panel.getElementById('armband-hand-button');
+    const toggleArmbandHand = () => {
+      setArmbandHand(armbandHand() === 'left' ? 'right' : 'left');
+      syncArmbandHand();
+    };
+    handButton?.addEventListener('click', toggleArmbandHand);
+    this.cleanupFuncs.push(() => handButton?.removeEventListener('click', toggleArmbandHand));
+    syncArmbandHand();
+    // Wristband display hidden for now (Nov 16 user feedback): the palm
+    // projector is the armband display, so the mode row is hidden, not
+    // removed; armbandDisplayMode() forces 'projector' meanwhile.
+    panel.getElementById('armband-mode-button')?.setProperties({ display: 'none' } as never);
     // Debug stat reset: two-step confirm, clears progression stats only.
     let resetArmed = false;
     let resetDisarm: number | undefined;
@@ -357,13 +540,27 @@ export class AppModeSystem extends createSystem({}) {
       window.location.reload();
     });
     const syncAccessibility = () => {
+      syncArmbandHand();
       if (voicesOffEnabled()) this.voicePreview.cancel();
       panel.getElementById('hearing-subtitles-checkbox')?.setProperties({ checked: hearingSubtitlesEnabled() } as never);
       panel.getElementById('color-names-checkbox')?.setProperties({ checked: colorNamesEnabled() } as never);
       panel.getElementById('voices-off-checkbox')?.setProperties({ checked: voicesOffEnabled() } as never);
+      panel.getElementById('head-gaze-pinch-checkbox')?.setProperties({ checked: headGazePinchEnabled() } as never);
+      panel.getElementById('native-gaze-pinch-checkbox')?.setProperties({ checked: nativeGazePinchEnabled() } as never);
     };
     window.addEventListener('wall-tones-accessibility-change', syncAccessibility);
     this.cleanupFuncs.push(() => window.removeEventListener('wall-tones-accessibility-change', syncAccessibility));
+    // Native eye-gaze availability verdict, reported by WallTonesSystem so
+    // the experimental mode names its source accurately (no silent head
+    // fallback - the player sees what the headset really supplies).
+    const syncGazeSource = (event: Event) => {
+      const status = (event as CustomEvent<GazeSourceStatus>).detail;
+      panel
+        .getElementById<UIKit.Text>('native-gaze-status')
+        ?.setProperties({ text: `Eye gaze + pinch (experimental) - ${gazeSourceStatusText(status)}` });
+    };
+    window.addEventListener(GAZE_SOURCE_EVENT, syncGazeSource);
+    this.cleanupFuncs.push(() => window.removeEventListener(GAZE_SOURCE_EVENT, syncGazeSource));
     syncVoiceLabels();
   }
 
@@ -400,6 +597,10 @@ export class AppModeSystem extends createSystem({}) {
       demo: 'Starter demo',
       meditation: 'Breath & gaze rest',
       walltones: 'Wall Tones 2: too fast to wall',
+      lab: 'Wall Tones 2: Lab',
+      nodlab: 'Wall Tones 2: nod yes/no lab',
+      riftlab: 'Wall Tones 2: Rift Sealing Lab',
+      thumbslab: 'Wall Tones 2: thumbs yes/no lab',
     };
     document.title = titles[mode];
 

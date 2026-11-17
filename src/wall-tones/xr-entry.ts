@@ -1,7 +1,10 @@
 import type { World } from '@iwsdk/core';
+import { formatXrLog, recordXrEvent, watchXrWorld } from './xr-diagnostics.js';
 
 /** World preparation is asynchronous; only this real DOM tap requests a session. */
 export function showXrEntryGate(world: World): void {
+  watchXrWorld(world, 'entry-gate');
+  recordXrEvent('gate-shown', `session=${world.session != null} pending=${world.sessionRequestPending}`);
   document.getElementById('wall-tones-xr-entry')?.remove();
   const gate = document.createElement('div');
   gate.id = 'wall-tones-xr-entry';
@@ -12,6 +15,7 @@ export function showXrEntryGate(world: World): void {
     font: '18px/1.4 sans-serif',
   });
   const message = document.createElement('p');
+  message.style.whiteSpace = 'pre-line';
   message.textContent = 'Ready to enter XR. The game starts only when you press Start in the menu.';
   const button = document.createElement('button');
   button.id = 'wall-tones-enter-xr';
@@ -23,22 +27,26 @@ export function showXrEntryGate(world: World): void {
   gate.append(message, button);
   document.body.appendChild(gate);
   button.addEventListener('click', () => {
+    recordXrEvent('gate-tap', `session=${world.session != null} pending=${world.sessionRequestPending}`);
     if (world.session != null) { gate.remove(); return; }
     button.disabled = true;
+    recordXrEvent('launch-called');
     message.textContent = 'Waiting for XR permission...';
     try {
       // No import, promise callback or await before the session request.
       world.launchXR();
-    } catch {
-      message.textContent = 'XR did not open. Check headset permissions and try again.';
+    } catch (error) {
+      recordXrEvent('launch-threw', String(error));
+      message.textContent = `XR did not open. Check headset permissions and try again.\n${formatXrLog()}`;
       button.disabled = false;
       return;
     }
     const check = () => {
       if (!gate.isConnected) return;
-      if (world.session != null) { gate.remove(); return; }
+      if (world.session != null) { recordXrEvent('gate-closed', 'session opened'); gate.remove(); return; }
       if (world.sessionRequestPending) { window.setTimeout(check, 100); return; }
-      message.textContent = 'XR did not open. Check headset permissions and try again.';
+      recordXrEvent('launch-no-session', 'request settled without a session');
+      message.textContent = `XR did not open. Check headset permissions and try again.\n${formatXrLog()}`;
       button.disabled = false;
       button.textContent = 'Try Enter XR again';
     };

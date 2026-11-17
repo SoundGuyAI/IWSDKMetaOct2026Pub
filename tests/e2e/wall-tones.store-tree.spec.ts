@@ -3,7 +3,8 @@ import { expect, test, type Page } from '@playwright/test';
 /**
  * Skill-tree store E2E (backlog 44, owner decisions 2026-11-11): the Listen
  * item gates the Listen-phase pattern row and unlocks Hint L1, Autoplay
- * unlocks at Hint L4 and plays the pattern prefix for the player, and the
+ * unlocks at Play L4 and enters the pattern prefix for the player (final
+ * note included, owner feedback 2026-11-15), and the
  * Replay consumable is earned past the Hint coverage and spent by the Repeat
  * button. Driven through the window.__wallTonesDebug bridge like the economy
  * spec; speech fetches are aborted so lines settle instantly.
@@ -15,17 +16,30 @@ interface DebugSnap {
   inputStep: number;
   streak: number;
   bars: number;
+  barsTotal: number;
   hintLevel: number;
   ownsListen: boolean;
   autoplayLevel: number;
+  playLevel: number;
   replaysFree: number;
   replaysPaid: number;
   replaysTotal: number;
   demoBoost: number;
   storeOpen: boolean;
   sequenceRowVisible: boolean;
+  controlRowVisible: boolean;
+  autoplayRowOpacity: number;
+  sequenceArrowAt: number;
   sequenceBoxesShown: number;
   flatAwaitingStart: boolean;
+  presses: number;
+  savedBestStreak: number;
+  autoplayBarsTotal: number;
+  autoplayEnabled: boolean;
+  unlockedAchievements: string[];
+  statusLineText: string;
+  autoplayControlLabel: string;
+  autoplaySlashVisible: boolean;
 }
 
 const readState = (page: Page): Promise<DebugSnap> =>
@@ -38,17 +52,30 @@ const readState = (page: Page): Promise<DebugSnap> =>
       inputStep: d.inputStep,
       streak: d.streak,
       bars: d.bars,
+      barsTotal: d.barsTotal,
       hintLevel: d.hintLevel,
       ownsListen: d.ownsListen,
       autoplayLevel: d.autoplayLevel,
+      playLevel: d.playLevel,
       replaysFree: d.replaysFree,
       replaysPaid: d.replaysPaid,
       replaysTotal: d.replaysTotal,
       demoBoost: d.demoBoost,
       storeOpen: d.storeOpen,
       sequenceRowVisible: d.sequenceRowVisible,
+      controlRowVisible: d.controlRowVisible,
+      autoplayRowOpacity: d.autoplayRowOpacity,
+      sequenceArrowAt: d.sequenceArrowAt,
       sequenceBoxesShown: d.sequenceBoxesShown,
       flatAwaitingStart: d.flatAwaitingStart,
+      presses: d.presses,
+      savedBestStreak: d.savedBestStreak,
+      autoplayBarsTotal: d.autoplayBarsTotal,
+      autoplayEnabled: d.autoplayEnabled,
+      unlockedAchievements: [...d.unlockedAchievements],
+      statusLineText: d.statusLineText,
+      autoplayControlLabel: d.autoplayControlLabel,
+      autoplaySlashVisible: d.autoplaySlashVisible,
     };
   });
 
@@ -75,6 +102,15 @@ const grantBars = (page: Page, amount: number): Promise<unknown> =>
         __wallTonesDebug: { grantBars(a: number): void };
       }).__wallTonesDebug.grantBars(n),
     amount,
+  );
+
+const grantPlayLevel = (page: Page, level: number): Promise<unknown> =>
+  page.evaluate(
+    (n) =>
+      (window as unknown as {
+        __wallTonesDebug: { grantPlayLevel(l: number): void };
+      }).__wallTonesDebug.grantPlayLevel(n),
+    level,
   );
 
 /** Fail every clip fast; the game treats the lines as settled. */
@@ -133,7 +169,11 @@ test.describe('Wall Tones store skill tree', () => {
     test.slow();
     await abortSpeech(page);
     await bootWallTones(page, true);
+    // Owner 2026-11-15: the modifier row is visible as soon as the full game
+    // window opens, before the first input starts the game loop.
+    expect((await readState(page)).controlRowVisible).toBe(true);
     await submitPad(page, 0); // start tap
+    expect((await readState(page)).controlRowVisible).toBe(true);
     // Catch the first Listen playback: no Listen item, no listen line.
     await expect
       .poll(async () => (await readState(page)).phase, { timeout: 90_000 })
@@ -162,14 +202,15 @@ test.describe('Wall Tones store skill tree', () => {
       .toBe('shown');
   });
 
-  test('Autoplay unlocks at Hint L4 and plays the pattern prefix, capped one short', async ({
+  test('Autoplay unlocks at Play L4 (after Hint L4), auto-completes covered rounds, leaves extra notes manual', async ({
     page,
   }) => {
     test.slow();
     await abortSpeech(page);
     await bootWallTones(page, true);
-    // Listen 30 + Hint 25+50+100+200 + Autoplay L1 250 = 655.
-    await grantBars(page, 660);
+    // Listen 30 + Hint 25+50+100+200 + Autoplay L1 2500 (temporary, owner
+    // 2026-11-15 23:49) = 2905.
+    await grantBars(page, 5410);
     await dbg(page, 'toggleStore');
     await dbg(page, 'buyListen');
     await dbg(page, 'buyAutoplay');
@@ -177,16 +218,77 @@ test.describe('Wall Tones store skill tree', () => {
     for (let i = 0; i < 4; i += 1) {
       await dbg(page, 'buyHint');
     }
+    // Gate chain (owner voice 2026-11-13): Hint L4 unlocks Play L1, and
+    // only Play L4 unlocks Autoplay - Hint L4 alone is no longer enough.
+    await dbg(page, 'buyAutoplay');
+    expect((await readState(page)).autoplayLevel).toBe(0);
+    await grantPlayLevel(page, 4);
     await dbg(page, 'buyAutoplay');
     let snap = await readState(page);
     expect(snap.hintLevel).toBe(4);
+    expect(snap.playLevel).toBe(4);
     expect(snap.autoplayLevel).toBe(1);
-    expect(snap.bars).toBe(5);
+    expect(snap.bars).toBe(2505);
 
+    // Owner 2026-11-15: the owned Autoplay control toggles it on/off (with
+    // the engaged/disengaged voice notices, silent in tests). Off means no
+    // AutoPlay entry; back on resumes it.
+    let snap0 = await readState(page);
+    expect(snap0.autoplayEnabled).toBe(true);
+    expect(snap0.autoplayRowOpacity).toBe(1);
+    expect(snap0.autoplaySlashVisible).toBe(false);
+    // Regression (user report 2026-11-15 23:35: "grayed out though I hit
+    // AutoPlay enabled"): the toggle changed no economy key field, so the
+    // row never re-synced and the off state froze. It must follow the
+    // toggle. Owner 2026-11-16 02:00: owned-but-off stays WHITE (opacity
+    // 1); the off signal is the diagonal slash plus the label.
+    await dbg(page, 'pressAutoplayControl');
+    snap0 = await readState(page);
+    expect(snap0.autoplayEnabled).toBe(false);
+    expect(snap0.autoplayRowOpacity).toBe(1);
+    expect(snap0.autoplaySlashVisible).toBe(true);
+    // User report 2026-11-16 01:58 ("it says auto play disengaged when it
+    // gets turned on"): the notice and the button label must follow the
+    // POST-toggle state. Off now, so both say off/disengaged.
+    expect(snap0.statusLineText).toBe('Auto play disengaged');
+    expect(snap0.autoplayControlLabel).toBe('Auto: off');
+    await dbg(page, 'pressAutoplayControl');
+    snap0 = await readState(page);
+    expect(snap0.autoplayEnabled).toBe(true);
+    expect(snap0.autoplayRowOpacity).toBe(1);
+    expect(snap0.autoplaySlashVisible).toBe(false);
+    expect(snap0.statusLineText).toBe('Auto play engaged');
+    expect(snap0.autoplayControlLabel).toBe('Auto: on');
+    const barsTotalBeforeAutoplay = snap0.barsTotal;
     await submitPad(page, 0); // start tap
-    await playToStreak(page, 5);
-    // The 6-note round: Listen plays, then Autoplay plays notes 1-5, so Your
-    // Turn starts expecting note 6 (inputStep 5).
+    // Owner feedback 2026-11-15 ("auto play doesn't play the pattern all
+    // the way"): with Autoplay L1 (5 notes) every round of 1-5 notes is
+    // entered in full, final note included, so the streak climbs to 5 with
+    // no manual presses at all.
+    await expect
+      .poll(async () => (await readState(page)).streak, { timeout: 180_000 })
+      .toBe(5);
+    // Owner rule 2026-11-15: AutoPlay is not the human player. Five fully
+    // auto-played rounds advance the run but must not count presses, set
+    // the saved best-streak record, or unlock streak achievements.
+    snap = await readState(page);
+    expect(snap.presses).toBe(0);
+    expect(snap.savedBestStreak).toBe(0);
+    expect(
+      snap.unlockedAchievements.some((id) => id.startsWith('streak-')),
+    ).toBe(false);
+    // AutoPlay completion Bars are spendable but never human progress:
+    // the human lifetime counter does not move, so Bars/Total Score
+    // achievements cannot unlock from AutoPlay (owner rule 2026-11-15).
+    expect(snap.barsTotal).toBe(barsTotalBeforeAutoplay);
+    expect(snap.autoplayBarsTotal).toBeGreaterThan(0);
+    expect(
+      snap.unlockedAchievements.some(
+        (id) => id.startsWith('bars-') || id.startsWith('score-'),
+      ),
+    ).toBe(false);
+    // The 6-note round: Listen plays, then Autoplay enters notes 1-5, so
+    // Your Turn starts expecting note 6 (inputStep 5).
     await expect
       .poll(
         async () => {
@@ -200,10 +302,25 @@ test.describe('Wall Tones store skill tree', () => {
       .toBe('input:5');
     // The player finishes the round with the one manual note.
     snap = await readState(page);
+    const autoBarsAfterAutoRounds = snap.autoplayBarsTotal;
+    const humanBarsAfterAutoRounds = snap.barsTotal;
     await submitPad(page, snap.sequence[snap.inputStep]!);
     await expect
       .poll(async () => (await readState(page)).streak, { timeout: 90_000 })
       .toBe(6);
+    // Boundary: a HUMAN-completed round after AutoPlay rounds credits the
+    // human lifetime counter and leaves the AutoPlay pool untouched, and
+    // spending afterwards never dips into or erases the AutoPlay record.
+    snap = await readState(page);
+    expect(snap.autoplayBarsTotal).toBe(autoBarsAfterAutoRounds);
+    expect(snap.barsTotal).toBeGreaterThan(humanBarsAfterAutoRounds);
+    await grantBars(page, 30); // ensure the 20-Bar Replay is affordable
+    const balanceBeforeSpend = (await readState(page)).bars;
+    await dbg(page, 'toggleStore');
+    await dbg(page, 'buyReplay');
+    snap = await readState(page);
+    expect(snap.bars).toBe(balanceBeforeSpend - 20);
+    expect(snap.autoplayBarsTotal).toBe(autoBarsAfterAutoRounds);
   });
 
   test('Replay: buy for 20 Bars, Repeat spends it, free earn at the 5-note milestone', async ({
@@ -315,6 +432,155 @@ test.describe('Wall Tones store skill tree', () => {
     expect(snap.demoBoost).toBe(0);
     expect(snap.bars).toBe(0);
   });
+  test('Play: Buy is denied while locked and the greyed control button opens the Store at the Play tile', async ({
+    page,
+  }) => {
+    test.slow();
+    await abortSpeech(page);
+    await bootWallTones(page, true, '?demoBars=800');
+    await dbg(page, 'toggleStore');
+    // Locked (Hint L4 not reached): Buy is refused, no Bars move.
+    await dbg(page, 'buyPlay');
+    expect((await readState(page)).playLevel).toBe(0);
+    // The greyed control-row Play button is a Store shortcut to its tile.
+    await dbg(page, 'pressPlay');
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => (window as any).__wallTonesDebug.storeSelected,
+        ),
+      )
+      .toBe('play');
+    expect((await readState(page)).storeOpen).toBe(true);
+  });
+
+  test('Play: enters the next 5 x level tones, once per pattern, may enter the final note', async ({
+    page,
+  }) => {
+    test.slow();
+    await abortSpeech(page);
+    await bootWallTones(page, true);
+    await grantPlayLevel(page, 1);
+    expect((await readState(page)).playLevel).toBe(1);
+    await submitPad(page, 0); // start tap
+    // Round 1 is a single note: Play enters it and the round completes.
+    await expect
+      .poll(async () => (await readState(page)).phase, { timeout: 90_000 })
+      .toBe('input');
+    await dbg(page, 'pressPlay');
+    await expect
+      .poll(async () => (await readState(page)).streak, { timeout: 90_000 })
+      .toBe(1);
+
+    // Reach the 6-note round manually.
+    await playToStreak(page, 5);
+    await expect
+      .poll(
+        async () => {
+          const s = await readState(page);
+          return s.phase === 'input' && s.sequence.length >= 6
+            ? `input:${s.inputStep}`
+            : `${s.phase}:${s.inputStep}`;
+        },
+        { timeout: 120_000 },
+      )
+      .toBe('input:0');
+    // Play enters 5 tones from the current position, one short of the end.
+    await dbg(page, 'pressPlay');
+    await expect
+      .poll(
+        async () => {
+          const s = await readState(page);
+          return s.phase === 'input' ? `input:${s.inputStep}` : s.phase;
+        },
+        { timeout: 90_000 },
+      )
+      .toBe('input:5');
+    // Once per pattern: a second press in the same round is refused.
+    await dbg(page, 'pressPlay');
+    await page.waitForTimeout(1500);
+    let snap = await readState(page);
+    expect(snap.phase).toBe('input');
+    expect(snap.inputStep).toBe(5);
+    // The final note is still playable by hand afterwards.
+    await submitPad(page, snap.sequence[snap.inputStep]!);
+    await expect
+      .poll(async () => (await readState(page)).streak, { timeout: 90_000 })
+      .toBe(6);
+
+  });
+
+  test('Index: tile sits beside Play, Buy refused while locked, debug grant owns it', async ({
+    page,
+  }) => {
+    test.slow();
+    await abortSpeech(page);
+    await bootWallTones(page, true, '?demoBars=800');
+    // Owner 2026-11-15: without the Index owned, a regular run shows no arrow.
+    await submitPad(page, 0); // start tap
+    await expect
+      .poll(async () => (await readState(page)).phase, { timeout: 60_000 })
+      .toBe('input');
+    expect((await readState(page)).sequenceArrowAt).toBe(-1);
+    await dbg(page, 'toggleStore');
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            () =>
+              (window as any).__wallTonesDebug.storePointerTargets[
+                'store-tile-index'
+              ]?.x,
+          ),
+      )
+      .toBeGreaterThan(0);
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            () =>
+              (window as any).__wallTonesDebug.storePointerTargets[
+                'store-tile-play'
+              ]?.x,
+          ),
+      )
+      .toBeGreaterThan(0);
+    // Gated behind Hint level 3: the Buy is refused while locked.
+    await dbg(page, 'buyIndex');
+    expect(
+      await page.evaluate(
+        () => (window as any).__wallTonesDebug.ownsIndex,
+      ),
+    ).toBe(false);
+    await dbg(page, 'grantIndex');
+    expect(
+      await page.evaluate(
+        () => (window as any).__wallTonesDebug.ownsIndex,
+      ),
+    ).toBe(true);
+    // Owned: the arrow marks the player's position in a regular run.
+    await dbg(page, 'toggleStore');
+    await expect
+      .poll(async () => (await readState(page)).sequenceArrowAt, {
+        timeout: 30_000,
+      })
+      .toBe(0);
+    // Round 1 has one note; finishing it grows the sequence to two notes.
+    let snap = await readState(page);
+    await submitPad(page, snap.sequence[0]!);
+    await expect
+      .poll(async () => (await readState(page)).phase, { timeout: 60_000 })
+      .toBe('input');
+    expect((await readState(page)).sequenceArrowAt).toBe(0);
+    snap = await readState(page);
+    expect(snap.sequence.length).toBe(2);
+    await submitPad(page, snap.sequence[0]!);
+    await expect
+      .poll(async () => (await readState(page)).sequenceArrowAt, {
+        timeout: 30_000,
+      })
+      .toBe(1);
+  });
 });
 
 
@@ -332,8 +598,33 @@ test('store empty space clears selection without buying or closing; tiles and Bu
     await page.mouse.up();
     await page.waitForTimeout(600); // allow rebuilt UIKit layout/world matrices to settle
   };
-  await expect.poll(async () => (await targets())['store-tile-replay']?.x).toBeGreaterThan(0);
-  const replay = (await targets())['store-tile-replay'];
+  // The store grid mounts tiles incrementally on slow runners and re-centers
+  // its wrapping rows as they arrive, so a coordinate read taken mid-build
+  // points at the wrong tile by click time (CI run 43777531042 hit Listen
+  // instead of Replay this way). Wait until replay is present AND the whole
+  // target map keeps the same keys and coords (2px tolerance) continuously
+  // for 1.5s before clicking; any change resets the settle clock.
+  const settleTargets = async () => {
+    let prev: Record<string, { x: number; y: number }> | null = null;
+    let stableSince = 0;
+    const started = Date.now();
+    while (Date.now() - started < 30_000) {
+      const cur = await targets();
+      const near = prev !== null && Object.keys(cur).length === Object.keys(prev).length &&
+        Object.keys(cur).every(k => prev![k] && Math.abs(cur[k].x - prev![k].x) <= 2 && Math.abs(cur[k].y - prev![k].y) <= 2);
+      if (near && cur['store-tile-replay']) {
+        if (!stableSince) stableSince = Date.now();
+        if (Date.now() - stableSince >= 1_500) return cur;
+      } else {
+        stableSince = 0;
+      }
+      prev = cur;
+      await page.waitForTimeout(300);
+    }
+    throw new Error('store pointer targets did not settle with store-tile-replay present');
+  };
+  const settledTargets = await settleTargets();
+  const replay = settledTargets['store-tile-replay'];
   await click(replay.x, replay.y);
   await expect.poll(selected).toBe('replay');
   await testInfo.attach('selected', { body: await page.screenshot(), contentType: 'image/png' });

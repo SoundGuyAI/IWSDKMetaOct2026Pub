@@ -9,6 +9,7 @@
     flex-direction: column;
     gap: 8px;
     padding: 16px;
+    padding-bottom: 12px;
   }
 
   .eyebrow {
@@ -59,6 +60,25 @@
     color: #fafaf7;
   }
 
+  .stat-number-field {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 3px;
+    flex-shrink: 0;
+    min-width: 96px;
+  }
+
+  .stat-unit {
+    color: #3a3b40;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .stat-unit:dark {
+    color: #c8ccd2;
+  }
+
   .status {
     color: #3a3b40;
     font-size: 17px;
@@ -86,6 +106,46 @@
     margin-bottom: 24px;
   }
 
+  .control-row {
+    flex-direction: row;
+    justify-content: center;
+    gap: 4px;
+    margin-left: 24px;
+    margin-right: 24px;
+    margin-top: 0px;
+    margin-bottom: 12px;
+  }
+
+  .autoplay-icon-wrap {
+    position-type: relative;
+  }
+
+  .autoplay-slash {
+    position-type: absolute;
+    position-top: 50%;
+    position-left: 0px;
+    width: 100%;
+    height: 2px;
+    background-color: #cc2222;
+    transform-rotate-z: -45;
+  }
+
+  .control-button {
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    flex-grow: 1;
+    gap: 2px;
+    min-width: 0px;
+    height: 52px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+    padding-left: 2px;
+    padding-right: 2px;
+    margin-left: 0px;
+    margin-right: 0px;
+  }
+
   .popup-overlay {
     flex-direction: column;
     align-items: center;
@@ -108,6 +168,22 @@
   .popup-card:dark {
     background-color: #24262b;
     border-color: #4a4d55;
+  }
+
+  .scroll-button {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: #8a8478;
+    background-color: #e4e0d4;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .scroll-button:dark {
+    border-color: #6b7a90;
+    background-color: #3a4150;
   }
 
 </style>
@@ -140,6 +216,39 @@
         <div id="wall-tones-total-score" class="stat-value">0</div>
       </div>
     </div>
+    <!-- Backlog 30 research: both movement fields on one line, no developer
+         labels, MR only (owner layout call Nov 11). Seeded text so the
+         setProperties text update cannot no-op (empty-div compile trap).
+         Number and unit are separate elements in a fixed-width field so the
+         "m" can never wrap onto its own line (Quest feedback Nov 14). -->
+    <div id="wall-tones-movement-row" class="stat-row" style="display: none">
+      <div style="flex-direction: row; align-items: center; gap: 6px">
+        <div class="stat-label">Movement</div>
+        <div class="stat-number-field">
+          <div id="wall-tones-movement-head" class="stat-value">0.0</div>
+          <div class="stat-unit">m</div>
+        </div>
+      </div>
+      <div style="flex-direction: row; align-items: center; gap: 6px">
+        <div class="stat-label">Pad reach</div>
+        <div class="stat-number-field">
+          <div id="wall-tones-movement-pad" class="stat-value">0.0</div>
+          <div class="stat-unit">m</div>
+        </div>
+      </div>
+    </div>
+    <!-- Lifetime movement total (headset + pad reach): the number the
+         Movement achievement tracks. Same fixed-width field so the unit
+         cannot wrap (owner Nov 14: show this session and total). -->
+    <div id="wall-tones-movement-total-row" class="stat-row" style="display: none">
+      <div style="flex-direction: row; align-items: center; gap: 6px">
+        <div class="stat-label">Total movement</div>
+        <div class="stat-number-field">
+          <div id="wall-tones-movement-total" class="stat-value">0.0</div>
+          <div class="stat-unit">m</div>
+        </div>
+      </div>
+    </div>
     <div id="wall-tones-round-card" class="stat-row">
       <div class="stat-label">This round</div>
       <div id="wall-tones-round-card-total" class="stat-value">+0</div>
@@ -147,16 +256,16 @@
     <div id="wall-tones-info-row" style="flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px">
       <div id="wall-tones-status" class="status">Ready</div>
       <div id="wall-tones-sequence-icons" style="display: none; flex-direction: row; flex-wrap: wrap; gap: 5px; align-items: center; max-width: 280px"></div>
+      <div id="wall-tones-wronghit-row" style="display: none; flex-direction: row; flex-wrap: wrap; gap: 5px; align-items: center; max-width: 280px"></div>
     </div>
     <!-- Seeded initial text: without it uikitml compiles no Text child and
          the caption setter silently no-ops (fallback when the head-locked
          caption node is absent from the scene). Hidden until a line is up. -->
     <div id="wall-tones-spoken-caption" class="status" style="display: none">...</div>
-    <div id="wall-tones-achievement-toast" class="status" style="display: none">Achievement unlocked</div>
     <div style="flex-direction: row; gap: 8px">
       <Button id="store-button" class="button" style="flex-grow: 1">
         <ButtonIcon><ShoppingBag></ShoppingBag></ButtonIcon>
-        <ButtonLabel id="store-button-label">Store</ButtonLabel>
+        <ButtonLabel id="store-button-label">Modifiers</ButtonLabel>
       </Button>
       <Button id="achievements-button" class="button" style="flex-grow: 1">
         <ButtonIcon><Trophy></Trophy></ButtonIcon>
@@ -202,10 +311,31 @@
     <ButtonIcon><Search></Search></ButtonIcon>
     <ButtonLabel>Rescan room</ButtonLabel>
   </Button>
-  <Button id="repeat-pattern-button" class="button" style="display: none">
-    <ButtonIcon><RefreshCw></RefreshCw></ButtonIcon>
-    <ButtonLabel id="repeat-pattern-label">Repeat pattern</ButtonLabel>
-  </Button>
+  <div id="control-row" class="control-row">
+    <Button id="repeat-pattern-button" class="button control-button" size="sm">
+      <ButtonIcon><RefreshCw></RefreshCw></ButtonIcon>
+      <ButtonLabel id="repeat-pattern-label">Repeat</ButtonLabel>
+    </Button>
+    <Button id="control-play-button" class="button control-button" size="sm">
+      <ButtonIcon><Play></Play></ButtonIcon>
+      <ButtonLabel>Play</ButtonLabel>
+    </Button>
+    <Button id="control-autoplay-button" class="button control-button" size="sm">
+      <div class="autoplay-icon-wrap">
+        <ButtonIcon><FastForward></FastForward></ButtonIcon>
+        <div id="control-autoplay-slash" class="autoplay-slash" style="display: none"> </div>
+      </div>
+      <ButtonLabel id="control-autoplay-label">Auto</ButtonLabel>
+    </Button>
+    <Button id="control-speed-button" class="button control-button" size="sm">
+      <ButtonIcon><Gauge></Gauge></ButtonIcon>
+      <ButtonLabel>Speed</ButtonLabel>
+    </Button>
+    <Button id="control-multiplier-button" class="button control-button" size="sm">
+      <ButtonIcon><Zap></Zap></ButtonIcon>
+      <ButtonLabel>X2</ButtonLabel>
+    </Button>
+  </div>
   <Button id="skip-voice-button" class="button" style="display: none">
     <ButtonIcon><SkipForward></SkipForward></ButtonIcon>
     <ButtonLabel>Skip voice</ButtonLabel>
@@ -217,8 +347,23 @@
   </div>
   <div id="store-popup" class="popup-overlay" style="display: none; padding: 12px">
     <div id="store-popup-card" class="popup-card" style="gap: 6px; padding: 12px">
-      <div id="store-heading" class="heading" style="font-size: 22px; line-height: 26px">Store</div>
-      <div id="store-tree-list" style="flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 8px; width: 308px; height: 296px"></div>
+      <div id="store-heading-row" style="flex-direction: row; align-items: center; width: 350px">
+        <div id="store-heading" class="heading" style="font-size: 22px; line-height: 26px">Modifiers</div>
+         <div style="flex-grow: 1"></div>
+        <img id="store-bars-icon" src="ui/bars-icon.png" style="width: 16px; height: 16px" />
+        <div id="store-bars-value" class="stat-value" style="font-size: 18px; line-height: 22px; margin-left: 4px">0</div>
+      </div>
+      <div id="store-tree-row" style="flex-direction: row; width: 350px; gap: 6px">
+        <div id="store-tree-list" style="flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 8px; width: 308px; height: 296px"></div>
+        <div id="store-scroll-gutter" style="flex-direction: column; justify-content: space-between; align-items: center; width: 36px; height: 296px">
+          <div id="store-scroll-up" class="scroll-button" style="opacity: 0.35">
+            <ChevronUp style="width: 20px; height: 20px"></ChevronUp>
+          </div>
+          <div id="store-scroll-down" class="scroll-button">
+            <ChevronDown style="width: 20px; height: 20px"></ChevronDown>
+          </div>
+        </div>
+      </div>
       <div id="store-detail-status" class="status">Prices are test values.</div>
       <Button id="store-close-button" class="button">
         <ButtonIcon><X></X></ButtonIcon>
@@ -239,6 +384,8 @@
   <div id="gameover-popup" class="popup-overlay" style="display: none">
     <div class="popup-card">
       <div class="heading" style="font-size: 22px">Game Over</div>
+      <!-- No justify-content here: centering would give each wrapped line its own center, breaking the column alignment between the history/Expected/Hit lines (reviewer pixel pass 2026-11-15). -->
+      <div id="gameover-wronghit-row" style="display: none; flex-direction: row; flex-wrap: wrap; gap: 5px; align-items: center"></div>
       <div id="gameover-summary" class="status">You reached 0. Best 0.</div>
       <div id="gameover-saver-status" class="status">Streak savers: 0</div>
       <Button id="gameover-use-saver-button" class="button">

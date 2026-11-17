@@ -1,0 +1,793 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import ts from 'typescript';
+import { readFileSync } from 'node:fs';
+
+const load = async (rel) => {
+  const src = readFileSync(new URL(rel, import.meta.url), 'utf8');
+  const js = ts.transpileModule(src, {
+    compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  return import('data:text/javascript;base64,' + Buffer.from(js).toString('base64'));
+};
+
+const gesture = await load('../../src/nod-lab/head-gesture.ts');
+const { HeadNodShakeDetector, AxisOscillationTracker, DEFAULT_HEAD_GESTURE_CONFIG } = gesture;
+
+const D = Math.PI / 180;
+let now = 0;
+const step = 1 / 72;
+/** Feed a smooth swing from 0 to targetDeg and back, over `seconds`. */
+function swing(feed, targetDeg, seconds) {
+  const half = Math.max(2, Math.round((seconds / 2) / step));
+  for (let i = 1; i <= half; i += 1) {
+    now += step;
+    feed((targetDeg * i) / half);
+  }
+  for (let i = half - 1; i >= 0; i -= 1) {
+    now += step;
+    feed((targetDeg * i) / half);
+  }
+}
+
+test('a clean nod reports yes, a clean shake reports no', () => {
+  const detector = new HeadNodShakeDetector();
+  detector.setEnabled(true);
+  now = 0;
+  let event = null;
+  swing((deg) => {
+    event = event ?? detector.feed(-deg * D, 0, now);
+  }, -22, 0.7);
+  assert.equal(event?.answer, 'yes');
+
+  detector.setEnabled(true);
+  now += 2;
+  event = null;
+  swing((deg) => {
+    event = event ?? detector.feed(0, deg * D, now);
+  }, 20, 0.7);
+  assert.equal(event?.answer, 'no');
+});
+
+test('small wobbles below the peak threshold do not fire', () => {
+  const detector = new HeadNodShakeDetector();
+  detector.setEnabled(true);
+  now = 0;
+  let fired = false;
+  swing((deg) => {
+    fired = fired || detector.feed(-deg * D, 0, now) != null;
+  }, -9, 0.5);
+  assert.equal(fired, false);
+});
+
+test('a weak first stroke does not poison the real nod behind it (Quest regression)', () => {
+  // Owner's Nov 16 Quest 3 recording session: natural nodding starts with a
+  // sub-peak stroke; the old anti-double-count guard latched on ANY commit
+  // and blocked the qualifying stroke behind it for a full window.
+  const detector = new HeadNodShakeDetector();
+  detector.setEnabled(true);
+  now = 0;
+  let first = null;
+  swing((deg) => { first = first ?? detector.feed(-deg * D, 0, now); }, -8, 0.5);
+  assert.equal(first, null);
+  let second = null;
+  swing((deg) => { second = second ?? detector.feed(-deg * D, 0, now); }, -16, 0.5);
+  assert.equal(second?.answer, 'yes');
+});
+
+test('a real 12 deg nod now answers yes on the headset (Nov 16 Quest tuning)', () => {
+  // The owner's failed nods read 9-13.8 deg on-panel while accepted ones
+  // read 15-19 deg; the 14 deg peak sat above most real nods.
+  const detector = new HeadNodShakeDetector();
+  detector.setEnabled(true);
+  now = 0;
+  let event = null;
+  swing((deg) => { event = event ?? detector.feed(-deg * D, 0, now); }, -12, 0.6);
+  assert.equal(event?.answer, 'yes');
+});
+
+test('a slow look down and back up is not a nod', () => {
+  const detector = new HeadNodShakeDetector();
+  detector.setEnabled(true);
+  now = 0;
+  let fired = false;
+  swing((deg) => {
+    fired = fired || detector.feed(-deg * D, 0, now) != null;
+  }, -25, 4);
+  assert.equal(fired, false);
+});
+
+test('mixed-axis motion needs dominance to classify', () => {
+  const detector = new HeadNodShakeDetector();
+  detector.setEnabled(true);
+  now = 0;
+  let event = null;
+  // Nod amplitude 22 deg but with an equally large simultaneous shake.
+  swing((deg) => {
+    event = event ?? detector.feed(-deg * D, deg * D, now);
+  }, -22, 0.7);
+  assert.equal(event, null);
+});
+
+test('cooldown blocks a second gesture right after the first', () => {
+  const detector = new HeadNodShakeDetector({
+    ...DEFAULT_HEAD_GESTURE_CONFIG,
+    axisDominanceRatio: 1,
+  });
+  detector.setEnabled(true);
+  now = 0;
+  let first = null;
+  swing((deg) => {
+    first = first ?? detector.feed(-deg * D, 0, now);
+  }, -22, 0.7);
+  assert.equal(first?.answer, 'yes');
+  // Detection disables itself after a report until the dialogue re-arms it.
+  assert.equal(detector.isEnabled, false);
+});
+
+test('disabled detector ignores motion and rearms cleanly', () => {
+  const detector = new HeadNodShakeDetector();
+  now = 0;
+  let fired = false;
+  swing((deg) => {
+    fired = fired || detector.feed(-deg * D, 0, now) != null;
+  }, -25, 0.6);
+  assert.equal(fired, false);
+  detector.setEnabled(true);
+  now += 1;
+  let event = null;
+  swing((deg) => {
+    event = event ?? detector.feed(0, deg * D, now);
+  }, 24, 0.7);
+  assert.equal(event?.answer, 'no');
+});
+
+test('axis tracker commits extremes only past the reversal distance', () => {
+  const tracker = new AxisOscillationTracker(DEFAULT_HEAD_GESTURE_CONFIG);
+  now = 1000;
+  const feed = (deg) => {
+    now += step;
+    return tracker.feed(deg * D, now);
+  };
+  for (const deg of [0, -10, -16, -15.5, -14]) assert.equal(feed(deg), null);
+  // Reversal of 6 deg from a -16 deg extreme inside the window completes it.
+  let completed = null;
+  for (const deg of [-12, -9, -6]) completed = completed ?? feed(deg);
+  assert.ok(completed != null && completed >= 14 * D);
+});
+
+const script = await load('../../src/nod-lab/lab-script.ts');
+const { buildGestureLabScript, labPromptById, labAnswerFollowUp, labBranchIsNextPromptLine, labLineReadingMs } = script;
+
+const intro = { clipId: 'intro-nod', text: 'intro line' };
+const retry = { clipId: 'retry-nod', text: 'retry line' };
+const tree = buildGestureLabScript(intro, retry);
+
+test('script builder carries the optional no-input lines', () => {
+  const lines = [
+    { clipId: 'no-input-1', text: 'Nothing. Try again.' },
+    { clipId: 'no-input-2', text: 'I saw nothing. Again.' },
+  ];
+  const withNoInput = buildGestureLabScript(intro, retry, lines);
+  assert.equal(withNoInput.noInput?.length, 2);
+  assert.equal(withNoInput.noInput?.[0].clipId, 'no-input-1');
+  const single = buildGestureLabScript(intro, retry, {
+    clipId: 'no-input-1',
+    text: 'Nothing. Try again.',
+  });
+  assert.equal(single.noInput?.length, 1);
+  assert.equal(buildGestureLabScript(intro, retry).noInput, undefined);
+});
+
+test('dialogue tree: intro no goes to the short retry loop, branches converge at q3 then end', () => {
+  const p = labPromptById(tree, 'intro');
+  assert.equal(labAnswerFollowUp(p, 'no').branch.clipId, 'retry-nod');
+  // Nov 14: a no retries the short channel-weak line, not the full intro.
+  assert.equal(labAnswerFollowUp(p, 'no').nextPromptId, 'retry');
+  const retryPrompt = labPromptById(tree, 'retry');
+  assert.equal(labAnswerFollowUp(retryPrompt, 'no').nextPromptId, 'retry');
+  assert.equal(labAnswerFollowUp(retryPrompt, 'yes').nextPromptId, 'q2');
+  assert.equal(labAnswerFollowUp(p, 'yes').nextPromptId, 'q2');
+  for (const answer of ['yes', 'no']) {
+    assert.equal(labAnswerFollowUp(labPromptById(tree, 'q2'), answer).nextPromptId, 'q3');
+    assert.equal(labAnswerFollowUp(labPromptById(tree, 'q3'), answer).nextPromptId, 'end');
+  }
+  assert.equal(tree.feedback.yes.text, 'Yes.');
+  assert.equal(tree.feedback.no.text, 'No.');
+});
+
+test('branch lines that are the next prompt line must not be spoken twice', () => {
+  const p = labPromptById(tree, 'intro');
+  const yes = labAnswerFollowUp(p, 'yes');
+  // Nov 14 Quest test: "I need to know the coast is clear" played twice.
+  assert.equal(labBranchIsNextPromptLine(tree, yes.branch, yes.nextPromptId), true);
+  const no = labAnswerFollowUp(p, 'no');
+  // The retry line is the retry prompt's own line: spoken once, in playPrompt.
+  assert.equal(labBranchIsNextPromptLine(tree, no.branch, no.nextPromptId), true);
+  const retryNo = labAnswerFollowUp(labPromptById(tree, 'retry'), 'no');
+  assert.equal(labBranchIsNextPromptLine(tree, retryNo.branch, retryNo.nextPromptId), true);
+  // Approved Nov 14 retry rotation: lab line first, then the shared variations.
+  const retryPrompt = labPromptById(tree, 'retry');
+  assert.equal(retryPrompt.loopVariations?.length, 4);
+  assert.equal(retryPrompt.loopVariations?.[0].clipId, 'retry-nod');
+  assert.deepEqual(
+    retryPrompt.loopVariations?.map((line) => line.clipId),
+    ['retry-nod', 'retry-2', 'retry-3', 'retry-4'],
+  );
+  assert.equal(
+    retryPrompt.loopVariations?.[1].text,
+    'Still nothing. Widening the band. Can you hear me now?',
+  );
+  assert.equal(
+    retryPrompt.loopVariations?.[2].text,
+    'No? Rerouting through the relay. Can you hear me now?',
+  );
+  assert.equal(
+    retryPrompt.loopVariations?.[3].text,
+    'Not yet. Pushing full power. Can you hear me now?',
+  );
+  for (const answer of ['yes', 'no']) {
+    const q2 = labAnswerFollowUp(labPromptById(tree, 'q2'), answer);
+    assert.equal(labBranchIsNextPromptLine(tree, q2.branch, q2.nextPromptId), false);
+    const q3 = labAnswerFollowUp(labPromptById(tree, 'q3'), answer);
+    assert.equal(labBranchIsNextPromptLine(tree, q3.branch, q3.nextPromptId), false);
+  }
+});
+
+test('every line has a clip id and caption text; reading time is bounded', () => {
+  const seen = new Set();
+  for (const prompt of tree.prompts) {
+    for (const line of [prompt.line, prompt.yesBranch, prompt.noBranch]) {
+      assert.ok(line.clipId.length > 0);
+      assert.ok(line.text.length > 0);
+      seen.add(line.clipId);
+    }
+  }
+  assert.ok(labLineReadingMs('Yes.') >= 1000);
+  assert.ok(labLineReadingMs('word '.repeat(100)) <= 12000);
+});
+
+test('canon guard: no lab line claims the game AI can hear Cypher or the player', () => {
+  const src = readFileSync(new URL('../../src/nod-lab/nod-lab-system.ts', import.meta.url), 'utf8')
+    + readFileSync(new URL('../../src/nod-lab/lab-script.ts', import.meta.url), 'utf8');
+  assert.ok(!/game is listening/i.test(src));
+  assert.ok(/one way/i.test(src));
+});
+
+test('wiring: menu button, mode, panel asset, scene nodes and registration', () => {
+  const menu = readFileSync(new URL('../../public/ui/main-menu.uikitml', import.meta.url), 'utf8');
+  const appMode = readFileSync(new URL('../../src/app-mode.ts', import.meta.url), 'utf8');
+  const assets = readFileSync(new URL('../../src/assets.ts', import.meta.url), 'utf8');
+  const mainScene = readFileSync(new URL('../../public/scenes/main.iwsdk.scene.json', import.meta.url), 'utf8');
+  const arScene = readFileSync(new URL('../../public/scenes/wall-tones-ar.iwsdk.scene.json', import.meta.url), 'utf8');
+  const host = readFileSync(new URL('../../src/wall-tones/world-host.ts', import.meta.url), 'utf8');
+  const panel = readFileSync(new URL('../../public/ui/nod-lab.uikitml', import.meta.url), 'utf8');
+  // The nod lab is reached through the shared Lab foundation: the Lab entry
+  // opens the Lab menu and its Nod row (registry mode 'nodlab') enters the lab.
+  assert.ok(!menu.includes('nod-lab-button'), 'menu stays free of lab buttons');
+  assert.ok(appMode.includes("'nodlab'"));
+  assert.ok(appMode.includes("setNodeVisible('nod-lab-panel'"));
+  assert.ok(appMode.includes("getElementById('nod-lab-back-button')"));
+  assert.ok(assets.includes("'nod-lab-panel': uikitml('nod-lab.uikitml'"));
+  assert.ok(mainScene.includes('"id": "nod-lab-panel"'));
+  assert.ok(arScene.includes('"id": "nod-lab-panel"'));
+  assert.ok(host.includes('NodLabSystem'));
+  for (const id of ['nod-lab-status', 'nod-lab-line', 'nod-lab-telemetry', 'nod-lab-voice',
+    'nod-lab-start-button', 'nod-lab-yes-button', 'nod-lab-no-button',
+    'nod-lab-repeat-button', 'nod-lab-back-button']) {
+    assert.ok(panel.includes(`id="${id}"`), id);
+  }
+  // UIKitML only compiles text for elements seeded with text content.
+  for (const id of ['nod-lab-status', 'nod-lab-line', 'nod-lab-telemetry', 'nod-lab-voice', 'nod-lab-start-label']) {
+    assert.ok(panel.match(new RegExp(`id="${id}"[^>]*>[^<]`)), `seeded ${id}`);
+  }
+});
+
+test('clip spec covers every clip id used by both labs, in both voices', () => {
+  const ids = new Set();
+  for (const prompt of tree.prompts) {
+    for (const line of [prompt.line, prompt.yesBranch, prompt.noBranch, ...(prompt.loopVariations ?? [])]) {
+      ids.add(line.clipId);
+    }
+  }
+  ids.add(tree.feedback.yes.clipId);
+  ids.add(tree.feedback.no.clipId);
+  const spec = readFileSync(new URL('../../docs/CYPHER_LAB_CLIPS.md', import.meta.url), 'utf8');
+  const labSystem = readFileSync(new URL('../../src/nod-lab/nod-lab-system.ts', import.meta.url), 'utf8');
+  for (const m of labSystem.matchAll(/clipId: '([a-z0-9-]+)'/g)) ids.add(m[1]);
+  ids.add('intro-thumbs');
+  ids.add('retry-thumbs');
+  for (const id of ids) {
+    assert.ok(spec.includes(`\`${id}\``), `spec lists ${id}`);
+  }
+  assert.ok(spec.includes('Kore'));
+  assert.ok(spec.includes('Algenib'));
+});
+
+// --- Flat-mode input trackers (pointer drag + phone tilt) -----------------
+
+const pointerMod = await load('../../src/nod-lab/pointer-gesture.ts');
+const { PointerGestureTracker, POINTER_PX_PER_DEG, attachPointerTracker } = pointerMod;
+
+test('pointer baseline follows the resting pointer while not armed, so a swing spanning the arm commits', () => {
+  // Regression (Nov 14): a user who starts swinging while Cypher is still
+  // speaking used to anchor the baseline mid-swing at the first post-arm
+  // event; the rest of the swing read one-way and never committed.
+  const listeners = new Map();
+  const target = {
+    addEventListener: (type, fn) => listeners.set(type, fn),
+    removeEventListener: (type) => listeners.delete(type),
+  };
+  const tracker = new PointerGestureTracker();
+  let armed = false;
+  const samples = [];
+  attachPointerTracker(target, tracker, () => armed, (sample) => samples.push(sample));
+  const move = (x, y, t) => listeners.get('pointermove')({ clientX: x, clientY: y });
+  // Park at (640,400) while not armed: baseline must anchor here even
+  // though no sample is reported.
+  move(640, 400, 0);
+  assert.equal(samples.length, 0);
+  // Start the swing while still not armed (Cypher still speaking).
+  move(655, 400, 0.1);
+  assert.equal(samples.length, 0);
+  // The prompt arms mid-swing; the peak and the return happen while armed.
+  armed = true;
+  move(670, 400, 0.2);
+  move(655, 400, 0.3);
+  move(640, 400, 0.4);
+  // Samples are measured from the parked baseline, not the mid-swing spot:
+  // the swing peaks at +15 deg (30 px at 2 px/deg) and returns to ~0.
+  const peaks = samples.map((s) => s.yawDeg);
+  assert.ok(Math.max(...peaks) >= 14, 'full swing measured');
+  assert.ok(Math.abs(peaks.at(-1)) < 2, 'returned to baseline');
+});
+
+const tiltMod = await load('../../src/nod-lab/tilt-gesture.ts');
+const { TiltBaselineTracker } = tiltMod;
+
+/** Drive a detector through a pointer swing: out to delta px and back. */
+function pointerSwing(detector, tracker, dx, dy, seconds) {
+  let t = now;
+  const half = Math.max(2, Math.round((seconds / 2) / step));
+  let event = null;
+  const feedTo = (fx, fy) => {
+    // Swings are deltas from the primed resting spot (500, 300).
+    const s = tracker.feed(500 + fx, 300 + fy, t);
+    event = event ?? detector.feed(s.pitchDeg * D, s.yawDeg * D, t);
+  };
+  for (let i = 1; i <= half; i += 1) { t += step; feedTo((dx * i) / half, (dy * i) / half); }
+  for (let i = half - 1; i >= 0; i -= 1) { t += step; feedTo((dx * i) / half, (dy * i) / half); }
+  now = t;
+  return event;
+}
+
+test('pointer drag down-up answers yes, left-right answers no', () => {
+  const detector = new HeadNodShakeDetector({
+    ...DEFAULT_HEAD_GESTURE_CONFIG,
+    returnToBaselineRad: DEFAULT_HEAD_GESTURE_CONFIG.activationRad,
+  });
+  const tracker = new PointerGestureTracker();
+  detector.setEnabled(true);
+  now = 0;
+  tracker.feed(500, 300, 0);
+  const yes = pointerSwing(detector, tracker, 0, 110, 0.7);
+  assert.equal(yes?.answer, 'yes');
+
+  detector.setEnabled(true);
+  tracker.reset();
+  now += 2;
+  tracker.feed(500, 300, now);
+  const no = pointerSwing(detector, tracker, 110, 0, 0.7);
+  assert.equal(no?.answer, 'no');
+});
+
+test('a one-way pointer drag (toward a button) never answers', () => {
+  const detector = new HeadNodShakeDetector({
+    ...DEFAULT_HEAD_GESTURE_CONFIG,
+    returnToBaselineRad: DEFAULT_HEAD_GESTURE_CONFIG.activationRad,
+  });
+  const tracker = new PointerGestureTracker();
+  detector.setEnabled(true);
+  now = 0;
+  tracker.feed(500, 300, 0);
+  let fired = false;
+  for (let i = 1; i <= 40; i += 1) {
+    now += step;
+    const s = tracker.feed(500 + i * 10, 300 + i * 5, now);
+    fired = fired || detector.feed(s.pitchDeg * D, s.yawDeg * D, now) != null;
+  }
+  assert.equal(fired, false);
+});
+
+test('a small pointer wiggle around a rested spot does not fire', () => {
+  // Guard floor: +-8px jitter. At the tuned 1 px/deg an +-8px wiggle reads
+  // 8 deg below the 10 deg flat peak; +-12px jitter can now complete a cycle,
+  // the accepted trade for the smaller desktop threshold (Nov 15 retune).
+  const detector = new HeadNodShakeDetector(FLAT_HEAD_GESTURE_CONFIG);
+  const tracker = new PointerGestureTracker();
+  detector.setEnabled(true);
+  now = 0;
+  tracker.feed(200, 200, 0);
+  // Move far away slowly (no cycle), rest (a real resting pointer emits no
+  // events), then wiggle +-12px around the new spot.
+  for (let i = 1; i <= 30; i += 1) { now += 0.1; tracker.feed(200 + i * 12, 200, now); }
+  now += 4;
+  let fired = false;
+  for (let i = 0; i < 20; i += 1) {
+    now += step;
+    const s = tracker.feed(560 + (i % 2 === 0 ? 8 : -8), 200, now);
+    fired = fired || detector.feed(s.pitchDeg * D, s.yawDeg * D, now) != null;
+  }
+  assert.equal(fired, false);
+});
+
+test('a drag out that never returns to baseline does not fire', () => {
+  const detector = new HeadNodShakeDetector({
+    ...DEFAULT_HEAD_GESTURE_CONFIG,
+    returnToBaselineRad: DEFAULT_HEAD_GESTURE_CONFIG.activationRad,
+  });
+  const tracker = new PointerGestureTracker();
+  detector.setEnabled(true);
+  now = 0;
+  tracker.feed(500, 300, 0);
+  let fired = false;
+  // Out 150px and wiggle there: reversals happen, but the angle never
+  // returns near baseline, so no cycle completes.
+  for (let i = 1; i <= 15; i += 1) {
+    now += step;
+    const s = tracker.feed(500, 300 + i * 10, now);
+    fired = fired || detector.feed(s.pitchDeg * D, s.yawDeg * D, now) != null;
+  }
+  for (let i = 0; i < 20; i += 1) {
+    now += step;
+    const s = tracker.feed(500, 450 + (i % 2 === 0 ? 25 : -25), now);
+    fired = fired || detector.feed(s.pitchDeg * D, s.yawDeg * D, now) != null;
+  }
+  assert.equal(fired, false);
+});
+
+test('tilt forward/back answers yes, left/right answers no', () => {
+  const detector = new HeadNodShakeDetector({
+    ...DEFAULT_HEAD_GESTURE_CONFIG,
+    returnToBaselineRad: DEFAULT_HEAD_GESTURE_CONFIG.activationRad,
+  });
+  const tracker = new TiltBaselineTracker();
+  detector.setEnabled(true);
+  now = 0;
+  tracker.feed(45, 0);
+  let event = null;
+  swing((deg) => {
+    const s = tracker.feed(45 + deg, 0);
+    event = event ?? detector.feed(s.pitchDeg * D, s.yawDeg * D, now);
+  }, 22, 0.7);
+  assert.equal(event?.answer, 'yes');
+
+  detector.setEnabled(true);
+  tracker.reset();
+  now += 2;
+  tracker.feed(45, 0);
+  event = null;
+  swing((deg) => {
+    const s = tracker.feed(45, deg);
+    event = event ?? detector.feed(s.pitchDeg * D, s.yawDeg * D, now);
+  }, 22, 0.7);
+  assert.equal(event?.answer, 'no');
+});
+
+test('null tilt angles (unsupported sensor) produce no sample', () => {
+  const tracker = new TiltBaselineTracker();
+  assert.equal(tracker.feed(null, null), null);
+  assert.equal(tracker.feed(45, null), null);
+});
+
+test('a mid-motion arm anchors at the rest pose so a later nod completes (iPhone regression)', () => {
+  // Real failure (Nov 14 iPhone run): the phone was moving when listening
+  // armed, so the tilt baseline anchored off-pose. After the user settled,
+  // every later nod returned to the REST pose, never to the stale anchor,
+  // so the mandatory return-to-baseline never completed. The tracker now
+  // re-anchors toward a held pose once the head is still: settle 70->58 deg
+  // while already armed, then nod down 25 deg and hold at 58 - the nod must
+  // fire once the baseline converges to the rest pose.
+  const detector = new HeadNodShakeDetector({
+    ...DEFAULT_HEAD_GESTURE_CONFIG,
+    returnToBaselineRad: DEFAULT_HEAD_GESTURE_CONFIG.activationRad,
+  });
+  const tracker = new TiltBaselineTracker();
+  now = 0;
+  // Converge the baseline on 70 deg while not armed (still counts while idle).
+  for (let i = 0; i < 360; i += 1) { tracker.feed(70, 6); }
+  detector.setEnabled(true);
+  let event = null;
+  const feed = (deg) => {
+    const s = tracker.feed(deg, 6);
+    const e = detector.feed(s.pitchDeg * D, 0, now);
+    event = event ?? e;
+  };
+  // Mid-motion arm: user settles 70 -> 58 over 0.25 s while already listening.
+  for (let i = 0; i < 15; i += 1) { now += 1 / 60; feed(70 - 12 * (i / 15)); }
+  // Nod down 25 deg and back over 0.5 s.
+  for (let i = 0; i < 30; i += 1) { now += 1 / 60; feed(58 - 25 * Math.sin(Math.PI * Math.min(1, i / 30))); }
+  // Hold still at the rest pose until the baseline re-anchors.
+  for (let i = 0; i < 240; i += 1) { now += 1 / 60; feed(58); }
+  assert.equal(event?.answer, 'yes');
+});
+
+test('pointer scale keeps a deliberate flick above the peak threshold', () => {
+  // A 90px flick must read as at least the 14 deg peak the detector needs.
+  assert.ok(45 / POINTER_PX_PER_DEG >= 14); // 45px flick now clears the peak threshold
+  // Desktop tuning (user request): 2 px per degree, so a nod peaks at ~28px.
+  assert.equal(POINTER_PX_PER_DEG, 2);
+});
+
+test('a fast move, a pause, then a wiggle does not fire (idle re-prime)', () => {
+  const detector = new HeadNodShakeDetector(FLAT_HEAD_GESTURE_CONFIG);
+  const tracker = new PointerGestureTracker();
+  detector.setEnabled(true);
+  now = 0;
+  tracker.feed(200, 200, 0);
+  // Fast flick across the screen (0.15s), then rest 1s, then wiggle +-8px
+  // (the +-12px floor moved with the Nov 15 desktop retune).
+  for (let i = 1; i <= 10; i += 1) { now += 0.015; tracker.feed(200 + i * 40, 200, now); }
+  now += 1;
+  let fired = false;
+  for (let i = 0; i < 20; i += 1) {
+    now += step;
+    const s = tracker.feed(600 + (i % 2 === 0 ? 8 : -8), 200, now);
+    fired = fired || detector.feed(s.pitchDeg * D, s.yawDeg * D, now) != null;
+  }
+  assert.equal(fired, false);
+});
+
+test('nod across vertical with rolled phone answers yes, not a gamma-flip no (iPhone regression)', () => {
+  // Real failure (Nov 14 iPhone run): held rolled ~38 deg, a forward nod
+  // carried beta across 90 deg; iOS reflects gamma there, so raw gamma
+  // jumped ~76 deg in one event and the flat detector answered "no" at
+  // 76 deg - after which no nod ever read as yes. The tracker now absorbs
+  // the reflection into the baseline instead of the sample.
+  const detector = new HeadNodShakeDetector({
+    ...DEFAULT_HEAD_GESTURE_CONFIG,
+    returnToBaselineRad: DEFAULT_HEAD_GESTURE_CONFIG.activationRad,
+  });
+  const tracker = new TiltBaselineTracker();
+  detector.setEnabled(true);
+  now = 0;
+  const iosGamma = (beta, g) => (Math.abs(beta) > 90 ? -g : g);
+  const events = [];
+  const feed = (beta, g) => {
+    const s = tracker.feed(beta, g);
+    const e = detector.feed(s.pitchDeg * D, s.yawDeg * D, now);
+    if (e) events.push(e);
+  };
+  // Settle at beta 60, gamma 38.
+  for (let i = 0; i < 360; i += 1) { now += 1 / 60; feed(60, 38); }
+  // Nod forward across vertical and back over 0.9 s.
+  for (let i = 0; i < 54; i += 1) {
+    now += 1 / 60;
+    const beta = 60 + 45 * Math.sin(Math.PI * Math.min(1, i / 54));
+    feed(beta, iosGamma(beta, 38));
+  }
+  // Settle back at the rest pose.
+  for (let i = 0; i < 120; i += 1) { now += 1 / 60; feed(60, 38); }
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.answer, 'yes');
+});
+
+test('shallow-roll gamma reflection at the vertical crossing is also absorbed', () => {
+  // Smaller roll (15 deg): the iOS gamma flip is ~30 deg, below the plain
+  // wrap threshold, so it is absorbed only because beta crossed +-90 in
+  // the same event.
+  const detector = new HeadNodShakeDetector({
+    ...DEFAULT_HEAD_GESTURE_CONFIG,
+    returnToBaselineRad: DEFAULT_HEAD_GESTURE_CONFIG.activationRad,
+  });
+  const tracker = new TiltBaselineTracker();
+  detector.setEnabled(true);
+  now = 0;
+  const iosGamma = (beta, g) => (Math.abs(beta) > 90 ? -g : g);
+  const events = [];
+  const feed = (beta, g) => {
+    const s = tracker.feed(beta, g);
+    const e = detector.feed(s.pitchDeg * D, s.yawDeg * D, now);
+    if (e) events.push(e);
+  };
+  for (let i = 0; i < 360; i += 1) { now += 1 / 60; feed(60, 15); }
+  for (let i = 0; i < 54; i += 1) {
+    now += 1 / 60;
+    const beta = 60 + 45 * Math.sin(Math.PI * Math.min(1, i / 54));
+    feed(beta, iosGamma(beta, 15));
+  }
+  for (let i = 0; i < 120; i += 1) { now += 1 / 60; feed(60, 15); }
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.answer, 'yes');
+});
+
+
+// --- Nov 15 iPhone recording regressions (flat-mode guard + tuning) -------
+
+const { FLAT_HEAD_GESTURE_CONFIG } = gesture;
+
+/** Feed a piecewise-linear angle track through a detector at 60 Hz. */
+function feedTrack(detector, anchors, yawAnchors) {
+  const events = [];
+  const dt = 1 / 60;
+  for (let i = 0; i < anchors.length - 1; i += 1) {
+    const [t0, p0] = anchors[i];
+    const [t1, p1] = anchors[i + 1];
+    const [, y0] = yawAnchors[i];
+    const [, y1] = yawAnchors[i + 1];
+    const steps = Math.max(1, Math.round((t1 - t0) / dt));
+    for (let s = 0; s < steps; s += 1) {
+      const f = s / steps;
+      now += dt;
+      const e = detector.feed((p0 + (p1 - p0) * f) * D, (y0 + (y1 - y0) * f) * D, now);
+      if (e) events.push(e);
+    }
+  }
+  return events;
+}
+
+test('iPhone recording trace reports yes with the flat config (Nov 15 regression)', () => {
+  // Anchors read off the owner's screen-recording telemetry at 4 fps: real
+  // tilt nods with 13-22 deg pitch swings and 4-13 deg yaw wobble. The old
+  // guard reported nothing for this trace.
+  const pitch = [[0, 2.1], [0.25, -7.0], [0.5, 13.4], [0.75, -7.4], [1.0, 22.0],
+    [1.25, -9.8], [1.5, 17.1], [1.75, 22.4], [2.0, -11.3], [2.25, -6.5], [2.5, -5.1]];
+  const yaw = [[0, 10.5], [0.25, 6.8], [0.5, -1.8], [0.75, 9.3], [1.0, 7.8],
+    [1.25, 6.4], [1.5, 0.2], [1.75, 12.4], [2.0, 7.2], [2.25, 4.2], [2.5, 2.0]];
+  const detector = new HeadNodShakeDetector(FLAT_HEAD_GESTURE_CONFIG);
+  detector.setEnabled(true);
+  now = 0;
+  const events = feedTrack(detector, pitch, yaw);
+  assert.ok(events.length >= 1, 'at least one nod reported');
+  assert.equal(events[0]?.answer, 'yes');
+});
+
+test('a sub-threshold first stroke does not block the nods behind it', () => {
+  // Guard regression with the recording's shape: first stroke 13.4 deg is
+  // under a 14 deg peak, then two full 22 deg nods. The old lastCommitted
+  // guard reported zero events here.
+  const config = { ...FLAT_HEAD_GESTURE_CONFIG, minPeakRad: 14 * D };
+  const pitch = [[0, 0], [0.3, 13.4], [0.6, -4], [0.9, 22.0], [1.2, -6],
+    [1.5, 22.4], [1.8, -6], [2.1, 0]];
+  const yaw = pitch.map(([t]) => [t, 4]);
+  const detector = new HeadNodShakeDetector(config);
+  detector.setEnabled(true);
+  now = 0;
+  const events = feedTrack(detector, pitch, yaw);
+  assert.ok(events.length >= 1, 'a real nod behind the small stroke reports');
+  assert.equal(events[0]?.answer, 'yes');
+});
+
+test('gentle 11 deg phone nods report yes with the flat config', () => {
+  const detector = new HeadNodShakeDetector(FLAT_HEAD_GESTURE_CONFIG);
+  detector.setEnabled(true);
+  now = 0;
+  let event = null;
+  swing((deg) => {
+    event = event ?? detector.feed(deg * D, 0, now);
+  }, 11, 0.7);
+  assert.equal(event?.answer, 'yes');
+});
+
+test('8 deg wobble at nod cadence never fires with the flat config', () => {
+  const detector = new HeadNodShakeDetector(FLAT_HEAD_GESTURE_CONFIG);
+  detector.setEnabled(true);
+  now = 0;
+  let fired = false;
+  for (let k = 0; k < 5; k += 1) {
+    swing((deg) => {
+      fired = fired || detector.feed(deg * D, 2 * D, now) != null;
+    }, 8, 0.6);
+    now += 0.3;
+  }
+  assert.equal(fired, false);
+});
+
+test('a second qualifying commit cannot overwrite an awaiting cycle', () => {
+  const tracker = new AxisOscillationTracker(FLAT_HEAD_GESTURE_CONFIG);
+  now = 0;
+  const step60 = 1 / 60;
+  const feed = (deg) => {
+    now += step60;
+    return tracker.feed(deg * D, now);
+  };
+  // Out to +20, reverse (commits, awaits return), kick to +24 before the
+  // return finishes (ignored, no overwrite), then return to baseline: the
+  // original cycle completes exactly once.
+  let completions = 0;
+  for (const deg of [5, 10, 15, 20, 18, 14, 20, 24, 22, 10, 4, 0]) {
+    if (feed(deg) != null) completions += 1;
+  }
+  assert.equal(completions, 1);
+});
+
+test('flat-mode head shakes still report no with the wider dominance ratio', () => {
+  // Yaw-led shakes with pitch wobble mirroring the recording's ratios,
+  // inverted: yaw swings 18-22 deg, pitch wobbles 8-11 deg.
+  const yawA = [[0, 2.0], [0.25, -6.5], [0.5, 18.0], [0.75, -8.0], [1.0, 22.0],
+    [1.25, -9.0], [1.5, 19.5], [1.75, 21.0], [2.0, -10.0], [2.25, -5.0], [2.5, -3.0]];
+  const pitchA = [[0, 9.0], [0.25, 5.0], [0.5, -2.0], [0.75, 8.0], [1.0, 6.5],
+    [1.25, 5.0], [1.5, 1.0], [1.75, 11.0], [2.0, 6.0], [2.25, 3.5], [2.5, 2.0]];
+  const detector = new HeadNodShakeDetector(FLAT_HEAD_GESTURE_CONFIG);
+  detector.setEnabled(true);
+  now = 0;
+  const events = feedTrack(detector, pitchA, yawA);
+  assert.ok(events.length >= 1, 'at least one shake reported');
+  assert.equal(events[0]?.answer, 'no');
+});
+
+// --- Nov 16 iPhone retest regression: gamma slide across vertical ---------
+
+test('a nod through vertical with a gradual gamma slide reports yes, not no (Nov 16 retest)', () => {
+  // Owner's Nov 16 iPhone retest: resting pose beta ~75 / gamma ~75, two
+  // nods tilting back across vertical (beta 75 -> 105 -> 75). iOS's gamma
+  // reflection arrived as a multi-event slide (each step < 10 deg), which
+  // the jump absorbers let through: the deployed build read yaw 108-158 deg
+  // for seconds and answered "no" (81.7 deg). The gimbal-zone freeze must
+  // keep yawDeg bounded and let the pitch nods through.
+  const detector = new HeadNodShakeDetector(FLAT_HEAD_GESTURE_CONFIG);
+  const tracker = new TiltBaselineTracker();
+  detector.setEnabled(true);
+  now = 0;
+  const events = [];
+  let maxAbsYaw = 0;
+  // Raw iOS gamma: reflected (sign-flipped) while beta > 90, and the flip
+  // slides over ~6 events instead of jumping.
+  let slideFrom = null;
+  let slideSteps = 0;
+  let gammaShown = 75;
+  const feed = (beta) => {
+    const reflected = Math.abs(beta) > 90;
+    const target = reflected ? -75 : 75;
+    if (gammaShown !== target) {
+      if (slideFrom == null) { slideFrom = gammaShown; slideSteps = 0; }
+      slideSteps += 1;
+      const f = Math.min(1, slideSteps / 6);
+      gammaShown = slideFrom + (target - slideFrom) * f;
+      if (f >= 1) slideFrom = null;
+    }
+    const s = tracker.feed(beta, gammaShown);
+    maxAbsYaw = Math.max(maxAbsYaw, Math.abs(s.yawDeg));
+    const e = detector.feed(s.pitchDeg * D, s.yawDeg * D, now);
+    if (e) events.push(e);
+  };
+  // Rest at the holding pose.
+  for (let i = 0; i < 360; i += 1) { now += 1 / 60; feed(75); }
+  // Two nods through vertical: beta 75 -> 105 -> 75, ~0.9 s each.
+  for (let n = 0; n < 2; n += 1) {
+    for (let i = 0; i < 54; i += 1) {
+      now += 1 / 60;
+      feed(75 + 30 * Math.sin(Math.PI * Math.min(1, i / 54)));
+    }
+    for (let i = 0; i < 30; i += 1) { now += 1 / 60; feed(75); }
+  }
+  for (let i = 0; i < 120; i += 1) { now += 1 / 60; feed(75); }
+  assert.ok(maxAbsYaw <= 10, `yaw stayed bounded (max ${maxAbsYaw.toFixed(1)} deg)`);
+  assert.ok(events.length >= 1, 'at least one nod reported');
+  assert.equal(events[0]?.answer, 'yes');
+});
+
+test('a real left-right roll at a normal holding pose still reports no', () => {
+  // The gimbal-zone freeze must not swallow actual shakes: beta stays ~60
+  // (below the zone) while gamma rolls +-20 deg.
+  const detector = new HeadNodShakeDetector(FLAT_HEAD_GESTURE_CONFIG);
+  const tracker = new TiltBaselineTracker();
+  detector.setEnabled(true);
+  now = 0;
+  const events = [];
+  const feed = (beta, gamma) => {
+    const s = tracker.feed(beta, gamma);
+    const e = detector.feed(s.pitchDeg * D, s.yawDeg * D, now);
+    if (e) events.push(e);
+  };
+  for (let i = 0; i < 360; i += 1) { now += 1 / 60; feed(60, 0); }
+  for (let n = 0; n < 2; n += 1) {
+    for (let i = 0; i < 54; i += 1) {
+      now += 1 / 60;
+      feed(60, 20 * Math.sin(2 * Math.PI * Math.min(1, i / 54)));
+    }
+    for (let i = 0; i < 30; i += 1) { now += 1 / 60; feed(60, 0); }
+  }
+  assert.ok(events.length >= 1, 'at least one shake reported');
+  assert.equal(events[0]?.answer, 'no');
+});
