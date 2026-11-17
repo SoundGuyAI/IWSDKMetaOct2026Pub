@@ -721,7 +721,7 @@ if (session) for (const candidate of session.inputSources) {
     const mesh = node as Mesh;
     const mats = Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : [];
     for (const mat of mats) {
-      mat.depthTest = false;
+      mat.depthTest = true;
       mat.depthWrite = false;
     }
   });

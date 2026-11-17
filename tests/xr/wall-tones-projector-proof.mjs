@@ -178,16 +178,18 @@ assert.ok(originCheck.apexToGlow<0.013,'beam cone apex sits inside the glow orb'
 // (b) the glow is a fresnel-shaded orb, not a flat additive disc;
 const glowMat=await page.evaluate(()=>{const m=window.__armbandHarness.system.armbandGlow.material;return {shader:m.isShaderMaterial===true,fresnel:(m.fragmentShader||'').includes('facing')};});
 assert.ok(glowMat.shader&&glowMat.fresnel,'glow uses the fresnel shader');
-// (c) the panel renders in front of everything (pads glows use renderOrder 12).
+// (c) the panel draws after the pad glows (renderOrder 12) but keeps real
+// depth testing so the tracked hand occludes it when physically in front
+// (Nov 17 Quest feedback: the hand read as stuck behind the panel).
 const layering=await page.evaluate(()=>{
  const o=window.__armbandHarness.world.getSceneObject('wall-tones-armband');
  const out={minOrder:Infinity,badMats:0};
- o.traverse((n)=>{if(n.renderOrder<out.minOrder)out.minOrder=n.renderOrder;const ms=Array.isArray(n.material)?n.material:n.material?[n.material]:[];for(const m of ms){if(m.depthTest!==false||m.depthWrite!==false)out.badMats++;}});
+ o.traverse((n)=>{if(n.renderOrder<out.minOrder)out.minOrder=n.renderOrder;const ms=Array.isArray(n.material)?n.material:n.material?[n.material]:[];for(const m of ms){if(m.depthTest!==true||m.depthWrite!==false)out.badMats++;}});
  return out;
 });
 console.log('LAYERING',layering);
 assert.ok(layering.minOrder>=20,'panel draws after the pad glows (renderOrder 12)');
-assert.equal(layering.badMats,0,'panel materials ignore depth (render in front)');
+assert.equal(layering.badMats,0,'panel materials depth-test so the hand can occlude them');
 assert.ok(Math.abs(placement.awayApplied-0.06)<0.01,'head-away offset applied in full');
 assert.ok(placement.awayGain>0.015,'panel sits farther from the head than the palm');
 // Nov 16 hardware feedback: button presses on the floating panel do not land.
