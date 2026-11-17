@@ -135,3 +135,13 @@ Armband verification update (Nov 13): typecheck/build and 102 unit tests pass. Q
 - [x] Restore small-movement taps on release while ignoring duplicate clicks; keep repeated drags scrolling without selection.
 - [ ] Full local/CI checks and deployed preview verification.
 - [ ] Owner headset retest, including tile details and Buy after repeated up/up/down drags. No merge approval. PR95 unchanged.
+
+## Rift portal note shards (feat/rift-portal-shards, Nov 17) - in progress
+- [x] Branch off `feat/rift-seal-visuals` (not folded into PR #129).
+- [x] Replace blurry glow-dot Points + flat note Sprites + dark rock chips with thick neon notes, sharp sparks, luminous shards (`rift-portal-burst.ts`), lightweight rim/core shaders, no bloom stack.
+- [x] Redraw geometry-collision pool as sharp instanced sparks; physics unchanged.
+- [x] Archive ref `docs/reference-images/38-rift-portal-note-shards.jpg` + index limits.
+- [x] Front idle + sealing motion captures in pale Lab room (`artifacts/portal-shards/`, local only). Notes readable; room/rift hole still visible.
+- [ ] Side-orbit capture still weak in flat browser camera; recheck in XR/headset.
+- [ ] Quest perf sample pending (no device connected this session).
+- [ ] Draft PR base `feat/rift-seal-visuals`. No merge / no production deploy.

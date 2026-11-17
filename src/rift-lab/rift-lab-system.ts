@@ -8,7 +8,8 @@
  * aims a hand-energy beam at a rift: open palm in XR (his 12:15), drag from
  * the fixed charge spot on mobile (settled 12:25). Layered sealing-beam /
  * hand-aura / neon-note visuals live in rift-seal-beam.ts, rift-hand-aura.ts
- * and rift-note-visuals.ts (visual-only; gameplay hooks unchanged).
+ * rift-note-visuals.ts and rift-portal-burst.ts (visual-only; gameplay hooks
+ * unchanged).
  *
  * Settled inputs (13:38): desktop clicks the rift itself with enough energy
  * (notes fly pointer-to-rift, no hold); the enough-energy gate is shared by
@@ -53,26 +54,14 @@ import {
 } from './rift-hands.js';
 import { riftAimRays, riftTargetPositions } from './rift-targets.js';
 import {
-  AdditiveBlending,
-  BufferGeometry,
   Color,
-  DoubleSide,
   Group,
-  InstancedMesh,
-  Matrix4,
   Mesh,
   MeshBasicMaterial,
   Object3D,
   PlaneGeometry,
   Plane,
-  Points,
-  PointsMaterial,
-  Quaternion,
   ShaderMaterial,
-  Sprite,
-  SpriteMaterial,
-  CircleGeometry,
-  Float32BufferAttribute,
   Raycaster,
   Vector2,
   Vector3,
@@ -106,7 +95,15 @@ import {
 } from './rift-geometry-particles.js';
 import { RiftHandAura } from './rift-hand-aura.js';
 import { noteFrontVisibility, RiftHandOccluders } from './rift-hand-occluders.js';
-import { glowDotTexture, noteGlyphMaterial, noteGlyphTexture } from './rift-note-visuals.js';
+import { noteGlyphMaterial } from './rift-note-visuals.js';
+import {
+  createGeoSparkDraw,
+  createPortalBurst,
+  disposePortalBurst,
+  syncGeoSparkDraw,
+  updatePortalBurst,
+  type PortalBurst,
+} from './rift-portal-burst.js';
 import { RiftSealBeam } from './rift-seal-beam.js';
 
 /** Virtual hand anchors in flat mode (meters, hub scene space). */
@@ -239,15 +236,12 @@ interface RiftView {
   position: Vector3;
   born: number;
   fracture: ShaderMaterial;
-  sparks: Points;
-  sparkSeeds: Float32Array;
-  trail: { sprite: Sprite; spine: number; offset: number; speed: number; wig: number }[];
-  debris: { mesh: Mesh; ang: number; spin: number; speed: number }[];
+  /** Thick neon notes + sharp sparks + luminous shards (replaces glow dots). */
+  burst: PortalBurst;
   /** Fractional spark accumulator for the sealing spray (item 93). */
   sprayAcc: number;
 }
 
-const SPARK_COUNT = 64;
 /** Dedicated neon notes streaming hand→rift beside the beam while sealing. */
 const TORRENT_COUNT = 32;
 
@@ -463,7 +457,7 @@ export class RiftLabSystem extends createSystem({
   /** Item 93: shared world-space spark pool with room-geometry collision. */
   private readonly geoPool: GeometryParticlePool =
     createGeometryParticlePool(GEO_POOL_MAX);
-  private geoSparks: InstancedMesh | null = null;
+  private geoSparkDraw: ReturnType<typeof createGeoSparkDraw> | null = null;
   private readonly beamCaster = new Raycaster();
   private readonly beamTargets: Object3D[] = [];
   private readonly meshWalk: Object3D[] = [];
@@ -472,11 +466,6 @@ export class RiftLabSystem extends createSystem({
   private readonly surfaceHit: SurfaceRayHit = {
     t: 0, x: 0, y: 0, z: 0, nx: 0, ny: 1, nz: 0,
   };
-  private readonly sparkMatrix = new Matrix4();
-  private readonly sparkQuat = new Quaternion();
-  private readonly sparkPos = new Vector3();
-  private readonly sparkScale = new Vector3();
-  private readonly sparkColor = new Color();
   private readonly geoSurfaces: CollisionSurface[] = [];
   private lastGeoSurfaceRefreshAt = 0;
   private beamHitSprayAcc = 0;
@@ -523,29 +512,8 @@ export class RiftLabSystem extends createSystem({
       this.root.add(this.sealBeam.root);
       this.root.add(this.handAura.root);
       this.root.add(this.handOccluders.root);
-      this.geoSparks = new InstancedMesh(
-        new PlaneGeometry(1, 1),
-        new MeshBasicMaterial({
-          map: glowDotTexture(),
-          transparent: true,
-          depthWrite: false,
-          depthTest: false,
-          blending: AdditiveBlending,
-          toneMapped: false,
-          side: DoubleSide,
-        }),
-        GEO_POOL_MAX,
-      );
-      this.geoSparks.frustumCulled = false;
-      this.geoSparks.visible = false;
-      this.geoSparks.renderOrder = 4;
-      this.sparkMatrix.makeScale(0, 0, 0);
-      for (let i = 0; i < GEO_POOL_MAX; i++) {
-        this.geoSparks.setMatrixAt(i, this.sparkMatrix);
-        this.geoSparks.setColorAt(i, this.sparkColor);
-      }
-      this.geoSparks.instanceMatrix.needsUpdate = true;
-      this.root.add(this.geoSparks);
+      this.geoSparkDraw = createGeoSparkDraw(GEO_POOL_MAX);
+      this.root.add(this.geoSparkDraw.mesh);
       for (let i = 0; i < TORRENT_COUNT; i++) {
         const color = PAD_COLOR_NAMES[i % PAD_COLOR_NAMES.length];
         const mesh = new Mesh(
@@ -1095,74 +1063,11 @@ export class RiftLabSystem extends createSystem({
     const fracture = buildFracture(rift);
     const quad = new Mesh(new PlaneGeometry(RIFT_PLANE_M, RIFT_PLANE_M), fracture);
     group.add(quad);
-    const sparkSeeds = new Float32Array(SPARK_COUNT * 3);
-    const sparkColors: number[] = [];
-    for (let i = 0; i < SPARK_COUNT; i++) {
-      sparkSeeds[i * 3] = Math.random();
-      sparkSeeds[i * 3 + 1] = Math.random() * Math.PI * 2;
-      sparkSeeds[i * 3 + 2] = 0.5 + Math.random();
-      const col = new Color(PAD_COLORS[rift.edgeColors[i % 4]]);
-      sparkColors.push(col.r, col.g, col.b);
-    }
-    const sparkGeo = new BufferGeometry();
-    sparkGeo.setAttribute('position', new Float32BufferAttribute(new Float32Array(SPARK_COUNT * 3), 3));
-    sparkGeo.setAttribute('color', new Float32BufferAttribute(sparkColors, 3));
-    const sparks = new Points(
-      sparkGeo,
-      new PointsMaterial({
-        size: 0.075,
-        map: glowDotTexture(),
-        vertexColors: true,
-        transparent: true,
-        depthWrite: false,
-        toneMapped: false,
-        blending: AdditiveBlending,
-      }),
-    );
-    sparks.frustumCulled = false;
-    sparks.position.z = 0.01;
-    group.add(sparks);
-    // Note trails along four crack spines (his concept: glowing colored
-    // notes streaming along the cracks), plus drifting rock debris.
-    const trail: RiftView['trail'] = [];
-    for (let spine = 0; spine < 4; spine++) {
-      for (let k = 0; k < 7; k++) {
-        const sprite = new Sprite(
-          new SpriteMaterial({
-            map: noteGlyphTexture(rift.edgeColors[spine]),
-            transparent: true,
-            depthWrite: false,
-            toneMapped: false,
-            opacity: 1,
-          }),
-        );
-        sprite.scale.setScalar(0.1);
-        sprite.position.z = 0.02;
-        group.add(sprite);
-        trail.push({
-          sprite,
-          spine,
-          offset: k / 7 + spine * 0.07,
-          speed: 0.16 + ((rift.id * 13 + spine * 7 + k * 5) % 10) / 80,
-          wig: ((rift.id + k * 3 + spine) % 7) / 7,
-        });
-      }
-    }
-    const debris: RiftView['debris'] = [];
-    for (let i = 0; i < 7; i++) {
-      const mesh = new Mesh(
-        new CircleGeometry(0.012 + ((i * 7 + rift.id) % 5) * 0.006, 5),
-        new MeshBasicMaterial({ color: 0x4a4650, transparent: true, depthWrite: false }),
-      );
-      mesh.position.z = 0.015;
-      group.add(mesh);
-      debris.push({
-        mesh,
-        ang: (i / 9) * Math.PI * 2 + rift.id,
-        spin: (i % 2 === 0 ? 1 : -1) * (0.4 + (i % 3) * 0.3),
-        speed: 0.02 + (i % 4) * 0.01,
-      });
-    }
+    // Portal cloud: thick neon notes, sharp sparks, luminous shards.
+    // Replaces blurry glow dots / flat sprites / rock chips. Idle only —
+    // sealing beam is a separate path and must not appear on idle rifts.
+    const burst = createPortalBurst(rift.id, rift.edgeColors);
+    group.add(burst.root);
     group.position.copy(position);
     if (flatSpot != null) group.scale.setScalar(flatSpot.radius / RIFT_VISIBLE_RADIUS_M);
     if (lookTarget != null) {
@@ -1175,10 +1080,7 @@ export class RiftLabSystem extends createSystem({
       position,
       born: performance.now(),
       fracture,
-      sparks,
-      sparkSeeds,
-      trail,
-      debris,
+      burst,
       sprayAcc: 0,
     });
     this.renderPanel();
@@ -1187,6 +1089,7 @@ export class RiftLabSystem extends createSystem({
   private removeRiftView(id: number): void {
     const view = this.riftViews.get(id);
     if (view == null) return;
+    disposePortalBurst(view.burst);
     this.root.remove(view.group);
     this.riftViews.delete(id);
   }
@@ -1569,57 +1472,13 @@ export class RiftLabSystem extends createSystem({
         view.rift.state === 'sealing' || view.rift.state === 'sealed'
           ? this.debugSealP ?? Math.min(1, view.rift.sealProgressMs / flightMs)
           : 0;
-      const pos = view.sparks.geometry.getAttribute('position');
       const sealing = view.rift.state === 'sealing';
-      for (let i = 0; i < SPARK_COUNT; i++) {
-        const sd = view.sparkSeeds;
-        const life = (age * 0.42 * sd[i * 3 + 2] + sd[i * 3]) % 1;
-        const ang = sd[i * 3 + 1] + age * 0.55;
-        // Cone out of the portal plane into the room (local +Z after lookAt).
-        // Sealing reverses the flow back into the hole.
-        const rr = sealing
-          ? (1 - life) * 0.28
-          : (0.05 + life * 0.34) * (0.4 + 0.6 * u.uOpen.value);
-        const outZ = sealing
-          ? (1 - life) * (0.1 + 0.35 * sd[i * 3 + 2])
-          : life * (0.22 + 0.7 * sd[i * 3 + 2]);
-        pos.setXYZ(
-          i,
-          Math.cos(ang) * rr * 0.75,
-          Math.sin(ang) * rr * 1.05,
-          outZ,
-        );
-      }
-      pos.needsUpdate = true;
-      const sealU = u.uSeal.value as number;
-      const spineAng = [Math.PI * 0.72, Math.PI * 0.28, -Math.PI * 0.28, -Math.PI * 0.72];
-      for (const t of view.trail) {
-        let f = (age * t.speed * (sealing ? 3 : 1) + t.offset) % 1;
-        if (sealing) f = 1 - f;
-        const rr = (0.3 + f * 0.58) * (0.35 + 0.65 * u.uOpen.value);
-        const base = spineAng[t.spine] + Math.sin(rr * 9 + t.wig * 6 + age * 1.3) * 0.12;
-        // Trail notes lift well off the wall into room space.
-        const lift = sealing ? (1 - f) * 0.22 : 0.04 + f * 0.38;
-        t.sprite.position.set(
-          Math.cos(base) * rr * 0.95,
-          Math.sin(base) * rr * 1.1,
-          lift,
-        );
-        const m = t.sprite.material as SpriteMaterial;
-        m.opacity = Math.min(1, f * 6, (1 - f) * 4) * (1 - 0.7 * sealU);
-        t.sprite.scale.setScalar(0.085 * (0.7 + 0.5 * Math.sin(age * 4 + t.wig * 9)));
-      }
-      for (const dbr of view.debris) {
-        const dd = 0.3 + ((age * dbr.speed + dbr.ang) % 0.6) * 0.5;
-        const lift = 0.04 + ((age * 0.2 + dbr.ang) % 1) * 0.28;
-        dbr.mesh.position.set(
-          Math.cos(dbr.ang) * dd * 0.9,
-          Math.sin(dbr.ang) * dd * 1.05,
-          lift,
-        );
-        dbr.mesh.rotation.z = age * dbr.spin;
-        (dbr.mesh.material as MeshBasicMaterial).opacity = 1 - sealU;
-      }
+      updatePortalBurst(view.burst, {
+        age,
+        open: u.uOpen.value as number,
+        seal: u.uSeal.value as number,
+        sealing,
+      });
     }
 
     if (this.running) {
@@ -1869,8 +1728,9 @@ export class RiftLabSystem extends createSystem({
     this.geoPool.col.fill(0);
     this.geoPool.alive = 0;
     this.beamHitSprayAcc = 0;
-    if (this.geoSparks != null) {
-      this.geoSparks.visible = false;
+    if (this.geoSparkDraw != null) {
+      this.geoSparkDraw.mesh.visible = false;
+      this.geoSparkDraw.mesh.count = 1;
     }
   }
 
@@ -2029,37 +1889,9 @@ export class RiftLabSystem extends createSystem({
       }
     }
     stepGeometryParticles(this.geoPool, delta, this.geoSurfaces);
-    this.syncGeometrySparkMeshes();
-  }
-
-  /** Billboard quads for alive sparks. Dead slots collapse so they cannot
-   * pile up into a blob at the origin (Quest point sprites did that). */
-  private syncGeometrySparkMeshes(): void {
-    const mesh = this.geoSparks;
-    if (mesh == null) return;
-    const alive = this.geoPool.alive > 0;
-    mesh.visible = alive;
-    if (!alive) return;
-    this.sparkQuat.copy(this.world.camera.quaternion);
-    const pool = this.geoPool;
-    for (let i = 0; i < pool.max; i++) {
-      if (pool.life[i]! <= 0) {
-        this.sparkMatrix.makeScale(0, 0, 0);
-        mesh.setMatrixAt(i, this.sparkMatrix);
-        continue;
-      }
-      const i3 = i * 3;
-      const fade = Math.min(1, pool.life[i]! / (pool.maxLife[i]! * 0.55));
-      const s = 0.045 + 0.05 * fade;
-      this.sparkPos.set(pool.pos[i3]!, pool.pos[i3 + 1]!, pool.pos[i3 + 2]!);
-      this.sparkScale.set(s, s, 1);
-      this.sparkMatrix.compose(this.sparkPos, this.sparkQuat, this.sparkScale);
-      mesh.setMatrixAt(i, this.sparkMatrix);
-      this.sparkColor.setRGB(pool.col[i3]!, pool.col[i3 + 1]!, pool.col[i3 + 2]!);
-      mesh.setColorAt(i, this.sparkColor);
+    if (this.geoSparkDraw != null) {
+      syncGeoSparkDraw(this.geoSparkDraw, this.geoPool);
     }
-    mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor != null) mesh.instanceColor.needsUpdate = true;
   }
 
   /** Nearest scene mesh in front of the beam: real room meshes and planes
