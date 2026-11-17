@@ -4667,13 +4667,13 @@ if (narrIntact()) {
 const window = this.cypherProgress.beginWindow(streak);
 if (window) await this.playCypherWindow(window, narrIntact);
 else {
-// Skip/interrupt leaves the line unheard (lineCompleted is not reached), so it retries at the next quiet pattern boundary.
+// Count each story line when playback starts. Skipping the radio effect
+// before a line starts must still leave that line unheard.
 const line = this.backgroundProgress.successfulPattern(this.cypherProgress.finished, !this.speech.isBusy());
 if (line && narrIntact()) {
 const cast = captureCypherCast(getVoiceGender());
 await this.speech.speakBackgroundEffect(this.backgroundProgress.completedLines % 3 === 2 ? 'squawk' : 'open');
-if (narrIntact()) await this.speech.speakBackgroundLine(line.id, cast);
-if (narrIntact()) this.backgroundProgress.lineCompleted();
+if (narrIntact()) await this.speech.speakBackgroundLine(line.id, cast, () => this.backgroundProgress.lineCompleted());
 if (narrIntact()) await this.speech.speakBackgroundEffect('close');
 }
 }
@@ -4700,8 +4700,7 @@ await this.speech.speakStoryEffect(['next-window', 'your-machine', 'next-lock', 
 if (window.seam === 'open' && intact()) this.setCypherSeam(true);
 for (const id of window.lines) {
 if (!intact()) break;
-await this.speech.speakStoryLine(id, cast);
-if (intact()) this.cypherProgress.lineCompleted();
+await this.speech.speakStoryLine(id, cast, () => this.cypherProgress.lineCompleted());
 }
 if (window.speaker === 'cypher' && intact()) await this.speech.speakStoryEffect('close');
 if (!intact()) this.setCypherSeam(false);
