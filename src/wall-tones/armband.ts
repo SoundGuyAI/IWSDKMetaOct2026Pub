@@ -1,3 +1,4 @@
+import { ArmbandRaisedButtons } from './armband-raised-buttons.js';
 import { hintWindowStart, HINT_WINDOW_SIZE } from './hint-window.js';
 /** The armband preference is independent of the player's input/dominant hand. */
 export type ArmbandHand = 'left' | 'right';
@@ -56,6 +57,7 @@ export function armbandCueIds(state: ArmbandReadout): readonly number[] {
 
 /** Shared by hand joints and controller grip poses; never billboarded to the head. */
 export class ArmbandDisplay {
+  readonly raisedButtons = new ArmbandRaisedButtons();
   readonly position = new Vector3();
   readonly orientation = new Quaternion();
   private readonly offset = new Vector3();
