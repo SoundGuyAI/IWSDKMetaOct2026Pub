@@ -325,10 +325,30 @@ export class AppModeSystem extends createSystem({}) {
       });
     }
     // Rift Lab Back returns to the Lab menu (it only stopped the run before).
-    this.world
+    // Temporary isolated diagnosis, enabled only by the diagnostic test URL.
+    const backDiagnostic = new URLSearchParams(window.location.search).has('diagBack');
+    const riftBack = this.world
       .getSceneObject<UIKitMLAsset>('rift-lab-panel')
-      ?.getElementById('rift-lab-back-button')
-      ?.addEventListener('click', () => this.setMode('lab'));
+      ?.getElementById('rift-lab-back-button');
+    const backMark = (stage: string) => {
+      if (!backDiagnostic) return;
+      console.info('[back-diag]', JSON.stringify({
+        stage, time: performance.now(), internalMode: this.mode,
+        storedMode: sessionStorage.getItem('iwsdk-experience-mode'),
+        buttonFound: riftBack != null,
+      }));
+    };
+    backMark('binding');
+    if (backDiagnostic) {
+      for (const type of ['pointerover', 'pointerout', 'pointerdown', 'pointerup'] as const) {
+        riftBack?.addEventListener(type, () => backMark(`button-${type}`));
+      }
+    }
+    riftBack?.addEventListener('click', () => {
+      backMark('handler-enter');
+      this.setMode('lab');
+      backMark('handler-return');
+    });
     const back = menu.getElementById('lab-menu-back-button');
     back?.addEventListener('click', () => this.setMode('menu'));
     if (back != null) {
