@@ -1252,7 +1252,7 @@ this.readRayAndGazeTouches();
 if (
 !this.useDesktopPath() &&
 this.flowPhase === 'playing' &&
-(this.mrAwaitingStart || this.gestureListen != null)
+(this.mrAwaitingStart || this.gestureListen != null || this.gameOverOpen)
 ) {
 this.tickThumbGestures();
 }
