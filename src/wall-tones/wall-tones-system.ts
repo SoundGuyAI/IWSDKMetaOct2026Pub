@@ -63,6 +63,7 @@ PHONE_PAD_SIZE_M,
 PHONE_PANEL_FLAT,
 BLINK_CUE_OFFSCREEN_DEG,
 BLINK_HOLD_S,
+NOTE_DURATION_S,
 NOTE_GAP_S,
 BETWEEN_ROUNDS_DELAY_S,
 IDLE_REPLAY_S,
@@ -161,6 +162,7 @@ import {
   AUTOPLAY_UNLOCK_PLAY_LEVEL,
   PLAY_UNLOCK_HINT_LEVEL,
   PLAY_MAX_LEVEL,
+  SPEED_MAX_LEVEL,
   MULTIPLIER_MAX_LEVEL,
   multiplierFactorForLevel,
   INDEX_COST,
@@ -307,6 +309,7 @@ buyHint: () => void;
 buyListen: () => void;
 buyAutoplay: () => void;
 buyPlay: () => void;
+buySpeed: () => void;
 buyMultiplier: () => void;
 buyReplay: () => void;
 buySaver: () => void;
@@ -321,6 +324,9 @@ readonly achievementsButtonScreen: { x: number; y: number } | null;
 repeatPattern: () => void;
 /** Test-only: the control-row Play button path (greyed -> Store). */
 pressPlay: () => void;
+/** Test-only: the control-row Speed button path (greyed -> Store,
+ * owned -> on/off toggle). */
+pressSpeedControl: () => void;
 /** Test-only: the control-row Multiplier button path (greyed -> Store,
  * owned -> on/off toggle). */
 pressMultiplierControl: () => void;
@@ -344,6 +350,7 @@ hintUnlocked: boolean;
 autoplayLevel: number;
 autoplayUnlocked: boolean;
 playLevel: number;
+speedLevel: number;
 multiplierLevel: number;
 replaysFree: number;
 replaysPaid: number;
@@ -356,6 +363,7 @@ grantBars: (amount: number) => void;
 grantSavers: (units: number) => void;
 /** Test-only: seed the Play level while its prices are unset. */
 grantPlayLevel: (level: number) => void;
+grantSpeedLevel: (level: number) => void;
 grantMultiplierLevel: (level: number) => void;
 /** Test-only: grant the Index pointer while its price is unset. */
 grantIndex: () => void;
@@ -1347,7 +1355,7 @@ panel
 ?.addEventListener('click', () => void this.onAutoplayControl());
 panel
 .getElementById('control-speed-button')
-?.addEventListener('click', () => this.openStoreAtTile('speed'));
+?.addEventListener('click', () => void this.onSpeedControl());
 panel
 .getElementById('control-multiplier-button')
 ?.addEventListener('click', () => void this.onMultiplierControl());
@@ -2516,6 +2524,10 @@ buyPlay: () => {
 system.forceSelectStoreTile('play');
 system.onBuySelected();
 },
+buySpeed: () => {
+system.forceSelectStoreTile('speed');
+system.onBuySelected();
+},
 buyMultiplier: () => {
 system.forceSelectStoreTile('multiplier');
 system.onBuySelected();
@@ -2548,6 +2560,9 @@ void system.onRepeatPattern();
 pressPlay: () => {
 void system.onPlayControl();
 },
+pressSpeedControl: () => {
+void system.onSpeedControl();
+},
 pressMultiplierControl: () => {
 void system.onMultiplierControl();
 },
@@ -2568,6 +2583,9 @@ return system.economy.autoplayUnlocked();
 },
 get playLevel() {
 return system.economy.getPlayLevel();
+},
+get speedLevel() {
+return system.economy.getSpeedLevel();
 },
 get multiplierLevel() {
 return system.economy.getMultiplierLevel();
@@ -2644,6 +2662,9 @@ system.debugGrantSavers(units);
 },
 grantPlayLevel: (level: number) => {
 system.debugGrantPlayLevel(level);
+},
+grantSpeedLevel: (level: number) => {
+system.economy.debugGrantSpeedLevel(level);
 },
 grantMultiplierLevel: (level: number) => {
 system.economy.debugGrantMultiplierLevel(level);
@@ -3702,7 +3723,20 @@ this.playbackCursor = -1;
 this.enteredByModifier.clear();
 this.arrowSeqIndex = -1;
 this.renderPanel();
+// Speed modifier (backlog 96, his 2026-11-14 proposal): the head of the
+// Listen playback plays faster, covering the first N notes where N is the
+// higher of the Play/Autoplay note counts, capped at the pattern length.
+// Without Play or Autoplay nothing is sped up (flagged for him: Speed is
+// dead weight until one of those is owned). The provisional curve halves
+// the note time per level (1/2, 1/4, 1/8, 1/16 - his own "maybe too
+// much" concern stands, balance pass decides).
+const speedFactor = this.economy.speedNoteTimeFactor();
+const speedNotes =
+speedFactor < 1
+? Math.min(this.game.sequence.length, this.economy.speedCoveredNoteCount())
+: 0;
 for (let index = 0; index < this.game.sequence.length; index += 1) {
+const quick = index < speedNotes;
 const padId = this.game.sequence[index]!;
 const pad = this.padById(padId);
 if (pad != null) {
@@ -3711,12 +3745,12 @@ flashPad(pad, true);
 this.playbackShownCount = index + 1;
 this.playbackCursor = index;
 this.renderPanel();
-await playPadTone(padId);
-await this.wait(NOTE_GAP_S + BLINK_HOLD_S + 0.2);
+await playPadTone(padId, quick ? NOTE_DURATION_S * speedFactor : NOTE_DURATION_S);
+await this.wait((NOTE_GAP_S + BLINK_HOLD_S + 0.2) * (quick ? speedFactor : 1));
 flashPad(pad, false);
 this.setBlinkCuePad(null);
 }
-await this.wait(NOTE_GAP_S);
+await this.wait(NOTE_GAP_S * (quick ? speedFactor : 1));
 }
 // Autoplay store modifier (store test values, balance TBD): after
 // the Listen playback, the game enters the first level*5 notes for the
@@ -3754,8 +3788,11 @@ this.setBlinkCuePad(pad);
 flashPad(pad, true);
 this.playbackCursor = index;
 this.renderPanel();
-await playPadTone(padId);
-await this.wait(NOTE_GAP_S + BLINK_HOLD_S + 0.2);
+// Speed applies to AutoPlay's entered notes too (his 2026-11-17 ask);
+// its covered count is the higher of the Play/Autoplay note counts, so
+// every note AutoPlay enters is inside the covered head by definition.
+await playPadTone(padId, NOTE_DURATION_S * speedFactor);
+await this.wait((NOTE_GAP_S + BLINK_HOLD_S + 0.2) * speedFactor);
 flashPad(pad, false);
 this.setBlinkCuePad(null);
 }
@@ -3772,7 +3809,7 @@ if (completed) {
 this.finishCompletedPattern(padId, previousBest, false);
 return;
 }
-await this.wait(NOTE_GAP_S);
+await this.wait(NOTE_GAP_S * speedFactor);
 }
 if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
@@ -5128,9 +5165,24 @@ panel
 ?.setProperties({
 text: !autoplayOwned ? 'Auto' : autoplayOn ? 'Auto: on' : 'Auto: off',
 });
+// Speed (backlog 96): unowned stays the greyed Store shortcut; owned shows
+// the selected strength (2x/4x/8x/16x) and cycles on press (his 2026-11-17
+// ask: cycle the bought speeds); the OFF signal is the slash plus the
+// label (same settled pattern as AutoPlay).
+const speedOwned = this.economy.getSpeedLevel() > 0;
+const speedSelected = this.economy.getSpeedSelectedLevel();
+const speedOn = this.economy.isSpeedEnabled();
 panel
 .getElementById('control-speed-button')
-?.setProperties({ opacity: greyed });
+?.setProperties({ opacity: speedOwned ? 1 : greyed });
+panel
+.getElementById('control-speed-slash')
+?.setProperties({ display: speedOwned && !speedOn ? 'flex' : 'none' });
+panel
+.getElementById<UIKit.Text>('control-speed-label')
+?.setProperties({
+text: !speedOwned ? 'Speed' : speedOn ? `Speed ${2 ** speedSelected}x` : 'Speed: off',
+});
 // Multiplier (backlog 97): unowned stays the greyed Store shortcut;
 // owned is always white with the owned factor as the label (X2/X3/X4/X8),
 // the OFF signal is the slash plus ': off' (same settled pattern as
@@ -5208,6 +5260,27 @@ return;
 await this.onPlayTones();
 }
 
+/** Control-row Speed button (backlog 96): unowned -> Store shortcut;
+ * owned -> toggles the speed-up on/off, mirroring the settled AutoPlay
+ * toggle pattern. Caption only: no voice notice was requested, lines can
+ * be recorded later if he wants them. The toggle is proposed UX - he
+ * never specified the owned-button action, confirm on review. */
+private async onSpeedControl(): Promise<void> {
+if (this.economy.getSpeedLevel() < 1) {
+this.openStoreAtTile('speed');
+return;
+}
+// His 2026-11-17 ask: the button cycles the speeds he already bought
+// (2x, 4x, ... up to the owned level), with off at the end of the cycle.
+const selected = this.economy.cycleSpeedSelection();
+this.statusText = selected === 0 ? 'Speed disengaged' : `Speed engaged: ${2 ** selected}x`;
+this.renderPanel();
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+if (panel != null) {
+this.syncControlRow(panel);
+}
+}
+
 /** Control-row Multiplier button (backlog 97): unowned -> Store shortcut;
  * owned -> toggles the score multiplier on/off, mirroring the settled
  * AutoPlay toggle pattern. Caption only: no voice notice was requested.
@@ -5273,10 +5346,21 @@ this.statusText = `Play: ${playCount} tones`;
 this.playbackKind = 'play';
 this.renderPanel();
 this.playbackQueue = this.playbackQueue.then(async () => {
+// Speed covers the Play modifier's entered notes the same way it covers
+// Listen and AutoPlay (his 2026-11-17 report: AutoPlay applied the speed
+// but Play did not). The covered head is the first N = max(Play,
+// Autoplay) notes; a Play note entered past the head (possible after
+// manual presses) plays at normal speed, mirroring the Listen loop.
+const speedFactor = this.economy.speedNoteTimeFactor();
+const speedNotes =
+speedFactor < 1
+? Math.min(this.game.sequence.length, this.economy.speedCoveredNoteCount())
+: 0;
 for (let i = 0; i < playCount; i += 1) {
 if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
 }
+const quick = this.game.inputStep < speedNotes;
 const padId = this.game.sequence[this.game.inputStep]!;
 if (padId == null) {
 break;
@@ -5287,8 +5371,8 @@ this.setBlinkCuePad(pad);
 flashPad(pad, true);
 this.playbackCursor = this.game.inputStep;
 this.renderPanel();
-await playPadTone(padId);
-await this.wait(NOTE_GAP_S + BLINK_HOLD_S + 0.2);
+await playPadTone(padId, quick ? NOTE_DURATION_S * speedFactor : NOTE_DURATION_S);
+await this.wait((NOTE_GAP_S + BLINK_HOLD_S + 0.2) * (quick ? speedFactor : 1));
 flashPad(pad, false);
 this.setBlinkCuePad(null);
 }
@@ -5311,7 +5395,7 @@ if (completed) {
 this.finishCompletedPattern(padId, previousBest);
 return;
 }
-await this.wait(NOTE_GAP_S);
+await this.wait(NOTE_GAP_S * (quick ? speedFactor : 1));
 }
 if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
@@ -5641,6 +5725,7 @@ glyph?: string;
 const hintLevel = eco.getHintLevel();
 const autoplayLevel = eco.getAutoplayLevel();
 const playLevel = eco.getPlayLevel();
+const speedLevel = eco.getSpeedLevel();
 const multiplierLevel = eco.getMultiplierLevel();
 const replaysTotal = eco.getReplaysTotal();
 const savers = eco.getSavers();
@@ -5728,6 +5813,19 @@ state: eco.ownsTopSecret() ? 'on' : 'off',
 price: eco.ownsTopSecret() ? 'Owned' : `${TOP_SECRET_COST}`,
 icon: !eco.ownsTopSecret(),
 },
+// Speed (backlog 96): live tile on this branch. Ungated, provisional test
+// prices (see economy.ts) - the price/gate are his to settle.
+{
+id: 'speed',
+name: 'Speed',
+badge: speedLevel > 0 ? String(speedLevel) : '',
+state: speedLevel > 0 ? 'on' : 'off',
+price:
+speedLevel >= SPEED_MAX_LEVEL
+? 'Max'
+: `L${speedLevel + 1} - ${eco.speedCost(speedLevel + 1)}`,
+icon: speedLevel < SPEED_MAX_LEVEL,
+},
 // Multiplier (backlog 97/70): live tile on this branch. Ungated, PROPOSED
 // prices X2 1,000 / X3 5,000 / X4 25,000 / X8 125,000 (x5 growth per his
 // "really high exponentially", 2026-11-12; X8 fourth tier added 2026-11-17)
@@ -5745,10 +5843,6 @@ multiplierLevel >= MULTIPLIER_MAX_LEVEL
 : `X${multiplierFactorForLevel(multiplierLevel + 1)} - ${eco.multiplierCost(multiplierLevel + 1)}`,
 icon: multiplierLevel < MULTIPLIER_MAX_LEVEL,
 },
-// Room for the modifiers the owner listed (2026-11-11): 5th/6th pads, the
-// story hack and the speed modifier. Their phrasing is just "Locked"
-// (owner ask 2026-11-12).
-{ id: 'speed', name: 'Speed', badge: '?', state: 'off', price: 'Locked', icon: false },
 { id: 'pads56', name: 'Pad 5', badge: '?', state: 'off', price: 'Locked', icon: false },
 { id: 'narrator', name: 'Hack', badge: '?', state: 'off', price: 'Locked', icon: false },
 ];
@@ -6054,6 +6148,21 @@ buyText = `Top Secret - ${TOP_SECRET_COST}`;
 cost = TOP_SECRET_COST;
 }
 break;
+case 'speed': {
+titleText = `Speed - Level ${speedLevel}`;
+const covered = eco.speedCoveredNoteCount();
+bodyText =
+'Plays the beginning of the pattern faster during Listen and AutoPlay. The panel button cycles the speeds you own, with off at the end. ' +
+(covered === 0
+? 'It covers the higher of your Play/Autoplay note counts, so it needs Play or Autoplay owned to have an effect. '
+: `Covers the first ${covered} notes (the higher of your Play/Autoplay note counts). `) +
+'Each level halves the note time. Test prices - curve and price to balance.';
+if (speedLevel < SPEED_MAX_LEVEL) {
+cost = eco.speedCost(speedLevel + 1);
+buyText = `Speed L${speedLevel + 1} - ${cost}`;
+}
+break;
+}
 case 'multiplier': {
 titleText = `Multiplier - X${multiplierFactorForLevel(multiplierLevel)}`;
 bodyText =
@@ -6068,9 +6177,7 @@ buyText = `X${multiplierFactorForLevel(multiplierLevel + 1)} - ${cost}`;
 break;
 }
 default:
-titleText =
-sel === 'speed' ? 'Speed'
-: sel === 'pads56' ? 'Pad 5'
+titleText = sel === 'pads56' ? 'Pad 5'
 : 'Hack';
 bodyText = sel === 'pads56' ? 'Locked. Pad 6 is bought after Pad 5.' : 'Locked.';
 break;
@@ -6107,7 +6214,7 @@ flexWrap: 'wrap',
 gap: 8,
 width: TREE_W,
 });
-for (const id of ['speed', 'pads56', 'narrator']) {
+for (const id of ['pads56', 'narrator']) {
 bottomRow.add(makeTile(byId.get(id)!));
 }
 // Rows in display order; the detail card overlays the viewport bottom
@@ -6168,9 +6275,11 @@ h: ROW_CONN_H,
 // No standalone 'Locked' caption between Autoplay and the modifiers row:
 // each future tile already says 'Locked' under its name, and a floating
 // label here reads as Autoplay's own state even after purchase.
+// Speed sits on its own row with level pips (same treatment as Play).
+{ ids: ['speed'], node: chainRow(byId.get('speed')!, speedLevel, 0x38d9c8), h: ROW_CHAIN_H },
 // Multiplier sits on its own row with level pips (same as Play).
 { ids: ['multiplier'], node: chainRow(byId.get('multiplier')!, multiplierLevel, 0xf59a4a), h: ROW_CHAIN_H },
-{ ids: ['speed', 'pads56', 'narrator'], node: bottomRow, h: ROW_TILE_H },
+{ ids: ['pads56', 'narrator'], node: bottomRow, h: ROW_TILE_H },
 { ids: ['secret'], node: soloRow(byId.get('secret')!), h: ROW_TILE_H },
 ];
 // The detail card itself. popup-card geometry (uikitml px): 12 padding +
@@ -6820,6 +6929,10 @@ if (id === 'play' && this.economy.getPlayLevel() >= PLAY_MAX_LEVEL) {
 deny('Play is at its top level.');
 return;
 }
+if (id === 'speed' && this.economy.getSpeedLevel() >= SPEED_MAX_LEVEL) {
+deny('Speed is at its top level.');
+return;
+}
 if (id === 'multiplier' && this.economy.getMultiplierLevel() >= MULTIPLIER_MAX_LEVEL) {
 deny('Multiplier is at its top level.');
 return;
@@ -6829,6 +6942,7 @@ id === 'listen' ? this.economy.buyListen()
 : id === 'hint' ? this.economy.buyNextHintLevel()
 : id === 'autoplay' ? this.economy.buyNextAutoplayLevel()
 : id === 'play' ? this.economy.buyNextPlayLevel()
+: id === 'speed' ? this.economy.buyNextSpeedLevel()
 : id === 'multiplier' ? this.economy.buyNextMultiplierLevel()
 : id === 'index' ? this.economy.buyIndex()
 : id === 'replay' ? this.economy.buyReplay()
