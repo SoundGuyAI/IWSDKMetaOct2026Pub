@@ -107,6 +107,8 @@ Latest documentation-only supplement: original Nov17 requests through03:22 are r
 - [ ] 115. Failed / Game Over screen menu clarity (Nov17 03:22, owner): consider reordering the menu and make the New and Repeat buttons clearer. Backlog/design consideration only; no order, new labels, layout or implementation selected. Separate from the in-game Back-button idea85 and existing missed-hit comparison75.
 - [ ] 116. Timing-fault narrator beat and pattern reset (Nov17 03:09): owner asks whether "found timing faults" should also reset the pattern and suggests a new PR. Prepare separately; exact reset semantics still need his answer, especially whether earned streak, score and story progress remain. Do not infer that restarting with one note permits dropping streak or saves. No implementation claimed.
 
+- [ ] 117. Future Game Over thumbs-up/down controls (Nov17 11:21): consider gestures for restarting the pattern versus using a saver. Which gesture does which is explicitly undecided. Backlog/design consideration for later only, not implementation or a merge request. Keep separate from the current MR thumbs-up start included in PR139.
+
 ## In progress
 
 - [~] 52. Yes/no research labs: thumbs lab PR75 is on main after owner device pass and conditional merge approval; nod lab PR74 merged Nov17 00:13 as 4cdd0fc after owner Nov16 23:34 approval. PR74 main post-merge checks and Pages deployment are pending at this checkpoint; actual combined-build hardware acceptance is pending. Separate iPhone sensitivity/nod work requested Nov16 23:34 remains open. Voice recognition and storyline integration are not claimed done.
