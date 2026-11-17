@@ -4856,12 +4856,13 @@ this.gameOverThumbs.setRetryAvailable(this.economy.getSavers() >= need);
 // Feed only frames with a tracked hand: Quest drops the hand sources while
 // controllers are active, and disabling the flow on that would reset a hold
 // or arm mid-gesture (Nov 17 device test: ht 1 -> 0 across the popup).
-// Frames with no tracked hand pause the flow; a sustained gap restarts the
-// gesture so a stale hold cannot fire instantly when tracking returns.
+// Frames with no tracked hand pause the flow - fed with observed time, so
+// unseen seconds never count toward a deliberate hold - and a sustained gap
+// restarts the gesture so a stale hold cannot fire when tracking returns.
 let event: GameOverThumbsEvent | null = null;
 const gap = this.gameOverHandGap.note(left != null || right != null, now);
 if (gap == null) {
-event = this.gameOverThumbs.feed(leftPose, rightPose, now);
+event = this.gameOverThumbs.feed(leftPose, rightPose, this.gameOverHandGap.observedNow(now));
 } else if (gap === 'reset') {
 this.gameOverThumbs.reset();
 }
