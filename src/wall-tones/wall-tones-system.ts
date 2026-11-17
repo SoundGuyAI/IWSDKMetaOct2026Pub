@@ -673,7 +673,7 @@ if (!this.armband) {
     if (this.armbandUsable() && this.game.phase === 'input' && this.economy.getReplaysTotal() > 0) void this.onRepeatPattern();
   });
   // Play modifier (item 66): same action as the panel's Play control.
-  bind('armband-play', () => { if (this.armbandUsable()) void this.onPlayControl(); });
+  bind('armband-play', () => { if (this.armbandUsable() && this.economy.getPlayLevel() >= 1) void this.onPlayControl(); });
   // New Run on the wrist while Game Over owns the retry decision; Skip Voice
   // while narration is playing (mirrors the panel button's relevance rule).
   bind('armband-newrun', () => { if (this.armbandTrackable() && this.gameOverOpen) this.onGameOverNewRun(); });
