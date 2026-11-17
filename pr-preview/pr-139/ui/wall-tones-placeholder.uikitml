@@ -390,7 +390,7 @@
       <div id="gameover-saver-status" class="status">Streak savers: 0</div>
       <Button id="gameover-use-saver-button" class="button">
         <!-- MR-only gesture hint icon (owner, Nov 17): complements the label, hidden on flat/desktop. -->
-        <div id="gameover-use-saver-thumb-icon" style="display: none; align-items: center"><ButtonIcon><ThumbsUp></ThumbsUp></ButtonIcon></div>
+        <ButtonIcon id="gameover-use-saver-thumb-icon" style="display: none"><ThumbsUp></ThumbsUp></ButtonIcon>
         <ButtonLabel id="gameover-use-saver-label">Use saver</ButtonLabel>
       </Button>
       <Button id="gameover-buy-saver-button" class="button">
@@ -400,7 +400,7 @@
       <Button id="gameover-newrun-button" class="button">
         <ButtonIcon><RefreshCw></RefreshCw></ButtonIcon>
         <!-- MR-only gesture hint icon (owner, Nov 17): complements the label, hidden on flat/desktop. -->
-        <div id="gameover-newrun-thumb-icon" style="display: none; align-items: center"><ButtonIcon><ThumbsDown></ThumbsDown></ButtonIcon></div>
+        <ButtonIcon id="gameover-newrun-thumb-icon" style="display: none"><ThumbsDown></ThumbsDown></ButtonIcon>
         <ButtonLabel>New run</ButtonLabel>
       </Button>
       <div id="gameover-gesture-hint" class="status" style="display: none">Hold both thumbs up to retry - thumb down for a new run</div>
