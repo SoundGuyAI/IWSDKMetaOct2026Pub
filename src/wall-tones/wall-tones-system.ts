@@ -7,8 +7,13 @@ import { CypherProgress, type CypherWindow } from './cypher-progress.js';
 import {
   THUMB_JOINT_NAMES,
   ThumbGestureDetector,
+  classifyThumbPose,
   type ThumbHandJoints,
 } from '../thumbs-lab/thumbs-gesture.js';
+import {
+  GameOverThumbsFlow,
+  shouldRunGameOverThumbs,
+} from './gameover-thumbs.js';
 import { playLabAnswerCue } from '../thumbs-lab/lab-cues.js';
 import { HeadNodShakeDetector } from '../nod-lab/head-gesture.js';
 import { Euler } from 'three';
@@ -545,6 +550,8 @@ private flatAwaitingStart = false;
  * waits for a pad press or a thumbs up, matching the MR start narration. */
 private mrAwaitingStart = false;
 private readonly thumbStartDetector = new ThumbGestureDetector();
+/** Game Over thumbs flow (owner, Nov 17): both-up retry / arm+confirm / down new run. */
+private readonly gameOverThumbs = new GameOverThumbsFlow();
 /** Active story gesture-check listen; resolved by update() hand sampling. */
 private gestureListen: {
 kind: 'thumbs' | 'nod';
@@ -4800,11 +4807,43 @@ listen.resolve(null);
 }
 }
 
-/** Per-frame thumbs sampling for the MR start gate and the story gesture check. */
+/** Per-frame thumbs sampling for the MR start gate, the story gesture check
+ * and the Game Over thumbs flow. */
 private tickThumbGestures(): void {
 const now = performance.now() / 1000;
 const left = this.sampleThumbHand('left');
 const right = this.sampleThumbHand('right');
+if (this.gameOverOpen) {
+// Game Over thumbs (owner, Nov 17): both-up hold retries with owned savers,
+// one-up arms then a second up confirms, thumb down starts a new run. The
+// listen is alive only while the popup is open in MR with hand tracking;
+// up gestures go inert when the retry is unaffordable (never auto-buys).
+const canRun = this.canRunGameOverThumbs();
+if (canRun !== this.gameOverThumbs.isEnabled) {
+this.gameOverThumbs.setEnabled(canRun);
+}
+if (canRun) {
+const need = saverUnitsForStreak(this.game.streak);
+this.gameOverThumbs.setRetryAvailable(this.economy.getSavers() >= need);
+const event = this.gameOverThumbs.feed(
+left != null ? classifyThumbPose(left).pose : 'none',
+right != null ? classifyThumbPose(right).pose : 'none',
+now,
+);
+if (event === 'armed') {
+// The game asked for a confirmation: acknowledge with the lab cue (owner,
+// Nov 17: the expected gesture plays the lab sound cue).
+void playLabAnswerCue('yes');
+this.syncGameOverGestureHint();
+} else if (event === 'retry') {
+void playLabAnswerCue('yes');
+this.onGameOverUseSaver();
+} else if (event === 'new-run') {
+this.onGameOverNewRun();
+}
+}
+return;
+}
 if (this.mrAwaitingStart) {
 const event = this.thumbStartDetector.feed(left, right, now);
 if (event?.answer === 'yes') {
@@ -4914,17 +4953,33 @@ return null;
 private canRunGestureCheck(windowId: string): boolean {
 const immersive =
 this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
-let handTracking = false;
+return shouldRunGestureCheck(windowId, immersive, this.hasHandTrackingInput());
+}
+
+/** True when the active XR session has a hand-tracking input source. */
+private hasHandTrackingInput(): boolean {
 const session = this.xrManager.getSession();
-if (session != null) {
+if (session == null) {
+return false;
+}
 for (const source of session.inputSources) {
 if (source.hand != null) {
-handTracking = true;
-break;
+return true;
 }
 }
+return false;
 }
-return shouldRunGestureCheck(windowId, immersive, handTracking);
+
+/** Game Over thumbs gestures: popup open, immersive, hand tracking (owner,
+ * Nov 17). Flat/desktop players keep the buttons only. */
+private canRunGameOverThumbs(): boolean {
+return (
+this.gameOverOpen &&
+shouldRunGameOverThumbs(
+this.world.visibilityState.peek() !== VisibilityState.NonImmersive,
+this.hasHandTrackingInput(),
+)
+);
 }
 
 /** The codename nod prompt needs only the headset pose: immersive play. */
@@ -5103,12 +5158,25 @@ this.gameOverOpen = true;
 this.syncMenuPopupVisibility();
 this.renderGameOverSummary();
 this.renderPanel();
+// First MR Game Over: one-time narrator explainer of the thumbs gesture
+// controls (owner-approved exact line, Nov 17). takeFirstTime is consumed
+// only when the line can actually play, so flat/desktop players and muted
+// sessions keep it for a later MR run.
+if (
+this.world.visibilityState.peek() !== VisibilityState.NonImmersive &&
+this.hasHandTrackingInput() &&
+!voicesOffEnabled() &&
+this.economy.takeFirstTime('gameover-mr-gestures')
+) {
+await this.speech.speakAsync('gameoverGestures');
+}
 });
 }
 
 private renderGameOverSummary(): void {
 const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
 if (panel) this.renderWrongHitRows(panel);
+this.syncGameOverGestureHint();
 panel
 ?.getElementById<UIKit.Text>('gameover-summary')
 ?.setProperties({
@@ -5133,6 +5201,42 @@ panel
 text: `Buy ${missing} saver${missing > 1 ? 's' : ''} & retry - ${plan.costBars}`,
 color: plan.affordable ? 0x1c1d20 : 0xd43a3a,
 });
+}
+
+/** Game Over gesture affordances (owner, Nov 17): MR-only thumbs icons on
+ * the retry/new-run buttons plus a hint line that mirrors the thumbs flow
+ * state. Icons complement the labels; the exact saver cost stays in the
+ * existing label/status text. Hidden entirely on flat/desktop. */
+private syncGameOverGestureHint(): void {
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+if (panel == null) {
+return;
+}
+const mr =
+this.gameOverOpen &&
+shouldRunGameOverThumbs(
+this.world.visibilityState.peek() !== VisibilityState.NonImmersive,
+this.hasHandTrackingInput(),
+);
+for (const id of ['gameover-use-saver-thumb-icon', 'gameover-newrun-thumb-icon'] as const) {
+panel.getElementById<UIKit.Container>(id)?.setProperties({ display: mr ? 'flex' : 'none' });
+}
+const hint = panel.getElementById<UIKit.Text>('gameover-gesture-hint');
+if (hint == null) {
+return;
+}
+if (!mr) {
+hint.setProperties({ display: 'none' });
+return;
+}
+const need = saverUnitsForStreak(this.game.streak);
+const affordable = this.economy.getSavers() >= need;
+const text = !affordable
+? 'Thumb down for a new run - retry needs more savers'
+: this.gameOverThumbs.isArmed
+? `Confirm: raise your other thumb, or lower and raise the same one - spending ${need} saver${need > 1 ? 's' : ''}. Thumb down for a new run`
+: `Hold both thumbs up to retry with ${need} saver${need > 1 ? 's' : ''}, or hold one and confirm - thumb down for a new run`;
+hint.setProperties({ display: 'flex', text });
 }
 
 /** One-press purchase (owner request 2026-11-11, no confirm step): buys exactly the savers missing for an immediate retry and applies them in the same press. Cost model unchanged: missing units at 18 Bars each. */
