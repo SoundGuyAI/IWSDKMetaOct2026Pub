@@ -184,12 +184,12 @@ assert.ok(glowMat.shader&&glowMat.fresnel,'glow uses the fresnel shader');
 const layering=await page.evaluate(()=>{
  const o=window.__armbandHarness.world.getSceneObject('wall-tones-armband');
  const out={minOrder:Infinity,badMats:0};
- o.traverse((n)=>{if(n.renderOrder<out.minOrder)out.minOrder=n.renderOrder;const ms=Array.isArray(n.material)?n.material:n.material?[n.material]:[];for(const m of ms){if(m.depthTest!==true||m.depthWrite!==false)out.badMats++;}});
+ o.traverse((n)=>{if(n.renderOrder<out.minOrder)out.minOrder=n.renderOrder;const ms=Array.isArray(n.material)?n.material:n.material?[n.material]:[];for(const m of ms){if(m.depthTest!==true||m.depthWrite!==n.name.startsWith('raised-'))out.badMats++;}});
  return out;
 });
 console.log('LAYERING',layering);
 assert.ok(layering.minOrder>=20,'panel draws after the pad glows (renderOrder 12)');
-assert.equal(layering.badMats,0,'panel materials depth-test so the hand can occlude them');
+assert.equal(layering.badMats,0,'panel and raised keys depth-test; only opaque raised bodies write depth');
 assert.ok(Math.abs(placement.awayApplied-0.06)<0.01,'head-away offset applied in full');
 assert.ok(placement.awayGain>0.015,'panel sits farther from the head than the palm');
 // Nov 16 hardware feedback: button presses on the floating panel do not land.
@@ -234,6 +234,7 @@ const directPress=await page.evaluate(async()=>{
  const center=new V(); el.getWorldPosition(center);
  const q=el.getWorldQuaternion(new (s.armbandPressQuat.constructor)());
  const out=new V(0,0,1).applyQuaternion(q);
+ center.addScaledVector(out,.030);
  const far=new V(0,-8,0);
  const tip=new V();
  const put=(mode)=>{ if(mode==='hover')tip.copy(center).addScaledVector(out,0.02); else if(mode==='press')tip.copy(center).addScaledVector(out,-0.0015); else tip.copy(far); };
@@ -243,7 +244,8 @@ const directPress=await page.evaluate(async()=>{
  const firesOnHover=fires;
  put('press'); await wait(400);
  const firesOnPress=fires;
- const pushWhilePressed=entry.pushPx;
+ const cap=s.armband.raisedButtons.keys.get('armband-play');
+ const pushWhilePressed=cap.travelM;
  const sc=new V(); el.getWorldScale(sc);
  const dbg={size:el.size?.value, scaleX:sc.x, worldHalfW:sc.x*0.5, tipDz:(()=>{const c=new V();el.getWorldPosition(c);return tip.clone().sub(c).dot(out);})()};
  // The same poke's UIKit click must be suppressed: the press arms the
@@ -254,7 +256,7 @@ const directPress=await page.evaluate(async()=>{
  const firesAfterClick=fires;
  const realAfterClick=realFires;
  put('far'); await wait(400);
- const pushAfterRelease=entry.pushPx;
+ const pushAfterRelease=cap.travelM;
  put('press'); await wait(400);
  const firesOnSecondPoke=fires;
  delete s.readIndexTipWorld; entry.action=orig; s.onPlayControl=origPlay;
@@ -267,7 +269,7 @@ assert.ok(directPress.pushWhilePressed>0,'button pushes into the panel while pre
 assert.equal(directPress.firesAfterClick,1,'press action stays single for the poking path');
 assert.equal(directPress.realAfterClick,1,'no stray second action from the press itself');
 assert.equal(directPress.suppressArmed,true,'UIKit click suppression armed for the poking poke');
-assert.ok(directPress.pushAfterRelease<0.5,'button springs back after release');
+assert.ok(directPress.pushAfterRelease<0.0005,'button springs back after release');
 assert.equal(directPress.firesOnSecondPoke,2,'press re-arms after the finger leaves');
 assert.ok(directPress.dbg.worldHalfW>0.01&&directPress.dbg.worldHalfW<0.06,`button hit region is button-sized (${directPress.dbg.worldHalfW} m half-width)`);
 // Jitter: physical tracking noise (~+-5 mm at ~8 Hz) must not shake the panel
