@@ -257,6 +257,78 @@ export function stepGeometryParticles(
   pool.alive = alive;
 }
 
+export type SurfaceRayHit = {
+  t: number;
+  x: number;
+  y: number;
+  z: number;
+  nx: number;
+  ny: number;
+  nz: number;
+};
+
+/**
+ * Nearest surface in front of a ray. Writes into `out` and returns false
+ * when nothing lies between `minT` and `maxT`. No allocation.
+ */
+export function closestSurfaceHit(
+  ox: number,
+  oy: number,
+  oz: number,
+  dx: number,
+  dy: number,
+  dz: number,
+  surfaces: readonly CollisionSurface[],
+  minT: number,
+  maxT: number,
+  out: SurfaceRayHit,
+): boolean {
+  let bestT = maxT;
+  let hit = false;
+  let bx = 0;
+  let by = 0;
+  let bz = 0;
+  let bnx = 0;
+  let bny = 0;
+  let bnz = 0;
+  for (const s of surfaces) {
+    const denom = dx * s.nx + dy * s.ny + dz * s.nz;
+    if (Math.abs(denom) < 1e-5) continue;
+    const t = (s.d - (ox * s.nx + oy * s.ny + oz * s.nz)) / denom;
+    if (t < minT || t >= bestT) continue;
+    const x = ox + dx * t;
+    const y = oy + dy * t;
+    const z = oz + dz * t;
+    if (!withinBounds(s, x, y, z)) continue;
+    let nx = s.nx;
+    let ny = s.ny;
+    let nz = s.nz;
+    const facing = (ox - x) * nx + (oy - y) * ny + (oz - z) * nz;
+    if (facing < 0) {
+      nx = -nx;
+      ny = -ny;
+      nz = -nz;
+    }
+    bestT = t;
+    hit = true;
+    bx = x;
+    by = y;
+    bz = z;
+    bnx = nx;
+    bny = ny;
+    bnz = nz;
+  }
+  if (!hit) return false;
+  out.t = bestT;
+  out.x = bx;
+  out.y = by;
+  out.z = bz;
+  out.nx = bnx;
+  out.ny = bny;
+  out.nz = bnz;
+  return true;
+}
+
 /** Unbounded plane through `point` with the given unit normal. */
 export function planeSurface(
   kind: SurfaceKind,

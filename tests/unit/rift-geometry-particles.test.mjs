@@ -11,6 +11,7 @@ const js = ts.transpileModule(
   { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } },
 ).outputText;
 const {
+  closestSurfaceHit,
   createGeometryParticlePool,
   emitSpray,
   stepGeometryParticles,
@@ -90,6 +91,27 @@ test('sparks die after the bounce cap instead of jittering forever', () => {
   for (let i = 0; i < 600; i++) stepGeometryParticles(pool, 1 / 60, [GROUND]);
   assert.equal(pool.alive, 0);
   assert.ok(pool.collisions >= 1, `expected impacts before death, got ${pool.collisions}`);
+});
+
+test('a beam ray ends on the nearest surface and misses a parallel wall', () => {
+  const wall = planeSurface('room', 0, 0, 1, 0, 1.2, -2);
+  const out = { t: 0, x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0 };
+  assert.equal(
+    closestSurfaceHit(0, 1.2, 0, 0, 0, -1, [GROUND, wall], 0.05, 8, out),
+    true,
+  );
+  assert.ok(Math.abs(out.t - 2) < 1e-4, `expected t=2, got ${out.t}`);
+  assert.ok(Math.abs(out.z + 2) < 1e-4);
+  assert.equal(
+    closestSurfaceHit(0, 1.2, 0, 0, 1, 0, [GROUND, wall], 0.05, 8, out),
+    false,
+  );
+  const near = planeSurface('room', 0, 0, 1, 0, 1.2, -1);
+  assert.equal(
+    closestSurfaceHit(0, 1.2, 0, 0, 0, -1, [wall, near], 0.05, 8, out),
+    true,
+  );
+  assert.ok(Math.abs(out.t - 1) < 1e-4, `nearer wall should win, got ${out.t}`);
 });
 
 test('impact kind counters stay separate', () => {

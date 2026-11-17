@@ -30,6 +30,7 @@ import {
   UIKitMLAsset,
   Visibility,
   VisibilityState,
+  XRMesh,
   XRPlane,
   type Entity,
 } from '@iwsdk/core';
@@ -55,13 +56,18 @@ import {
   AdditiveBlending,
   BufferGeometry,
   Color,
+  DoubleSide,
   Group,
+  InstancedMesh,
+  Matrix4,
   Mesh,
   MeshBasicMaterial,
+  Object3D,
   PlaneGeometry,
   Plane,
   Points,
   PointsMaterial,
+  Quaternion,
   ShaderMaterial,
   Sprite,
   SpriteMaterial,
@@ -89,12 +95,14 @@ import {
   isOverLabPanel,
 } from './rift-energy.js';
 import {
+  closestSurfaceHit,
   createGeometryParticlePool,
   emitSpray,
   planeSurface,
   stepGeometryParticles,
   type CollisionSurface,
   type GeometryParticlePool,
+  type SurfaceRayHit,
 } from './rift-geometry-particles.js';
 import { RiftHandAura } from './rift-hand-aura.js';
 import { noteFrontVisibility, RiftHandOccluders } from './rift-hand-occluders.js';
@@ -145,6 +153,8 @@ const RIFT_SPAWN_INTERVAL_MS = 6000;
 const MAX_OPEN_RIFTS = 3;
 /** Beam hit test: ray-to-rift distance under this counts as contact. */
 const BEAM_HIT_RADIUS_M = 0.3;
+/** Beam length cap when the ray misses every surface (meters). */
+const BEAM_MAX_M = 8;
 /** Shared welding-spark pool (item 93, absorbed from PR #131). */
 const GEO_POOL_MAX = 240;
 /** Sparks/sec sprayed from a sealing rift crack. */
@@ -396,6 +406,7 @@ function buildFracture(rift: Rift): ShaderMaterial {
 
 export class RiftLabSystem extends createSystem({
   planes: { required: [XRPlane] },
+  meshes: { required: [XRMesh] },
 }) {
   private readonly game = new RiftLabGame();
   private panel: UIKitMLAsset | null = null;
@@ -452,7 +463,20 @@ export class RiftLabSystem extends createSystem({
   /** Item 93: shared world-space spark pool with room-geometry collision. */
   private readonly geoPool: GeometryParticlePool =
     createGeometryParticlePool(GEO_POOL_MAX);
-  private geoPoints: Points | null = null;
+  private geoSparks: InstancedMesh | null = null;
+  private readonly beamCaster = new Raycaster();
+  private readonly beamTargets: Object3D[] = [];
+  private readonly meshWalk: Object3D[] = [];
+  private readonly beamMeshPoint = new Vector3();
+  private readonly beamMeshNormal = new Vector3();
+  private readonly surfaceHit: SurfaceRayHit = {
+    t: 0, x: 0, y: 0, z: 0, nx: 0, ny: 1, nz: 0,
+  };
+  private readonly sparkMatrix = new Matrix4();
+  private readonly sparkQuat = new Quaternion();
+  private readonly sparkPos = new Vector3();
+  private readonly sparkScale = new Vector3();
+  private readonly sparkColor = new Color();
   private readonly geoSurfaces: CollisionSurface[] = [];
   private lastGeoSurfaceRefreshAt = 0;
   private beamHitSprayAcc = 0;
@@ -499,32 +523,29 @@ export class RiftLabSystem extends createSystem({
       this.root.add(this.sealBeam.root);
       this.root.add(this.handAura.root);
       this.root.add(this.handOccluders.root);
-      const geoGeometry = new BufferGeometry();
-      geoGeometry.setAttribute(
-        'position',
-        new Float32BufferAttribute(this.geoPool.pos, 3),
-      );
-      geoGeometry.setAttribute(
-        'color',
-        new Float32BufferAttribute(this.geoPool.col, 3),
-      );
-      this.geoPoints = new Points(
-        geoGeometry,
-        new PointsMaterial({
-          size: 0.05,
+      this.geoSparks = new InstancedMesh(
+        new PlaneGeometry(1, 1),
+        new MeshBasicMaterial({
           map: glowDotTexture(),
-          vertexColors: true,
           transparent: true,
           depthWrite: false,
-          depthTest: true,
+          depthTest: false,
           blending: AdditiveBlending,
           toneMapped: false,
-          sizeAttenuation: true,
+          side: DoubleSide,
         }),
+        GEO_POOL_MAX,
       );
-      this.geoPoints.frustumCulled = false;
-      this.geoPoints.visible = false;
-      this.root.add(this.geoPoints);
+      this.geoSparks.frustumCulled = false;
+      this.geoSparks.visible = false;
+      this.geoSparks.renderOrder = 4;
+      this.sparkMatrix.makeScale(0, 0, 0);
+      for (let i = 0; i < GEO_POOL_MAX; i++) {
+        this.geoSparks.setMatrixAt(i, this.sparkMatrix);
+        this.geoSparks.setColorAt(i, this.sparkColor);
+      }
+      this.geoSparks.instanceMatrix.needsUpdate = true;
+      this.root.add(this.geoSparks);
       for (let i = 0; i < TORRENT_COUNT; i++) {
         const color = PAD_COLOR_NAMES[i % PAD_COLOR_NAMES.length];
         const mesh = new Mesh(
@@ -1402,7 +1423,7 @@ export class RiftLabSystem extends createSystem({
       const mesh = this.torrentMeshes[i];
       const seed = this.torrentSeeds;
       const speed = seed[i * 4 + 2];
-      const u = (seed[i * 4] + this.beamTimeSec * speed * 0.45) % 1;
+      const u = (seed[i * 4] + this.beamTimeSec * speed * 1.15) % 1;
       const e = u * u * (3 - 2 * u);
       const swirl = seed[i * 4 + 1] + this.beamTimeSec * 5.5 + i * 0.4;
       const rad =
@@ -1415,7 +1436,7 @@ export class RiftLabSystem extends createSystem({
         origin.z + dz * e + (uz * Math.cos(swirl) + vz * Math.sin(swirl)) * rad,
       );
       const fade = e < 0.08 ? e / 0.08 : e > 0.82 ? (1 - e) / 0.18 : 1;
-      mesh.scale.setScalar(0.85 + 0.45 * (1 - e));
+      mesh.scale.setScalar(2.4 + 0.7 * (1 - e));
       mesh.quaternion.copy(camQ);
       const mat = mesh.material as MeshBasicMaterial;
       mat.opacity = fade;
@@ -1629,12 +1650,46 @@ export class RiftLabSystem extends createSystem({
         const ray = this.beamRayScratch;
         this.beamRay(ray);
         startBeamHum();
-        this.beamEnd.copy(ray.origin).addScaledVector(ray.direction, 3.5);
+        const nowHit = performance.now();
+        if (
+          this.geoSurfaces.length === 0 ||
+          nowHit - this.lastGeoSurfaceRefreshAt >= GEO_SURFACE_REFRESH_MS
+        ) {
+          this.refreshGeometrySurfaces();
+          this.lastGeoSurfaceRefreshAt = nowHit;
+        }
+        const dir = ray.direction;
+        const origin = ray.origin;
+        let endT = BEAM_MAX_M;
+        let geoHit = false;
+        if (
+          closestSurfaceHit(
+            origin.x, origin.y, origin.z,
+            dir.x, dir.y, dir.z,
+            this.geoSurfaces,
+            0.05,
+            BEAM_MAX_M,
+            this.surfaceHit,
+          )
+        ) {
+          endT = this.surfaceHit.t;
+          geoHit = true;
+          this.geoHitPoint.set(this.surfaceHit.x, this.surfaceHit.y, this.surfaceHit.z);
+          this.geoScratchNormal.set(this.surfaceHit.nx, this.surfaceHit.ny, this.surfaceHit.nz);
+        }
+        const meshT = this.closestMeshHit(origin, dir);
+        if (meshT < endT) {
+          endT = meshT;
+          geoHit = true;
+          this.geoHitPoint.copy(this.beamMeshPoint);
+          this.geoScratchNormal.copy(this.beamMeshNormal);
+        }
+        this.beamEnd.copy(origin).addScaledVector(dir, endT);
         for (const view of this.riftViews.values()) {
-          this.beamHitPoint.copy(view.position).sub(ray.origin);
-          const along = this.beamHitPoint.dot(ray.direction);
-          if (along <= 0) continue;
-          this.beamHitPoint.copy(ray.origin).addScaledVector(ray.direction, along);
+          this.beamHitPoint.copy(view.position).sub(origin);
+          const along = this.beamHitPoint.dot(dir);
+          if (along <= 0 || along > endT + 0.2) continue;
+          this.beamHitPoint.copy(origin).addScaledVector(dir, along);
           if (this.beamHitPoint.distanceTo(view.position) <= BEAM_HIT_RADIUS_M) {
             this.beamEnd.copy(view.position);
             hitStrength =
@@ -1645,16 +1700,17 @@ export class RiftLabSystem extends createSystem({
             break;
           }
         }
+        if (geoHit && hitStrength <= 0) hitStrength = 0.8;
         this.sealBeam?.update({
-          origin: ray.origin,
+          origin,
           end: this.beamEnd,
           hitStrength,
           timeSec: this.beamTimeSec,
           visible: true,
         });
-        // Stream notes whenever the beam is on a rift (sealing contact).
-        this.updateSealTorrent(ray.origin, this.beamEnd, hitStrength > 0);
-        this.emitBeamHitSparks(ray.origin, ray.direction, delta);
+        // Notes stream the whole time the beam is on, hand → current end.
+        this.updateSealTorrent(origin, this.beamEnd, true);
+        if (geoHit) this.emitBeamHitSparks(delta);
       } else {
         stopBeamHum();
         this.sealBeam?.update({
@@ -1673,8 +1729,14 @@ export class RiftLabSystem extends createSystem({
       // and right filaments do not stack on the cursor.
       const immersiveHands = this.isImmersive();
       this.handAura?.update({
-        left: immersiveHands ? this.handAnchor('left') : null,
-        right: this.handAnchor('right'),
+        // Untracked XR hands must not fall back to the flat anchors, or a
+        // white core sits in mid-air in front of the player.
+        left: immersiveHands
+          ? this.palms.left != null ? this.handAnchor('left') : null
+          : null,
+        right: immersiveHands
+          ? this.palms.right != null ? this.handAnchor('right') : null
+          : this.handAnchor('right'),
         firing: this.firingHandSide(),
         energy01: Math.min(1, this.game.getEnergy() / MAX_ENERGY),
         timeSec: this.beamTimeSec,
@@ -1807,10 +1869,8 @@ export class RiftLabSystem extends createSystem({
     this.geoPool.col.fill(0);
     this.geoPool.alive = 0;
     this.beamHitSprayAcc = 0;
-    if (this.geoPoints != null) {
-      this.geoPoints.visible = false;
-      const colAttr = this.geoPoints.geometry.getAttribute('color');
-      if (colAttr != null) colAttr.needsUpdate = true;
+    if (this.geoSparks != null) {
+      this.geoSparks.visible = false;
     }
   }
 
@@ -1904,58 +1964,13 @@ export class RiftLabSystem extends createSystem({
   }
 
   /**
-   * When the beam hits geometry (rift host, ground, or real room planes),
-   * spray a cascade of welding sparks that fall and bounce.
+   * Welding sparks at the beam's resolved hit. The caller already picked the
+   * closest surface or mesh and stored it in geoHitPoint / geoScratchNormal.
    */
-  private emitBeamHitSparks(
-    origin: Vector3,
-    direction: Vector3,
-    delta: number,
-  ): void {
-    if (this.geoSurfaces.length === 0) {
-      this.refreshGeometrySurfaces();
-      this.lastGeoSurfaceRefreshAt = performance.now();
-    }
-    let bestT = Number.POSITIVE_INFINITY;
-    let hitSurf: CollisionSurface | null = null;
-    for (const s of this.geoSurfaces) {
-      const denom = direction.x * s.nx + direction.y * s.ny + direction.z * s.nz;
-      if (Math.abs(denom) < 1e-5) continue;
-      const t =
-        (s.d - (origin.x * s.nx + origin.y * s.ny + origin.z * s.nz)) / denom;
-      if (t < 0.05 || t > 4.5 || t >= bestT) continue;
-      const hx = origin.x + direction.x * t;
-      const hy = origin.y + direction.y * t;
-      const hz = origin.z + direction.z * t;
-      if (s.minU !== Number.NEGATIVE_INFINITY) {
-        const rx = hx - s.px;
-        const ry = hy - s.py;
-        const rz = hz - s.pz;
-        const uu = rx * s.ux + ry * s.uy + rz * s.uz;
-        const vv = rx * s.vx + ry * s.vy + rz * s.vz;
-        if (uu < s.minU || uu > s.maxU || vv < s.minV || vv > s.maxV) continue;
-      }
-      bestT = t;
-      hitSurf = s;
-      this.geoHitPoint.set(hx, hy, hz);
-    }
-    if (hitSurf == null) {
-      this.beamHitSprayAcc = 0;
-      return;
-    }
-    // Prefer the outward normal facing the beam origin.
-    let nx = hitSurf.nx;
-    let ny = hitSurf.ny;
-    let nz = hitSurf.nz;
-    const toBeam =
-      (origin.x - this.geoHitPoint.x) * nx +
-      (origin.y - this.geoHitPoint.y) * ny +
-      (origin.z - this.geoHitPoint.z) * nz;
-    if (toBeam < 0) {
-      nx = -nx;
-      ny = -ny;
-      nz = -nz;
-    }
+  private emitBeamHitSparks(delta: number): void {
+    const nx = this.geoScratchNormal.x;
+    const ny = this.geoScratchNormal.y;
+    const nz = this.geoScratchNormal.z;
     this.beamHitSprayAcc += delta * GEO_BEAM_HIT_RATE;
     const count = Math.floor(this.beamHitSprayAcc);
     if (count <= 0) return;
@@ -2014,16 +2029,92 @@ export class RiftLabSystem extends createSystem({
       }
     }
     stepGeometryParticles(this.geoPool, delta, this.geoSurfaces);
-    const points = this.geoPoints;
-    if (points != null) {
-      const visible = this.geoPool.alive > 0;
-      points.visible = visible;
-      if (visible) {
-        const posAttr = points.geometry.getAttribute('position');
-        const colAttr = points.geometry.getAttribute('color');
-        if (posAttr != null) posAttr.needsUpdate = true;
-        if (colAttr != null) colAttr.needsUpdate = true;
+    this.syncGeometrySparkMeshes();
+  }
+
+  /** Billboard quads for alive sparks. Dead slots collapse so they cannot
+   * pile up into a blob at the origin (Quest point sprites did that). */
+  private syncGeometrySparkMeshes(): void {
+    const mesh = this.geoSparks;
+    if (mesh == null) return;
+    const alive = this.geoPool.alive > 0;
+    mesh.visible = alive;
+    if (!alive) return;
+    this.sparkQuat.copy(this.world.camera.quaternion);
+    const pool = this.geoPool;
+    for (let i = 0; i < pool.max; i++) {
+      if (pool.life[i]! <= 0) {
+        this.sparkMatrix.makeScale(0, 0, 0);
+        mesh.setMatrixAt(i, this.sparkMatrix);
+        continue;
       }
+      const i3 = i * 3;
+      const fade = Math.min(1, pool.life[i]! / (pool.maxLife[i]! * 0.55));
+      const s = 0.045 + 0.05 * fade;
+      this.sparkPos.set(pool.pos[i3]!, pool.pos[i3 + 1]!, pool.pos[i3 + 2]!);
+      this.sparkScale.set(s, s, 1);
+      this.sparkMatrix.compose(this.sparkPos, this.sparkQuat, this.sparkScale);
+      mesh.setMatrixAt(i, this.sparkMatrix);
+      this.sparkColor.setRGB(pool.col[i3]!, pool.col[i3 + 1]!, pool.col[i3 + 2]!);
+      mesh.setColorAt(i, this.sparkColor);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor != null) mesh.instanceColor.needsUpdate = true;
+  }
+
+  /** Nearest scene mesh in front of the beam: real room meshes and planes
+   * (even when the wireframe is hidden) plus visible studio furniture. */
+  private closestMeshHit(origin: Vector3, direction: Vector3): number {
+    const targets = this.beamTargets;
+    targets.length = 0;
+    for (const entity of this.queries.meshes.entities) {
+      const obj = entity.object3D;
+      if (obj == null) continue;
+      obj.updateWorldMatrix(true, false);
+      targets.push(obj);
+    }
+    for (const entity of this.queries.planes.entities) {
+      const obj = entity.object3D;
+      if (obj == null) continue;
+      obj.updateWorldMatrix(true, false);
+      targets.push(obj);
+    }
+    this.collectVisibleSceneMeshes(this.world.scene, targets);
+    if (targets.length === 0) return Number.POSITIVE_INFINITY;
+    this.beamCaster.near = 0.08;
+    this.beamCaster.far = BEAM_MAX_M;
+    this.beamCaster.set(origin, direction);
+    const hits = this.beamCaster.intersectObjects(targets, false);
+    const hit = hits[0];
+    if (hit == null || hit.distance >= BEAM_MAX_M) return Number.POSITIVE_INFINITY;
+    this.beamMeshPoint.copy(hit.point);
+    if (hit.face != null) {
+      this.beamMeshNormal
+        .copy(hit.face.normal)
+        .transformDirection(hit.object.matrixWorld)
+        .normalize();
+      const toward =
+        (origin.x - hit.point.x) * this.beamMeshNormal.x +
+        (origin.y - hit.point.y) * this.beamMeshNormal.y +
+        (origin.z - hit.point.z) * this.beamMeshNormal.z;
+      if (toward < 0) this.beamMeshNormal.multiplyScalar(-1);
+    } else {
+      this.beamMeshNormal.copy(direction).multiplyScalar(-1);
+    }
+    return hit.distance;
+  }
+
+  private collectVisibleSceneMeshes(root: Object3D, out: Object3D[]): void {
+    const stack = this.meshWalk;
+    stack.length = 0;
+    for (const child of root.children) {
+      if (child !== this.root) stack.push(child);
+    }
+    while (stack.length > 0) {
+      const obj = stack.pop();
+      if (obj == null || obj === this.root) continue;
+      if ((obj as Mesh).isMesh === true && obj.visible) out.push(obj);
+      for (const child of obj.children) stack.push(child);
     }
   }
 

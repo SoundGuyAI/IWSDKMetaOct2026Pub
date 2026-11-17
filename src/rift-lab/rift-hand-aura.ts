@@ -111,8 +111,8 @@ export class RiftHandAura {
         pos,
         mat,
         phase: (i / FILAMENT_COUNT) * Math.PI * 2,
-        turns: 1.4 + (i % 5) * 0.35,
-        radScale: 0.75 + (i % 4) * 0.18,
+        turns: 2.4 + (i % 5) * 0.45,
+        radScale: 0.9 + (i % 4) * 0.22,
         liftScale: 0.9 + (i % 3) * 0.35,
         spinRate: 3.2 + (i % 6) * 0.7,
         jitter: 0.35 + (i % 5) * 0.12,
@@ -165,7 +165,7 @@ export class RiftHandAura {
         opacity: 0.9,
       }),
     );
-    core.scale.setScalar(0.12);
+    core.scale.setScalar(0.045);
     group.add(core);
 
     const light = new PointLight(0xffffff, 0, 0.55, 2);
@@ -190,8 +190,8 @@ export class RiftHandAura {
       return;
     }
     bundle.group.visible = true;
-    const dens = firing ? 1 : 0.65;
-    const radius = 0.08 + energy01 * 0.07 * dens;
+    const dens = firing ? 1 : 0.7;
+    const radius = 0.1 + energy01 * 0.09 * dens;
 
     for (let i = 0; i < bundle.filaments.length; i++) {
       const f = bundle.filaments[i];
@@ -210,18 +210,15 @@ export class RiftHandAura {
           f.phase +
           u * Math.PI * 2 * f.turns +
           spin +
-          Math.sin(u * 11 + spin * 1.7) * f.jitter +
-          Math.sin(u * 3 + f.phase) * 0.4;
+          Math.sin(u * 11 + spin * 1.7) * f.jitter * 0.45;
         const rad =
-          radius *
-          f.radScale *
-          (0.55 + 0.55 * Math.sin(u * 7 + spin) + 0.2 * Math.sin(spin * 2.4 + u * 17));
-        const y = (u - 0.5) * radius * 2.4 * f.liftScale;
-        const xOff = Math.sin(u * 5 + spin * 0.8) * radius * 0.15;
+          radius * f.radScale * (0.72 + 0.28 * Math.sin(u * 7 + spin));
+        const y = (u - 0.5) * radius * 2.6 * f.liftScale;
+        const xOff = Math.sin(u * 5 + spin * 0.8) * radius * 0.12;
         const cx = palm.x + Math.cos(ang) * rad + xOff;
         const cy = palm.y + y;
         const cz = palm.z + Math.sin(ang) * rad;
-        const hw = (firing ? 0.007 : 0.005) * dens * (1.05 - u * 0.35);
+        const hw = (firing ? 0.016 : 0.012) * dens * (1.05 - u * 0.25);
         const sx = -Math.sin(ang) * hw;
         const sz = Math.cos(ang) * hw;
         const o = k * 6;
@@ -255,7 +252,7 @@ export class RiftHandAura {
     (bundle.embers.geometry.getAttribute('position') as Float32BufferAttribute).needsUpdate = true;
 
     bundle.core.position.copy(palm);
-    bundle.core.scale.setScalar((firing ? 0.18 : 0.1) * (0.75 + 0.55 * energy01));
+    bundle.core.scale.setScalar((firing ? 0.055 : 0.04) * (0.85 + 0.3 * energy01));
     (bundle.core.material as SpriteMaterial).opacity = firing ? 1 : 0.55;
 
     if (usePalmLight && firing) {

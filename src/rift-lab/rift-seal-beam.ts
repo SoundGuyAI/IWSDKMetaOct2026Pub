@@ -16,8 +16,6 @@ import {
   Group,
   Mesh,
   MeshBasicMaterial,
-  Points,
-  PointsMaterial,
   Sprite,
   SpriteMaterial,
   Vector3,
@@ -28,7 +26,7 @@ import { glowDotTexture, neonPadHex } from './rift-note-visuals.js';
 /** Dense corkscrew strands that wrap the shaft (ref light-paint threads). */
 const SPIRAL_COUNT = 10;
 const SPIRAL_SEGMENTS = 56;
-/** Slow outward corridor wisps (varied speed bands) hand → hit. */
+/** Mesh motes traveling hand → hit (Quest draws WebGL points as ~1px). */
 const WISP_COUNT = 36;
 const PALM_WISP_COUNT = 8;
 const PALM_WISP_SEGMENTS = 18;
@@ -38,7 +36,7 @@ const COLOR_BEAT_SEC = 0.55;
 export interface SealBeamUpdate {
   origin: Vector3;
   end: Vector3;
-  /** 0..1 when contacting a rift; drives impact flare. */
+  /** 0..1 at a rift or other surface; drives the impact flare. */
   hitStrength: number;
   timeSec: number;
   visible: boolean;
@@ -93,9 +91,7 @@ export class RiftSealBeam {
   private readonly coreInnerMat: MeshBasicMaterial;
   private readonly coreOuterMat: MeshBasicMaterial;
   private readonly spirals: Ribbon[] = [];
-  private readonly wisps: Points;
-  private readonly wispPos: Float32Array;
-  private readonly wispCol: Float32Array;
+  private readonly wispSprites: Sprite[] = [];
   private readonly wispSeeds: Float32Array;
   private readonly palmCore: Sprite;
   private readonly palmHalo: Sprite;
@@ -120,7 +116,7 @@ export class RiftSealBeam {
     this.coreInnerMat = new MeshBasicMaterial({
       color: 0xffffff,
       transparent: true,
-      opacity: 0.9,
+      opacity: 0.45,
       depthTest: false,
       depthWrite: false,
       toneMapped: false,
@@ -129,7 +125,7 @@ export class RiftSealBeam {
     this.coreOuterMat = new MeshBasicMaterial({
       color: 0xffffff,
       transparent: true,
-      opacity: 0.28,
+      opacity: 0.14,
       blending: AdditiveBlending,
       depthTest: false,
       depthWrite: false,
@@ -171,52 +167,42 @@ export class RiftSealBeam {
         pos,
         mat,
         phase: (i / SPIRAL_COUNT) * Math.PI * 2,
-        turns: 2.6 + ring * 0.35 + (i % 2) * 0.4,
-        radius: 0.022 + ring * 0.007 + (i % 3) * 0.003,
-        halfWidth: 0.0035 + (i % 4) * 0.0008,
+        turns: 3.2 + ring * 0.45 + (i % 2) * 0.55,
+        radius: 0.055 + ring * 0.016 + (i % 3) * 0.008,
+        halfWidth: 0.012 + (i % 4) * 0.0035,
         spinRate: 4.2 + (i % 5) * 0.85 + (i % 2) * 1.1,
       });
     }
 
-    // Slow outward wisps in three speed bands (hand → hit), not fast orbit dots.
-    this.wispPos = new Float32Array(WISP_COUNT * 3);
-    this.wispCol = new Float32Array(WISP_COUNT * 3);
+    // Billboard motes in three speed bands (hand → hit). Mesh sprites, not points.
     this.wispSeeds = new Float32Array(WISP_COUNT * 4);
     for (let i = 0; i < WISP_COUNT; i++) {
       this.wispSeeds[i * 4] = Math.random();
       this.wispSeeds[i * 4 + 1] = Math.random() * Math.PI * 2;
-      // Speed bands: crawl / drift / stream (u/sec along the shaft).
       const band = i % 3;
       this.wispSeeds[i * 4 + 2] =
-        band === 0 ? 0.12 + Math.random() * 0.08
-        : band === 1 ? 0.22 + Math.random() * 0.12
-        : 0.38 + Math.random() * 0.18;
-      this.wispSeeds[i * 4 + 3] = 0.018 + Math.random() * 0.035;
-      const c = this.padColors[i % 4];
-      this.wispCol[i * 3] = c.r;
-      this.wispCol[i * 3 + 1] = c.g;
-      this.wispCol[i * 3 + 2] = c.b;
+        band === 0 ? 0.35 + Math.random() * 0.15
+        : band === 1 ? 0.6 + Math.random() * 0.25
+        : 0.95 + Math.random() * 0.4;
+      this.wispSeeds[i * 4 + 3] = 0.02 + Math.random() * 0.045;
+      const sprite = new Sprite(
+        new SpriteMaterial({
+          map: glowDotTexture(),
+          color: this.padColors[i % 4].clone(),
+          transparent: true,
+          depthTest: false,
+          depthWrite: false,
+          blending: AdditiveBlending,
+          toneMapped: false,
+          opacity: 0.95,
+        }),
+      );
+      sprite.frustumCulled = false;
+      sprite.renderOrder = 3;
+      sprite.scale.setScalar(0.07);
+      this.root.add(sprite);
+      this.wispSprites.push(sprite);
     }
-    const wispGeo = new BufferGeometry();
-    wispGeo.setAttribute('position', new Float32BufferAttribute(this.wispPos, 3));
-    wispGeo.setAttribute('color', new Float32BufferAttribute(this.wispCol, 3));
-    this.wisps = new Points(
-      wispGeo,
-      new PointsMaterial({
-        size: 0.07,
-        map: glowDotTexture(),
-        vertexColors: true,
-        transparent: true,
-        depthTest: false,
-        depthWrite: false,
-        blending: AdditiveBlending,
-        toneMapped: false,
-        opacity: 0.95,
-        sizeAttenuation: true,
-      }),
-    );
-    this.wisps.frustumCulled = false;
-    this.root.add(this.wisps);
 
     this.palmCore = new Sprite(
       new SpriteMaterial({
@@ -227,9 +213,11 @@ export class RiftSealBeam {
         depthWrite: false,
         blending: AdditiveBlending,
         toneMapped: false,
-        opacity: 1,
+        opacity: 0.85,
       }),
     );
+    // Kept so older call sites stay valid; the big white disc read as a
+    // detached orb on Quest, so it stays hidden.
     this.palmHalo = new Sprite(
       new SpriteMaterial({
         map: glowDotTexture(),
@@ -239,12 +227,12 @@ export class RiftSealBeam {
         depthWrite: false,
         blending: AdditiveBlending,
         toneMapped: false,
-        opacity: 0.9,
+        opacity: 0,
       }),
     );
-    this.palmCore.scale.setScalar(0.2);
-    this.palmHalo.scale.setScalar(0.38);
-    this.root.add(this.palmHalo, this.palmCore);
+    this.palmHalo.visible = false;
+    this.palmCore.scale.setScalar(0.05);
+    this.root.add(this.palmCore);
 
     for (let i = 0; i < PALM_WISP_COUNT; i++) {
       const pos = new Float32Array((PALM_WISP_SEGMENTS + 1) * 6);
@@ -268,8 +256,8 @@ export class RiftSealBeam {
         mat,
         phase: (i / PALM_WISP_COUNT) * Math.PI * 2,
         turns: 2.4 + (i % 3) * 0.4,
-        radius: 0.07 + (i % 4) * 0.012,
-        halfWidth: 0.005 + (i % 3) * 0.0015,
+        radius: 0.09 + (i % 4) * 0.02,
+        halfWidth: 0.012 + (i % 3) * 0.004,
         spinRate: 7 + i * 1.2,
       });
     }
@@ -389,36 +377,31 @@ export class RiftSealBeam {
       (sp.mesh.geometry.getAttribute('position') as Float32BufferAttribute).needsUpdate = true;
     }
 
-    // Slow corridor wisps drifting hand → hit at varied speeds.
+    // Colored motes traveling hand → hit. Sprites stay visible on Quest.
     for (let i = 0; i < WISP_COUNT; i++) {
       const seed = this.wispSeeds;
       const speed = seed[i * 4 + 2];
       const u = (seed[i * 4] + state.timeSec * speed) % 1;
-      const ang = seed[i * 4 + 1] + state.timeSec * (1.2 + (i % 3) * 0.4);
-      const rad = seed[i * 4 + 3] * (1.0 + 0.45 * Math.sin(ang * 1.6 + u * 4));
-      const o = i * 3;
-      this.wispPos[o] =
-        origin.x + this.tmpA.x * len * u + this.tmpB.x * Math.cos(ang) * rad + this.tmpC.x * Math.sin(ang) * rad;
-      this.wispPos[o + 1] =
-        origin.y + this.tmpA.y * len * u + this.tmpB.y * Math.cos(ang) * rad + this.tmpC.y * Math.sin(ang) * rad;
-      this.wispPos[o + 2] =
-        origin.z + this.tmpA.z * len * u + this.tmpB.z * Math.cos(ang) * rad + this.tmpC.z * Math.sin(ang) * rad;
-      // Soft fade near palm and near impact so they read as traveling wisps.
-      const fade = Math.min(1, u * 8, (1 - u) * 5);
-      const c = i % 3 === 0 ? this.padColors[i % 4] : beamCol;
-      this.wispCol[o] = c.r * fade;
-      this.wispCol[o + 1] = c.g * fade;
-      this.wispCol[o + 2] = c.b * fade;
+      const ang = seed[i * 4 + 1] + state.timeSec * (1.6 + (i % 3) * 0.5);
+      const rad = seed[i * 4 + 3] * (1.15 + 0.55 * Math.sin(ang * 1.6 + u * 4));
+      const sprite = this.wispSprites[i]!;
+      sprite.position.set(
+        origin.x + this.tmpA.x * len * u + this.tmpB.x * Math.cos(ang) * rad + this.tmpC.x * Math.sin(ang) * rad,
+        origin.y + this.tmpA.y * len * u + this.tmpB.y * Math.cos(ang) * rad + this.tmpC.y * Math.sin(ang) * rad,
+        origin.z + this.tmpA.z * len * u + this.tmpB.z * Math.cos(ang) * rad + this.tmpC.z * Math.sin(ang) * rad,
+      );
+      const fade = Math.min(1, u * 6, (1 - u) * 4);
+      const mat = sprite.material as SpriteMaterial;
+      mat.color.copy(i % 3 === 0 ? this.padColors[i % 4]! : beamCol);
+      mat.opacity = 0.35 + 0.65 * fade;
+      sprite.scale.setScalar(0.055 + 0.03 * fade);
+      sprite.visible = fade > 0.05;
     }
-    (this.wisps.geometry.getAttribute('position') as Float32BufferAttribute).needsUpdate = true;
-    (this.wisps.geometry.getAttribute('color') as Float32BufferAttribute).needsUpdate = true;
 
-    // Palm emitter: hot flare + short chaotic wisps into the first ~20 cm.
+    // Small palm flare. The old half-meter white halo read as a floating orb.
     this.palmCore.position.copy(origin);
-    this.palmHalo.position.copy(origin);
-    const pulse = 0.18 + 0.06 * (0.5 + 0.5 * Math.sin(state.timeSec * 12));
+    const pulse = 0.045 + 0.012 * Math.sin(state.timeSec * 12);
     this.palmCore.scale.setScalar(pulse);
-    this.palmHalo.scale.setScalar(pulse * 2.05);
     for (let i = 0; i < this.palmWisps.length; i++) {
       const w = this.palmWisps[i];
       w.mat.color.copy(this.padColors[i % 4]);
@@ -426,8 +409,8 @@ export class RiftSealBeam {
       for (let k = 0; k <= PALM_WISP_SEGMENTS; k++) {
         const u = k / PALM_WISP_SEGMENTS;
         const ang = w.phase + u * Math.PI * 3.8 + spin + Math.sin(u * 9 + spin) * 0.55;
-        const rad = 0.02 + u * (0.08 + (i % 3) * 0.02) * (0.85 + 0.3 * Math.sin(spin + u * 5));
-        const along = u * 0.2;
+        const rad = 0.035 + u * (0.16 + (i % 3) * 0.04) * (0.85 + 0.3 * Math.sin(spin + u * 5));
+        const along = u * 0.32;
         const cx =
           origin.x +
           this.tmpA.x * along +
@@ -456,8 +439,8 @@ export class RiftSealBeam {
 
     this.impact.position.copy(end);
     const hit = Math.max(0, Math.min(1, state.hitStrength));
-    this.impactMat.opacity = hit * (0.75 + 0.25 * Math.sin(state.timeSec * 20));
-    this.impact.scale.setScalar(0.22 + hit * 0.48);
+    this.impactMat.opacity = hit * (0.7 + 0.3 * Math.sin(state.timeSec * 20));
+    this.impact.scale.setScalar(0.08 + hit * 0.16);
   }
 
   dispose(): void {
