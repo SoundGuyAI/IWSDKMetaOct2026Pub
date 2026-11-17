@@ -28,7 +28,8 @@ import { glowDotTexture, neonPadHex } from './rift-note-visuals.js';
 /** Dense corkscrew strands that wrap the shaft (ref light-paint threads). */
 const SPIRAL_COUNT = 10;
 const SPIRAL_SEGMENTS = 56;
-const SPARK_COUNT = 80;
+/** Slow outward corridor wisps (varied speed bands) hand → hit. */
+const WISP_COUNT = 36;
 const PALM_WISP_COUNT = 8;
 const PALM_WISP_SEGMENTS = 18;
 /** Hold each pad color this long, then snap to the next (not a gradual lerp). */
@@ -92,10 +93,10 @@ export class RiftSealBeam {
   private readonly coreInnerMat: MeshBasicMaterial;
   private readonly coreOuterMat: MeshBasicMaterial;
   private readonly spirals: Ribbon[] = [];
-  private readonly sparks: Points;
-  private readonly sparkPos: Float32Array;
-  private readonly sparkCol: Float32Array;
-  private readonly sparkSeeds: Float32Array;
+  private readonly wisps: Points;
+  private readonly wispPos: Float32Array;
+  private readonly wispCol: Float32Array;
+  private readonly wispSeeds: Float32Array;
   private readonly palmCore: Sprite;
   private readonly palmHalo: Sprite;
   private readonly palmWisps: Ribbon[] = [];
@@ -177,26 +178,32 @@ export class RiftSealBeam {
       });
     }
 
-    this.sparkPos = new Float32Array(SPARK_COUNT * 3);
-    this.sparkCol = new Float32Array(SPARK_COUNT * 3);
-    this.sparkSeeds = new Float32Array(SPARK_COUNT * 4);
-    for (let i = 0; i < SPARK_COUNT; i++) {
-      this.sparkSeeds[i * 4] = Math.random();
-      this.sparkSeeds[i * 4 + 1] = Math.random() * Math.PI * 2;
-      this.sparkSeeds[i * 4 + 2] = 0.7 + Math.random() * 1.1;
-      this.sparkSeeds[i * 4 + 3] = 0.02 + Math.random() * 0.04;
+    // Slow outward wisps in three speed bands (hand → hit), not fast orbit dots.
+    this.wispPos = new Float32Array(WISP_COUNT * 3);
+    this.wispCol = new Float32Array(WISP_COUNT * 3);
+    this.wispSeeds = new Float32Array(WISP_COUNT * 4);
+    for (let i = 0; i < WISP_COUNT; i++) {
+      this.wispSeeds[i * 4] = Math.random();
+      this.wispSeeds[i * 4 + 1] = Math.random() * Math.PI * 2;
+      // Speed bands: crawl / drift / stream (u/sec along the shaft).
+      const band = i % 3;
+      this.wispSeeds[i * 4 + 2] =
+        band === 0 ? 0.12 + Math.random() * 0.08
+        : band === 1 ? 0.22 + Math.random() * 0.12
+        : 0.38 + Math.random() * 0.18;
+      this.wispSeeds[i * 4 + 3] = 0.018 + Math.random() * 0.035;
       const c = this.padColors[i % 4];
-      this.sparkCol[i * 3] = c.r;
-      this.sparkCol[i * 3 + 1] = c.g;
-      this.sparkCol[i * 3 + 2] = c.b;
+      this.wispCol[i * 3] = c.r;
+      this.wispCol[i * 3 + 1] = c.g;
+      this.wispCol[i * 3 + 2] = c.b;
     }
-    const sparkGeo = new BufferGeometry();
-    sparkGeo.setAttribute('position', new Float32BufferAttribute(this.sparkPos, 3));
-    sparkGeo.setAttribute('color', new Float32BufferAttribute(this.sparkCol, 3));
-    this.sparks = new Points(
-      sparkGeo,
+    const wispGeo = new BufferGeometry();
+    wispGeo.setAttribute('position', new Float32BufferAttribute(this.wispPos, 3));
+    wispGeo.setAttribute('color', new Float32BufferAttribute(this.wispCol, 3));
+    this.wisps = new Points(
+      wispGeo,
       new PointsMaterial({
-        size: 0.055,
+        size: 0.07,
         map: glowDotTexture(),
         vertexColors: true,
         transparent: true,
@@ -204,12 +211,12 @@ export class RiftSealBeam {
         depthWrite: false,
         blending: AdditiveBlending,
         toneMapped: false,
-        opacity: 1,
+        opacity: 0.95,
         sizeAttenuation: true,
       }),
     );
-    this.sparks.frustumCulled = false;
-    this.root.add(this.sparks);
+    this.wisps.frustumCulled = false;
+    this.root.add(this.wisps);
 
     this.palmCore = new Sprite(
       new SpriteMaterial({
@@ -382,27 +389,29 @@ export class RiftSealBeam {
       (sp.mesh.geometry.getAttribute('position') as Float32BufferAttribute).needsUpdate = true;
     }
 
-    // Orbit sparks riding the helix radii hand → rift.
-    for (let i = 0; i < SPARK_COUNT; i++) {
-      const seed = this.sparkSeeds;
+    // Slow corridor wisps drifting hand → hit at varied speeds.
+    for (let i = 0; i < WISP_COUNT; i++) {
+      const seed = this.wispSeeds;
       const speed = seed[i * 4 + 2];
-      const u = (seed[i * 4] + state.timeSec * speed * 0.32) % 1;
-      const ang = seed[i * 4 + 1] + state.timeSec * 6.4;
-      const rad = seed[i * 4 + 3] * (1.1 + 0.6 * Math.sin(ang * 2));
+      const u = (seed[i * 4] + state.timeSec * speed) % 1;
+      const ang = seed[i * 4 + 1] + state.timeSec * (1.2 + (i % 3) * 0.4);
+      const rad = seed[i * 4 + 3] * (1.0 + 0.45 * Math.sin(ang * 1.6 + u * 4));
       const o = i * 3;
-      this.sparkPos[o] =
+      this.wispPos[o] =
         origin.x + this.tmpA.x * len * u + this.tmpB.x * Math.cos(ang) * rad + this.tmpC.x * Math.sin(ang) * rad;
-      this.sparkPos[o + 1] =
+      this.wispPos[o + 1] =
         origin.y + this.tmpA.y * len * u + this.tmpB.y * Math.cos(ang) * rad + this.tmpC.y * Math.sin(ang) * rad;
-      this.sparkPos[o + 2] =
+      this.wispPos[o + 2] =
         origin.z + this.tmpA.z * len * u + this.tmpB.z * Math.cos(ang) * rad + this.tmpC.z * Math.sin(ang) * rad;
-      const c = i % 4 === 0 ? this.padColors[i % 4] : beamCol;
-      this.sparkCol[o] = c.r;
-      this.sparkCol[o + 1] = c.g;
-      this.sparkCol[o + 2] = c.b;
+      // Soft fade near palm and near impact so they read as traveling wisps.
+      const fade = Math.min(1, u * 8, (1 - u) * 5);
+      const c = i % 3 === 0 ? this.padColors[i % 4] : beamCol;
+      this.wispCol[o] = c.r * fade;
+      this.wispCol[o + 1] = c.g * fade;
+      this.wispCol[o + 2] = c.b * fade;
     }
-    (this.sparks.geometry.getAttribute('position') as Float32BufferAttribute).needsUpdate = true;
-    (this.sparks.geometry.getAttribute('color') as Float32BufferAttribute).needsUpdate = true;
+    (this.wisps.geometry.getAttribute('position') as Float32BufferAttribute).needsUpdate = true;
+    (this.wisps.geometry.getAttribute('color') as Float32BufferAttribute).needsUpdate = true;
 
     // Palm emitter: hot flare + short chaotic wisps into the first ~20 cm.
     this.palmCore.position.copy(origin);
