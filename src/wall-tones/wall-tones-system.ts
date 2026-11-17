@@ -1,6 +1,6 @@
 import { hintWindowStart, HINT_WINDOW_SIZE } from './hint-window.js';
 import { armbandHand, armbandDisplayMode, ArmbandDisplay, ARMBAND_SCALE } from './armband.js';
-import { BAND_JOINT_ROTATION, PALM_PANEL_HEAD_AWAY, PALM_PANEL_LIFT, PalmJointsSmoother, palmOpenState, palmPanelPose, type PalmJoints, type PalmVec } from './palm-projector.js';
+import { BAND_JOINT_ROTATION, BEAM_BOTTOM_RADIUS, BEAM_TOP_RADIUS, fitBeamUnderPanel, PALM_PANEL_HEAD_AWAY, PALM_PANEL_LIFT, PalmJointsSmoother, palmOpenState, palmPanelPose, palmProjectorPromptDue, type PalmJoints, type PalmVec } from './palm-projector.js';
 import { BackgroundProgress } from './cypher-background.js';
 import { getVoiceGender } from './speech.js';
 import { CypherProgress, type CypherWindow } from './cypher-progress.js';
@@ -16,6 +16,7 @@ import { MovementTracker, formatMetersNumber, movementUiVisible, readLifetimeMov
 import {
 AdditiveBlending,
 ConeGeometry,
+PlaneGeometry,
 Matrix4,
 Raycaster,
 CylinderGeometry,
@@ -162,6 +163,8 @@ import {
   PLAY_UNLOCK_HINT_LEVEL,
   PLAY_MAX_LEVEL,
   SPEED_MAX_LEVEL,
+  MULTIPLIER_MAX_LEVEL,
+  multiplierFactorForLevel,
   INDEX_COST,
   LISTEN_COST,
   REPLAY_FREE_CAP,
@@ -280,6 +283,7 @@ sequenceBoxesShown: number;
 sequenceUnknownShown: number;
 roundCardText: string;
 roundCardVisibleText: string | null;
+roundCardBonusVisibleText: string;
 headCaptionVisibleText: string | null;
 /** Test-only: drives the exact head-caption setter path tickHeadCaption uses. */
 probeHeadCaptionText: (text: string) => void;
@@ -306,6 +310,7 @@ buyListen: () => void;
 buyAutoplay: () => void;
 buyPlay: () => void;
 buySpeed: () => void;
+buyMultiplier: () => void;
 buyReplay: () => void;
 buySaver: () => void;
 buyTopSecret: () => void;
@@ -322,6 +327,9 @@ pressPlay: () => void;
 /** Test-only: the control-row Speed button path (greyed -> Store,
  * owned -> on/off toggle). */
 pressSpeedControl: () => void;
+/** Test-only: the control-row Multiplier button path (greyed -> Store,
+ * owned -> on/off toggle). */
+pressMultiplierControl: () => void;
 /** Test-only: selects a store tile like a tap on its tile. */
 selectStoreTile: (id: string) => void;
 storePointerTargets: Record<string, { x: number; y: number }>;
@@ -343,6 +351,7 @@ autoplayLevel: number;
 autoplayUnlocked: boolean;
 playLevel: number;
 speedLevel: number;
+multiplierLevel: number;
 replaysFree: number;
 replaysPaid: number;
 replaysTotal: number;
@@ -355,6 +364,7 @@ grantSavers: (units: number) => void;
 /** Test-only: seed the Play level while its prices are unset. */
 grantPlayLevel: (level: number) => void;
 grantSpeedLevel: (level: number) => void;
+grantMultiplierLevel: (level: number) => void;
 /** Test-only: grant the Index pointer while its price is unset. */
 grantIndex: () => void;
 /** Test-only: press the control-row Autoplay button (toggle when owned). */
@@ -412,6 +422,7 @@ narrator: 'storeItemHack',
 // so the cut disc is hidden inside the orb and the beam reads as growing out
 // of it rather than touching it.
 const ARM_BAND_BEAM_EMBED = 0.008;
+const Z_AXIS = new Vector3(0, 0, 1);
 
 export class WallTonesSystem extends createSystem({
 pads: { required: [WallTonePad] },
@@ -675,14 +686,12 @@ if (!this.armband) {
   bind('armband-repeat', () => {
     if (this.armbandUsable() && this.game.phase === 'input' && this.economy.getReplaysTotal() > 0) void this.onRepeatPattern();
   });
-  bind('armband-modifiers', () => { if (this.armbandUsable()) this.onToggleStore(); });
-  const upgrade = (id: string) => {
-    if (!this.armbandUsable()) return;
-    if (!this.storeOpen) this.onToggleStore();
-    this.forceSelectStoreTile(id);
-  };
-  bind('armband-hint-button', () => upgrade('hint'));
-  bind('armband-autoplay', () => upgrade('autoplay'));
+  // Play modifier (item 66): same action as the panel's Play control.
+  bind('armband-play', () => { if (this.armbandUsable()) void this.onPlayControl(); });
+  // New Run on the wrist while Game Over owns the retry decision; Skip Voice
+  // while narration is playing (mirrors the panel button's relevance rule).
+  bind('armband-newrun', () => { if (this.armbandTrackable() && this.gameOverOpen) this.onGameOverNewRun(); });
+  bind('armband-skip-voice', () => { if (this.armbandTrackable()) this.onSkipVoice(); });
 }
 const hand = armbandHand();
 const adapter = this.input.xr.visualAdapters[hand].peek();
@@ -791,6 +800,7 @@ entity.object3D.visible = tracked && panelShown;
 if (housing?.object3D) housing.object3D.visible = tracked && armbandDisplayMode() === 'band';
 if (!tracked || !panelShown) {
   if (this.armbandBeam) this.armbandBeam.visible = false;
+  if (this.armbandBeamVeil) this.armbandBeamVeil.visible = false;
   if (this.armbandGlow) this.armbandGlow.visible = false;
   return;
 }
@@ -858,6 +868,7 @@ if (floating) {
   scale[0] = scale[1] = scale[2] = ARMBAND_SCALE;
   // Band mode has no beam; hide it if the session flipped from projector.
   if (this.armbandBeam) this.armbandBeam.visible = false;
+  if (this.armbandBeamVeil) this.armbandBeamVeil.visible = false;
   if (this.armbandGlow) this.armbandGlow.visible = false;
 }
 if (housing) {
@@ -873,7 +884,8 @@ this.armband.render({ streak: this.game.streak, best: this.game.bestStreak,
   hintCount: this.economy.getHintRevealCount(), listen: this.economy.ownsListen(),
   playbackShown: this.playbackShownCount, replays: this.economy.getReplaysTotal(),
   autoplay: this.economy.getAutoplayLevel(), colorNames: colorNamesEnabled(),
-  gameOver: this.gameOverOpen, bars: this.economy.getBars() });
+  gameOver: this.gameOverOpen, bars: this.economy.getBars(),
+  narrationBusy: this.speech.isBusy(), playLevel: this.economy.getPlayLevel() });
 }
 
 /** The band stays on the wrist for the whole run, including the Game Over popup. */
@@ -904,8 +916,15 @@ private readonly armbandBeamDir = new Vector3();
 private readonly armbandBeamAxis = new Vector3(0, 1, 0);
 private armbandBeam: Mesh | undefined;
 private armbandBeamMat: ShaderMaterial | undefined;
+private armbandBeamVeil: Mesh | undefined;
+private armbandBeamVeilMat: ShaderMaterial | undefined;
 private armbandGlow: Mesh | undefined;
 private armbandBeamTime = 0;
+private readonly armbandVeilMid = new Vector3();
+private readonly armbandVeilCamDir = new Vector3();
+private readonly armbandVeilViewDir = new Vector3();
+private readonly armbandHeadQuatInv = new Quaternion();
+private readonly armbandVeilSpin = new Quaternion();
 private armbandLastPose: import('./palm-projector.js').PalmPanelPose | undefined;
 private readonly armbandPanelX = new Vector3();
 private readonly armbandPanelY = new Vector3();
@@ -915,7 +934,7 @@ private readonly armbandJointMatrix = new Matrix4();
 /** The palm-center light beam + emitter glow for projector mode (concept art: rays from the open palm). */
 private ensureArmbandBeam(): void {
   if (this.armbandBeam) return;
-  const geo = new CylinderGeometry(0.055, 0.006, 1, 24, 1, true);
+  const geo = new CylinderGeometry(BEAM_TOP_RADIUS, BEAM_BOTTOM_RADIUS, 1, 24, 1, true);
   this.armbandBeamMat = new ShaderMaterial({
     transparent: true,
     depthWrite: false,
@@ -947,6 +966,39 @@ private ensureArmbandBeam(): void {
   // cone where they overlap (Nov 16 user feedback).
   this.armbandBeam.renderOrder = -1;
   this.world.scene.add(this.armbandBeam);
+  // View-aligned veil: the cone above is a hollow shell, so looking along the
+  // beam axis (the natural reading pose: palm up, panel billboarded at the
+  // head) projects almost none of its surface and the beam vanishes (Nov 16
+  // hardware feedback). This quad fully faces the head and stretches along
+  // the screen projection of the beam, so it reads at every angle - it can
+  // only foreshorten into a soft blob, never a zero-width line. It fades in
+  // as the view turns axial and stays off at side angles, where the cone
+  // carries the volumetric look on its own.
+  this.armbandBeamVeilMat = new ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    blending: AdditiveBlending,
+    side: DoubleSide,
+    uniforms: { uTime: { value: 0 }, uStrength: { value: 0 } },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: [
+      'uniform float uTime; uniform float uStrength; varying vec2 vUv;',
+      'void main(){',
+      '  float across = 1.0 - abs(vUv.y * 2.0 - 1.0);',
+      '  float body = smoothstep(0.0, 0.14, across);',
+      '  float ends = smoothstep(0.0, 0.06, vUv.x) * (1.0 - smoothstep(0.72, 1.0, vUv.x));',
+      '  float rays = 0.55 + 0.45 * sin(vUv.y * 18.0 - uTime * 7.0 + sin(vUv.x * 9.0 + uTime * 2.5) * 1.5);',
+      '  float pulse = 0.75 + 0.25 * sin(uTime * 11.0 + vUv.x * 25.0);',
+      '  vec3 color = mix(vec3(0.30, 1.0, 0.65), vec3(0.55, 1.0, 0.9), vUv.x);',
+      '  float a = uStrength * body * ends * pulse * (0.45 + 0.55 * rays);',
+      '  gl_FragColor = vec4(color * a, a);',
+      '}',
+    ].join('\n'),
+  });
+  this.armbandBeamVeil = new Mesh(new PlaneGeometry(1, 1), this.armbandBeamVeilMat);
+  this.armbandBeamVeil.visible = false;
+  this.armbandBeamVeil.renderOrder = -1;
+  this.world.scene.add(this.armbandBeamVeil);
   // Fresnel falloff so the emitter reads as a small glowing orb from every
   // angle; a flat additive fill looked like a 2D disc from the side (Nov 16
   // user feedback).
@@ -986,17 +1038,17 @@ private updateArmbandBeam(floating: { open: number; center: PalmVec; normal: Pal
   this.armbandBeamDir.copy(this.armbandSmoothPos).sub(this.armbandBeamBase);
   const fullLen = Math.max(this.armbandBeamDir.length(), 0.001);
   this.armbandBeamDir.normalize();
-  // Stop the cone just under the panel. Its wide top disc (radius 0.055) is
-  // tilted against the head-facing panel plane, so ending exactly at the
-  // panel center let the rim poke through to the head side and draw over the
-  // buttons (Nov 16 user feedback). Gap = r*tan(theta) + margin/cos(theta)
-  // keeps every rim point on the palm side of the plane.
+  // Stop the cone just under the panel. Its wide top disc (radius
+  // BEAM_TOP_RADIUS) is tilted against the head-facing panel plane, so ending
+  // exactly at the panel center let the rim poke through to the head side and
+  // draw over the buttons (Nov 16 user feedback). fitBeamUnderPanel keeps
+  // every rim point on the palm side of the plane while capping how much the
+  // beam shortens: the old length-only fit collapsed the beam to a stub at
+  // tilted hand angles, hiding it exactly where the user looked for it (Nov
+  // 16 hardware feedback). The top radius shrinks to absorb the rest.
   const cosTheta = this.armbandBeamDir.dot(this.armbandPanelZ);
-  let len = fullLen;
-  if (cosTheta > 1e-3) {
-    const sinTheta = Math.sqrt(Math.max(0, 1 - cosTheta * cosTheta));
-    len = Math.max(0.02, fullLen - (0.055 * sinTheta + 0.006) / cosTheta);
-  }
+  const fit = fitBeamUnderPanel(fullLen, cosTheta);
+  const len = fit.length;
   // The cone's local axis is +Y, so map THAT onto the beam direction.
   // setFromUnitVectors(handUp, dir) only aligned the grip's up with the beam:
   // the cone axis stayed rotated away by the grip twist and its base visibly
@@ -1004,7 +1056,7 @@ private updateArmbandBeam(floating: { open: number; center: PalmVec; normal: Pal
   // inside the orb so the beam reads as growing out of it, not touching it.
   beam.position.copy(this.armbandBeamBase).addScaledVector(this.armbandBeamDir, (len - ARM_BAND_BEAM_EMBED) * 0.5);
   beam.quaternion.setFromUnitVectors(this.armbandBeamAxis, this.armbandBeamDir);
-  beam.scale.set(1, len + ARM_BAND_BEAM_EMBED, 1);
+  beam.scale.set(fit.radiusScale, len + ARM_BAND_BEAM_EMBED, fit.radiusScale);
   this.armbandBeamMat!.uniforms.uTime!.value = this.armbandBeamTime;
   (this.armbandGlow!.material as ShaderMaterial).uniforms.uTime!.value = this.armbandBeamTime;
   this.armbandBeamMat!.uniforms.uStrength!.value = e;
@@ -1013,6 +1065,31 @@ private updateArmbandBeam(floating: { open: number; center: PalmVec; normal: Pal
   const pulse = 1 + 0.18 * Math.sin(this.armbandBeamTime * 9);
   glow.scale.set(pulse, pulse, pulse);
   glow.visible = beam.visible;
+  this.updateArmbandBeamVeil(len, e);
+}
+
+/** Screen-facing beam veil: always read, even looking straight down the cone. */
+private updateArmbandBeamVeil(len: number, e: number): void {
+  const veil = this.armbandBeamVeil!;
+  this.player.head.getWorldQuaternion(this.armbandHeadQuatInv).invert();
+  // Beam direction in head space: x right, y up, z behind the viewer.
+  this.armbandVeilCamDir.copy(this.armbandBeamDir).applyQuaternion(this.armbandHeadQuatInv);
+  const projected = Math.hypot(this.armbandVeilCamDir.x, this.armbandVeilCamDir.y);
+  this.armbandVeilMid.copy(this.armbandBeamBase).addScaledVector(this.armbandBeamDir, len * 0.5);
+  this.armbandVeilViewDir.copy(this.armbandVeilMid).sub(this.viewer).normalize();
+  const axial = Math.abs(this.armbandBeamDir.dot(this.armbandVeilViewDir));
+  // Only the near-axial zone: at side angles the cone carries the look alone.
+  const strength = e * Math.min(1, Math.max(0, (axial - 0.6) / 0.3));
+  veil.position.copy(this.armbandVeilMid);
+  this.player.head.getWorldQuaternion(veil.quaternion);
+  this.armbandVeilSpin.setFromAxisAngle(Z_AXIS, Math.atan2(this.armbandVeilCamDir.y, this.armbandVeilCamDir.x));
+  veil.quaternion.multiply(this.armbandVeilSpin);
+  // Foreshortened length in the screen plane, floored so the axial view keeps
+  // a soft glowing blob where the beam points straight at the head.
+  veil.scale.set(Math.max(0.045, len * projected), 0.032, 1);
+  this.armbandBeamVeilMat!.uniforms.uTime!.value = this.armbandBeamTime;
+  this.armbandBeamVeilMat!.uniforms.uStrength!.value = strength;
+  veil.visible = e > 0.05 && strength > 0.01;
 }
 
 /** World-space palm joints for projector mode; null when any joint pose is missing. */
@@ -1281,7 +1358,7 @@ panel
 ?.addEventListener('click', () => void this.onSpeedControl());
 panel
 .getElementById('control-multiplier-button')
-?.addEventListener('click', () => this.openStoreAtTile('multiplier'));
+?.addEventListener('click', () => void this.onMultiplierControl());
 panel
 .getElementById('rescan-room-button')
 ?.addEventListener('click', () => void this.onRescanRoom());
@@ -2310,6 +2387,13 @@ return system.lastRoundCardText;
 },
 // Live read-back of the text actually set on the rendered panel element
 // (catches the uikitml empty-div compile trap, where setProperties no-ops).
+get roundCardBonusVisibleText() {
+const el = system.world
+.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('wall-tones-round-card-extra');
+const props = (el as { properties?: { value?: { text?: string; display?: string } } } | null)?.properties?.value;
+return props?.display === 'none' ? '' : props?.text ?? '';
+},
 get roundCardVisibleText() {
 const el = system.world
 .getSceneObject<UIKitMLAsset>('wall-tones-panel')
@@ -2444,6 +2528,10 @@ buySpeed: () => {
 system.forceSelectStoreTile('speed');
 system.onBuySelected();
 },
+buyMultiplier: () => {
+system.forceSelectStoreTile('multiplier');
+system.onBuySelected();
+},
 buyIndex: () => {
 system.forceSelectStoreTile('index');
 system.onBuySelected();
@@ -2475,6 +2563,9 @@ void system.onPlayControl();
 pressSpeedControl: () => {
 void system.onSpeedControl();
 },
+pressMultiplierControl: () => {
+void system.onMultiplierControl();
+},
 get ownsTopSecret() {
 return system.economy.ownsTopSecret();
 },
@@ -2495,6 +2586,9 @@ return system.economy.getPlayLevel();
 },
 get speedLevel() {
 return system.economy.getSpeedLevel();
+},
+get multiplierLevel() {
+return system.economy.getMultiplierLevel();
 },
 get ownsIndex() {
 return system.economy.ownsIndex();
@@ -2571,6 +2665,9 @@ system.debugGrantPlayLevel(level);
 },
 grantSpeedLevel: (level: number) => {
 system.economy.debugGrantSpeedLevel(level);
+},
+grantMultiplierLevel: (level: number) => {
+system.economy.debugGrantMultiplierLevel(level);
 },
 grantIndex: () => {
 system.economy.debugGrantIndex();
@@ -4584,6 +4681,22 @@ await this.wait(BETWEEN_ROUNDS_DELAY_S);
 if (explainBars && this.experienceActive && this.flowPhase === 'playing') {
 await this.speech.speakAsync('barsFirstEarn');
 }
+// Backlog item 109 (wording approved by the owner 2026-11-17): one-time
+// palm-projector prompt after the third completed pattern, in MR with the
+// projector display mode. takeFirstTime is consumed only when the line can
+// actually play, so flat-mode and wristband players keep it for a later MR
+// projector run.
+if (
+palmProjectorPromptDue(
+streak,
+this.world.visibilityState.peek() !== VisibilityState.NonImmersive,
+armbandDisplayMode(),
+) &&
+narrIntact() &&
+this.economy.takeFirstTime('palm-projector-prompt')
+) {
+await this.speech.speakAsync('palmProjector');
+}
 if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
 }
@@ -5070,9 +5183,28 @@ panel
 ?.setProperties({
 text: !speedOwned ? 'Speed' : speedOn ? `Speed ${2 ** speedSelected}x` : 'Speed: off',
 });
+// Multiplier (backlog 97): unowned stays the greyed Store shortcut;
+// owned is always white with the owned factor as the label (X2/X3/X4/X8),
+// the OFF signal is the slash plus ': off' (same settled pattern as
+// AutoPlay).
+const multiplierOwned = this.economy.getMultiplierLevel() > 0;
+const multiplierOn = this.economy.isMultiplierEnabled();
+const multiplierLabel = `X${multiplierFactorForLevel(this.economy.getMultiplierLevel())}`;
 panel
 .getElementById('control-multiplier-button')
-?.setProperties({ opacity: greyed });
+?.setProperties({ opacity: multiplierOwned ? 1 : greyed });
+panel
+.getElementById('control-multiplier-slash')
+?.setProperties({ display: multiplierOwned && !multiplierOn ? 'flex' : 'none' });
+panel
+.getElementById<UIKit.Text>('control-multiplier-label')
+?.setProperties({
+text: !multiplierOwned
+? 'X2'
+: multiplierOn
+? multiplierLabel
+: `${multiplierLabel}: off`,
+});
 }
 
 /** Control-row shortcut (owner rule 2026-11-12): a greyed button opens the
@@ -5142,6 +5274,31 @@ return;
 // (2x, 4x, ... up to the owned level), with off at the end of the cycle.
 const selected = this.economy.cycleSpeedSelection();
 this.statusText = selected === 0 ? 'Speed disengaged' : `Speed engaged: ${2 ** selected}x`;
+this.renderPanel();
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+if (panel != null) {
+this.syncControlRow(panel);
+}
+}
+
+/** Control-row Multiplier button (backlog 97): unowned -> Store shortcut;
+ * owned -> toggles the score multiplier on/off, mirroring the settled
+ * AutoPlay toggle pattern. Caption only: no voice notice was requested.
+ * The toggle is proposed UX - he never specified the owned-button action,
+ * confirm on review. */
+private async onMultiplierControl(): Promise<void> {
+if (this.economy.getMultiplierLevel() < 1) {
+this.openStoreAtTile('multiplier');
+return;
+}
+// Branch on the POST-toggle state (the AutoPlay 2026-11-16 lesson:
+// pre-toggle branching reversed the feedback).
+const wasEnabled = this.economy.isMultiplierEnabled();
+this.economy.setMultiplierDisabled(wasEnabled);
+const nowEnabled = !wasEnabled;
+this.statusText = nowEnabled
+? `Multiplier X${this.economy.getMultiplierLevel() + 1} engaged`
+: 'Multiplier disengaged';
 this.renderPanel();
 const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
 if (panel != null) {
@@ -5562,11 +5719,14 @@ state: StoreTileState;
 price: string;
 /** True when the price line leads with the Bars icon (owner ask 2026-11-12). */
 icon: boolean;
+/** Optional glyph label override (Multiplier: the actual owned factor). */
+glyph?: string;
 }
 const hintLevel = eco.getHintLevel();
 const autoplayLevel = eco.getAutoplayLevel();
 const playLevel = eco.getPlayLevel();
 const speedLevel = eco.getSpeedLevel();
+const multiplierLevel = eco.getMultiplierLevel();
 const replaysTotal = eco.getReplaysTotal();
 const savers = eco.getSavers();
 const bars = eco.getBars();
@@ -5666,10 +5826,23 @@ speedLevel >= SPEED_MAX_LEVEL
 : `L${speedLevel + 1} - ${eco.speedCost(speedLevel + 1)}`,
 icon: speedLevel < SPEED_MAX_LEVEL,
 },
-// Room for the modifiers the owner listed (2026-11-11): 5th/6th pads, the
-// story hack and the double-score multiplier. Their phrasing is just
-// "Locked" (owner ask 2026-11-12).
-{ id: 'multiplier', name: 'x2', badge: '?', state: 'off', price: 'Locked', icon: false },
+// Multiplier (backlog 97/70): live tile on this branch. Ungated, PROPOSED
+// prices X2 1,000 / X3 5,000 / X4 25,000 / X8 125,000 (x5 growth per his
+// "really high exponentially", 2026-11-12; X8 fourth tier added 2026-11-17)
+// - his to approve. The name AND the tile glyph show the actual owned
+// factor (his 2026-11-17 ask: the X4 multiplier gets the X4 logo).
+{
+id: 'multiplier',
+name: multiplierLevel > 0 ? `X${multiplierFactorForLevel(multiplierLevel)}` : 'x2',
+glyph: `X${multiplierFactorForLevel(multiplierLevel)}`,
+badge: multiplierLevel > 0 ? String(multiplierLevel) : '',
+state: multiplierLevel > 0 ? 'on' : 'off',
+price:
+multiplierLevel >= MULTIPLIER_MAX_LEVEL
+? 'Max'
+: `X${multiplierFactorForLevel(multiplierLevel + 1)} - ${eco.multiplierCost(multiplierLevel + 1)}`,
+icon: multiplierLevel < MULTIPLIER_MAX_LEVEL,
+},
 { id: 'pads56', name: 'Pad 5', badge: '?', state: 'off', price: 'Locked', icon: false },
 { id: 'narrator', name: 'Hack', badge: '?', state: 'off', price: 'Locked', icon: false },
 ];
@@ -5698,7 +5871,7 @@ flexShrink: 0,
 });
 tile.add(
 new UIKit.Image({
-src: storeTileSrc(t.id, selected && t.state === 'on' ? 'sel' : t.state, t.badge),
+src: storeTileSrc(t.id, selected && t.state === 'on' ? 'sel' : t.state, t.badge, t.glyph),
 width: TILE_S,
 height: TILE_S,
 }),
@@ -5990,10 +6163,21 @@ buyText = `Speed L${speedLevel + 1} - ${cost}`;
 }
 break;
 }
+case 'multiplier': {
+titleText = `Multiplier - X${multiplierFactorForLevel(multiplierLevel)}`;
+bodyText =
+(multiplierLevel === 0
+? 'Doubles every Bar you earn while it is on. '
+: `Every Bar you earn is multiplied by ${multiplierFactorForLevel(multiplierLevel)} while it is on. `) +
+'Higher levels go X3, X4 then X8 with steep costs. Proposed prices - his to approve.';
+if (multiplierLevel < MULTIPLIER_MAX_LEVEL) {
+cost = eco.multiplierCost(multiplierLevel + 1);
+buyText = `X${multiplierFactorForLevel(multiplierLevel + 1)} - ${cost}`;
+}
+break;
+}
 default:
-titleText =
-sel === 'multiplier' ? 'Multiplier x2'
-: sel === 'pads56' ? 'Pad 5'
+titleText = sel === 'pads56' ? 'Pad 5'
 : 'Hack';
 bodyText = sel === 'pads56' ? 'Locked. Pad 6 is bought after Pad 5.' : 'Locked.';
 break;
@@ -6030,7 +6214,7 @@ flexWrap: 'wrap',
 gap: 8,
 width: TREE_W,
 });
-for (const id of ['multiplier', 'pads56', 'narrator']) {
+for (const id of ['pads56', 'narrator']) {
 bottomRow.add(makeTile(byId.get(id)!));
 }
 // Rows in display order; the detail card overlays the viewport bottom
@@ -6093,7 +6277,9 @@ h: ROW_CONN_H,
 // label here reads as Autoplay's own state even after purchase.
 // Speed sits on its own row with level pips (same treatment as Play).
 { ids: ['speed'], node: chainRow(byId.get('speed')!, speedLevel, 0x38d9c8), h: ROW_CHAIN_H },
-{ ids: ['multiplier', 'pads56', 'narrator'], node: bottomRow, h: ROW_TILE_H },
+// Multiplier sits on its own row with level pips (same as Play).
+{ ids: ['multiplier'], node: chainRow(byId.get('multiplier')!, multiplierLevel, 0xf59a4a), h: ROW_CHAIN_H },
+{ ids: ['pads56', 'narrator'], node: bottomRow, h: ROW_TILE_H },
 { ids: ['secret'], node: soloRow(byId.get('secret')!), h: ROW_TILE_H },
 ];
 // The detail card itself. popup-card geometry (uikitml px): 12 padding +
@@ -6522,25 +6708,41 @@ bonus: number,
 if (total <= 0) return;
 const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
 if (panel == null) return;
-// User ask (Nov 7): show the bonus part inline - one compact line.
+// User ask (Nov 7): show the bonus part inline - one compact line. His
+// 2026-11-17 asks: the active Multiplier factor shows inline ("the
+// multiplier info should also appear in the 'this round' line... like
+// X4"), next to the total it scaled, and the bonus moves to the smaller
+// unit element so long values stop wrapping over the line below (his
+// same-day layout-bug screenshot: "+44 (+24 bonus)" wrapped).
 const extra = completion + bonus;
+const factor = this.economy.getMultiplierFactor();
+const totalText = factor > 1 ? `+${total} X${factor}` : `+${total}`;
 panel
 .getElementById<UIKit.Text>('wall-tones-round-card-total')
-?.setProperties({ text: extra > 0 ? `+${total} (+${extra} bonus)` : `+${total}` });
+?.setProperties({ text: totalText });
+panel
+.getElementById<UIKit.Text>('wall-tones-round-card-extra')
+?.setProperties({
+text: extra > 0 ? `(+${extra} bonus)` : '',
+display: extra > 0 ? 'flex' : 'none',
+});
 const pads = total - completion - bonus;
 const parts = [`Pads +${pads}`];
 if (completion > 0) parts.push(`Completion +${completion}`);
 if (bonus > 0) parts.push(`Record bonus +${bonus}`);
 const breakdown = parts.join(' - ');
-this.lastRoundCardText = `+${total} (${breakdown})`;
+this.lastRoundCardText = `${totalText} (${breakdown})`;
 }
 
 private hideRoundBarsCard(): void {
 this.lastRoundCardText = '';
-this.world
-.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+panel
 ?.getElementById<UIKit.Text>('wall-tones-round-card-total')
 ?.setProperties({ text: '+0' });
+panel
+?.getElementById<UIKit.Text>('wall-tones-round-card-extra')
+?.setProperties({ text: '', display: 'none' });
 }
 
 /** Test-only wallet funding for the e2e debug bridge. */
@@ -6731,12 +6933,17 @@ if (id === 'speed' && this.economy.getSpeedLevel() >= SPEED_MAX_LEVEL) {
 deny('Speed is at its top level.');
 return;
 }
+if (id === 'multiplier' && this.economy.getMultiplierLevel() >= MULTIPLIER_MAX_LEVEL) {
+deny('Multiplier is at its top level.');
+return;
+}
 const ok =
 id === 'listen' ? this.economy.buyListen()
 : id === 'hint' ? this.economy.buyNextHintLevel()
 : id === 'autoplay' ? this.economy.buyNextAutoplayLevel()
 : id === 'play' ? this.economy.buyNextPlayLevel()
 : id === 'speed' ? this.economy.buyNextSpeedLevel()
+: id === 'multiplier' ? this.economy.buyNextMultiplierLevel()
 : id === 'index' ? this.economy.buyIndex()
 : id === 'replay' ? this.economy.buyReplay()
 : id === 'saver' ? this.economy.buySaver(SAVER_PRICE_BARS)
@@ -7138,72 +7345,72 @@ display: show && !flat && !headCaptionPresent && caption ? 'flex' : 'none', text
 }
 const menuCaption = enabled && flat && !this.experienceActive && Boolean(caption);
 if ((!show && !menuCaption) || !flat) {
-if (this.flatCaptions && this.flatCaptions.style.display !== 'none') this.flatCaptions.style.display = 'none';
-this.flatCaptionsRect = null;
-return;
+  if (this.flatCaptions && this.flatCaptions.style.display !== 'none') this.flatCaptions.style.display = 'none';
+  this.flatCaptionsRect = null;
+  return;
 }
-if (!this.flatCaptions) {
-document.getElementById('wall-tones-flat-subtitles')?.remove();
-this.flatCaptions = document.createElement('div');
-this.flatCaptions.id = 'wall-tones-flat-subtitles';
-this.flatCaptions.setAttribute('aria-live', 'polite');
-Object.assign(this.flatCaptions.style, {
-position: 'fixed', zIndex: '30', color: '#fff', background: '#081019e8',
-padding: '10px 14px', borderRadius: '10px', font: '16px/1.4 sans-serif',
-textAlign: 'center', pointerEvents: 'none', boxSizing: 'border-box',
-transform: 'translateX(-50%)',
-});
-document.body.appendChild(this.flatCaptions);
-this.flatLayoutValues.length = 0;
-}
-if (this.flatCaptions.style.display !== 'block') this.flatCaptions.style.display = 'block';
-document.getElementById('wall-tones-startup-subtitle')?.remove();
-if (this.flatCaptionLayoutChanged()) {
-let minX = Infinity, maxX = -Infinity, bottom = 0;
-for (const pad of this.pads) {
-for (let side = -1; side <= 1; side += 2) {
-const v = this.captionProjection.set(side * pad.sizeM / 2, -pad.sizeM / 2, 0);
-pad.root.localToWorld(v); v.project(this.world.camera);
-const x = (v.x + 1) * window.innerWidth / 2;
-minX = Math.min(minX, x); maxX = Math.max(maxX, x);
-bottom = Math.max(bottom, (1 - v.y) * window.innerHeight / 2);
-}
-}
-const phone = this.isPhoneFlatViewport();
-if (this.pads.length === 0 || !this.experienceActive) { minX = window.innerWidth * 0.2; maxX = window.innerWidth * 0.8; bottom = window.innerHeight - 160; }
-const width = phone ? window.innerWidth - 24 : Math.min(window.innerWidth - 24, Math.max(300, maxX - minX));
-this.flatCaptions.style.fontSize = phone ? '13px' : '16px';
-this.flatCaptions.style.lineHeight = phone ? '1.25' : '1.4';
-this.flatCaptions.style.width = `${width}px`;
-this.flatCaptions.style.left = `${Math.max(width / 2 + 12, Math.min(window.innerWidth - width / 2 - 12, (minX + maxX) / 2))}px`;
-this.flatCaptions.style.top = `${bottom + 14}px`;
-this.flatCaptionsRectDirty = true;
-}
-// Backlog 12a applies here too (codex P2): during Your Turn the subtitle
-// sequence only reveals the owned hint prefix; no hint, no sequence. The
-// Listen-phase strip needs the Listen store item (owner rule 2026-11-11).
-const captionListening = this.statusText === 'Listen:';
-const captionReveal = this.economy.getHintRevealCount();
-const captionYourTurn = this.game.phase === 'input' && !captionListening;
-const seqVisible = this.experienceActive &&
-((captionListening && this.economy.ownsListen()) ||
-(this.game.phase === 'input' && captionReveal > 0));
-// Same owner ask as the panel status: no Listen/Hint title before purchase;
-// the blank line keeps the strip height unchanged. A missed hit blanks the
-// label: the mismatch shows as color squares instead of words (owner 2026-11-15).
-const captionWrong = this.wrongHitVisible() ? this.wrongHit : null;
-const info = captionWrong != null
-? '\u00a0'
-: !this.experienceActive
-? ''
-: this.game.phase === 'input'
-? (captionReveal > 0 ? 'Hint:' : '\u00a0')
-: this.statusText === 'Listen:' && !this.economy.ownsListen()
-? '\u00a0'
-: this.statusText;
-if (!accessibilityChanged && this.flatCaptions.childElementCount > 0) return;
-this.flatCaptions.replaceChildren();
-const line = document.createElement('div');
+  if (!this.flatCaptions) {
+    document.getElementById('wall-tones-flat-subtitles')?.remove();
+    this.flatCaptions = document.createElement('div');
+    this.flatCaptions.id = 'wall-tones-flat-subtitles';
+    this.flatCaptions.setAttribute('aria-live', 'polite');
+    Object.assign(this.flatCaptions.style, {
+      position: 'fixed', zIndex: '30', color: '#fff', background: '#081019e8',
+      padding: '10px 14px', borderRadius: '10px', font: '16px/1.4 sans-serif',
+      textAlign: 'center', pointerEvents: 'none', boxSizing: 'border-box',
+      transform: 'translateX(-50%)',
+    });
+    document.body.appendChild(this.flatCaptions);
+    this.flatLayoutValues.length = 0;
+  }
+  if (this.flatCaptions.style.display !== 'block') this.flatCaptions.style.display = 'block';
+  document.getElementById('wall-tones-startup-subtitle')?.remove();
+  if (this.flatCaptionLayoutChanged()) {
+    let minX = Infinity, maxX = -Infinity, bottom = 0;
+    for (const pad of this.pads) {
+      for (let side = -1; side <= 1; side += 2) {
+        const v = this.captionProjection.set(side * pad.sizeM / 2, -pad.sizeM / 2, 0);
+        pad.root.localToWorld(v); v.project(this.world.camera);
+        const x = (v.x + 1) * window.innerWidth / 2;
+        minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+        bottom = Math.max(bottom, (1 - v.y) * window.innerHeight / 2);
+      }
+    }
+    const phone = this.isPhoneFlatViewport();
+    if (this.pads.length === 0 || !this.experienceActive) { minX = window.innerWidth * 0.2; maxX = window.innerWidth * 0.8; bottom = window.innerHeight - 160; }
+    const width = phone ? window.innerWidth - 24 : Math.min(window.innerWidth - 24, Math.max(300, maxX - minX));
+    this.flatCaptions.style.fontSize = phone ? '13px' : '16px';
+    this.flatCaptions.style.lineHeight = phone ? '1.25' : '1.4';
+    this.flatCaptions.style.width = `${width}px`;
+    this.flatCaptions.style.left = `${Math.max(width / 2 + 12, Math.min(window.innerWidth - width / 2 - 12, (minX + maxX) / 2))}px`;
+    this.flatCaptions.style.top = `${bottom + 14}px`;
+    this.flatCaptionsRectDirty = true;
+  }
+  // Backlog 12a applies here too (codex P2): during Your Turn the subtitle
+  // sequence only reveals the owned hint prefix; no hint, no sequence. The
+  // Listen-phase strip needs the Listen store item (owner rule 2026-11-11).
+  const captionListening = this.statusText === 'Listen:';
+  const captionReveal = this.economy.getHintRevealCount();
+  const captionYourTurn = this.game.phase === 'input' && !captionListening;
+  const seqVisible = this.experienceActive &&
+    ((captionListening && this.economy.ownsListen()) ||
+     (this.game.phase === 'input' && captionReveal > 0));
+  // Same owner ask as the panel status: no Listen/Hint title before purchase;
+  // the blank line keeps the strip height unchanged. A missed hit blanks the
+  // label: the mismatch shows as color squares instead of words (owner 2026-11-15).
+  const captionWrong = this.wrongHitVisible() ? this.wrongHit : null;
+  const info = captionWrong != null
+  ? '\u00a0'
+    : !this.experienceActive
+  ? ''
+    : this.game.phase === 'input'
+  ? (captionReveal > 0 ? 'Hint:' : '\u00a0')
+    : this.statusText === 'Listen:' && !this.economy.ownsListen()
+  ? '\u00a0'
+    : this.statusText;
+  if (!accessibilityChanged && this.flatCaptions.childElementCount > 0) return;
+  this.flatCaptions.replaceChildren();
+  const line = document.createElement('div');
   Object.assign(line.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexWrap: 'wrap' });
   const label = document.createElement('span'); label.textContent = info; line.append(label);
   if (captionWrong) {
@@ -7250,32 +7457,34 @@ const line = document.createElement('div');
     appendGroup('Expected:', captionWrong.expected, 'expected');
     appendGroup('Hit:', captionWrong.hit, 'hit');
   }
-  const captionWindowLength = captionYourTurn ? Math.min(this.game.sequence.length, captionReveal + 5) : this.playbackShownCount;const captionStart = hintWindowStart(captionWindowLength, captionYourTurn ? this.game.inputStep : this.playbackShownCount - 1);
-    if (seqVisible) for (let i = captionStart; i < Math.min(this.game.sequence.length, captionStart + HINT_WINDOW_SIZE); i++) {
-          if (captionListening && i >= this.playbackShownCount) break;
-          const unknown = captionYourTurn && i >= captionReveal;
-          if (unknown && i - captionReveal >= 5) break; // cap the grey "?" tail at 5
-    const id = this.game.sequence[i]!;
-          const square = document.createElement('span');
-          Object.assign(square.style, { width: '16px', height: '16px', borderRadius: '2px', background: unknown ? '#8a8f98' : `#${WALL_TONE_PADS[id].color.toString(16).padStart(6, '0')}`, display: 'inline-block', flexShrink: '0' });
-          if (unknown) {
-                  square.textContent = '?';
-                  square.setAttribute('data-unknown', '1');
-                  square.setAttribute('aria-label', 'Unknown note');
-                  Object.assign(square.style, { color: '#fff', fontSize: '11px', lineHeight: '16px', textAlign: 'center' });
-          } else {
-                  square.setAttribute('aria-label', WALL_TONE_PADS[id].name);
-          }
-          line.append(square);
-          if (!unknown && colorNamesEnabled()) { const word = document.createElement('span'); word.textContent = WALL_TONE_PADS[id].name; line.append(word); }}
-    this.flatCaptions.append(line);
-    if (caption) { const text = document.createElement('div'); text.textContent = caption; text.style.marginTop = '5px'; this.flatCaptions.append(text); }
-    this.flatCaptionsRectDirty = true;
+  const captionWindowLength = captionYourTurn ? Math.min(this.game.sequence.length, captionReveal + 5) : this.playbackShownCount;
+  const captionStart = hintWindowStart(captionWindowLength, captionYourTurn ? this.game.inputStep : this.playbackShownCount - 1);
+  if (seqVisible) for (let i = captionStart; i < Math.min(this.game.sequence.length, captionStart + HINT_WINDOW_SIZE); i++) {
+    if (captionListening && i >= this.playbackShownCount) break;
+    const unknown = captionYourTurn && i >= captionReveal;
+    if (unknown && i - captionReveal >= 5) break; // cap the grey "?" tail at 5
+  const id = this.game.sequence[i]!;
+    const square = document.createElement('span');
+    Object.assign(square.style, { width: '16px', height: '16px', borderRadius: '2px', background: unknown ? '#8a8f98' : `#${WALL_TONE_PADS[id].color.toString(16).padStart(6, '0')}`, display: 'inline-block', flexShrink: '0' });
+    if (unknown) {
+      square.textContent = '?';
+      square.setAttribute('data-unknown', '1');
+      square.setAttribute('aria-label', 'Unknown note');
+      Object.assign(square.style, { color: '#fff', fontSize: '11px', lineHeight: '16px', textAlign: 'center' });
+    } else {
+      square.setAttribute('aria-label', WALL_TONE_PADS[id].name);
+    }
+    line.append(square);
+    if (!unknown && colorNamesEnabled()) { const word = document.createElement('span'); word.textContent = WALL_TONE_PADS[id].name; line.append(word); }
+  }
+  this.flatCaptions.append(line);
+  if (caption) { const text = document.createElement('div'); text.textContent = caption; text.style.marginTop = '5px'; this.flatCaptions.append(text); }
+  this.flatCaptionsRectDirty = true;
 }
 
 private wait(seconds: number): Promise<void> {
-    return new Promise((resolve) => {
-          window.setTimeout(resolve, seconds * 1000);
-    });
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, seconds * 1000);
+  });
 }
 }
