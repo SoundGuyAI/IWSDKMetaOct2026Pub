@@ -105,12 +105,12 @@ The merge-ready procedure is an enduring rule for every merge, not work in this 
 4. [ ] After Cypher gameplay, item 52 separate yes/no feasibility PR also explores thumbs-up/down, alongside nod/headshake and voice.
 5. [ ] Oded rereads the current draft; no voice generation, gameplay deployment or merge is approved by this revision.
 
-## Backlog #58 menu / XR / scan loss - in progress 2026-11-12
+## Backlog #58 menu / XR / scan loss - done 2026-11-12 (PR #78 merged)
 - [x] Keep live world on Back to menu (`returnToMenuInPlace`); do not `switchBackToHubMenu`/`destroyActiveWorld`.
 - [x] Strengthen choose-mode rescan capture/look-around recovery.
 - [x] Unit policy test `tests/unit/back-to-menu-world.test.mjs`.
 - [x] Full local `npm run test:e2e` green before PR push (51 passed; pointer first-press retry hardened).
-- [ ] Headset verification called out separately (not claimed by desktop suite).
+- [ ] Headset verification still separate (not claimed by desktop suite / merge).
 
 
 - [ ] MR armband (backlog 7): Concept A approved Nov 13. Separate feat/mr-armband PR in progress; left/right Accessibility, functional controls, owned Hint/Listen cues and streak readout. No merge or production promotion. Backlog 76 tracks the >20 Hint policy; in-game board surface confirmed. Headset acceptance pending.
@@ -129,3 +129,13 @@ Armband verification update (Nov 13): typecheck/build and 102 unit tests pass. Q
 - [x] Restore small-movement taps on release while ignoring duplicate clicks; keep repeated drags scrolling without selection.
 - [ ] Full local/CI checks and deployed preview verification.
 - [ ] Owner headset retest, including tile details and Buy after repeated up/up/down drags. No merge approval. PR95 unchanged.
+
+## Accessibility settings layout fix (Nov 17) - separate PR in progress
+- [x] Fix: MR armband hand/mode buttons were accidentally nested inside the head-gaze checkbox row (bad merge in 228fd6b), rendering on one colliding line on Quest. Restored to their own container row; gaze rows keep their own rows.
+- [x] Armband controls keep Quest-only visibility (setDisplay on the new row, same rule as the gaze rows) - desktop/phone dialog unchanged from current main.
+- [x] Regression test: armband buttons are standalone rows, not nested in the gaze row.
+- [ ] CI, Codex review, his preview test on Quest. No merge without his go-ahead.
+
+## Documentation reconciliation - November 17
+
+PR82's backlog58 status/caveat is preserved above. The authoritative game backlog and later follow-ups are in WALL_TONES_TODO.md; this historical implementation log does not override it. No headset verification is newly claimed.
