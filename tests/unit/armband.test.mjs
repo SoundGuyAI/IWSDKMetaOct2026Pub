@@ -61,3 +61,26 @@ test('hand setting defaults left, persists right, and survives unavailable stora
   assert.equal(notifications,2);
  } finally {delete globalThis.localStorage;delete globalThis.window;}
 });
+
+test('Nov 16 panel revision: Play/New Run/Skip Voice replace Modifiers/Hint/Autoplay',()=>{
+ const ui=readFileSync('public/ui/wall-tones-armband.uikitml','utf8');
+ for(const gone of ['armband-modifiers','armband-hint-button','armband-autoplay']) assert.ok(!ui.includes(gone),gone+' removed from panel');
+ for(const added of ['armband-play','armband-newrun','armband-skip-voice']) assert.ok(ui.includes(`id="${added}"`),added+' added to panel');
+ // Reserved slots hold the row space while the context buttons are hidden.
+ assert.match(ui,/\.slot \{ width: 155px; height: 56px; \}/);
+ assert.match(ui,/id="armband-newrun"[^>]*style="display: none"/);
+ assert.match(ui,/id="armband-skip-voice"[^>]*style="display: none"/);
+ const system=readFileSync('src/wall-tones/wall-tones-system.ts','utf8');
+ assert.match(system,/bind\('armband-play', \(\) => \{ if \(this\.armbandUsable\(\)\) void this\.onPlayControl\(\); \}\)/);
+ assert.match(system,/bind\('armband-newrun', \(\) => \{ if \(this\.armbandTrackable\(\) && this\.gameOverOpen\) this\.onGameOverNewRun\(\); \}\)/);
+ assert.match(system,/bind\('armband-skip-voice', \(\) => \{ if \(this\.armbandTrackable\(\)\) this\.onSkipVoice\(\); \}\)/);
+ for(const gone of ['armband-modifiers','armband-hint-button','armband-autoplay']) assert.ok(!system.includes(`bind('${gone}'`),gone+' unbound');
+ // Context-only visibility: New Run at Game Over, Skip Voice while narrating.
+ assert.match(source,/getElementById\('armband-newrun'\)\?\.setProperties\(\{ display: state\.gameOver \? 'flex' : 'none' \}/);
+ assert.match(source,/getElementById\('armband-skip-voice'\)\?\.setProperties\(\{ display: state\.narrationBusy \? 'flex' : 'none' \}/);
+ // Repeat and Play stay inert while Game Over is open.
+ assert.match(source,/getElementById\('armband-play'\)\?\.setProperties\(\{\s*disabled: state\.gameOver \|\| state\.phase !== 'input',?\s*\} as never\)/);
+ // The render key tracks the context state so the slots refresh on change.
+ assert.match(source,/state\.narrationBusy, state\.playLevel, cues\.join/);
+ assert.match(system,/narrationBusy: this\.speech\.isBusy\(\), playLevel: this\.economy\.getPlayLevel\(\)/);
+});

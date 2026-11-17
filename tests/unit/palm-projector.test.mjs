@@ -4,7 +4,7 @@ import ts from 'typescript';
 import {readFileSync} from 'node:fs';
 const src = readFileSync('src/wall-tones/palm-projector.ts','utf8');
 const js = ts.transpileModule(src,{compilerOptions:{module:ts.ModuleKind.ESNext}}).outputText;
-const {palmPanelPose, extendedFingerCount, PALM_PANEL_LIFT, PALM_SURFACE_LIFT} = await import('data:text/javascript;base64,'+Buffer.from(js).toString('base64'));
+const {palmPanelPose, extendedFingerCount, palmProjectorPromptDue, PALM_PANEL_LIFT, PALM_SURFACE_LIFT, fitBeamUnderPanel, BEAM_TOP_RADIUS, BEAM_TOP_MARGIN, BEAM_MAX_SHORTEN_RATIO, BEAM_MIN_RADIUS_SCALE} = await import('data:text/javascript;base64,'+Buffer.from(js).toString('base64'));
 // Left hand, palm up, fingers forward (+z), thumb side +x. Realistic metric proportions.
 const openLeftUp = {
   wrist:{x:0,y:0,z:0},
@@ -121,4 +121,64 @@ test('PalmJointsSmoother smooths every joint and resets',()=>{
   const fresh = s.filter(openLeftUp, dt);
   assert.ok(Math.abs(fresh.wrist.x - openLeftUp.wrist.x) < 1e-9,'reset passes input through');
   void PALM_OPEN_UP_MIN; void PALM_STILL_UP_MIN;
+});
+
+test('beam fit: head-on beam keeps full reach and full radius',()=>{
+  const fit = fitBeamUnderPanel(0.19, 1);
+  assert.ok(Math.abs(fit.length - (0.19 - BEAM_TOP_MARGIN)) < 1e-9, `length ${fit.length}`);
+  assert.equal(fit.radiusScale, 1);
+});
+
+test('beam fit: tilted beam no longer collapses to a stub (Nov 16 regression)',()=>{
+  // Old fit: len = full - (0.055*sin+0.006)/cos -> 2 cm floor at steep tilts.
+  for (const cos of [0.7, 0.5, 0.3, 0.15, 0.05]) {
+    const fit = fitBeamUnderPanel(0.19, cos);
+    assert.ok(fit.length >= 0.19 * (1 - BEAM_MAX_SHORTEN_RATIO) - 1e-9,
+      `cos=${cos} length ${fit.length} collapsed below the shortening cap`);
+    const oldLen = Math.max(0.02, 0.19 - (BEAM_TOP_RADIUS * Math.sqrt(1 - cos*cos) + BEAM_TOP_MARGIN) / cos);
+    if (oldLen < 0.19 * (1 - BEAM_MAX_SHORTEN_RATIO)) {
+      // Collapse zone: the old formula fell below the shortening cap.
+      assert.ok(fit.length > oldLen + 0.02, `cos=${cos} new ${fit.length} must beat old stub ${oldLen}`);
+    } else {
+      // Mild tilt: the length-only fit already sufficed; keep it, full radius.
+      assert.ok(Math.abs(fit.length - oldLen) < 1e-9, `cos=${cos} length ${fit.length} vs ${oldLen}`);
+      assert.equal(fit.radiusScale, 1, `cos=${cos} radius`);
+    }
+  }
+});
+
+test('beam fit: rim stays on the palm side of the panel plane',()=>{
+  // Rim clearance along the panel normal: (full-len)*cos - r*sin >= margin,
+  // except in the clamped corner where the radius floor wins and the panel
+  // face itself hides the rim (cos -> 0, beam running along the panel).
+  for (const cos of [1, 0.9, 0.7, 0.5, 0.35, 0.2]) {
+    const sin = Math.sqrt(1 - cos*cos);
+    const fit = fitBeamUnderPanel(0.19, cos);
+    const clearance = (0.19 - fit.length) * cos - fit.radiusScale * BEAM_TOP_RADIUS * sin;
+    assert.ok(clearance >= BEAM_TOP_MARGIN - 1e-9, `cos=${cos} clearance ${clearance}`);
+  }
+});
+
+test('beam fit: radius shrinks with tilt and respects its floor',()=>{
+  let prev = 2;
+  for (const cos of [0.9, 0.7, 0.5, 0.3, 0.15]) {
+    const fit = fitBeamUnderPanel(0.19, cos);
+    assert.ok(fit.radiusScale <= prev + 1e-9, `radiusScale not monotonic at cos=${cos}`);
+    assert.ok(fit.radiusScale >= BEAM_MIN_RADIUS_SCALE, `radiusScale floor at cos=${cos}`);
+    prev = fit.radiusScale;
+  }
+  const side = fitBeamUnderPanel(0.19, 0);
+  assert.equal(side.radiusScale, 1, 'beam running along the panel keeps full radius');
+  assert.ok(side.length > 0.17, 'side beam keeps its reach');
+});
+
+test('palm projector narrator prompt: only after pattern 3, in MR, projector mode (item 109)',()=>{
+  assert.equal(palmProjectorPromptDue(3,true,'projector'),true);
+  // Patterns 2 and 4 stay quiet; the prompt fires once after the third only.
+  assert.equal(palmProjectorPromptDue(2,true,'projector'),false);
+  assert.equal(palmProjectorPromptDue(4,true,'projector'),false);
+  // Flat desktop/phone: keep the one-shot for a later MR run.
+  assert.equal(palmProjectorPromptDue(3,false,'projector'),false);
+  // Wristband display mode: the open-palm instruction would be wrong there.
+  assert.equal(palmProjectorPromptDue(3,true,'band'),false);
 });
