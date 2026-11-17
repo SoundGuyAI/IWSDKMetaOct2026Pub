@@ -161,6 +161,8 @@ import {
   AUTOPLAY_UNLOCK_PLAY_LEVEL,
   PLAY_UNLOCK_HINT_LEVEL,
   PLAY_MAX_LEVEL,
+  MULTIPLIER_MAX_LEVEL,
+  multiplierFactorForLevel,
   INDEX_COST,
   LISTEN_COST,
   REPLAY_FREE_CAP,
@@ -279,6 +281,7 @@ sequenceBoxesShown: number;
 sequenceUnknownShown: number;
 roundCardText: string;
 roundCardVisibleText: string | null;
+roundCardBonusVisibleText: string;
 headCaptionVisibleText: string | null;
 /** Test-only: drives the exact head-caption setter path tickHeadCaption uses. */
 probeHeadCaptionText: (text: string) => void;
@@ -304,6 +307,7 @@ buyHint: () => void;
 buyListen: () => void;
 buyAutoplay: () => void;
 buyPlay: () => void;
+buyMultiplier: () => void;
 buyReplay: () => void;
 buySaver: () => void;
 buyTopSecret: () => void;
@@ -317,6 +321,9 @@ readonly achievementsButtonScreen: { x: number; y: number } | null;
 repeatPattern: () => void;
 /** Test-only: the control-row Play button path (greyed -> Store). */
 pressPlay: () => void;
+/** Test-only: the control-row Multiplier button path (greyed -> Store,
+ * owned -> on/off toggle). */
+pressMultiplierControl: () => void;
 /** Test-only: selects a store tile like a tap on its tile. */
 selectStoreTile: (id: string) => void;
 storePointerTargets: Record<string, { x: number; y: number }>;
@@ -337,6 +344,7 @@ hintUnlocked: boolean;
 autoplayLevel: number;
 autoplayUnlocked: boolean;
 playLevel: number;
+multiplierLevel: number;
 replaysFree: number;
 replaysPaid: number;
 replaysTotal: number;
@@ -348,6 +356,7 @@ grantBars: (amount: number) => void;
 grantSavers: (units: number) => void;
 /** Test-only: seed the Play level while its prices are unset. */
 grantPlayLevel: (level: number) => void;
+grantMultiplierLevel: (level: number) => void;
 /** Test-only: grant the Index pointer while its price is unset. */
 grantIndex: () => void;
 /** Test-only: press the control-row Autoplay button (toggle when owned). */
@@ -1341,7 +1350,7 @@ panel
 ?.addEventListener('click', () => this.openStoreAtTile('speed'));
 panel
 .getElementById('control-multiplier-button')
-?.addEventListener('click', () => this.openStoreAtTile('multiplier'));
+?.addEventListener('click', () => void this.onMultiplierControl());
 panel
 .getElementById('rescan-room-button')
 ?.addEventListener('click', () => void this.onRescanRoom());
@@ -2370,6 +2379,13 @@ return system.lastRoundCardText;
 },
 // Live read-back of the text actually set on the rendered panel element
 // (catches the uikitml empty-div compile trap, where setProperties no-ops).
+get roundCardBonusVisibleText() {
+const el = system.world
+.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('wall-tones-round-card-extra');
+const props = (el as { properties?: { value?: { text?: string; display?: string } } } | null)?.properties?.value;
+return props?.display === 'none' ? '' : props?.text ?? '';
+},
 get roundCardVisibleText() {
 const el = system.world
 .getSceneObject<UIKitMLAsset>('wall-tones-panel')
@@ -2500,6 +2516,10 @@ buyPlay: () => {
 system.forceSelectStoreTile('play');
 system.onBuySelected();
 },
+buyMultiplier: () => {
+system.forceSelectStoreTile('multiplier');
+system.onBuySelected();
+},
 buyIndex: () => {
 system.forceSelectStoreTile('index');
 system.onBuySelected();
@@ -2528,6 +2548,9 @@ void system.onRepeatPattern();
 pressPlay: () => {
 void system.onPlayControl();
 },
+pressMultiplierControl: () => {
+void system.onMultiplierControl();
+},
 get ownsTopSecret() {
 return system.economy.ownsTopSecret();
 },
@@ -2545,6 +2568,9 @@ return system.economy.autoplayUnlocked();
 },
 get playLevel() {
 return system.economy.getPlayLevel();
+},
+get multiplierLevel() {
+return system.economy.getMultiplierLevel();
 },
 get ownsIndex() {
 return system.economy.ownsIndex();
@@ -2618,6 +2644,9 @@ system.debugGrantSavers(units);
 },
 grantPlayLevel: (level: number) => {
 system.debugGrantPlayLevel(level);
+},
+grantMultiplierLevel: (level: number) => {
+system.economy.debugGrantMultiplierLevel(level);
 },
 grantIndex: () => {
 system.economy.debugGrantIndex();
@@ -5102,9 +5131,28 @@ text: !autoplayOwned ? 'Auto' : autoplayOn ? 'Auto: on' : 'Auto: off',
 panel
 .getElementById('control-speed-button')
 ?.setProperties({ opacity: greyed });
+// Multiplier (backlog 97): unowned stays the greyed Store shortcut;
+// owned is always white with the owned factor as the label (X2/X3/X4/X8),
+// the OFF signal is the slash plus ': off' (same settled pattern as
+// AutoPlay).
+const multiplierOwned = this.economy.getMultiplierLevel() > 0;
+const multiplierOn = this.economy.isMultiplierEnabled();
+const multiplierLabel = `X${multiplierFactorForLevel(this.economy.getMultiplierLevel())}`;
 panel
 .getElementById('control-multiplier-button')
-?.setProperties({ opacity: greyed });
+?.setProperties({ opacity: multiplierOwned ? 1 : greyed });
+panel
+.getElementById('control-multiplier-slash')
+?.setProperties({ display: multiplierOwned && !multiplierOn ? 'flex' : 'none' });
+panel
+.getElementById<UIKit.Text>('control-multiplier-label')
+?.setProperties({
+text: !multiplierOwned
+? 'X2'
+: multiplierOn
+? multiplierLabel
+: `${multiplierLabel}: off`,
+});
 }
 
 /** Control-row shortcut (owner rule 2026-11-12): a greyed button opens the
@@ -5158,6 +5206,31 @@ this.openStoreAtTile('play');
 return;
 }
 await this.onPlayTones();
+}
+
+/** Control-row Multiplier button (backlog 97): unowned -> Store shortcut;
+ * owned -> toggles the score multiplier on/off, mirroring the settled
+ * AutoPlay toggle pattern. Caption only: no voice notice was requested.
+ * The toggle is proposed UX - he never specified the owned-button action,
+ * confirm on review. */
+private async onMultiplierControl(): Promise<void> {
+if (this.economy.getMultiplierLevel() < 1) {
+this.openStoreAtTile('multiplier');
+return;
+}
+// Branch on the POST-toggle state (the AutoPlay 2026-11-16 lesson:
+// pre-toggle branching reversed the feedback).
+const wasEnabled = this.economy.isMultiplierEnabled();
+this.economy.setMultiplierDisabled(wasEnabled);
+const nowEnabled = !wasEnabled;
+this.statusText = nowEnabled
+? `Multiplier X${this.economy.getMultiplierLevel() + 1} engaged`
+: 'Multiplier disengaged';
+this.renderPanel();
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+if (panel != null) {
+this.syncControlRow(panel);
+}
 }
 
 /**
@@ -5562,10 +5635,13 @@ state: StoreTileState;
 price: string;
 /** True when the price line leads with the Bars icon (owner ask 2026-11-12). */
 icon: boolean;
+/** Optional glyph label override (Multiplier: the actual owned factor). */
+glyph?: string;
 }
 const hintLevel = eco.getHintLevel();
 const autoplayLevel = eco.getAutoplayLevel();
 const playLevel = eco.getPlayLevel();
+const multiplierLevel = eco.getMultiplierLevel();
 const replaysTotal = eco.getReplaysTotal();
 const savers = eco.getSavers();
 const bars = eco.getBars();
@@ -5652,10 +5728,26 @@ state: eco.ownsTopSecret() ? 'on' : 'off',
 price: eco.ownsTopSecret() ? 'Owned' : `${TOP_SECRET_COST}`,
 icon: !eco.ownsTopSecret(),
 },
+// Multiplier (backlog 97/70): live tile on this branch. Ungated, PROPOSED
+// prices X2 1,000 / X3 5,000 / X4 25,000 / X8 125,000 (x5 growth per his
+// "really high exponentially", 2026-11-12; X8 fourth tier added 2026-11-17)
+// - his to approve. The name AND the tile glyph show the actual owned
+// factor (his 2026-11-17 ask: the X4 multiplier gets the X4 logo).
+{
+id: 'multiplier',
+name: multiplierLevel > 0 ? `X${multiplierFactorForLevel(multiplierLevel)}` : 'x2',
+glyph: `X${multiplierFactorForLevel(multiplierLevel)}`,
+badge: multiplierLevel > 0 ? String(multiplierLevel) : '',
+state: multiplierLevel > 0 ? 'on' : 'off',
+price:
+multiplierLevel >= MULTIPLIER_MAX_LEVEL
+? 'Max'
+: `X${multiplierFactorForLevel(multiplierLevel + 1)} - ${eco.multiplierCost(multiplierLevel + 1)}`,
+icon: multiplierLevel < MULTIPLIER_MAX_LEVEL,
+},
 // Room for the modifiers the owner listed (2026-11-11): 5th/6th pads, the
-// story hack, double-score multiplier and the speed modifier. Their
-// phrasing is just "Locked" (owner ask 2026-11-12).
-{ id: 'multiplier', name: 'x2', badge: '?', state: 'off', price: 'Locked', icon: false },
+// story hack and the speed modifier. Their phrasing is just "Locked"
+// (owner ask 2026-11-12).
 { id: 'speed', name: 'Speed', badge: '?', state: 'off', price: 'Locked', icon: false },
 { id: 'pads56', name: 'Pad 5', badge: '?', state: 'off', price: 'Locked', icon: false },
 { id: 'narrator', name: 'Hack', badge: '?', state: 'off', price: 'Locked', icon: false },
@@ -5685,7 +5777,7 @@ flexShrink: 0,
 });
 tile.add(
 new UIKit.Image({
-src: storeTileSrc(t.id, selected && t.state === 'on' ? 'sel' : t.state, t.badge),
+src: storeTileSrc(t.id, selected && t.state === 'on' ? 'sel' : t.state, t.badge, t.glyph),
 width: TILE_S,
 height: TILE_S,
 }),
@@ -5962,10 +6054,22 @@ buyText = `Top Secret - ${TOP_SECRET_COST}`;
 cost = TOP_SECRET_COST;
 }
 break;
+case 'multiplier': {
+titleText = `Multiplier - X${multiplierFactorForLevel(multiplierLevel)}`;
+bodyText =
+(multiplierLevel === 0
+? 'Doubles every Bar you earn while it is on. '
+: `Every Bar you earn is multiplied by ${multiplierFactorForLevel(multiplierLevel)} while it is on. `) +
+'Higher levels go X3, X4 then X8 with steep costs. Proposed prices - his to approve.';
+if (multiplierLevel < MULTIPLIER_MAX_LEVEL) {
+cost = eco.multiplierCost(multiplierLevel + 1);
+buyText = `X${multiplierFactorForLevel(multiplierLevel + 1)} - ${cost}`;
+}
+break;
+}
 default:
 titleText =
-sel === 'multiplier' ? 'Multiplier x2'
-: sel === 'speed' ? 'Speed'
+sel === 'speed' ? 'Speed'
 : sel === 'pads56' ? 'Pad 5'
 : 'Hack';
 bodyText = sel === 'pads56' ? 'Locked. Pad 6 is bought after Pad 5.' : 'Locked.';
@@ -6003,7 +6107,7 @@ flexWrap: 'wrap',
 gap: 8,
 width: TREE_W,
 });
-for (const id of ['multiplier', 'speed', 'pads56', 'narrator']) {
+for (const id of ['speed', 'pads56', 'narrator']) {
 bottomRow.add(makeTile(byId.get(id)!));
 }
 // Rows in display order; the detail card overlays the viewport bottom
@@ -6064,7 +6168,9 @@ h: ROW_CONN_H,
 // No standalone 'Locked' caption between Autoplay and the modifiers row:
 // each future tile already says 'Locked' under its name, and a floating
 // label here reads as Autoplay's own state even after purchase.
-{ ids: ['multiplier', 'speed', 'pads56', 'narrator'], node: bottomRow, h: ROW_TILE_H },
+// Multiplier sits on its own row with level pips (same as Play).
+{ ids: ['multiplier'], node: chainRow(byId.get('multiplier')!, multiplierLevel, 0xf59a4a), h: ROW_CHAIN_H },
+{ ids: ['speed', 'pads56', 'narrator'], node: bottomRow, h: ROW_TILE_H },
 { ids: ['secret'], node: soloRow(byId.get('secret')!), h: ROW_TILE_H },
 ];
 // The detail card itself. popup-card geometry (uikitml px): 12 padding +
@@ -6493,25 +6599,41 @@ bonus: number,
 if (total <= 0) return;
 const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
 if (panel == null) return;
-// User ask (Nov 7): show the bonus part inline - one compact line.
+// User ask (Nov 7): show the bonus part inline - one compact line. His
+// 2026-11-17 asks: the active Multiplier factor shows inline ("the
+// multiplier info should also appear in the 'this round' line... like
+// X4"), next to the total it scaled, and the bonus moves to the smaller
+// unit element so long values stop wrapping over the line below (his
+// same-day layout-bug screenshot: "+44 (+24 bonus)" wrapped).
 const extra = completion + bonus;
+const factor = this.economy.getMultiplierFactor();
+const totalText = factor > 1 ? `+${total} X${factor}` : `+${total}`;
 panel
 .getElementById<UIKit.Text>('wall-tones-round-card-total')
-?.setProperties({ text: extra > 0 ? `+${total} (+${extra} bonus)` : `+${total}` });
+?.setProperties({ text: totalText });
+panel
+.getElementById<UIKit.Text>('wall-tones-round-card-extra')
+?.setProperties({
+text: extra > 0 ? `(+${extra} bonus)` : '',
+display: extra > 0 ? 'flex' : 'none',
+});
 const pads = total - completion - bonus;
 const parts = [`Pads +${pads}`];
 if (completion > 0) parts.push(`Completion +${completion}`);
 if (bonus > 0) parts.push(`Record bonus +${bonus}`);
 const breakdown = parts.join(' - ');
-this.lastRoundCardText = `+${total} (${breakdown})`;
+this.lastRoundCardText = `${totalText} (${breakdown})`;
 }
 
 private hideRoundBarsCard(): void {
 this.lastRoundCardText = '';
-this.world
-.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+panel
 ?.getElementById<UIKit.Text>('wall-tones-round-card-total')
 ?.setProperties({ text: '+0' });
+panel
+?.getElementById<UIKit.Text>('wall-tones-round-card-extra')
+?.setProperties({ text: '', display: 'none' });
 }
 
 /** Test-only wallet funding for the e2e debug bridge. */
@@ -6698,11 +6820,16 @@ if (id === 'play' && this.economy.getPlayLevel() >= PLAY_MAX_LEVEL) {
 deny('Play is at its top level.');
 return;
 }
+if (id === 'multiplier' && this.economy.getMultiplierLevel() >= MULTIPLIER_MAX_LEVEL) {
+deny('Multiplier is at its top level.');
+return;
+}
 const ok =
 id === 'listen' ? this.economy.buyListen()
 : id === 'hint' ? this.economy.buyNextHintLevel()
 : id === 'autoplay' ? this.economy.buyNextAutoplayLevel()
 : id === 'play' ? this.economy.buyNextPlayLevel()
+: id === 'multiplier' ? this.economy.buyNextMultiplierLevel()
 : id === 'index' ? this.economy.buyIndex()
 : id === 'replay' ? this.economy.buyReplay()
 : id === 'saver' ? this.economy.buySaver(SAVER_PRICE_BARS)
@@ -7104,146 +7231,146 @@ display: show && !flat && !headCaptionPresent && caption ? 'flex' : 'none', text
 }
 const menuCaption = enabled && flat && !this.experienceActive && Boolean(caption);
 if ((!show && !menuCaption) || !flat) {
-if (this.flatCaptions && this.flatCaptions.style.display !== 'none') this.flatCaptions.style.display = 'none';
-this.flatCaptionsRect = null;
-return;
+  if (this.flatCaptions && this.flatCaptions.style.display !== 'none') this.flatCaptions.style.display = 'none';
+  this.flatCaptionsRect = null;
+  return;
 }
-if (!this.flatCaptions) {
-document.getElementById('wall-tones-flat-subtitles')?.remove();
-this.flatCaptions = document.createElement('div');
-this.flatCaptions.id = 'wall-tones-flat-subtitles';
-this.flatCaptions.setAttribute('aria-live', 'polite');
-Object.assign(this.flatCaptions.style, {
-position: 'fixed', zIndex: '30', color: '#fff', background: '#081019e8',
-padding: '10px 14px', borderRadius: '10px', font: '16px/1.4 sans-serif',
-textAlign: 'center', pointerEvents: 'none', boxSizing: 'border-box',
-transform: 'translateX(-50%)',
-});
-document.body.appendChild(this.flatCaptions);
-this.flatLayoutValues.length = 0;
-}
-if (this.flatCaptions.style.display !== 'block') this.flatCaptions.style.display = 'block';
-document.getElementById('wall-tones-startup-subtitle')?.remove();
-if (this.flatCaptionLayoutChanged()) {
-let minX = Infinity, maxX = -Infinity, bottom = 0;
-for (const pad of this.pads) {
-for (let side = -1; side <= 1; side += 2) {
-const v = this.captionProjection.set(side * pad.sizeM / 2, -pad.sizeM / 2, 0);
-pad.root.localToWorld(v); v.project(this.world.camera);
-const x = (v.x + 1) * window.innerWidth / 2;
-minX = Math.min(minX, x); maxX = Math.max(maxX, x);
-bottom = Math.max(bottom, (1 - v.y) * window.innerHeight / 2);
-}
-}
-const phone = this.isPhoneFlatViewport();
-if (this.pads.length === 0 || !this.experienceActive) { minX = window.innerWidth * 0.2; maxX = window.innerWidth * 0.8; bottom = window.innerHeight - 160; }
-const width = phone ? window.innerWidth - 24 : Math.min(window.innerWidth - 24, Math.max(300, maxX - minX));
-this.flatCaptions.style.fontSize = phone ? '13px' : '16px';
-this.flatCaptions.style.lineHeight = phone ? '1.25' : '1.4';
-this.flatCaptions.style.width = `${width}px`;
-this.flatCaptions.style.left = `${Math.max(width / 2 + 12, Math.min(window.innerWidth - width / 2 - 12, (minX + maxX) / 2))}px`;
-this.flatCaptions.style.top = `${bottom + 14}px`;
-this.flatCaptionsRectDirty = true;
-}
-// Backlog 12a applies here too (codex P2): during Your Turn the subtitle
-// sequence only reveals the owned hint prefix; no hint, no sequence. The
-// Listen-phase strip needs the Listen store item (owner rule 2026-11-11).
-const captionListening = this.statusText === 'Listen:';
-const captionReveal = this.economy.getHintRevealCount();
-const captionYourTurn = this.game.phase === 'input' && !captionListening;
-const seqVisible = this.experienceActive &&
-((captionListening && this.economy.ownsListen()) ||
-(this.game.phase === 'input' && captionReveal > 0));
-// Same owner ask as the panel status: no Listen/Hint title before purchase;
-// the blank line keeps the strip height unchanged. A missed hit blanks the
-// label: the mismatch shows as color squares instead of words (owner 2026-11-15).
-const captionWrong = this.wrongHitVisible() ? this.wrongHit : null;
-const info = captionWrong != null
-? '\u00a0'
-: !this.experienceActive
-? ''
-: this.game.phase === 'input'
-? (captionReveal > 0 ? 'Hint:' : '\u00a0')
-: this.statusText === 'Listen:' && !this.economy.ownsListen()
-? '\u00a0'
-: this.statusText;
-if (!accessibilityChanged && this.flatCaptions.childElementCount > 0) return;
-this.flatCaptions.replaceChildren();
-const line = document.createElement('div');
-Object.assign(line.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexWrap: 'wrap' });
-const label = document.createElement('span'); label.textContent = info; line.append(label);
-if (captionWrong) {
-// Owner 2026-11-15 19:01: two stacked lines that do not grow the panel - the
-// right pattern (Expected) above what was played (Hit), each up to
-// WRONG_HIT_ROW_NOTES notes with the final one differing (e.g. RRRBG vs
-// RRRBY). The pattern (history) row stays hidden after a failure.
-const namesOn = colorNamesEnabled();
-const leadIn = captionWrong.preceding.slice(-(WRONG_HIT_ROW_NOTES - 1));
-// Owner 2026-11-15 23:23: a leading "..." on each row when the captured
-// chain has more notes than the row shows, marking it as a tail.
-const tailHidden = captionWrong.preceding.length > WRONG_HIT_ROW_NOTES - 1;
-const appendSquares = (rowEl: HTMLElement, ids: number[]) => {
-for (const id of ids) {
-const square = document.createElement('span');
-Object.assign(square.style, { width: '16px', height: '16px', borderRadius: '2px', background: `#${WALL_TONE_PADS[id].color.toString(16).padStart(6, '0')}`, display: 'inline-block', flexShrink: '0' });
-square.setAttribute('aria-label', WALL_TONE_PADS[id].name);
-square.setAttribute('data-wronghit', '1');
-rowEl.append(square);
-if (namesOn) {
-const word = document.createElement('span');
-word.textContent = WALL_TONE_PADS[id].name;
-rowEl.append(word);
-}
-}
-};
-const appendGroup = (labelText: string, finalId: number, rowName: string) => {
-const group = document.createElement('div');
-Object.assign(group.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexBasis: '100%' });
-group.setAttribute('data-wronghit-row', rowName);
-const groupLabel = document.createElement('span');
-Object.assign(groupLabel.style, { display: 'inline-block', width: '72px', textAlign: 'left' });
-groupLabel.textContent = labelText;
-group.append(groupLabel);
-if (tailHidden) {
-const dots = document.createElement('span');
-dots.textContent = '...';
-dots.setAttribute('data-wronghit-tail', '1');
-group.append(dots);
-}
-appendSquares(group, [...leadIn, finalId]);
-line.append(group);
-};
-appendGroup('Expected:', captionWrong.expected, 'expected');
-appendGroup('Hit:', captionWrong.hit, 'hit');
-}
-const captionWindowLength = captionYourTurn ? Math.min(this.game.sequence.length, captionReveal + 5) : this.playbackShownCount;
-const captionStart = hintWindowStart(captionWindowLength, captionYourTurn ? this.game.inputStep : this.playbackShownCount - 1);
-if (seqVisible) for (let i = captionStart; i < Math.min(this.game.sequence.length, captionStart + HINT_WINDOW_SIZE); i++) {
-if (captionListening && i >= this.playbackShownCount) break;
-const unknown = captionYourTurn && i >= captionReveal;
-if (unknown && i - captionReveal >= 5) break; // cap the grey "?" tail at 5
-const id = this.game.sequence[i]!;
-const square = document.createElement('span');
-Object.assign(square.style, { width: '16px', height: '16px', borderRadius: '2px', background: unknown ? '#8a8f98' : `#${WALL_TONE_PADS[id].color.toString(16).padStart(6, '0')}`, display: 'inline-block', flexShrink: '0' });
-if (unknown) {
-square.textContent = '?';
-square.setAttribute('data-unknown', '1');
-square.setAttribute('aria-label', 'Unknown note');
-Object.assign(square.style, { color: '#fff', fontSize: '11px', lineHeight: '16px', textAlign: 'center' });
-} else {
-square.setAttribute('aria-label', WALL_TONE_PADS[id].name);
-}
-line.append(square);
-if (!unknown && colorNamesEnabled()) { const word = document.createElement('span'); word.textContent = WALL_TONE_PADS[id].name; line.append(word); }
-}
-this.flatCaptions.append(line);
-if (caption) { const text = document.createElement('div'); text.textContent = caption; text.style.marginTop = '5px'; this.flatCaptions.append(text); }
-this.flatCaptionsRectDirty = true;
+  if (!this.flatCaptions) {
+    document.getElementById('wall-tones-flat-subtitles')?.remove();
+    this.flatCaptions = document.createElement('div');
+    this.flatCaptions.id = 'wall-tones-flat-subtitles';
+    this.flatCaptions.setAttribute('aria-live', 'polite');
+    Object.assign(this.flatCaptions.style, {
+      position: 'fixed', zIndex: '30', color: '#fff', background: '#081019e8',
+      padding: '10px 14px', borderRadius: '10px', font: '16px/1.4 sans-serif',
+      textAlign: 'center', pointerEvents: 'none', boxSizing: 'border-box',
+      transform: 'translateX(-50%)',
+    });
+    document.body.appendChild(this.flatCaptions);
+    this.flatLayoutValues.length = 0;
+  }
+  if (this.flatCaptions.style.display !== 'block') this.flatCaptions.style.display = 'block';
+  document.getElementById('wall-tones-startup-subtitle')?.remove();
+  if (this.flatCaptionLayoutChanged()) {
+    let minX = Infinity, maxX = -Infinity, bottom = 0;
+    for (const pad of this.pads) {
+      for (let side = -1; side <= 1; side += 2) {
+        const v = this.captionProjection.set(side * pad.sizeM / 2, -pad.sizeM / 2, 0);
+        pad.root.localToWorld(v); v.project(this.world.camera);
+        const x = (v.x + 1) * window.innerWidth / 2;
+        minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+        bottom = Math.max(bottom, (1 - v.y) * window.innerHeight / 2);
+      }
+    }
+    const phone = this.isPhoneFlatViewport();
+    if (this.pads.length === 0 || !this.experienceActive) { minX = window.innerWidth * 0.2; maxX = window.innerWidth * 0.8; bottom = window.innerHeight - 160; }
+    const width = phone ? window.innerWidth - 24 : Math.min(window.innerWidth - 24, Math.max(300, maxX - minX));
+    this.flatCaptions.style.fontSize = phone ? '13px' : '16px';
+    this.flatCaptions.style.lineHeight = phone ? '1.25' : '1.4';
+    this.flatCaptions.style.width = `${width}px`;
+    this.flatCaptions.style.left = `${Math.max(width / 2 + 12, Math.min(window.innerWidth - width / 2 - 12, (minX + maxX) / 2))}px`;
+    this.flatCaptions.style.top = `${bottom + 14}px`;
+    this.flatCaptionsRectDirty = true;
+  }
+  // Backlog 12a applies here too (codex P2): during Your Turn the subtitle
+  // sequence only reveals the owned hint prefix; no hint, no sequence. The
+  // Listen-phase strip needs the Listen store item (owner rule 2026-11-11).
+  const captionListening = this.statusText === 'Listen:';
+  const captionReveal = this.economy.getHintRevealCount();
+  const captionYourTurn = this.game.phase === 'input' && !captionListening;
+  const seqVisible = this.experienceActive &&
+    ((captionListening && this.economy.ownsListen()) ||
+     (this.game.phase === 'input' && captionReveal > 0));
+  // Same owner ask as the panel status: no Listen/Hint title before purchase;
+  // the blank line keeps the strip height unchanged. A missed hit blanks the
+  // label: the mismatch shows as color squares instead of words (owner 2026-11-15).
+  const captionWrong = this.wrongHitVisible() ? this.wrongHit : null;
+  const info = captionWrong != null
+  ? '\u00a0'
+    : !this.experienceActive
+  ? ''
+    : this.game.phase === 'input'
+  ? (captionReveal > 0 ? 'Hint:' : '\u00a0')
+    : this.statusText === 'Listen:' && !this.economy.ownsListen()
+  ? '\u00a0'
+    : this.statusText;
+  if (!accessibilityChanged && this.flatCaptions.childElementCount > 0) return;
+  this.flatCaptions.replaceChildren();
+  const line = document.createElement('div');
+  Object.assign(line.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexWrap: 'wrap' });
+  const label = document.createElement('span'); label.textContent = info; line.append(label);
+  if (captionWrong) {
+    // Owner 2026-11-15 19:01: two stacked lines that do not grow the panel - the
+  // right pattern (Expected) above what was played (Hit), each up to
+  // WRONG_HIT_ROW_NOTES notes with the final one differing (e.g. RRRBG vs
+  // RRRBY). The pattern (history) row stays hidden after a failure.
+  const namesOn = colorNamesEnabled();
+    const leadIn = captionWrong.preceding.slice(-(WRONG_HIT_ROW_NOTES - 1));
+    // Owner 2026-11-15 23:23: a leading "..." on each row when the captured
+  // chain has more notes than the row shows, marking it as a tail.
+  const tailHidden = captionWrong.preceding.length > WRONG_HIT_ROW_NOTES - 1;
+    const appendSquares = (rowEl: HTMLElement, ids: number[]) => {
+      for (const id of ids) {
+        const square = document.createElement('span');
+        Object.assign(square.style, { width: '16px', height: '16px', borderRadius: '2px', background: `#${WALL_TONE_PADS[id].color.toString(16).padStart(6, '0')}`, display: 'inline-block', flexShrink: '0' });
+        square.setAttribute('aria-label', WALL_TONE_PADS[id].name);
+        square.setAttribute('data-wronghit', '1');
+        rowEl.append(square);
+        if (namesOn) {
+          const word = document.createElement('span');
+          word.textContent = WALL_TONE_PADS[id].name;
+          rowEl.append(word);
+        }
+      }
+    };
+    const appendGroup = (labelText: string, finalId: number, rowName: string) => {
+      const group = document.createElement('div');
+      Object.assign(group.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexBasis: '100%' });
+      group.setAttribute('data-wronghit-row', rowName);
+      const groupLabel = document.createElement('span');
+      Object.assign(groupLabel.style, { display: 'inline-block', width: '72px', textAlign: 'left' });
+      groupLabel.textContent = labelText;
+      group.append(groupLabel);
+      if (tailHidden) {
+        const dots = document.createElement('span');
+        dots.textContent = '...';
+        dots.setAttribute('data-wronghit-tail', '1');
+        group.append(dots);
+      }
+      appendSquares(group, [...leadIn, finalId]);
+      line.append(group);
+    };
+    appendGroup('Expected:', captionWrong.expected, 'expected');
+    appendGroup('Hit:', captionWrong.hit, 'hit');
+  }
+  const captionWindowLength = captionYourTurn ? Math.min(this.game.sequence.length, captionReveal + 5) : this.playbackShownCount;
+  const captionStart = hintWindowStart(captionWindowLength, captionYourTurn ? this.game.inputStep : this.playbackShownCount - 1);
+  if (seqVisible) for (let i = captionStart; i < Math.min(this.game.sequence.length, captionStart + HINT_WINDOW_SIZE); i++) {
+    if (captionListening && i >= this.playbackShownCount) break;
+    const unknown = captionYourTurn && i >= captionReveal;
+    if (unknown && i - captionReveal >= 5) break; // cap the grey "?" tail at 5
+  const id = this.game.sequence[i]!;
+    const square = document.createElement('span');
+    Object.assign(square.style, { width: '16px', height: '16px', borderRadius: '2px', background: unknown ? '#8a8f98' : `#${WALL_TONE_PADS[id].color.toString(16).padStart(6, '0')}`, display: 'inline-block', flexShrink: '0' });
+    if (unknown) {
+      square.textContent = '?';
+      square.setAttribute('data-unknown', '1');
+      square.setAttribute('aria-label', 'Unknown note');
+      Object.assign(square.style, { color: '#fff', fontSize: '11px', lineHeight: '16px', textAlign: 'center' });
+    } else {
+      square.setAttribute('aria-label', WALL_TONE_PADS[id].name);
+    }
+    line.append(square);
+    if (!unknown && colorNamesEnabled()) { const word = document.createElement('span'); word.textContent = WALL_TONE_PADS[id].name; line.append(word); }
+  }
+  this.flatCaptions.append(line);
+  if (caption) { const text = document.createElement('div'); text.textContent = caption; text.style.marginTop = '5px'; this.flatCaptions.append(text); }
+  this.flatCaptionsRectDirty = true;
 }
 
 private wait(seconds: number): Promise<void> {
-return new Promise((resolve) => {
-window.setTimeout(resolve, seconds * 1000);
-});
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, seconds * 1000);
+  });
 }
-  }
+}
