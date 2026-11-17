@@ -1,6 +1,7 @@
 import { hintWindowStart, HINT_WINDOW_SIZE } from './hint-window.js';
 import { armbandHand, armbandDisplayMode, ArmbandDisplay, ARMBAND_SCALE } from './armband.js';
 import { BAND_JOINT_ROTATION, BEAM_BOTTOM_RADIUS, BEAM_TOP_RADIUS, BEAM_CLIP_SOFT, PALM_PANEL_HEAD_AWAY, PALM_PANEL_LIFT, PalmJointsSmoother, palmOpenState, palmPanelPose, type PalmJoints, type PalmVec } from './palm-projector.js';
+import { DIRECT_PRESS_PUSH_MAX_M, DIRECT_PRESS_REFIRE_MS, directPressNext, directPressSample, type DirectPressHandState } from './armband-direct-press.js';
 import { BackgroundProgress } from './cypher-background.js';
 import { getVoiceGender } from './speech.js';
 import { CypherProgress, type CypherWindow } from './cypher-progress.js';
@@ -662,9 +663,11 @@ if (!this.armband) {
   const bind = (id: string, action: () => void) => {
     const button = panel.getElementById(id);
     if (!button) return;
+    // Direct fingertip presses (updateArmbandDirectPress) fire the same action;
+    // suppress the UIKit click the same poke may also deliver so one press
+    // never runs the action twice (Nov 17 Quest feedback).
     button.name = id;
-    button.addEventListener('click', action);
-    this.cleanupFuncs.push(() => button.removeEventListener('click', action));
+    const direct = { id, action, hands: { left: { hover: false, pressed: false }, right: { hover: false, pressed: false } } as Record<'left' | 'right', DirectPressHandState>, suppressClickUntil: 0, lastFireAt: 0, pushPx: 0 }; this.armbandDirectButtons.push(direct); const guarded = () => { if (performance.now() < direct.suppressClickUntil) return; action(); }; button.addEventListener('click', guarded); this.cleanupFuncs.push(() => button.removeEventListener('click', guarded));
   };
   bind('armband-repeat', () => {
     if (this.armbandUsable() && this.game.phase === 'input' && this.economy.getReplaysTotal() > 0) void this.onRepeatPattern();
@@ -845,6 +848,7 @@ if (floating) {
   this.armbandSmoothQuat.toArray(orientation);
   scale[0] = scale[1] = scale[2] = ARMBAND_SCALE * (0.35 + 0.65 * e);
   this.updateArmbandBeam(floating, e, delta);
+  this.updateArmbandDirectPress(panel);
 } else {
   this.armband.position.toArray(position);
   this.armband.orientation.toArray(orientation);
@@ -909,6 +913,13 @@ private readonly armbandVeilViewDir = new Vector3();
 private readonly armbandHeadQuatInv = new Quaternion();
 private readonly armbandVeilSpin = new Quaternion();
 private armbandLastPose: import('./palm-projector.js').PalmPanelPose | undefined;
+  private readonly armbandDirectButtons: Array<{ id: string; action: () => void; hands: Record<'left' | 'right', DirectPressHandState>; suppressClickUntil: number; lastFireAt: number; pushPx: number }> = [];
+  private readonly armbandPressPos = new Vector3();
+  private readonly armbandPressQuat = new Quaternion();
+  private readonly armbandPressScale = new Vector3();
+  private readonly armbandPressRight = new Vector3();
+  private readonly armbandPressUp = new Vector3();
+  private readonly armbandPressOut = new Vector3();
 private readonly armbandPanelX = new Vector3();
 private readonly armbandPanelY = new Vector3();
 private readonly armbandPanelZ = new Vector3();
@@ -1077,6 +1088,68 @@ private updateArmbandBeamVeil(len: number, e: number): void {
   this.armbandBeamVeilMat!.uniforms.uStrength!.value = strength;
   veil.visible = e > 0.05 && strength > 0.01;
 }
+  /** Index fingertip world position for one hand; a seam the XR tests can stub. */
+  private readIndexTipWorld(hand: 'left' | 'right', out: Vector3): void {
+    this.player.indexTipSpaces[hand].getWorldPosition(out);
+  }
+  /** Direct fingertip presses on the floating projector buttons (Nov 17 Quest
+  * feedback: UIKit poke clicks were unreliable on the small moving panel; the
+  * pads' geometric fingertip hit test is the proven path on hardware). Fires
+  * the same guarded actions as the click bindings, suppresses the duplicate
+  * UIKit click a poke can also deliver, and pushes the pressed button into
+  * the panel for a physical, 3D-press feel. */
+  private updateArmbandDirectPress(panel: UIKitMLAsset): void {
+    if (this.armbandDirectButtons.length === 0) return;
+    const now = performance.now();
+    for (const entry of this.armbandDirectButtons) {
+      const el = panel.getElementById(entry.id) as unknown as Mesh | null;
+      if (!el) continue;
+      const setProps = (el as unknown as { setProperties?: (p: object) => void }).setProperties?.bind(el);
+      const size = (el as unknown as { size?: { value?: [number, number] } }).size?.value;
+      const display = (el as unknown as { properties?: { peek?: () => { display?: string } } }).properties?.peek?.().display;
+      if (!el.visible || display === 'none' || !size || size[0] <= 0 || size[1] <= 0) {
+        if (entry.pushPx !== 0) { entry.pushPx = 0; setProps?.({ transformTranslateZ: 0 } as never); }
+        for (const hand of XR_HANDS) entry.hands[hand] = { hover: false, pressed: false };
+        continue;
+      }
+      el.updateWorldMatrix(true, false);
+      el.getWorldPosition(this.armbandPressPos);
+      el.getWorldQuaternion(this.armbandPressQuat);
+      el.getWorldScale(this.armbandPressScale);
+      if (this.armbandPressScale.x < 1e-9) continue;
+      this.armbandPressRight.set(1, 0, 0).applyQuaternion(this.armbandPressQuat);
+      this.armbandPressUp.set(0, 1, 0).applyQuaternion(this.armbandPressQuat);
+      this.armbandPressOut.set(0, 0, 1).applyQuaternion(this.armbandPressQuat);
+      const frame = {
+        center: { x: this.armbandPressPos.x, y: this.armbandPressPos.y, z: this.armbandPressPos.z },
+        right: { x: this.armbandPressRight.x, y: this.armbandPressRight.y, z: this.armbandPressRight.z },
+        up: { x: this.armbandPressUp.x, y: this.armbandPressUp.y, z: this.armbandPressUp.z },
+        out: { x: this.armbandPressOut.x, y: this.armbandPressOut.y, z: this.armbandPressOut.z },
+        halfWidth: this.armbandPressScale.x * 0.5,
+        halfHeight: this.armbandPressScale.y * 0.5,
+      };
+      let deepest = 0;
+      for (const hand of XR_HANDS) {
+        const adapter = this.input.xr.visualAdapters[hand].peek();
+        if (adapter == null || !adapter.connected) { entry.hands[hand] = { hover: false, pressed: false }; continue; }
+        this.readIndexTipWorld(hand, this.tipScratch);
+        const sample = directPressSample({ x: this.tipScratch.x, y: this.tipScratch.y, z: this.tipScratch.z }, frame);
+        const next = directPressNext(entry.hands[hand], sample);
+        entry.hands[hand] = next.state;
+        if (next.fire && now - entry.lastFireAt >= DIRECT_PRESS_REFIRE_MS) {
+          entry.lastFireAt = now;
+          entry.suppressClickUntil = now + 800;
+          entry.action();
+        }
+        if (next.state.pressed) deepest = Math.max(deepest, sample.depth);
+      }
+      const pushPx = Math.min(deepest, DIRECT_PRESS_PUSH_MAX_M) * (size[0] / this.armbandPressScale.x);
+      if (Math.abs(pushPx - entry.pushPx) > 0.5) {
+        entry.pushPx = pushPx;
+        setProps?.({ transformTranslateZ: -pushPx } as never);
+      }
+    }
+  }
 
 /** World-space palm joints for projector mode; null when any joint pose is missing. */
 private readPalmJoints(hand: XRHand, frame: XRFrame, reference: XRReferenceSpace): PalmJoints | null {
