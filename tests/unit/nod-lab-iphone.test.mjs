@@ -165,3 +165,72 @@ test('tilt tracker: nod registers with the phone held pointing up after moving f
   assert.equal(events.length, 2, 'nod with the phone pointing up');
   assert.equal(events[1]?.answer, 'yes');
 });
+
+// --- Nov 17 iPhone report: upright "no" answered "yes" ---------------------
+
+// Minimal Z-X-Y rotation helpers: build the device orientation iOS would
+// report (alpha, beta, gamma) for a physical gesture at a given pose.
+const mm = (A, B) =>
+  A.map((r, i) => B[0].map((_, j) => r.reduce((s, _, k) => s + A[i][k] * B[k][j], 0)));
+const Rz = (a) => [[Math.cos(a), -Math.sin(a), 0], [Math.sin(a), Math.cos(a), 0], [0, 0, 1]];
+const Rx = (b) => [[1, 0, 0], [0, Math.cos(b), -Math.sin(b)], [0, Math.sin(b), Math.cos(b)]];
+const Ry = (g) => [[Math.cos(g), 0, Math.sin(g)], [0, 1, 0], [-Math.sin(g), 0, Math.cos(g)]];
+const toEuler = (R) => ({
+  beta: Math.asin(Math.max(-1, Math.min(1, R[2][1]))) / D,
+  gamma: Math.atan2(-R[2][0], R[2][2]) / D,
+});
+// Phone pointing up: top vertical, beta 85 (inside the gimbal zone).
+const UPRIGHT = mm(Rz(0), mm(Rx(85 * D), Ry(0)));
+// Top slightly past vertical toward the viewer: the natural pointing-up
+// hold while reading the screen.
+const UPRIGHT_PAST = mm(Rz(0), mm(Rx(95 * D), Ry(0)));
+
+function runGesture(basePose, gestureRotation, anchors, settleEvents = 240) {
+  const tracker = new TiltBaselineTracker();
+  const detector = new HeadNodShakeDetector(FLAT_HEAD_GESTURE_CONFIG);
+  detector.setEnabled(true);
+  const events = [];
+  let now = 0;
+  const feed = (deg) => {
+    const { beta, gamma } = toEuler(mm(basePose, gestureRotation(deg * D)));
+    const sample = tracker.feed(beta, gamma);
+    now += 1 / 60;
+    const event = detector.feed(sample.pitchDeg * D, sample.yawDeg * D, now);
+    if (event) events.push(event);
+  };
+  for (let i = 0; i < settleEvents; i += 1) feed(0);
+  for (const deg of anchors) feed(deg);
+  return events;
+}
+
+test('upright left-right top tilt answers no, not yes (Nov 17 report)', () => {
+  // At near-vertical, raw beta measures the top's total tilt from vertical
+  // regardless of direction, so a sideways tilt produced a pitch excursion
+  // and answered "yes" (yaw was frozen in the gimbal zone). The zone now
+  // reads axis-separated leans from the world-up vector. 85 deg covers a
+  // top-up hold short of vertical, 95 slightly past it (the owner's pose).
+  const tilt = [0, 5, 10, 15, 20, 15, 10, 5, 0, -5, -10, -15, -20, -15, -10, -5, 0];
+  for (const pose of [UPRIGHT, UPRIGHT_PAST]) {
+    const events = runGesture(pose, (t) => Rz(t), tilt);
+    assert.ok(events.length >= 1, 'shake at upright reported');
+    assert.equal(events[0]?.answer, 'no');
+  }
+});
+
+test('upright nod still answers yes through the lean measures', () => {
+  const nod = [0, 4, 8, 12, 8, 4, 0];
+  for (const pose of [UPRIGHT, UPRIGHT_PAST]) {
+    const events = runGesture(pose, (t) => Rx(t), nod);
+    assert.equal(events.length, 1, `nod detected, pose ${pose}`);
+    assert.equal(events[0]?.answer, 'yes');
+  }
+});
+
+test('upright swivel about the vertical axis reports neither answer (documented limit)', () => {
+  // A pure device-y swivel at near-vertical leaves the gravity up-vector
+  // unchanged, so it must NOT misread as a nod; catching it would need the
+  // compass or gyro, which the tilt path deliberately does not use.
+  const swivel = [0, 8, 16, 24, 16, 8, 0, -8, -16, -24, -16, -8, 0];
+  const events = runGesture(UPRIGHT, (t) => Ry(t), swivel);
+  assert.equal(events.length, 0);
+});
