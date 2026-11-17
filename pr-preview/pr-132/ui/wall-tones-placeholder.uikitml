@@ -249,9 +249,16 @@
         </div>
       </div>
     </div>
+    <!-- This round: the value sits in the same fixed-field pattern as the
+         movement rows, wrapping right-aligned under itself when long instead
+         of over the next row (his 2026-11-17 layout-bug report); the bonus
+         part renders in the smaller unit style next to the total. -->
     <div id="wall-tones-round-card" class="stat-row">
       <div class="stat-label">This round</div>
-      <div id="wall-tones-round-card-total" class="stat-value">+0</div>
+      <div class="stat-number-field" style="flex-wrap: wrap">
+        <div id="wall-tones-round-card-total" class="stat-value">+0</div>
+        <div id="wall-tones-round-card-extra" class="stat-unit" style="display: none"></div>
+      </div>
     </div>
     <div id="wall-tones-info-row" style="flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px">
       <div id="wall-tones-status" class="status">Ready</div>
