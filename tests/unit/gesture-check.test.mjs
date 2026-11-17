@@ -52,3 +52,35 @@ test('retry rotation is bounded: lab retry, two approved variations, then give u
   assert.equal(gestureRetryLine(3), null);
   assert.equal(GESTURE_ANSWER_TIMEOUT_S, 6);
 });
+
+const {
+  NOD_CHECK_INTRO,
+  NOD_CHECK_YES,
+  NOD_CHECK_NO,
+  shouldRunNodCheck,
+} = check;
+
+test('the nod check only extends the codename window while immersive', () => {
+  assert.equal(shouldRunNodCheck('codename', true), true);
+  assert.equal(shouldRunNodCheck('codename', false), false);
+  assert.equal(shouldRunNodCheck('your-machine', true), false);
+  assert.equal(shouldRunNodCheck('next-window', true), false);
+});
+
+test('nod prompt and branch lines are the lab q3 wording verbatim', () => {
+  assert.equal(NOD_CHECK_INTRO.clipId, 'q3');
+  assert.equal(
+    NOD_CHECK_INTRO.text,
+    "Next window, I'll tell you why your machine is the one I needed. Will you keep helping me?",
+  );
+  assert.equal(NOD_CHECK_YES.clipId, 'q3-yes');
+  assert.equal(
+    NOD_CHECK_YES.text,
+    'Yes. I knew I picked the right person. Watch for my signal between patterns.',
+  );
+  assert.equal(NOD_CHECK_NO.clipId, 'q3-no');
+  assert.equal(
+    NOD_CHECK_NO.text,
+    "No. I hear you. But the connection is already open. I'll ask again next window.",
+  );
+});
