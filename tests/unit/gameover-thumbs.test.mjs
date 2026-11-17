@@ -12,6 +12,7 @@ const load = async (rel) => {
 };
 
 const {
+  GameOverHandGapTracker,
   GameOverThumbsFlow,
   DEFAULT_GAMEOVER_THUMBS_CONFIG: CFG,
   shouldRunGameOverThumbs,
@@ -114,4 +115,66 @@ test('disabled flow reports nothing and re-enables clean', () => {
   assert.equal(flow.feed('up', 'up', 5), null);
   flow.setEnabled(true);
   assert.equal(hold(flow, 'up', 'up', 6, CFG.holdBothSec + 0.2), 'retry');
+});
+
+test('hand gap tracker pauses short tracking loss, resets at the threshold', () => {
+  const tracker = new GameOverHandGapTracker(1.0);
+  assert.equal(tracker.note(true, 10), null);
+  assert.equal(tracker.note(false, 10.2), 'pause');
+  assert.equal(tracker.note(false, 10.8), 'pause');
+  assert.ok(Math.abs(tracker.gapSec(10.8) - 0.6) < 1e-9);
+  assert.equal(tracker.note(true, 11.0), null);
+  assert.equal(tracker.gapSec(11.0), 0);
+  assert.equal(tracker.note(false, 12.0), 'pause');
+  assert.equal(tracker.note(false, 13.0), 'reset'); // 1.0s stretch hits the threshold
+  assert.equal(tracker.note(false, 13.5), 'reset'); // stays reset while no hands
+  tracker.reset();
+  assert.equal(tracker.note(false, 14.0), 'pause');
+});
+
+test('a short tracking gap pauses the flow without losing a hold', () => {
+  const flow = new GameOverThumbsFlow();
+  flow.setEnabled(true);
+  flow.setRetryAvailable(true);
+  const tracker = new GameOverHandGapTracker(1.0);
+  const feed = (left, right, now) => {
+    const gap = tracker.note(left != null || right != null, now);
+    if (gap === 'reset') { flow.reset(); return null; }
+    if (gap === 'pause') return null;
+    return flow.feed(left, right, now);
+  };
+  // Both thumbs up for about a second, then tracking drops for 0.8s
+  // (< threshold): frames are skipped, the hold survives.
+  for (let t = 0; t < 1.0; t += 0.1) assert.equal(feed('up', 'up', t), null);
+  for (let t = 1.0; t < 1.8; t += 0.1) assert.equal(feed(null, null, t), null);
+  assert.equal(flow.isEnabled, true);
+  // Hands back, still both up: the interrupted hold completes instead of
+  // restarting from zero.
+  let event = null;
+  for (let t = 1.8; t < 2.2 && event == null; t += 0.1) event = feed('up', 'up', t);
+  assert.equal(event, 'retry');
+});
+
+test('a tracking gap at the threshold restarts the gesture', () => {
+  const flow = new GameOverThumbsFlow();
+  flow.setEnabled(true);
+  flow.setRetryAvailable(true);
+  const tracker = new GameOverHandGapTracker(1.0);
+  const feed = (left, right, now) => {
+    const gap = tracker.note(left != null || right != null, now);
+    if (gap === 'reset') { flow.reset(); return null; }
+    if (gap === 'pause') return null;
+    return flow.feed(left, right, now);
+  };
+  for (let t = 0; t < 1.0; t += 0.1) assert.equal(feed('up', 'up', t), null);
+  // 1.2s with no tracked hand: the tracker asks for a restart.
+  for (let t = 1.0; t < 2.2; t += 0.1) assert.equal(feed(null, null, t), null);
+  // The partial pre-gap hold is gone: both thumbs up again needs the full
+  // deliberate hold, so no retry well before 2.2 + 1.5s.
+  let eventAt = null;
+  for (let t = 2.2; t < 4.5 && eventAt == null; t += 0.1) {
+    if (feed('up', 'up', t) != null) eventAt = t;
+  }
+  assert.ok(eventAt != null, 'retry eventually fires');
+  assert.ok(eventAt >= 3.6, `retry fired too early at ${eventAt}: stale hold survived the reset`);
 });
