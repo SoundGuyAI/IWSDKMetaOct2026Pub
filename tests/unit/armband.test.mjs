@@ -98,3 +98,14 @@ test('wrist Play grayed and inert while the Play modifier is unowned (Nov 17 fee
  const sysBinding=readFileSync('src/wall-tones/wall-tones-system.ts','utf8');
  assert.match(sysBinding,/bind\('armband-play', \(\) => \{ if \(this\.armbandUsable\(\) && this\.economy\.getPlayLevel\(\) >= 1\)/);
 });
+test('shared wrist Play action refuses an unowned modifier on click and direct press',()=>{
+ const system=readFileSync('src/wall-tones/wall-tones-system.ts','utf8');
+ const body=system.match(/bind\('armband-play', \(\) => \{([^\n]+)\}\);/)[1];
+ const action=new Function('return function(){'+body+'}')();
+ let level=0,calls=0,usable=true;
+ const context={armbandUsable:()=>usable,economy:{getPlayLevel:()=>level},onPlayControl:()=>{calls++;}};
+ action.call(context); assert.equal(calls,0,'unowned UIKit activation blocked');
+ action.call(context); assert.equal(calls,0,'unowned direct-press callback blocked');
+ level=1;action.call(context);assert.equal(calls,1,'owned action still works');
+ usable=false;action.call(context);assert.equal(calls,1,'unusable panel remains blocked');
+});
