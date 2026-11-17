@@ -139,3 +139,11 @@ Armband verification update (Nov 13): typecheck/build and 102 unit tests pass. Q
 ## Documentation reconciliation - November 17
 
 PR82's backlog58 status/caveat is preserved above. The authoritative game backlog and later follow-ups are in WALL_TONES_TODO.md; this historical implementation log does not override it. No headset verification is newly claimed.
+
+## Skip Voice story progress and real-mouse journey - November 17
+
+1. [x] Confirm both story queues previously saved only after uninterrupted playback, reproducing repeated lines on Skip.
+2. [x] Save each Cypher/background/narrator-story line when its audio or caption starts. Do not consume queued or unstarted lines.
+3. [x] Add desktop real-mouse Skip checks for all three story paths with reload persistence.
+4. [x] Keep ten rounds, every pad press, deliberate wrong pad, reset and best-score assertions in the long pointer journey; click the visible Skip Voice control while waiting.
+5. [ ] Finish full local and GitHub validation, publish separate PR and verify its preview. No merge or production approval.
