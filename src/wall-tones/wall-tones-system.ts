@@ -4,6 +4,20 @@ import { BAND_JOINT_ROTATION, PALM_PANEL_HEAD_AWAY, PALM_PANEL_LIFT, PalmJointsS
 import { BackgroundProgress } from './cypher-background.js';
 import { getVoiceGender } from './speech.js';
 import { CypherProgress, type CypherWindow } from './cypher-progress.js';
+import {
+  THUMB_JOINT_NAMES,
+  ThumbGestureDetector,
+  type ThumbHandJoints,
+} from '../thumbs-lab/thumbs-gesture.js';
+import { playLabAnswerCue } from '../thumbs-lab/lab-cues.js';
+import { CypherLabVoice, cypherLabVoiceSet } from '../thumbs-lab/lab-voice.js';
+import {
+  GESTURE_ANSWER_TIMEOUT_S,
+  GESTURE_CHECK_END,
+  GESTURE_CHECK_INTRO,
+  gestureRetryLine,
+  shouldRunGestureCheck,
+} from './gesture-check.js';
 import { captureCypherCast } from './cypher-voice.js';
 import {selectionPanelPose, horizontalLookAway, panelOverlapsPad, rectangleInsidePolygon} from './panel-placement.js';
 import { shouldAnnounceRecord } from './record-feedback.js';
@@ -521,6 +535,17 @@ private panelBound = false;
 private flatBackdropHidden = false;
 private wasNonImmersive = true;
 private flatAwaitingStart = false;
+/** MR-only start gate (owner, Nov 17): after the pads are placed the round
+ * waits for a pad press or a thumbs up, matching the MR start narration. */
+private mrAwaitingStart = false;
+private readonly thumbStartDetector = new ThumbGestureDetector();
+/** Active story gesture-check listen; resolved by update() hand sampling. */
+private gestureListen: {
+detector: ThumbGestureDetector;
+deadline: number;
+resolve: (answer: 'yes' | 'no' | null) => void;
+} | null = null;
+private readonly cypherLabVoice = new CypherLabVoice();
 /** After playback, ignore touches until every pad is clear (avoids stuck finger auto-hitting). */
 private inputNeedsClear = false;
 private airOrientation: AirOrientation = 'vertical';
@@ -1081,6 +1106,9 @@ document.title = 'Wall Tones 2: too fast to wall';
 this.bindPanelIfNeeded();
 this.clearPads();
 this.flatAwaitingStart = false;
+this.mrAwaitingStart = false;
+this.thumbStartDetector.setEnabled(false);
+this.cancelGestureListen();
 this.flowPhase = 'choose-mode';
 this.resetSetupPanelAnchor();
 this.setFlatHintVisible(false);
@@ -1198,10 +1226,17 @@ this.readDesktopTouches();
 }
 } else if (
 this.flowPhase === 'playing' &&
-(this.game.phase === 'input' || this.inputNeedsClear)
+(this.game.phase === 'input' || this.inputNeedsClear || this.mrAwaitingStart)
 ) {
 this.readFingertipTouches();
 this.readRayAndGazeTouches();
+}
+if (
+!this.useDesktopPath() &&
+this.flowPhase === 'playing' &&
+(this.mrAwaitingStart || this.gestureListen != null)
+) {
+this.tickThumbGestures();
 }
 this.tickIdleReplay();
 }
@@ -1359,6 +1394,9 @@ this.bindPointerAudioUnlock();
 if (sessionStorage.getItem('wall-tones-awaiting-mode') === '1') {
 this.clearPads();
 this.flatAwaitingStart = false;
+this.mrAwaitingStart = false;
+this.thumbStartDetector.setEnabled(false);
+this.cancelGestureListen();
 this.flowPhase = 'choose-mode';
 this.resetSetupPanelAnchor();
 this.setFlatHintVisible(false);
@@ -1379,6 +1417,9 @@ return;
 
 this.clearPads();
 this.flatAwaitingStart = false;
+this.mrAwaitingStart = false;
+this.thumbStartDetector.setEnabled(false);
+this.cancelGestureListen();
 this.flowPhase = 'choose-mode';
 this.resetSetupPanelAnchor();
 this.setFlatHintVisible(false);
@@ -1412,6 +1453,10 @@ this.recordBeatenThisAttempt = false;
 this.barsFirstEarnedPending = false;
 this.hideRoundBarsCard();
 this.flatAwaitingStart = false;
+this.mrAwaitingStart = false;
+this.thumbStartDetector.setEnabled(false);
+this.cancelGestureListen();
+this.cypherLabVoice.cancel();
 this.inputNeedsClear = false;
 this.mediaUnlockApplied = false;
 this.airOrientationLocked = null;
@@ -1914,6 +1959,9 @@ this.wasNonImmersive
 // Always drop the flat 2×2 when entering XR — setup must not show it.
 this.clearPads();
 this.flatAwaitingStart = false;
+this.mrAwaitingStart = false;
+this.thumbStartDetector.setEnabled(false);
+this.cancelGestureListen();
 this.showStudioBackdrop();
 this.setFlatHintVisible(false);
 if (this.setupMode == null && this.flowPhase !== 'scanning') {
@@ -3280,9 +3328,7 @@ this.setAirOrientUiVisible(false);
 this.setRescanUiVisible(false);
 this.setRepeatUiVisible(true);
 this.setSpatialMeshesVisible(false);
-this.statusText = 'Get ready...';
-this.beginRoundWithIntro();
-this.renderPanel();
+this.enterMrAwaitingStart();
 return;
 }
 // Short prompts for pads 2-4; the full positioning phrase only plays for
@@ -3460,9 +3506,7 @@ this.layoutPanelForMrPlay();
 this.setRescanUiVisible(false);
 this.setRepeatUiVisible(true);
 this.syncDebugCollidersButton();
-this.statusText = 'Get ready...';
-this.beginRoundWithIntro(line);
-this.renderPanel();
+this.enterMrAwaitingStart(line);
 }
 
 private spawnDesktopPads(): void {
@@ -3576,7 +3620,11 @@ return;
 // aborting the round flow that follows.
 if (narrMark === this.narrationInterrupt) {
 await this.speech.speakAsync(
-this.startPromptSpoken ? 'howToPlayRest' : 'howToPlay',
+this.startPromptSpoken
+? 'howToPlayRest'
+: this.world.visibilityState.peek() !== VisibilityState.NonImmersive
+? 'howToPlayMr'
+: 'howToPlay',
 );
 }
 this.startPromptSpoken = false;
@@ -4389,6 +4437,10 @@ if (this.flatAwaitingStart && this.useDesktopPath()) {
 void this.startFlatPlayFromPad(padIndex);
 return;
 }
+if (this.mrAwaitingStart) {
+this.startMrPlay('pad', padIndex);
+return;
+}
 if (this.game.phase !== 'input') {
 return;
 }
@@ -4589,6 +4641,12 @@ await this.playSequence();
 
 /** Between patterns only: all voices and effects share the existing Skip lifecycle. */
 private async playCypherWindow(window: CypherWindow, intact: () => boolean): Promise<void> {
+// MR + hand tracking: the C02 beat becomes the interactive thumbs connection
+// check. Every other platform keeps the recorded line below.
+if (this.canRunGestureCheck(window.id)) {
+await this.playGestureCheckWindow(intact);
+return;
+}
 const cast = captureCypherCast(getVoiceGender());
 if (window.seam === 'closed') this.setCypherSeam(false);
 if (window.fault) {
@@ -4672,6 +4730,222 @@ this.renderPanel();
 const leadIn = this.welcomeSpoken ? undefined : 'welcome';
 this.welcomeSpoken = true;
 this.beginRoundWithIntro(leadIn);
+}
+
+/** MR start gate: the placed pads wait for a pad press or a thumbs up. The
+ * start instruction plays as the MR pointAndPress variant up front, so the
+ * round intro continues with howToPlayRest (same split as the flat entry). */
+private enterMrAwaitingStart(leadIn?: WallTonesClipId): void {
+this.mrAwaitingStart = true;
+this.thumbStartDetector.reset();
+this.thumbStartDetector.setEnabled(true);
+this.statusText = 'Press a pad or give a thumbs up to start';
+if (this.speech.canSpeakNow()) {
+if (leadIn != null) {
+this.speech.speak(leadIn);
+}
+this.speech.speak('pointAndPressMr');
+this.startPromptSpoken = true;
+}
+this.renderPanel();
+}
+
+private startMrPlay(source: 'pad' | 'thumbs', padIndex?: number): void {
+if (!this.mrAwaitingStart || !this.experienceActive) {
+return;
+}
+this.mrAwaitingStart = false;
+this.thumbStartDetector.setEnabled(false);
+// Stop the start instruction; the round intro takes over.
+this.speech.cancel();
+if (source === 'pad' && padIndex != null) {
+const pad = this.padById(padIndex);
+if (pad != null) {
+flashPad(pad, true);
+void playPadTone(padIndex);
+window.setTimeout(() => flashPad(pad, false), 280);
+}
+}
+if (source === 'thumbs') {
+// The game asked for a thumbs up: acknowledge it with the lab cue (owner,
+// Nov 17: the expected gesture plays the lab sound cue).
+void playLabAnswerCue('yes');
+}
+this.statusText = 'Get ready...';
+this.renderPanel();
+this.beginRoundWithIntro();
+}
+
+private cancelGestureListen(): void {
+const listen = this.gestureListen;
+if (listen != null) {
+this.gestureListen = null;
+listen.resolve(null);
+}
+}
+
+/** Per-frame thumbs sampling for the MR start gate and the story gesture check. */
+private tickThumbGestures(): void {
+const now = performance.now() / 1000;
+const left = this.sampleThumbHand('left');
+const right = this.sampleThumbHand('right');
+if (this.mrAwaitingStart) {
+const event = this.thumbStartDetector.feed(left, right, now);
+if (event?.answer === 'yes') {
+this.startMrPlay('thumbs');
+return;
+}
+}
+const listen = this.gestureListen;
+if (listen != null) {
+const event = listen.detector.feed(left, right, now);
+if (event != null) {
+this.gestureListen = null;
+listen.resolve(event.answer);
+return;
+}
+if (now >= listen.deadline) {
+this.gestureListen = null;
+// Lab canon: about six seconds idle counts as a "no".
+listen.resolve(null);
+}
+}
+}
+
+/** Read one hand's thumb-classifier joints from the live XR frame. */
+private sampleThumbHand(handedness: 'left' | 'right'): ThumbHandJoints | null {
+const session = this.xrManager.getSession();
+const frame = this.xrManager.getFrame();
+const reference = this.xrManager.getReferenceSpace();
+if (
+session == null ||
+frame == null ||
+reference == null ||
+typeof frame.getJointPose !== 'function' ||
+session.visibilityState !== 'visible'
+) {
+return null;
+}
+for (const source of session.inputSources) {
+if (source.handedness !== handedness || source.hand == null) {
+continue;
+}
+const hand = source.hand;
+const read = (joint: string) => {
+const space = hand.get(joint as XRHandJoint);
+if (space == null) {
+return null;
+}
+try {
+const pose = frame.getJointPose?.(space, reference);
+return pose?.transform.position ?? null;
+} catch {
+return null;
+}
+};
+const wrist = read(THUMB_JOINT_NAMES.wrist);
+const thumbProximal = read(THUMB_JOINT_NAMES.thumbProximal);
+const thumbTip = read(THUMB_JOINT_NAMES.thumbTip);
+const indexProximal = read(THUMB_JOINT_NAMES.indexProximal);
+const indexTip = read(THUMB_JOINT_NAMES.indexTip);
+const middleProximal = read(THUMB_JOINT_NAMES.middleProximal);
+const middleTip = read(THUMB_JOINT_NAMES.middleTip);
+if (
+wrist == null ||
+thumbProximal == null ||
+thumbTip == null ||
+indexProximal == null ||
+indexTip == null ||
+middleProximal == null ||
+middleTip == null
+) {
+return null;
+}
+return {
+wrist,
+thumbProximal,
+thumbTip,
+indexProximal,
+indexTip,
+middleProximal,
+middleTip,
+};
+}
+return null;
+}
+
+/** The C02 beat is interactive only where a thumb answer is possible. */
+private canRunGestureCheck(windowId: string): boolean {
+const immersive =
+this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
+let handTracking = false;
+const session = this.xrManager.getSession();
+if (session != null) {
+for (const source of session.inputSources) {
+if (source.hand != null) {
+handTracking = true;
+break;
+}
+}
+}
+return shouldRunGestureCheck(windowId, immersive, handTracking);
+}
+
+private awaitThumbAnswer(): Promise<'yes' | 'no' | null> {
+return new Promise((resolve) => {
+const detector = new ThumbGestureDetector();
+detector.setEnabled(true);
+this.gestureListen = {
+detector,
+deadline: performance.now() / 1000 + GESTURE_ANSWER_TIMEOUT_S,
+resolve,
+};
+});
+}
+
+/**
+ * MR-only interactive replacement for the C02 beat: the thumbs lab's
+ * connection check with its owner-approved verbatim lines and clips, the lab
+ * recognition chime on each detected answer, and about six idle seconds
+ * counting as a "no" (lab rules). Bounded retries: when they run out Cypher
+ * closes the window so play is never wedged between patterns. Interrupts
+ * leave the window uncompleted so it retries at the next boundary.
+ */
+private async playGestureCheckWindow(intact: () => boolean): Promise<void> {
+const set = cypherLabVoiceSet();
+await this.speech.speakStoryEffect('squawk');
+if (!intact()) {
+return;
+}
+await this.cypherLabVoice.speak(set, GESTURE_CHECK_INTRO);
+let attempt = 0;
+while (intact()) {
+const answer = await this.awaitThumbAnswer();
+this.gestureListen = null;
+if (!intact()) {
+return;
+}
+if (answer != null) {
+await playLabAnswerCue(answer);
+}
+if (answer === 'yes') {
+break;
+}
+// A thumbs down or an idle timeout both count as a "no" (lab rule).
+const retry = gestureRetryLine(attempt);
+attempt += 1;
+if (retry == null) {
+break;
+}
+await this.cypherLabVoice.speak(set, retry);
+}
+if (intact()) {
+await this.cypherLabVoice.speak(set, GESTURE_CHECK_END);
+}
+if (intact()) {
+await this.speech.speakStoryEffect('close');
+this.cypherProgress.lineCompleted();
+}
 }
 
 private async onWrongInput(hit: number, expected: number): Promise<void> {
