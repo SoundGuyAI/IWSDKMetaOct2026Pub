@@ -502,6 +502,10 @@ export class AppModeSystem extends createSystem({}) {
     const gazeRowsDisplay = gazePinchSettingsVisible(typeof navigator === 'undefined' ? '' : navigator.userAgent) ? 'flex' : 'none';
     setDisplay('head-gaze-pinch-row', gazeRowsDisplay);
     setDisplay('native-gaze-pinch-row', gazeRowsDisplay);
+    // The armband hand/mode controls only matter in MR: same VR-headset-only
+    // visibility (previously inherited from an accidental nesting inside the
+    // head-gaze row that made them collide on one line).
+    setDisplay('armband-settings-row', gazeRowsDisplay);
     const syncArmbandHand = () => panel.getElementById('armband-hand-setting-label')?.setProperties({
       text: `MR armband: ${armbandHand() === 'left' ? 'Left' : 'Right'} hand`,
     });
