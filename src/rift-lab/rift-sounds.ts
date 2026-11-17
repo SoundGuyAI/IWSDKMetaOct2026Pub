@@ -66,6 +66,42 @@ function clipUrl(name: ClipName): string {
   return new URL(CLIP[name], document.baseURI).href;
 }
 
+/** Short, attack-forward excerpts from the same licensed audition recordings.
+ * Nothing new is selected. Operate on decoded PCM to avoid another MP3 encode. */
+function prepareOneShot(ctx: AudioContext, name: ClipName, original: AudioBuffer): AudioBuffer {
+  let startSeconds: number;
+  let durationSeconds: number;
+  if (name === 'portalOnset') { startSeconds = 0.9; durationSeconds = 2.5; }
+  else if (name === 'sealGliss') { startSeconds = 3; durationSeconds = 0.9; }
+  else if (name === 'sealChime') {
+    const data = original.getChannelData(0);
+    let peakIndex = 0;
+    for (let i = 1; i < data.length; i++) {
+      if (Math.abs(data[i]) > Math.abs(data[peakIndex])) peakIndex = i;
+    }
+    startSeconds = Math.max(0, peakIndex / original.sampleRate - 0.05);
+    durationSeconds = 1.1;
+  } else return original;
+  const start = Math.min(original.length - 1, Math.floor(startSeconds * original.sampleRate));
+  const length = Math.min(original.length - start, Math.floor(durationSeconds * original.sampleRate));
+  const result = ctx.createBuffer(original.numberOfChannels, length, original.sampleRate);
+  let peak = 0;
+  for (let c = 0; c < original.numberOfChannels; c++) {
+    const data = original.getChannelData(c);
+    for (let i = start; i < start + length; i++) peak = Math.max(peak, Math.abs(data[i]));
+  }
+  const scale = peak > 0 ? 0.7 / peak : 1;
+  for (let c = 0; c < original.numberOfChannels; c++) {
+    const from = original.getChannelData(c), to = result.getChannelData(c);
+    for (let i = 0; i < length; i++) {
+      const attack = Math.min(1, i / (original.sampleRate * 0.02));
+      const release = Math.min(1, (length - 1 - i) / (original.sampleRate * 0.15));
+      to[i] = from[start + i] * scale * attack * release;
+    }
+  }
+  return result;
+}
+
 /** Fetch and decode a clip once per session; null on any failure. */
 function loadClip(ctx: AudioContext, name: ClipName): Promise<AudioBuffer | null> {
   let pending = bufferCache.get(name);
@@ -76,6 +112,7 @@ function loadClip(ctx: AudioContext, name: ClipName): Promise<AudioBuffer | null
         return response.arrayBuffer();
       })
       .then((bytes) => ctx.decodeAudioData(bytes))
+      .then((buffer) => prepareOneShot(ctx, name, buffer))
       .catch((error) => {
         console.warn('[rift-lab] recorded clip unavailable, synth fallback', name, error);
         return null;
@@ -171,7 +208,9 @@ async function startClipLoop(
   out.input.gain.cancelScheduledValues(now);
   out.input.gain.setValueAtTime(0.0001, now);
   out.input.gain.exponentialRampToValueAtTime(Math.max(0.0001, peak), now + fadeIn);
-  source.start(now);
+  // Arc recording's first two seconds are almost silent. Start in its
+  // active crackle so both approved layers register during a short beam.
+  source.start(now, name === 'beamCrackle' ? Math.min(2, buffer.duration / 2) : 0);
   let stopped = false;
   return {
     stop: (fadeSeconds = 0.3) => {
@@ -320,8 +359,9 @@ async function withContext(name: RiftSoundName, play: (ctx: AudioContext) => voi
 /* Public effect API                                                   */
 /* ------------------------------------------------------------------ */
 
-/** A successful note charges the hands: bright chime in the pad's pitch,
- * layered with the recorded crystal plink from the charging hand. */
+/** A successful note charges the hands: keep the existing pitched chime.
+ * Comparison revision: omit the additional recorded hand plink (pick 23),
+ * following the Nov 17 note-sound feedback. No replacement is selected. */
 export function playNoteChime(color: PadColorName, position?: Vec3Like): Promise<void> {
   return withContext('chime', (ctx) => {
     const t = ctx.currentTime;
@@ -330,8 +370,7 @@ export function playNoteChime(color: PadColorName, position?: Vec3Like): Promise
     const out = position != null ? sourceOutput(ctx, position, 1).input : undefined;
     tone(ctx, 'sine', f, f, t, 0.45, 0.16, out);
     tone(ctx, 'sine', f * 2, f * 2, t, 0.3, 0.05, out);
-    // Layered texture; the pitched chime above stays the game feedback.
-    void playClip(ctx, 'handPlink', position, 0.5);
+    // No extra charging texture: retain both musical tones above unchanged.
   });
 }
 
@@ -414,8 +453,8 @@ export function startBeamHum(origin?: Vec3Like): void {
   void ensureAudioRunning().then(async (ctx) => {
     if (ctx == null || hum.stopped) return;
     const [bed, crackle] = await Promise.all([
-      startClipLoop(ctx, 'beamBed', hum.origin, 0.5, 0.15),
-      startClipLoop(ctx, 'beamCrackle', hum.origin, 0.3, 0.15),
+      startClipLoop(ctx, 'beamBed', hum.origin, 0.4, 0.08),
+      startClipLoop(ctx, 'beamCrackle', hum.origin, 0.65, 0.08),
     ]);
     if (bed != null || crackle != null) {
       hum.setPosition = (position) => {
@@ -470,8 +509,8 @@ export function stopBeamHum(): void {
 export function playRiftSeal(position?: Vec3Like): Promise<void> {
   return withContext('seal', (ctx) => {
     void (async () => {
-      const gliss = await playClip(ctx, 'sealGliss', position, 0.6);
-      const chime = await playClip(ctx, 'sealChime', position, 0.8, gliss ? 0.5 : 0);
+      const gliss = await playClip(ctx, 'sealGliss', position, 0.35);
+      const chime = await playClip(ctx, 'sealChime', position, 0.5, gliss ? 0.15 : 0);
       if (!gliss && !chime) synthSeal(ctx);
     })();
   });
