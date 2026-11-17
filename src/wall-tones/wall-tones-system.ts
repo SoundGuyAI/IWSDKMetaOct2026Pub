@@ -204,7 +204,12 @@ import {
   storeTapHandledOnRelease,
 } from './store-drag-guard.js';
 import { STORE_SCROLL_STEP, clampStoreScroll, storeScrollEnabled } from './store-scroll.js';
-import { SAVER_PRICE_BARS, saverRetryPlan, saverUnitsForStreak } from './consumable-values.js';
+import {
+  SAVER_PRICE_BARS,
+  gameOverRetryPresentation,
+  saverRetryPlan,
+  saverUnitsForStreak,
+} from './consumable-values.js';
 import {
 getActiveWorldKind,
 returnToMenuInPlace,
@@ -559,11 +564,9 @@ private mrAwaitingStart = false;
 private readonly thumbStartDetector = new ThumbGestureDetector();
 /** Game Over thumbs flow (owner, Nov 17): both-up retry / arm+confirm / down new run. */
 private readonly gameOverThumbs = new GameOverThumbsFlow();
-/** TEMP XR diagnostics (Nov 17 device test): last sampled Game Over thumb
- * poses, shown on the popup while verifying headset behavior. Remove after
- * the device check passes. */
-private gameOverDbgLeft = '-';
-private gameOverDbgRight = '-';
+/** Last arm state pushed to the Game Over panel; the tick mirrors changes
+ * (including gap-reset disarms, which emit no event). */
+private gameOverHintSyncedArmed = false;
 /** Game Over no-hand stretch tracker (Nov 17 device test): Quest drops hand
  * sources while controllers are active, so frames without a tracked hand
  * pause the gesture flow instead of resetting it. */
@@ -1274,7 +1277,6 @@ this.tickThumbGestures();
 }
 // TEMP XR diagnostics (Nov 17 device test): live Game Over gesture readout.
 if (this.gameOverOpen) {
-this.syncGameOverGestureDebug();
 }
 this.tickIdleReplay();
 }
@@ -1391,10 +1393,7 @@ panel
 ?.addEventListener('click', () => this.setAchievementsOpen(false));
 panel
 .getElementById('gameover-use-saver-button')
-?.addEventListener('click', () => this.onGameOverUseSaver());
-panel
-.getElementById('gameover-buy-saver-button')
-?.addEventListener('click', () => this.onGameOverBuySaver());
+?.addEventListener('click', () => this.onGameOverRetry());
 panel
 .getElementById('gameover-newrun-button')
 ?.addEventListener('click', () => this.onGameOverNewRun());
@@ -4834,25 +4833,25 @@ const now = performance.now() / 1000;
 const left = this.sampleThumbHand('left');
 const right = this.sampleThumbHand('right');
 if (this.gameOverOpen) {
-// Game Over thumbs (owner, Nov 17): both-up hold retries with owned savers,
-// one-up arms then a second up confirms, thumb down starts a new run. The
-// listen is alive only while the popup is open in MR with hand tracking;
-// up gestures go inert when the retry is unaffordable (never auto-buys).
-// TEMP: sampled poses are also kept for the XR diagnostic readout.
+// Game Over thumbs (owner, Nov 17): both-up hold retries (owned savers, or
+// the same buy-and-retry press as the button when short), one-up arms then
+// a second up confirms, thumb down starts a new run. The listen is alive
+// only while the popup is open in MR; up gestures go inert only when the
+// retry is out of reach (not enough Bars to buy).
 const leftPose: GameOverThumbPose = left != null ? classifyThumbPose(left).pose : 'none';
 const rightPose: GameOverThumbPose = right != null ? classifyThumbPose(right).pose : 'none';
-this.gameOverDbgLeft = left != null ? leftPose : 'null';
-this.gameOverDbgRight = right != null ? rightPose : 'null';
 const canRun = this.canRunGameOverThumbs();
 if (canRun !== this.gameOverThumbs.isEnabled) {
 this.gameOverThumbs.setEnabled(canRun);
 if (canRun) {
 this.gameOverHandGap.reset();
+this.gameOverHintSyncedArmed = false;
 }
 }
 if (canRun) {
 const need = saverUnitsForStreak(this.game.streak);
-this.gameOverThumbs.setRetryAvailable(this.economy.getSavers() >= need);
+const pres = gameOverRetryPresentation(this.economy.getSavers(), need, this.economy.getBars());
+this.gameOverThumbs.setRetryAvailable(!pres.buying || pres.affordable);
 // Feed only frames with a tracked hand: Quest drops the hand sources while
 // controllers are active, and disabling the flow on that would reset a hold
 // or arm mid-gesture (Nov 17 device test: ht 1 -> 0 across the popup).
@@ -4870,12 +4869,18 @@ if (event === 'armed') {
 // The game asked for a confirmation: acknowledge with the lab cue (owner,
 // Nov 17: the expected gesture plays the lab sound cue).
 void playLabAnswerCue('yes');
-this.syncGameOverGestureHint();
 } else if (event === 'retry') {
 void playLabAnswerCue('yes');
-this.onGameOverUseSaver();
+this.onGameOverRetry();
 } else if (event === 'new-run') {
+void playLabAnswerCue('no');
 this.onGameOverNewRun();
+}
+// A gap reset can disarm without an event: mirror the arm state to the
+// button/hint so the confirmation wording never goes stale.
+if (this.gameOverThumbs.isArmed !== this.gameOverHintSyncedArmed) {
+this.gameOverHintSyncedArmed = this.gameOverThumbs.isArmed;
+this.syncGameOverGestureHint();
 }
 }
 return;
@@ -5224,26 +5229,13 @@ const have = this.economy.getSavers();
 panel
 ?.getElementById<UIKit.Text>('gameover-saver-status')
 ?.setProperties({ text: `Streak savers: ${have}. Retry the same pattern costs ${need}.` });
-panel
-?.getElementById<UIKit.Text>('gameover-use-saver-label')
-?.setProperties({
-text: have >= need ? `Use ${need} saver${need > 1 ? 's' : ''} - retry same pattern` : `Need ${need} saver${need > 1 ? 's' : ''} to retry`,
-color: have >= need ? 0x1c1d20 : 0x8a8f98,
-});
-const missing = Math.max(0, need - have);
-const plan = saverRetryPlan(have, need, this.economy.getBars(), SAVER_PRICE_BARS);
-panel
-?.getElementById<UIKit.Text>('gameover-buy-saver-label')
-?.setProperties({
-text: `Buy ${missing} saver${missing > 1 ? 's' : ''} & retry - ${plan.costBars}`,
-color: plan.affordable ? 0x1c1d20 : 0xd43a3a,
-});
 }
 
 /** Game Over gesture affordances (owner, Nov 17): MR-only thumbs icons on
  * the retry/new-run buttons plus a hint line that mirrors the thumbs flow
- * state. Icons complement the labels; the exact saver cost stays in the
- * existing label/status text. Hidden entirely on flat/desktop. */
+ * state. While a one-thumb arm waits, the retry button itself switches to
+ * the confirmation wording with a second thumbs-up icon (owner, Nov 17).
+ * Hidden entirely on flat/desktop. */
 private syncGameOverGestureHint(): void {
 const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
 if (panel == null) {
@@ -5256,9 +5248,20 @@ return;
 const mr =
 this.gameOverOpen &&
 this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
-for (const id of ['gameover-use-saver-thumb-icon', 'gameover-newrun-thumb-icon'] as const) {
-panel.getElementById<UIKit.Container>(id)?.setProperties({ display: mr ? 'flex' : 'none' });
-}
+const armed = mr && this.gameOverThumbs.isArmed;
+panel.getElementById<UIKit.Container>('gameover-use-saver-thumb-icon')?.setProperties({ display: mr ? 'flex' : 'none' });
+panel.getElementById<UIKit.Container>('gameover-use-saver-thumb-icon-confirm')?.setProperties({ display: armed ? 'flex' : 'none' });
+panel.getElementById<UIKit.Container>('gameover-newrun-thumb-icon')?.setProperties({ display: mr ? 'flex' : 'none' });
+// One combined retry button (owner, Nov 17): owned savers when there are
+// enough, otherwise the same press buys the missing savers with Bars.
+const need = saverUnitsForStreak(this.game.streak);
+const pres = gameOverRetryPresentation(this.economy.getSavers(), need, this.economy.getBars());
+panel.getElementById<UIKit.Text>('gameover-use-saver-label')?.setProperties(
+armed
+? { text: 'Thumbs up again to confirm - same or other hand', color: 0x1c1d20 }
+: { text: pres.text, color: pres.affordable ? 0x1c1d20 : 0xd43a3a },
+);
+panel.getElementById('gameover-use-saver-bars-icon')?.setProperties({ display: !armed && pres.buying ? 'flex' : 'none' });
 const hint = panel.getElementById<UIKit.Text>('gameover-gesture-hint');
 if (hint == null) {
 return;
@@ -5267,31 +5270,26 @@ if (!mr) {
 hint.setProperties({ display: 'none' });
 return;
 }
-const need = saverUnitsForStreak(this.game.streak);
-const affordable = this.economy.getSavers() >= need;
-const text = !affordable
-? 'Thumb down for a new run - retry needs more savers'
-: this.gameOverThumbs.isArmed
-? `Confirm: raise your other thumb, or lower and raise the same one - spending ${need} saver${need > 1 ? 's' : ''}. Thumb down for a new run`
-: `Hold both thumbs up to retry with ${need} saver${need > 1 ? 's' : ''}, or hold one and confirm - thumb down for a new run`;
+const text = !(!pres.buying || pres.affordable)
+? 'Thumb down for a new run - not enough Bars to buy the retry'
+: armed
+? 'Confirm: raise your other thumb, or lower and raise the same one - thumb down for a new run'
+: 'Hold both thumbs up to retry, or hold one and confirm - thumb down for a new run';
 hint.setProperties({ display: 'flex', text });
 }
 
-/** TEMP XR diagnostics (Nov 17 device test): while the Game Over popup is
- * open in MR, show a one-line live readout of the gesture chain (flow phase,
- * desktop path, hand tracking, sampled poses, flow state, no-hand gap
- * seconds) so a headset test pinpoints where input stops. Remove after the
- * device check passes. */
-private syncGameOverGestureDebug(): void {
+
+/** Combined Game Over retry (owner, Nov 17): one route for the button and
+ * the thumbs gestures - spend owned savers when there are enough, otherwise
+ * buy the missing savers with Bars and retry in the same press. */
+private onGameOverRetry(): void {
 if (!this.gameOverOpen) return;
-if (this.world.visibilityState.peek() === VisibilityState.NonImmersive) return;
-const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
-const hint = panel?.getElementById<UIKit.Text>('gameover-gesture-hint');
-if (hint == null) return;
-hint.setProperties({
-display: 'flex',
-text: `DBG2 fp:${this.flowPhase} dp:${this.useDesktopPath() ? 1 : 0} ht:${this.hasHandTrackingInput() ? 1 : 0} L:${this.gameOverDbgLeft} R:${this.gameOverDbgRight} en:${this.gameOverThumbs.isEnabled ? 1 : 0} arm:${this.gameOverThumbs.isArmed ? 1 : 0} g:${this.gameOverHandGap.gapSec(performance.now() / 1000).toFixed(1)}`,
-});
+const need = saverUnitsForStreak(this.game.streak);
+if (this.economy.getSavers() >= need) {
+this.onGameOverUseSaver();
+return;
+}
+this.onGameOverBuySaver();
 }
 
 /** One-press purchase (owner request 2026-11-11, no confirm step): buys exactly the savers missing for an immediate retry and applies them in the same press. Cost model unchanged: missing units at 18 Bars each. */
