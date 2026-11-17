@@ -152,7 +152,9 @@ Armband verification update (Nov 13): typecheck/build and 102 unit tests pass. Q
 - [x] Merged origin/main (recorded Rift SFX #135) into this branch; kept visual beam/geometry path and wired positional hum/seal/ambience.
 - [x] Beam mid-room false hits hardened (impact fleck rift-only; XR plane mesh raycasts skipped; occluders colorMask; hub demo props hidden outside Demo).
 - [x] Synthetic head-height ground plane fixed (owner Quest confirm 2026-11-17).
+- [x] PR144 review fixes (2026-11-17): drop redeclared `instanceColor` in spark/shard shaders; hide hub dressing (incl. studio-floor) only in Rift Lab; billboard welding/portal sparks; sync rift-lab desktop/mobile e2e with Start energy grant; Three color-mask cache for hand occluders; remove unused palmCore sprite; keep synthetic ground for spark bounce but exclude it from beam stop; skip scene-mesh beam stops during flat touch drag (unnamed floor/dome was killing orb→rift at ~0.1 m).
 - [ ] Follow-up PR: visible white Start-energy sphere/cloud still at session-start pose (tracks energy; not colliding). Tracked in WALL_TONES_TODO.
+- [x] Local typecheck + unit + rift desktop/mobile e2e green on reconciled head (2026-11-17). Full suite + merge-ready CI still required before owner merge.
 
 ## Accessibility settings layout fix (Nov 17) - separate PR in progress
 - [x] Fix: MR armband hand/mode buttons were accidentally nested inside the head-gaze checkbox row (bad merge in 228fd6b), rendering on one colliding line on Quest. Restored to their own container row; gaze rows keep their own rows.

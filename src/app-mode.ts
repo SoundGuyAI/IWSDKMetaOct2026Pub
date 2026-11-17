@@ -70,9 +70,10 @@ const DEMO_PROP_NODE_IDS = [
   'graphite-ring',
 ] as const;
 
-/** Hub room dressing — hide outside Demo so it does not float in MR Lab space
- * and intercept the seal beam. */
-const HUB_SET_NODE_IDS = [
+/** Hub room dressing — hide only in Rift Lab so the seal beam is not stopped
+ * by studio meshes (floor included) and so the set does not float in MR.
+ * Other modes keep `studio-floor` for LocomotionEnvironment / DomeFade. */
+const HUB_DRESSING_NODE_IDS = [
   'studio-floor',
   'stage',
   'gallery-set',
@@ -260,8 +261,8 @@ export class AppModeSystem extends createSystem({}) {
       this.setNodeVisible(nodeId, showDemo);
     }
     this.setNodeVisible(DEMO_NAV_ID, showDemo);
-    for (const nodeId of HUB_SET_NODE_IDS) {
-      this.setNodeVisible(nodeId, showDemo);
+    for (const nodeId of HUB_DRESSING_NODE_IDS) {
+      this.setNodeVisible(nodeId, !showRiftLab);
     }
 
     for (const nodeId of MEDITATION_NODE_IDS) {

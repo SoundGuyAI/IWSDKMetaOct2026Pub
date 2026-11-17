@@ -35,31 +35,27 @@ const OCCLUDER_JOINTS: readonly { index: number; radius: number }[] = [
 
 const sharedGeo = new SphereGeometry(1, 10, 8);
 
-/** Depth-only joint proxy. Quest WebGL often ignores Material.colorWrite, so
- * these used to draw as solid white spheres (visible against the menu). Force
- * the GL color mask off around each draw instead. */
-function makeOccluderMaterial(): MeshBasicMaterial {
-  const mat = new MeshBasicMaterial({
-    color: 0x000000,
-    transparent: false,
-    opacity: 1,
-    colorWrite: false,
-    depthWrite: true,
-    depthTest: true,
-    toneMapped: false,
-  });
-  mat.colorWrite = false;
-  return mat;
-}
+/** Shared depth-only material. Quest WebGL often ignores Material.colorWrite,
+ * so we also drive Three's color-mask cache around each draw. */
+const sharedOccluderMat = new MeshBasicMaterial({
+  color: 0x000000,
+  transparent: false,
+  opacity: 1,
+  colorWrite: false,
+  depthWrite: true,
+  depthTest: true,
+  toneMapped: false,
+});
+sharedOccluderMat.colorWrite = false;
 
 function bindDepthOnlyPass(mesh: Mesh): void {
   mesh.onBeforeRender = (renderer) => {
-    const gl = renderer.getContext();
-    gl.colorMask(false, false, false, false);
+    // Update Three's cache — raw gl.colorMask leaves the next colorWrite:false
+    // draw skipping its GL call and writing color again.
+    renderer.state.buffers.color.setMask(false);
   };
   mesh.onAfterRender = (renderer) => {
-    const gl = renderer.getContext();
-    gl.colorMask(true, true, true, true);
+    renderer.state.buffers.color.setMask(true);
   };
 }
 
@@ -77,7 +73,7 @@ export class RiftHandOccluders {
   private buildHand(): Mesh[] {
     const meshes: Mesh[] = [];
     for (const spec of OCCLUDER_JOINTS) {
-      const mesh = new Mesh(sharedGeo, makeOccluderMaterial());
+      const mesh = new Mesh(sharedGeo, sharedOccluderMat);
       mesh.name = 'RiftHandOccluder';
       mesh.frustumCulled = false;
       mesh.visible = false;

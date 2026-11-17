@@ -27,9 +27,8 @@ test('portrait touch: Start opens a rift and a corner drag seals it', async ({ p
     .poll(() => page.evaluate(() => window.__riftLabDebug!.snapshot().openRifts), { timeout: 15000 })
     .toBeGreaterThan(0);
 
-  await page.evaluate(() => {
-    for (let i = 0; i < 12; i++) window.__riftLabDebug!.playNote('green', 'right');
-  });
+  // Lab Start grants one seal of energy (owner ask 2026-11-17) — no playNote
+  // charge loop needed before the corner drag can seal.
   const snap = await page.evaluate(() => window.__riftLabDebug!.snapshot());
   expect(snap.energy).toBe(120);
   // The resting orb must render inside the bottom-left touch zone it is

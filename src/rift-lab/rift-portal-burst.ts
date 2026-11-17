@@ -116,12 +116,10 @@ const SPARK_VERT = /* glsl */ `
 varying vec2 vUv;
 varying vec3 vColor;
 
-#ifdef USE_INSTANCING_COLOR
-attribute vec3 instanceColor;
-#endif
-
 void main() {
   vUv = uv;
+  // Three already injects the instancing color attribute when that define is
+  // set — redeclaring it here fails shader compile.
   #ifdef USE_INSTANCING_COLOR
     vColor = instanceColor;
   #else
@@ -162,10 +160,6 @@ varying vec3 vNormalW;
 varying vec3 vViewDir;
 varying vec3 vColor;
 
-#ifdef USE_INSTANCING_COLOR
-attribute vec3 instanceColor;
-#endif
-
 void main() {
   #ifdef USE_INSTANCING
     mat4 im = instanceMatrix;
@@ -175,6 +169,8 @@ void main() {
     vec4 worldPos = modelMatrix * vec4(position, 1.0);
     vNormalW = normalize(mat3(modelMatrix) * normal);
   #endif
+  // Three already injects the instancing color attribute when that define is
+  // set — redeclaring it here fails shader compile.
   #ifdef USE_INSTANCING_COLOR
     vColor = instanceColor;
   #else
@@ -552,9 +548,11 @@ export function updatePortalBurst(
     open: number;
     seal: number;
     sealing: boolean;
+    /** World camera orientation so plane sparks stay camera-facing. */
+    cameraQuat?: Quaternion;
   },
 ): void {
-  const { age, open, seal, sealing } = opts;
+  const { age, open, seal, sealing, cameraQuat } = opts;
   const sealFade = 1 - 0.55 * seal;
 
   for (let i = 0; i < burst.notes.length; i++) {
@@ -585,12 +583,17 @@ export function updatePortalBurst(
     }
     const s = seed.size * (0.7 + 0.5 * placed.f);
     _scale.set(s * 1.35, s * 0.7, s);
-    _euler.set(
-      seed.tumbleX + age * seed.spin * 2,
-      seed.ang + age * 1.1,
-      seed.tumbleZ,
-    );
-    _quat.setFromEuler(_euler);
+    if (cameraQuat != null) {
+      // Billboard the thin spark plane so it never disappears edge-on.
+      _quat.copy(cameraQuat);
+    } else {
+      _euler.set(
+        seed.tumbleX + age * seed.spin * 2,
+        seed.ang + age * 1.1,
+        seed.tumbleZ,
+      );
+      _quat.setFromEuler(_euler);
+    }
     _mat.compose(_pos, _quat, _scale);
     burst.sparks.setMatrixAt(i, _mat);
   }
@@ -664,6 +667,7 @@ export function createGeoSparkDraw(max: number): GeoSparkDraw {
 export function syncGeoSparkDraw(
   draw: GeoSparkDraw,
   pool: GeometryParticlePool,
+  cameraQuat?: Quaternion,
 ): void {
   const { mesh, matrix, color, quat, scale, pos } = draw;
   let shown = 0;
@@ -681,10 +685,14 @@ export function syncGeoSparkDraw(
     const vz = pool.vel[i3 + 2]!;
     const speed = Math.hypot(vx, vy, vz);
     scale.set(s * (1.2 + Math.min(1.8, speed * 0.35)), s * 0.65, s);
-    quat.identity();
-    if (speed > 0.05) {
-      // Align the spark quad toward velocity (approximate yaw).
-      quat.setFromAxisAngle(_axisY, Math.atan2(vx, vz));
+    if (cameraQuat != null) {
+      // PlaneGeometry has no thickness — face the camera so sparks stay visible.
+      quat.copy(cameraQuat);
+    } else {
+      quat.identity();
+      if (speed > 0.05) {
+        quat.setFromAxisAngle(_axisY, Math.atan2(vx, vz));
+      }
     }
     matrix.compose(pos, quat, scale);
     mesh.setMatrixAt(shown, matrix);

@@ -67,6 +67,7 @@ import {
   Plane,
   ShaderMaterial,
   Raycaster,
+  Quaternion,
   Vector2,
   Vector3,
   Vector4,
@@ -474,9 +475,15 @@ export class RiftLabSystem extends createSystem({
     t: 0, x: 0, y: 0, z: 0, nx: 0, ny: 1, nz: 0,
   };
   private readonly geoSurfaces: CollisionSurface[] = [];
+  /** Beam stop surfaces: room + rift-host only. Synthetic ground stays in
+   * `geoSurfaces` for spark bounce but must not kill a low mobile orb beam
+   * (or a Quest unbounded beam at head-height y=0). */
+  private readonly beamSurfaces: CollisionSurface[] = [];
   private lastGeoSurfaceRefreshAt = 0;
   private beamHitSprayAcc = 0;
   private readonly geoScratchNormal = new Vector3();
+  /** World camera orientation for billboarded portal / welding sparks. */
+  private readonly cameraWorldQuat = new Quaternion();
   private readonly geoScratchOrigin = new Vector3();
   private readonly geoScratchU = new Vector3();
   private readonly geoScratchV = new Vector3();
@@ -802,10 +809,18 @@ export class RiftLabSystem extends createSystem({
       return;
     }
     this.spawnRift();
+    if (this.riftViews.size === 0) {
+      this.renderPanel('Making room for a rift...');
+      return;
+    }
+    // Start already grants one seal of energy — surface the Ready copy that
+    // playNote would show after charging, not the empty-hands charge prompt.
     this.renderPanel(
-      this.riftViews.size > 0
-        ? 'A rift is open. Charge up and seal it.'
-        : 'Making room for a rift...',
+      this.game.canFireBeam()
+        ? this.flatTouchInput || this.touchDevice()
+          ? 'Ready. Tap a rift, or drag the orb from the corner to a rift.'
+          : 'Ready. Click a rift, or aim an open palm in XR.'
+        : 'A rift is open. Charge up and seal it.',
     );
   }
 
@@ -1518,6 +1533,7 @@ export class RiftLabSystem extends createSystem({
       }
     }
     riftTargetPositions.length = 0;
+    this.world.camera.getWorldQuaternion(this.cameraWorldQuat);
     for (const view of this.riftViews.values()) {
       riftTargetPositions.push({
         x: view.position.x,
@@ -1539,6 +1555,7 @@ export class RiftLabSystem extends createSystem({
         open: u.uOpen.value as number,
         seal: u.uSeal.value as number,
         sealing,
+        cameraQuat: this.cameraWorldQuat,
       });
     }
 
@@ -1586,7 +1603,7 @@ export class RiftLabSystem extends createSystem({
           closestSurfaceHit(
             origin.x, origin.y, origin.z,
             dir.x, dir.y, dir.z,
-            this.geoSurfaces,
+            this.beamSurfaces,
             0.05,
             BEAM_MAX_M,
             this.surfaceHit,
@@ -1597,7 +1614,14 @@ export class RiftLabSystem extends createSystem({
           this.geoHitPoint.set(this.surfaceHit.x, this.surfaceHit.y, this.surfaceHit.z);
           this.geoScratchNormal.set(this.surfaceHit.nx, this.surfaceHit.ny, this.surfaceHit.nz);
         }
-        const meshT = this.closestMeshHit(origin, dir);
+        // Flat touch: the resting orb sits centimeters above unnamed floor /
+        // dome meshes. Those hits (≈0.1 m) used to kill the seal beam before
+        // it reached the rift. Room furniture still stops XR beams via the
+        // mesh path below; touch drag aims with beamSurfaces + rift radius.
+        const meshT =
+          !this.isImmersive() && this.flatTouchInput && this.dragging
+            ? Number.POSITIVE_INFINITY
+            : this.closestMeshHit(origin, dir);
         if (meshT < endT) {
           endT = meshT;
           geoHit = true;
@@ -1800,32 +1824,30 @@ export class RiftLabSystem extends createSystem({
   /**
    * Item 93 collision surfaces. Real room planes come from the XRPlane
    * query and only in mixed reality (never synthesized on desktop). The
-   * y=0 session-space ground and each rift's host wall plane are known
-   * in every mode — except when the session origin sits near the head
-   * (unbounded/viewer), where y=0 is head height and must not stop the beam.
+   * y=0 session-space ground and each rift's host wall plane are known in
+   * every mode. Ground is particle-only: beam length uses `beamSurfaces`
+   * (hosts + rooms) so a low mobile orb beam and Quest unbounded y≈0 do
+   * not die into the synthetic floor before reaching a rift.
    */
   private refreshGeometrySurfaces(): void {
     this.geoSurfaces.length = 0;
+    this.beamSurfaces.length = 0;
     this.player.head.getWorldPosition(this.headPos);
-    // Quest MR can place the head near y=0 (unbounded/viewer). A synthetic
-    // y=0 floor then sits at head height and stops the seal beam.
-    const headNearSessionOrigin = Math.abs(this.headPos.y) < 0.55;
-    if (!headNearSessionOrigin) {
-      this.geoSurfaces.push(planeSurface('ground', 0, 1, 0, 0, 0, 0));
-    }
+    // Always keep spark bounce ground in flat + MR.
+    this.geoSurfaces.push(planeSurface('ground', 0, 1, 0, 0, 0, 0));
     for (const view of this.riftViews.values()) {
       this.riftOutwardNormal(view, this.geoScratchNormal);
-      this.geoSurfaces.push(
-        planeSurface(
-          'rift-host',
-          this.geoScratchNormal.x,
-          this.geoScratchNormal.y,
-          this.geoScratchNormal.z,
-          view.position.x,
-          view.position.y,
-          view.position.z,
-        ),
+      const host = planeSurface(
+        'rift-host',
+        this.geoScratchNormal.x,
+        this.geoScratchNormal.y,
+        this.geoScratchNormal.z,
+        view.position.x,
+        view.position.y,
+        view.position.z,
       );
+      this.geoSurfaces.push(host);
+      this.beamSurfaces.push(host);
     }
     if (!this.isMixedReality()) return;
     let roomCount = 0;
@@ -1869,7 +1891,7 @@ export class RiftLabSystem extends createSystem({
           maxV = Math.max(maxV, point.z);
         }
       }
-      this.geoSurfaces.push({
+      const room: CollisionSurface = {
         nx: n.x,
         ny: n.y,
         nz: n.z,
@@ -1888,7 +1910,9 @@ export class RiftLabSystem extends createSystem({
         minV,
         maxV,
         kind: 'room',
-      });
+      };
+      this.geoSurfaces.push(room);
+      this.beamSurfaces.push(room);
       roomCount++;
     }
   }
@@ -1960,7 +1984,8 @@ export class RiftLabSystem extends createSystem({
     }
     stepGeometryParticles(this.geoPool, delta, this.geoSurfaces);
     if (this.geoSparkDraw != null) {
-      syncGeoSparkDraw(this.geoSparkDraw, this.geoPool);
+      this.world.camera.getWorldQuaternion(this.cameraWorldQuat);
+      syncGeoSparkDraw(this.geoSparkDraw, this.geoPool, this.cameraWorldQuat);
     }
   }
 
@@ -1983,23 +2008,30 @@ export class RiftLabSystem extends createSystem({
     this.beamCaster.far = BEAM_MAX_M;
     this.beamCaster.set(origin, direction);
     const hits = this.beamCaster.intersectObjects(targets, false);
-    const hit = hits[0];
-    if (hit == null || hit.distance >= BEAM_MAX_M) return Number.POSITIVE_INFINITY;
-    this.beamMeshPoint.copy(hit.point);
-    if (hit.face != null) {
-      this.beamMeshNormal
-        .copy(hit.face.normal)
-        .transformDirection(hit.object.matrixWorld)
-        .normalize();
-      const toward =
-        (origin.x - hit.point.x) * this.beamMeshNormal.x +
-        (origin.y - hit.point.y) * this.beamMeshNormal.y +
-        (origin.z - hit.point.z) * this.beamMeshNormal.z;
-      if (toward < 0) this.beamMeshNormal.multiplyScalar(-1);
-    } else {
-      this.beamMeshNormal.copy(direction).multiplyScalar(-1);
+    for (const hit of hits) {
+      if (hit.distance >= BEAM_MAX_M) break;
+      if (hit.face != null) {
+        this.beamMeshNormal
+          .copy(hit.face.normal)
+          .transformDirection(hit.object.matrixWorld)
+          .normalize();
+        // Floor-like meshes (studio dome floor, etc.) sit under the mobile
+        // resting orb and previously killed the seal beam at ~0.1 m. Sparks
+        // still bounce on the synthetic ground plane; beam length ignores
+        // near-horizontal hits.
+        if (Math.abs(this.beamMeshNormal.y) > 0.85) continue;
+        const toward =
+          (origin.x - hit.point.x) * this.beamMeshNormal.x +
+          (origin.y - hit.point.y) * this.beamMeshNormal.y +
+          (origin.z - hit.point.z) * this.beamMeshNormal.z;
+        if (toward < 0) this.beamMeshNormal.multiplyScalar(-1);
+      } else {
+        this.beamMeshNormal.copy(direction).multiplyScalar(-1);
+      }
+      this.beamMeshPoint.copy(hit.point);
+      return hit.distance;
     }
-    return hit.distance;
+    return Number.POSITIVE_INFINITY;
   }
 
   private collectVisibleSceneMeshes(root: Object3D, out: Object3D[]): void {

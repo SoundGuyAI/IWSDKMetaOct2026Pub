@@ -262,3 +262,41 @@ test('discardRift removes an open rift without sealing or clearing it', () => {
   assert.deepEqual(game.getRifts().map((r) => r.id), [b.id]);
   assert.equal(game.discardRift(a.id), false);
 });
+
+test('portal spark/shard shaders do not redeclare instanceColor (Three injects it)', () => {
+  const burst = readFileSync(
+    join(root, 'src', 'rift-lab', 'rift-portal-burst.ts'),
+    'utf8',
+  );
+  assert.equal(
+    (burst.match(/^\s*attribute\s+vec3\s+instanceColor\s*;/gm) || []).length,
+    0,
+    'custom shaders must not redeclare Three-injected instanceColor',
+  );
+  assert.ok(burst.includes('vColor = instanceColor'));
+});
+
+test('startRun grants one seal of energy (matches owner Lab Start ask)', () => {
+  const system = readFileSync(
+    join(root, 'src', 'rift-lab', 'rift-lab-system.ts'),
+    'utf8',
+  );
+  assert.ok(
+    system.includes('this.game.setStartingEnergy(SEAL_ENERGY_REQUIRED)'),
+    'Lab Start must grant one seal so Quest sealing QA can fire immediately',
+  );
+});
+
+test('hub dressing including studio-floor hides only in Rift Lab', () => {
+  const app = readFileSync(join(root, 'src', 'app-mode.ts'), 'utf8');
+  assert.ok(app.includes('HUB_DRESSING_NODE_IDS'));
+  assert.ok(app.includes("'studio-floor'"));
+  assert.ok(app.includes("this.setNodeVisible(nodeId, !showRiftLab)"));
+  // Must not gate hub dressing on Demo alone — that hid the floor in Menu /
+  // Wall Tones / other labs and broke locomotion.
+  assert.equal(app.includes('HUB_SET_NODE_IDS'), false);
+  assert.equal(
+    /HUB_DRESSING_NODE_IDS\)[\s\S]{0,80}showDemo/.test(app),
+    false,
+  );
+});

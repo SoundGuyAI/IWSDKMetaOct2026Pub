@@ -93,7 +93,6 @@ export class RiftSealBeam {
   private readonly spirals: Ribbon[] = [];
   private readonly wispSprites: Sprite[] = [];
   private readonly wispSeeds: Float32Array;
-  private readonly palmCore: Sprite;
   private readonly palmHalo: Sprite;
   private readonly palmWisps: Ribbon[] = [];
   private readonly impact: Sprite;
@@ -204,21 +203,8 @@ export class RiftSealBeam {
       this.wispSprites.push(sprite);
     }
 
-    // Palm flare is filaments only — a white Sprite core read as a floating
-    // sphere on Quest and washed out the beam origin.
-    this.palmCore = new Sprite(
-      new SpriteMaterial({
-        map: glowDotTexture(),
-        color: 0xffffff,
-        transparent: true,
-        depthTest: false,
-        depthWrite: false,
-        blending: AdditiveBlending,
-        toneMapped: false,
-        opacity: 0,
-      }),
-    );
-    this.palmCore.visible = false;
+    // Palm flare is filaments only — a white Sprite core used to read as a
+    // floating sphere on Quest and washed out the beam origin, so it is gone.
     this.palmHalo = new Sprite(
       new SpriteMaterial({
         map: glowDotTexture(),
@@ -232,7 +218,6 @@ export class RiftSealBeam {
       }),
     );
     this.palmHalo.visible = false;
-    this.palmCore.scale.setScalar(0.05);
 
     for (let i = 0; i < PALM_WISP_COUNT; i++) {
       const pos = new Float32Array((PALM_WISP_SEGMENTS + 1) * 6);
@@ -329,7 +314,6 @@ export class RiftSealBeam {
     const beamCol = this.sampleBeamColor(state.timeSec, this.colorMix);
     this.coreInnerMat.color.copy(beamCol).lerp(this.white, 0.7);
     this.coreOuterMat.color.copy(beamCol).lerp(this.white, 0.25);
-    (this.palmCore.material as SpriteMaterial).color.copy(beamCol).lerp(this.white, 0.55);
     (this.palmHalo.material as SpriteMaterial).color.copy(beamCol);
     this.impactMat.color.copy(beamCol).lerp(this.white, 0.45);
 
@@ -402,7 +386,6 @@ export class RiftSealBeam {
     }
 
     // Filament nest only at the palm — no white core sprite.
-    this.palmCore.visible = false;
     this.palmHalo.visible = false;
     for (let i = 0; i < this.palmWisps.length; i++) {
       const w = this.palmWisps[i];
