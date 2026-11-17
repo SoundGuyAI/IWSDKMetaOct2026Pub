@@ -1099,6 +1099,7 @@ private updateArmbandBeamVeil(len: number, e: number): void {
   * UIKit click a poke can also deliver, and pushes the pressed button into
   * the panel for a physical, 3D-press feel. */
   private updateArmbandDirectPress(panel: UIKitMLAsset): void {
+    this.armband!.raisedButtons.hideAll();
     if (this.armbandDirectButtons.length === 0) return;
     const now = performance.now();
     for (const entry of this.armbandDirectButtons) {
@@ -1120,14 +1121,12 @@ private updateArmbandBeamVeil(len: number, e: number): void {
       this.armbandPressRight.set(1, 0, 0).applyQuaternion(this.armbandPressQuat);
       this.armbandPressUp.set(0, 1, 0).applyQuaternion(this.armbandPressQuat);
       this.armbandPressOut.set(0, 0, 1).applyQuaternion(this.armbandPressQuat);
-      const frame = {
-        center: { x: this.armbandPressPos.x, y: this.armbandPressPos.y, z: this.armbandPressPos.z },
-        right: { x: this.armbandPressRight.x, y: this.armbandPressRight.y, z: this.armbandPressRight.z },
-        up: { x: this.armbandPressUp.x, y: this.armbandPressUp.y, z: this.armbandPressUp.z },
-        out: { x: this.armbandPressOut.x, y: this.armbandPressOut.y, z: this.armbandPressOut.z },
-        halfWidth: this.armbandPressScale.x * 0.5,
-        halfHeight: this.armbandPressScale.y * 0.5,
-      };
+      const raised = this.armband!.raisedButtons.update(panel, entry.id, el);
+      const frame = raised.frame;
+      if (!raised.active) {
+        for (const hand of XR_HANDS) entry.hands[hand] = { hover: false, pressed: false };
+        continue;
+      }
       let deepest = 0;
       for (const hand of XR_HANDS) {
         const adapter = this.input.xr.visualAdapters[hand].peek();
@@ -1143,7 +1142,7 @@ private updateArmbandBeamVeil(len: number, e: number): void {
         }
         if (next.state.pressed) deepest = Math.max(deepest, sample.depth);
       }
-      const pushPx = Math.min(deepest, DIRECT_PRESS_PUSH_MAX_M) * (size[0] / this.armbandPressScale.x);
+      const pushPx = this.armband!.raisedButtons.push(entry.id, deepest);
       if (Math.abs(pushPx - entry.pushPx) > 0.5) {
         entry.pushPx = pushPx;
         setProps?.({ transformTranslateZ: -pushPx } as never);
