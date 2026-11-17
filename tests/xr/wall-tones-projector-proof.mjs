@@ -251,7 +251,7 @@ const directPress=await page.evaluate(async()=>{
  const center=new V(); el.getWorldPosition(center);
  const q=el.getWorldQuaternion(new (s.armbandPressQuat.constructor)());
  const out=new V(0,0,1).applyQuaternion(q);
- center.addScaledVector(out,.030);
+ center.addScaledVector(out,.010);
  const far=new V(0,-8,0);
  const tip=new V();
  const put=(mode)=>{ if(mode==='hover')tip.copy(center).addScaledVector(out,0.02); else if(mode==='press')tip.copy(center).addScaledVector(out,-0.0015); else tip.copy(far); };
@@ -279,6 +279,19 @@ const directPress=await page.evaluate(async()=>{
  delete s.readIndexTipWorld; entry.action=orig; s.onPlayControl=origPlay;
  return {firesOnHover,firesOnPress,pushWhilePressed,firesAfterClick,realAfterClick,suppressArmed,pushAfterRelease,firesOnSecondPoke,dbg};
 });
+const baseContact=await page.evaluate(()=>{
+ const s=window.__armbandHarness.system,panel=window.__armbandHarness.world.getSceneObject('wall-tones-armband');
+ const el=panel.getElementById('armband-play'),cap=s.armband.raisedButtons.keys.get('armband-play');
+ const V=s.armbandPressPos.constructor;
+ panel.updateWorldMatrix(true,true);el.updateWorldMatrix(true,false);cap.mesh.updateWorldMatrix(true,false);
+ const panelPoint=el.localToWorld(new V()),front=cap.mesh.localToWorld(new V(0,0,.5)),back=cap.mesh.localToWorld(new V(0,0,-.5));
+ // Undo the currently held press travel to inspect the resting base.
+ const out=front.clone().sub(back).normalize();back.addScaledVector(out,cap.travelM);
+ return {gap:back.distanceTo(panelPoint),thickness:front.distanceTo(cap.mesh.localToWorld(new V(0,0,-.5)))};
+});
+console.log('BASE_CONTACT',baseContact);
+assert.ok(baseContact.gap<0.0005,'resting keycap base touches the UIKit panel');
+assert.ok(Math.abs(baseContact.thickness-.010)<0.0005,'keycap retains10mm thickness');
 console.log('DIRECT_PRESS',directPress);
 assert.equal(directPress.firesOnHover,0,'hovering in front of the button does not fire');
 assert.equal(directPress.firesOnPress,1,'face contact fires the action exactly once');
