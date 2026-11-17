@@ -144,12 +144,31 @@ export class TiltBaselineTracker {
       // TILT_GIMBAL_ZONE_BETA_DEG). Freeze yaw by tracking the gamma
       // baseline 1:1; keep beta flowing so pitch nods still read.
       this.baseGamma = gammaDeg;
-      this.lastBeta = betaDeg;
-      this.lastGamma = gammaDeg;
-      this.stillEvents = 0;
       if (this.baseBeta == null) {
         this.baseBeta = betaDeg;
+        this.stillEvents = 0;
+      } else if (this.lastBeta != null) {
+        // Beta stays continuous and trusted through vertical, so the beta
+        // baseline keeps tracking the resting pose here exactly like
+        // outside the zone. Without it the anchor froze at the pre-zone
+        // pose (or at a mid-motion grab after a baseline reset), pitching
+        // every later sample by a constant offset and making the flat
+        // detector's return-to-baseline requirement unachievable - the
+        // owner's Nov 17 iPhone report: nods stopped registering after
+        // moving the phone to point up, until it left the zone.
+        const dBeta = betaDeg - this.lastBeta;
+        if (Math.abs(dBeta) <= TILT_STILL_DEG_PER_EVENT) {
+          this.stillEvents += 1;
+          if (this.stillEvents >= TILT_STILL_EVENTS_TO_TRACK) {
+            this.baseBeta +=
+              (betaDeg - this.baseBeta) * TILT_REST_TRACK_ALPHA;
+          }
+        } else {
+          this.stillEvents = 0;
+        }
       }
+      this.lastBeta = betaDeg;
+      this.lastGamma = gammaDeg;
       // In the gimbal zone gamma is untrusted, so yaw is frozen BEFORE
       // the rotation: a landscape phone near vertical cannot read shakes
       // reliably (documented limit), nods keep working in portrait.
