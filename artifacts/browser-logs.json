@@ -1,0 +1,616 @@
+{
+  "ok": true,
+  "data": {
+    "workspaceRoot": "C:\\UnityProj\\IWSDKMetaOct2026Pub-rift-visual",
+    "operation": "browser.logs",
+    "result": [
+      {
+        "timestamp": 1794869795407,
+        "level": "info",
+        "message": "Frame navigated: https://localhost:8081/?__iwsdkManagedWorkspace=[redacted]",
+        "args": [
+          "Frame navigated: https://localhost:8081/?__iwsdkManagedWorkspace=[redacted]"
+        ],
+        "frameUrl": "https://localhost:8081/?__iwsdkManagedWorkspace=[redacted]",
+        "kind": "navigation",
+        "url": "https://localhost:8081/?__iwsdkManagedWorkspace=[redacted]"
+      },
+      {
+        "timestamp": 1794869795420,
+        "level": "info",
+        "message": "Frame navigated: https://localhost:8081/",
+        "args": [
+          "Frame navigated: https://localhost:8081/"
+        ],
+        "frameUrl": "https://localhost:8081/",
+        "kind": "navigation",
+        "url": "https://localhost:8081/"
+      },
+      {
+        "timestamp": 1794869796563,
+        "level": "log",
+        "message": "[IWSDK Dev] Configuration: {device: metaVRGlasses, activation: localhost, verbose: false, sem: null, ai: null}",
+        "args": [
+          "\"[IWSDK Dev] Configuration:\"",
+          "{\"device\":\"metaVRGlasses\",\"activation\":\"localhost\",\"verbose\":false,\"sem\":null,\"ai\":null,\"workspace\":{\"enabled\":true,\"open\":true,\"headless\":true,\"devUI\":true,\"browserAutomation\":true,\"viewport\":null,\"screenshotSize\":{\"width\":800,\"height\":800}},\"userAgentException\":\"/OculusBrowser/\",\"iwer\":true,\"nativeXRControl\":false}"
+        ],
+        "columnNumber": 1084215,
+        "frameUrl": "https://localhost:8081/@id/__x00__virtual:iwsdk-dev-runtime/chunks/injection-template-0HSd4CcE.js",
+        "kind": "console",
+        "lineNumber": 983,
+        "url": "https://localhost:8081/@id/__x00__virtual:iwsdk-dev-runtime/chunks/injection-template-0HSd4CcE.js"
+      },
+      {
+        "timestamp": 1794869798929,
+        "level": "log",
+        "message": "                                                 \n▄▄▄▄▄▄  ▄▄      ▄▄   ▄▄▄▄    ▄▄▄▄▄     ▄▄   ▄▄▄ \n▀▀██▀▀  ██      ██ ▄█▀▀▀▀█   ██▀▀▀██   ██  ██▀  \n  ██    ▀█▄ ██ ▄█▀ ██▄       ██    ██  ██▄██    \n  ██     ██ ██ ██   ▀████▄   ██    ██  █████    \n  ██     ███▀▀███       ▀██  ██    ██  ██  ██▄  \n▄▄██▄▄   ███  ███  █▄▄▄▄▄█▀  ██▄▄▄██   ██   ██▄ \n▀▀▀▀▀▀   ▀▀▀  ▀▀▀   ▀▀▀▀▀    ▀▀▀▀▀     ▀▀    ▀▀                                                \n===============================================\nImmersive Web SDK v1.1.0-rc.2\nThree.js r185\nEliCS v3.4.2",
+        "args": [
+          "\"                                                 \\n▄▄▄▄▄▄  ▄▄      ▄▄   ▄▄▄▄    ▄▄▄▄▄     ▄▄   ▄▄▄ \\n▀▀██▀▀  ██      ██ ▄█▀▀▀▀█   ██▀▀▀██   ██  ██▀  \\n  ██    ▀█▄ ██ ▄█▀ ██▄       ██    ██  ██▄██    \\n  ██     ██ ██ ██   ▀████▄   ██    ██  █████    \\n  ██     ███▀▀███       ▀██  ██    ██  ██  ██▄  \\n▄▄██▄▄   ███  ███  █▄▄▄▄▄█▀  ██▄▄▄██   ██   ██▄ \\n▀▀▀▀▀▀   ▀▀▀  ▀▀▀   ▀▀▀▀▀    ▀▀▀▀▀     ▀▀    ▀▀                                                \\n===============================================\\nImmersive Web SDK v1.1.0-rc.2\\nThree.js r185\\nEliCS v3.4.2\""
+        ],
+        "columnNumber": 8,
+        "frameUrl": "https://localhost:8081/node_modules/@iwsdk/core/dist/index.js?v=caee4805",
+        "kind": "console",
+        "lineNumber": 122,
+        "url": "https://localhost:8081/node_modules/@iwsdk/core/dist/index.js?v=caee4805"
+      },
+      {
+        "timestamp": 1794869799165,
+        "level": "info",
+        "message": "Frame navigated: about:blank",
+        "args": [
+          "Frame navigated: about:blank"
+        ],
+        "frameUrl": "about:blank",
+        "kind": "navigation",
+        "url": "about:blank",
+        "repeatCount": 2
+      },
+      {
+        "timestamp": 1794869799436,
+        "level": "info",
+        "message": "Frame navigated: https://localhost:8081/",
+        "args": [
+          "Frame navigated: https://localhost:8081/"
+        ],
+        "frameUrl": "https://localhost:8081/",
+        "kind": "navigation",
+        "url": "https://localhost:8081/"
+      },
+      {
+        "timestamp": 1794869801191,
+        "level": "log",
+        "message": "[IWSDK Dev] Configuration: {device: metaVRGlasses, activation: localhost, verbose: false, sem: null, ai: null}",
+        "args": [
+          "\"[IWSDK Dev] Configuration:\"",
+          "{\"device\":\"metaVRGlasses\",\"activation\":\"localhost\",\"verbose\":false,\"sem\":null,\"ai\":null,\"workspace\":{\"enabled\":true,\"open\":true,\"headless\":true,\"devUI\":true,\"browserAutomation\":true,\"viewport\":null,\"screenshotSize\":{\"width\":800,\"height\":800}},\"userAgentException\":\"/OculusBrowser/\",\"iwer\":true,\"nativeXRControl\":false}"
+        ],
+        "columnNumber": 1084215,
+        "frameUrl": "https://localhost:8081/@id/__x00__virtual:iwsdk-dev-runtime/chunks/injection-template-0HSd4CcE.js",
+        "kind": "console",
+        "lineNumber": 983,
+        "url": "https://localhost:8081/@id/__x00__virtual:iwsdk-dev-runtime/chunks/injection-template-0HSd4CcE.js"
+      },
+      {
+        "timestamp": 1794869802450,
+        "level": "log",
+        "message": "                                                 \n▄▄▄▄▄▄  ▄▄      ▄▄   ▄▄▄▄    ▄▄▄▄▄     ▄▄   ▄▄▄ \n▀▀██▀▀  ██      ██ ▄█▀▀▀▀█   ██▀▀▀██   ██  ██▀  \n  ██    ▀█▄ ██ ▄█▀ ██▄       ██    ██  ██▄██    \n  ██     ██ ██ ██   ▀████▄   ██    ██  █████    \n  ██     ███▀▀███       ▀██  ██    ██  ██  ██▄  \n▄▄██▄▄   ███  ███  █▄▄▄▄▄█▀  ██▄▄▄██   ██   ██▄ \n▀▀▀▀▀▀   ▀▀▀  ▀▀▀   ▀▀▀▀▀    ▀▀▀▀▀     ▀▀    ▀▀                                                \n===============================================\nImmersive Web SDK v1.1.0-rc.2\nThree.js r185\nEliCS v3.4.2",
+        "args": [
+          "\"                                                 \\n▄▄▄▄▄▄  ▄▄      ▄▄   ▄▄▄▄    ▄▄▄▄▄     ▄▄   ▄▄▄ \\n▀▀██▀▀  ██      ██ ▄█▀▀▀▀█   ██▀▀▀██   ██  ██▀  \\n  ██    ▀█▄ ██ ▄█▀ ██▄       ██    ██  ██▄██    \\n  ██     ██ ██ ██   ▀████▄   ██    ██  █████    \\n  ██     ███▀▀███       ▀██  ██    ██  ██  ██▄  \\n▄▄██▄▄   ███  ███  █▄▄▄▄▄█▀  ██▄▄▄██   ██   ██▄ \\n▀▀▀▀▀▀   ▀▀▀  ▀▀▀   ▀▀▀▀▀    ▀▀▀▀▀     ▀▀    ▀▀                                                \\n===============================================\\nImmersive Web SDK v1.1.0-rc.2\\nThree.js r185\\nEliCS v3.4.2\""
+        ],
+        "columnNumber": 8,
+        "frameUrl": "https://localhost:8081/node_modules/@iwsdk/core/dist/index.js?v=caee4805",
+        "kind": "console",
+        "lineNumber": 122,
+        "url": "https://localhost:8081/node_modules/@iwsdk/core/dist/index.js?v=caee4805"
+      },
+      {
+        "timestamp": 1794869804930,
+        "level": "warn",
+        "message": "SVGLoader: createShapes() is deprecated. Use shapePath.toShapes() instead.",
+        "args": [
+          "\"SVGLoader: createShapes() is deprecated. Use shapePath.toShapes() instead.\""
+        ],
+        "columnNumber": 12,
+        "frameUrl": "https://localhost:8081/node_modules/.vite/deps/chunk-OPZYYT74.js?v=caee4805",
+        "kind": "console",
+        "lineNumber": 28730,
+        "url": "https://localhost:8081/node_modules/.vite/deps/chunk-OPZYYT74.js?v=caee4805",
+        "repeatCount": 56
+      },
+      {
+        "timestamp": 1794869805178,
+        "level": "warn",
+        "message": "THREE.Matrix3: .translate() is deprecated. Use .makeTranslation() instead.",
+        "args": [
+          "\"THREE.Matrix3: .translate() is deprecated. Use .makeTranslation() instead.\""
+        ],
+        "columnNumber": 14,
+        "frameUrl": "https://localhost:8081/node_modules/.vite/deps/chunk-WNIOHBZ6.js?v=caee4805",
+        "kind": "console",
+        "lineNumber": 296,
+        "url": "https://localhost:8081/node_modules/.vite/deps/chunk-WNIOHBZ6.js?v=caee4805"
+      },
+      {
+        "timestamp": 1794869805178,
+        "level": "warn",
+        "message": "THREE.Matrix3: .scale() is deprecated. Use .makeScale() instead.",
+        "args": [
+          "\"THREE.Matrix3: .scale() is deprecated. Use .makeScale() instead.\""
+        ],
+        "columnNumber": 14,
+        "frameUrl": "https://localhost:8081/node_modules/.vite/deps/chunk-WNIOHBZ6.js?v=caee4805",
+        "kind": "console",
+        "lineNumber": 296,
+        "url": "https://localhost:8081/node_modules/.vite/deps/chunk-WNIOHBZ6.js?v=caee4805"
+      },
+      {
+        "timestamp": 1794870010559,
+        "level": "info",
+        "message": "Frame navigated: https://localhost:8081/",
+        "args": [
+          "Frame navigated: https://localhost:8081/"
+        ],
+        "frameUrl": "https://localhost:8081/",
+        "kind": "navigation",
+        "url": "https://localhost:8081/"
+      },
+      {
+        "timestamp": 1794870011327,
+        "level": "log",
+        "message": "[IWSDK Dev] Configuration: {device: metaVRGlasses, activation: localhost, verbose: false, sem: null, ai: null}",
+        "args": [
+          "\"[IWSDK Dev] Configuration:\"",
+          "{\"device\":\"metaVRGlasses\",\"activation\":\"localhost\",\"verbose\":false,\"sem\":null,\"ai\":null,\"workspace\":{\"enabled\":true,\"open\":true,\"headless\":true,\"devUI\":true,\"browserAutomation\":true,\"viewport\":null,\"screenshotSize\":{\"width\":800,\"height\":800}},\"userAgentException\":\"/OculusBrowser/\",\"iwer\":true,\"nativeXRControl\":false}"
+        ],
+        "columnNumber": 1084215,
+        "frameUrl": "https://localhost:8081/@id/__x00__virtual:iwsdk-dev-runtime/chunks/injection-template-0HSd4CcE.js",
+        "kind": "console",
+        "lineNumber": 983,
+        "url": "https://localhost:8081/@id/__x00__virtual:iwsdk-dev-runtime/chunks/injection-template-0HSd4CcE.js"
+      },
+      {
+        "timestamp": 1794870011805,
+        "level": "log",
+        "message": "                                                 \n▄▄▄▄▄▄  ▄▄      ▄▄   ▄▄▄▄    ▄▄▄▄▄     ▄▄   ▄▄▄ \n▀▀██▀▀  ██      ██ ▄█▀▀▀▀█   ██▀▀▀██   ██  ██▀  \n  ██    ▀█▄ ██ ▄█▀ ██▄       ██    ██  ██▄██    \n  ██     ██ ██ ██   ▀████▄   ██    ██  █████    \n  ██     ███▀▀███       ▀██  ██    ██  ██  ██▄  \n▄▄██▄▄   ███  ███  █▄▄▄▄▄█▀  ██▄▄▄██   ██   ██▄ \n▀▀▀▀▀▀   ▀▀▀  ▀▀▀   ▀▀▀▀▀    ▀▀▀▀▀     ▀▀    ▀▀                                                \n===============================================\nImmersive Web SDK v1.1.0-rc.2\nThree.js r185\nEliCS v3.4.2",
+        "args": [
+          "\"                                                 \\n▄▄▄▄▄▄  ▄▄      ▄▄   ▄▄▄▄    ▄▄▄▄▄     ▄▄   ▄▄▄ \\n▀▀██▀▀  ██      ██ ▄█▀▀▀▀█   ██▀▀▀██   ██  ██▀  \\n  ██    ▀█▄ ██ ▄█▀ ██▄       ██    ██  ██▄██    \\n  ██     ██ ██ ██   ▀████▄   ██    ██  █████    \\n  ██     ███▀▀███       ▀██  ██    ██  ██  ██▄  \\n▄▄██▄▄   ███  ███  █▄▄▄▄▄█▀  ██▄▄▄██   ██   ██▄ \\n▀▀▀▀▀▀   ▀▀▀  ▀▀▀   ▀▀▀▀▀    ▀▀▀▀▀     ▀▀    ▀▀                                                \\n===============================================\\nImmersive Web SDK v1.1.0-rc.2\\nThree.js r185\\nEliCS v3.4.2\""
+        ],
+        "columnNumber": 8,
+        "frameUrl": "https://localhost:8081/node_modules/@iwsdk/core/dist/index.js?v=caee4805",
+        "kind": "console",
+        "lineNumber": 122,
+        "url": "https://localhost:8081/node_modules/@iwsdk/core/dist/index.js?v=caee4805"
+      },
+      {
+        "timestamp": 1794870013136,
+        "level": "warn",
+        "message": "SVGLoader: createShapes() is deprecated. Use shapePath.toShapes() instead.",
+        "args": [
+          "\"SVGLoader: createShapes() is deprecated. Use shapePath.toShapes() instead.\""
+        ],
+        "columnNumber": 12,
+        "frameUrl": "https://localhost:8081/node_modules/.vite/deps/chunk-OPZYYT74.js?v=caee4805",
+        "kind": "console",
+        "lineNumber": 28730,
+        "url": "https://localhost:8081/node_modules/.vite/deps/chunk-OPZYYT74.js?v=caee4805",
+        "repeatCount": 56
+      },
+      {
+        "timestamp": 1794870013355,
+        "level": "warn",
+        "message": "THREE.Matrix3: .translate() is deprecated. Use .makeTranslation() instead.",
+        "args": [
+          "\"THREE.Matrix3: .translate() is deprecated. Use .makeTranslation() instead.\""
+        ],
+        "columnNumber": 14,
+        "frameUrl": "https://localhost:8081/node_modules/.vite/deps/chunk-WNIOHBZ6.js?v=caee4805",
+        "kind": "console",
+        "lineNumber": 296,
+        "url": "https://localhost:8081/node_modules/.vite/deps/chunk-WNIOHBZ6.js?v=caee4805"
+      },
+      {
+        "timestamp": 1794870013355,
+        "level": "warn",
+        "message": "THREE.Matrix3: .scale() is deprecated. Use .makeScale() instead.",
+        "args": [
+          "\"THREE.Matrix3: .scale() is deprecated. Use .makeScale() instead.\""
+        ],
+        "columnNumber": 14,
+        "frameUrl": "https://localhost:8081/node_modules/.vite/deps/chunk-WNIOHBZ6.js?v=caee4805",
+        "kind": "console",
+        "lineNumber": 296,
+        "url": "https://localhost:8081/node_modules/.vite/deps/chunk-WNIOHBZ6.js?v=caee4805"
+      },
+      {
+        "timestamp": 1794870060352,
+        "level": "info",
+        "message": "Frame navigated: https://localhost:8081/",
+        "args": [
+          "Frame navigated: https://localhost:8081/"
+        ],
+        "frameUrl": "https://localhost:8081/",
+        "kind": "navigation",
+        "url": "https://localhost:8081/"
+      },
+      {
+        "timestamp": 1794870060990,
+        "level": "log",
+        "message": "[IWSDK Dev] Configuration: {device: metaVRGlasses, activation: localhost, verbose: false, sem: null, ai: null}",
+        "args": [
+          "\"[IWSDK Dev] Configuration:\"",
+          "{\"device\":\"metaVRGlasses\",\"activation\":\"localhost\",\"verbose\":false,\"sem\":null,\"ai\":null,\"workspace\":{\"enabled\":true,\"open\":true,\"headless\":true,\"devUI\":true,\"browserAutomation\":true,\"viewport\":null,\"screenshotSize\":{\"width\":800,\"height\":800}},\"userAgentException\":\"/OculusBrowser/\",\"iwer\":true,\"nativeXRControl\":false}"
+        ],
+        "columnNumber": 1084215,
+        "frameUrl": "https://localhost:8081/@id/__x00__virtual:iwsdk-dev-runtime/chunks/injection-template-0HSd4CcE.js",
+        "kind": "console",
+        "lineNumber": 983,
+        "url": "https://localhost:8081/@id/__x00__virtual:iwsdk-dev-runtime/chunks/injection-template-0HSd4CcE.js"
+      },
+      {
+        "timestamp": 1794870061489,
+        "level": "log",
+        "message": "                                                 \n▄▄▄▄▄▄  ▄▄      ▄▄   ▄▄▄▄    ▄▄▄▄▄     ▄▄   ▄▄▄ \n▀▀██▀▀  ██      ██ ▄█▀▀▀▀█   ██▀▀▀██   ██  ██▀  \n  ██    ▀█▄ ██ ▄█▀ ██▄       ██    ██  ██▄██    \n  ██     ██ ██ ██   ▀████▄   ██    ██  █████    \n  ██     ███▀▀███       ▀██  ██    ██  ██  ██▄  \n▄▄██▄▄   ███  ███  █▄▄▄▄▄█▀  ██▄▄▄██   ██   ██▄ \n▀▀▀▀▀▀   ▀▀▀  ▀▀▀   ▀▀▀▀▀    ▀▀▀▀▀     ▀▀    ▀▀                                                \n===============================================\nImmersive Web SDK v1.1.0-rc.2\nThree.js r185\nEliCS v3.4.2",
+        "args": [
+          "\"                                                 \\n▄▄▄▄▄▄  ▄▄      ▄▄   ▄▄▄▄    ▄▄▄▄▄     ▄▄   ▄▄▄ \\n▀▀██▀▀  ██      ██ ▄█▀▀▀▀█   ██▀▀▀██   ██  ██▀  \\n  ██    ▀█▄ ██ ▄█▀ ██▄       ██    ██  ██▄██    \\n  ██     ██ ██ ██   ▀████▄   ██    ██  █████    \\n  ██     ███▀▀███       ▀██  ██    ██  ██  ██▄  \\n▄▄██▄▄   ███  ███  █▄▄▄▄▄█▀  ██▄▄▄██   ██   ██▄ \\n▀▀▀▀▀▀   ▀▀▀  ▀▀▀   ▀▀▀▀▀    ▀▀▀▀▀     ▀▀    ▀▀                                                \\n===============================================\\nImmersive Web SDK v1.1.0-rc.2\\nThree.js r185\\nEliCS v3.4.2\""
+        ],
+        "columnNumber": 8,
+        "frameUrl": "https://localhost:8081/node_modules/@iwsdk/core/dist/index.js?v=caee4805",
+        "kind": "console",
+        "lineNumber": 122,
+        "url": "https://localhost:8081/node_modules/@iwsdk/core/dist/index.js?v=caee4805"
+      },
+      {
+        "timestamp": 1794870062774,
+        "level": "warn",
+        "message": "SVGLoader: createShapes() is deprecated. Use shapePath.toShapes() instead.",
+        "args": [
+          "\"SVGLoader: createShapes() is deprecated. Use shapePath.toShapes() instead.\""
+        ],
+        "columnNumber": 12,
+        "frameUrl": "https://localhost:8081/node_modules/.vite/deps/chunk-OPZYYT74.js?v=caee4805",
+        "kind": "console",
+        "lineNumber": 28730,
+        "url": "https://localhost:8081/node_modules/.vite/deps/chunk-OPZYYT74.js?v=caee4805",
+        "repeatCount": 56
+      },
+      {
+        "timestamp": 1794870062946,
+        "level": "warn",
+        "message": "THREE.Matrix3: .translate() is deprecated. Use .makeTranslation() instead.",
+        "args": [
+          "\"THREE.Matrix3: .translate() is deprecated. Use .makeTranslation() instead.\""
+        ],
+        "columnNumber": 14,
+        "frameUrl": "https://localhost:8081/node_modules/.vite/deps/chunk-WNIOHBZ6.js?v=caee4805",
+        "kind": "console",
+        "lineNumber": 296,
+        "url": "https://localhost:8081/node_modules/.vite/deps/chunk-WNIOHBZ6.js?v=caee4805"
+      },
+      {
+        "timestamp": 1794870062946,
+        "level": "warn",
+        "message": "THREE.Matrix3: .scale() is deprecated. Use .makeScale() instead.",
+        "args": [
+          "\"THREE.Matrix3: .scale() is deprecated. Use .makeScale() instead.\""
+        ],
+        "columnNumber": 14,
+        "frameUrl": "https://localhost:8081/node_modules/.vite/deps/chunk-WNIOHBZ6.js?v=caee4805",
+        "kind": "console",
+        "lineNumber": 296,
+        "url": "https://localhost:8081/node_modules/.vite/deps/chunk-WNIOHBZ6.js?v=caee4805"
+      },
+      {
+        "timestamp": 1794870099861,
+        "level": "info",
+        "message": "Frame navigated: https://localhost:8081/",
+        "args": [
+          "Frame navigated: https://localhost:8081/"
+        ],
+        "frameUrl": "https://localhost:8081/",
+        "kind": "navigation",
+        "url": "https://localhost:8081/"
+      },
+      {
+        "timestamp": 1794870100563,
+        "level": "log",
+        "message": "[IWSDK Dev] Configuration: {device: metaVRGlasses, activation: localhost, verbose: false, sem: null, ai: null}",
+        "args": [
+          "\"[IWSDK Dev] Configuration:\"",
+          "{\"device\":\"metaVRGlasses\",\"activation\":\"localhost\",\"verbose\":false,\"sem\":null,\"ai\":null,\"workspace\":{\"enabled\":true,\"open\":true,\"headless\":true,\"devUI\":true,\"browserAutomation\":true,\"viewport\":null,\"screenshotSize\":{\"width\":800,\"height\":800}},\"userAgentException\":\"/OculusBrowser/\",\"iwer\":true,\"nativeXRControl\":false}"
+        ],
+        "columnNumber": 1084215,
+        "frameUrl": "https://localhost:8081/@id/__x00__virtual:iwsdk-dev-runtime/chunks/injection-template-0HSd4CcE.js",
+        "kind": "console",
+        "lineNumber": 983,
+        "url": "https://localhost:8081/@id/__x00__virtual:iwsdk-dev-runtime/chunks/injection-template-0HSd4CcE.js"
+      },
+      {
+        "timestamp": 1794870100973,
+        "level": "log",
+        "message": "                                                 \n▄▄▄▄▄▄  ▄▄      ▄▄   ▄▄▄▄    ▄▄▄▄▄     ▄▄   ▄▄▄ \n▀▀██▀▀  ██      ██ ▄█▀▀▀▀█   ██▀▀▀██   ██  ██▀  \n  ██    ▀█▄ ██ ▄█▀ ██▄       ██    ██  ██▄██    \n  ██     ██ ██ ██   ▀████▄   ██    ██  █████    \n  ██     ███▀▀███       ▀██  ██    ██  ██  ██▄  \n▄▄██▄▄   ███  ███  █▄▄▄▄▄█▀  ██▄▄▄██   ██   ██▄ \n▀▀▀▀▀▀   ▀▀▀  ▀▀▀   ▀▀▀▀▀    ▀▀▀▀▀     ▀▀    ▀▀                                                \n===============================================\nImmersive Web SDK v1.1.0-rc.2\nThree.js r185\nEliCS v3.4.2",
+        "args": [
+          "\"                                                 \\n▄▄▄▄▄▄  ▄▄      ▄▄   ▄▄▄▄    ▄▄▄▄▄     ▄▄   ▄▄▄ \\n▀▀██▀▀  ██      ██ ▄█▀▀▀▀█   ██▀▀▀██   ██  ██▀  \\n  ██    ▀█▄ ██ ▄█▀ ██▄       ██    ██  ██▄██    \\n  ██     ██ ██ ██   ▀████▄   ██    ██  █████    \\n  ██     ███▀▀███       ▀██  ██    ██  ██  ██▄  \\n▄▄██▄▄   ███  ███  █▄▄▄▄▄█▀  ██▄▄▄██   ██   ██▄ \\n▀▀▀▀▀▀   ▀▀▀  ▀▀▀   ▀▀▀▀▀    ▀▀▀▀▀     ▀▀    ▀▀                                                \\n===============================================\\nImmersive Web SDK v1.1.0-rc.2\\nThree.js r185\\nEliCS v3.4.2\""
+        ],
+        "columnNumber": 8,
+        "frameUrl": "https://localhost:8081/node_modules/@iwsdk/core/dist/index.js?v=caee4805",
+        "kind": "console",
+        "lineNumber": 122,
+        "url": "https://localhost:8081/node_modules/@iwsdk/core/dist/index.js?v=caee4805"
+      },
+      {
+        "timestamp": 1794870102169,
+        "level": "warn",
+        "message": "SVGLoader: createShapes() is deprecated. Use shapePath.toShapes() instead.",
+        "args": [
+          "\"SVGLoader: createShapes() is deprecated. Use shapePath.toShapes() instead.\""
+        ],
+        "columnNumber": 12,
+        "frameUrl": "https://localhost:8081/node_modules/.vite/deps/chunk-OPZYYT74.js?v=caee4805",
+        "kind": "console",
+        "lineNumber": 28730,
+        "url": "https://localhost:8081/node_modules/.vite/deps/chunk-OPZYYT74.js?v=caee4805",
+        "repeatCount": 56
+      },
+      {
+        "timestamp": 1794870102354,
+        "level": "warn",
+        "message": "THREE.Matrix3: .translate() is deprecated. Use .makeTranslation() instead.",
+        "args": [
+          "\"THREE.Matrix3: .translate() is deprecated. Use .makeTranslation() instead.\""
+        ],
+        "columnNumber": 14,
+        "frameUrl": "https://localhost:8081/node_modules/.vite/deps/chunk-WNIOHBZ6.js?v=caee4805",
+        "kind": "console",
+        "lineNumber": 296,
+        "url": "https://localhost:8081/node_modules/.vite/deps/chunk-WNIOHBZ6.js?v=caee4805"
+      },
+      {
+        "timestamp": 1794870102355,
+        "level": "warn",
+        "message": "THREE.Matrix3: .scale() is deprecated. Use .makeScale() instead.",
+        "args": [
+          "\"THREE.Matrix3: .scale() is deprecated. Use .makeScale() instead.\""
+        ],
+        "columnNumber": 14,
+        "frameUrl": "https://localhost:8081/node_modules/.vite/deps/chunk-WNIOHBZ6.js?v=caee4805",
+        "kind": "console",
+        "lineNumber": 296,
+        "url": "https://localhost:8081/node_modules/.vite/deps/chunk-WNIOHBZ6.js?v=caee4805"
+      },
+      {
+        "timestamp": 1794870195225,
+        "level": "info",
+        "message": "Frame navigated: https://localhost:8081/",
+        "args": [
+          "Frame navigated: https://localhost:8081/"
+        ],
+        "frameUrl": "https://localhost:8081/",
+        "kind": "navigation",
+        "url": "https://localhost:8081/"
+      },
+      {
+        "timestamp": 1794870196210,
+        "level": "log",
+        "message": "[IWSDK Dev] Configuration: {device: metaVRGlasses, activation: localhost, verbose: false, sem: null, ai: null}",
+        "args": [
+          "\"[IWSDK Dev] Configuration:\"",
+          "{\"device\":\"metaVRGlasses\",\"activation\":\"localhost\",\"verbose\":false,\"sem\":null,\"ai\":null,\"workspace\":{\"enabled\":true,\"open\":true,\"headless\":true,\"devUI\":true,\"browserAutomation\":true,\"viewport\":null,\"screenshotSize\":{\"width\":800,\"height\":800}},\"userAgentException\":\"/OculusBrowser/\",\"iwer\":true,\"nativeXRControl\":false}"
+        ],
+        "columnNumber": 1084215,
+        "frameUrl": "https://localhost:8081/@id/__x00__virtual:iwsdk-dev-runtime/chunks/injection-template-0HSd4CcE.js",
+        "kind": "console",
+        "lineNumber": 983,
+        "url": "https://localhost:8081/@id/__x00__virtual:iwsdk-dev-runtime/chunks/injection-template-0HSd4CcE.js"
+      },
+      {
+        "timestamp": 1794870197336,
+        "level": "log",
+        "message": "                                                 \n▄▄▄▄▄▄  ▄▄      ▄▄   ▄▄▄▄    ▄▄▄▄▄     ▄▄   ▄▄▄ \n▀▀██▀▀  ██      ██ ▄█▀▀▀▀█   ██▀▀▀██   ██  ██▀  \n  ██    ▀█▄ ██ ▄█▀ ██▄       ██    ██  ██▄██    \n  ██     ██ ██ ██   ▀████▄   ██    ██  █████    \n  ██     ███▀▀███       ▀██  ██    ██  ██  ██▄  \n▄▄██▄▄   ███  ███  █▄▄▄▄▄█▀  ██▄▄▄██   ██   ██▄ \n▀▀▀▀▀▀   ▀▀▀  ▀▀▀   ▀▀▀▀▀    ▀▀▀▀▀     ▀▀    ▀▀                                                \n===============================================\nImmersive Web SDK v1.1.0-rc.2\nThree.js r185\nEliCS v3.4.2",
+        "args": [
+          "\"                                                 \\n▄▄▄▄▄▄  ▄▄      ▄▄   ▄▄▄▄    ▄▄▄▄▄     ▄▄   ▄▄▄ \\n▀▀██▀▀  ██      ██ ▄█▀▀▀▀█   ██▀▀▀██   ██  ██▀  \\n  ██    ▀█▄ ██ ▄█▀ ██▄       ██    ██  ██▄██    \\n  ██     ██ ██ ██   ▀████▄   ██    ██  █████    \\n  ██     ███▀▀███       ▀██  ██    ██  ██  ██▄  \\n▄▄██▄▄   ███  ███  █▄▄▄▄▄█▀  ██▄▄▄██   ██   ██▄ \\n▀▀▀▀▀▀   ▀▀▀  ▀▀▀   ▀▀▀▀▀    ▀▀▀▀▀     ▀▀    ▀▀                                                \\n===============================================\\nImmersive Web SDK v1.1.0-rc.2\\nThree.js r185\\nEliCS v3.4.2\""
+        ],
+        "columnNumber": 8,
+        "frameUrl": "https://localhost:8081/node_modules/@iwsdk/core/dist/index.js?v=caee4805",
+        "kind": "console",
+        "lineNumber": 122,
+        "url": "https://localhost:8081/node_modules/@iwsdk/core/dist/index.js?v=caee4805"
+      },
+      {
+        "timestamp": 1794870199148,
+        "level": "warn",
+        "message": "SVGLoader: createShapes() is deprecated. Use shapePath.toShapes() instead.",
+        "args": [
+          "\"SVGLoader: createShapes() is deprecated. Use shapePath.toShapes() instead.\""
+        ],
+        "columnNumber": 12,
+        "frameUrl": "https://localhost:8081/node_modules/.vite/deps/chunk-OPZYYT74.js?v=caee4805",
+        "kind": "console",
+        "lineNumber": 28730,
+        "url": "https://localhost:8081/node_modules/.vite/deps/chunk-OPZYYT74.js?v=caee4805",
+        "repeatCount": 56
+      },
+      {
+        "timestamp": 1794870199343,
+        "level": "warn",
+        "message": "THREE.Matrix3: .translate() is deprecated. Use .makeTranslation() instead.",
+        "args": [
+          "\"THREE.Matrix3: .translate() is deprecated. Use .makeTranslation() instead.\""
+        ],
+        "columnNumber": 14,
+        "frameUrl": "https://localhost:8081/node_modules/.vite/deps/chunk-WNIOHBZ6.js?v=caee4805",
+        "kind": "console",
+        "lineNumber": 296,
+        "url": "https://localhost:8081/node_modules/.vite/deps/chunk-WNIOHBZ6.js?v=caee4805"
+      },
+      {
+        "timestamp": 1794870199344,
+        "level": "warn",
+        "message": "THREE.Matrix3: .scale() is deprecated. Use .makeScale() instead.",
+        "args": [
+          "\"THREE.Matrix3: .scale() is deprecated. Use .makeScale() instead.\""
+        ],
+        "columnNumber": 14,
+        "frameUrl": "https://localhost:8081/node_modules/.vite/deps/chunk-WNIOHBZ6.js?v=caee4805",
+        "kind": "console",
+        "lineNumber": 296,
+        "url": "https://localhost:8081/node_modules/.vite/deps/chunk-WNIOHBZ6.js?v=caee4805"
+      },
+      {
+        "timestamp": 1794870248654,
+        "level": "info",
+        "message": "Frame navigated: https://localhost:8081/",
+        "args": [
+          "Frame navigated: https://localhost:8081/"
+        ],
+        "frameUrl": "https://localhost:8081/",
+        "kind": "navigation",
+        "url": "https://localhost:8081/"
+      },
+      {
+        "timestamp": 1794870249554,
+        "level": "log",
+        "message": "[IWSDK Dev] Configuration: {device: metaVRGlasses, activation: localhost, verbose: false, sem: null, ai: null}",
+        "args": [
+          "\"[IWSDK Dev] Configuration:\"",
+          "{\"device\":\"metaVRGlasses\",\"activation\":\"localhost\",\"verbose\":false,\"sem\":null,\"ai\":null,\"workspace\":{\"enabled\":true,\"open\":true,\"headless\":true,\"devUI\":true,\"browserAutomation\":true,\"viewport\":null,\"screenshotSize\":{\"width\":800,\"height\":800}},\"userAgentException\":\"/OculusBrowser/\",\"iwer\":true,\"nativeXRControl\":false}"
+        ],
+        "columnNumber": 1084215,
+        "frameUrl": "https://localhost:8081/@id/__x00__virtual:iwsdk-dev-runtime/chunks/injection-template-0HSd4CcE.js",
+        "kind": "console",
+        "lineNumber": 983,
+        "url": "https://localhost:8081/@id/__x00__virtual:iwsdk-dev-runtime/chunks/injection-template-0HSd4CcE.js"
+      },
+      {
+        "timestamp": 1794870250818,
+        "level": "log",
+        "message": "                                                 \n▄▄▄▄▄▄  ▄▄      ▄▄   ▄▄▄▄    ▄▄▄▄▄     ▄▄   ▄▄▄ \n▀▀██▀▀  ██      ██ ▄█▀▀▀▀█   ██▀▀▀██   ██  ██▀  \n  ██    ▀█▄ ██ ▄█▀ ██▄       ██    ██  ██▄██    \n  ██     ██ ██ ██   ▀████▄   ██    ██  █████    \n  ██     ███▀▀███       ▀██  ██    ██  ██  ██▄  \n▄▄██▄▄   ███  ███  █▄▄▄▄▄█▀  ██▄▄▄██   ██   ██▄ \n▀▀▀▀▀▀   ▀▀▀  ▀▀▀   ▀▀▀▀▀    ▀▀▀▀▀     ▀▀    ▀▀                                                \n===============================================\nImmersive Web SDK v1.1.0-rc.2\nThree.js r185\nEliCS v3.4.2",
+        "args": [
+          "\"                                                 \\n▄▄▄▄▄▄  ▄▄      ▄▄   ▄▄▄▄    ▄▄▄▄▄     ▄▄   ▄▄▄ \\n▀▀██▀▀  ██      ██ ▄█▀▀▀▀█   ██▀▀▀██   ██  ██▀  \\n  ██    ▀█▄ ██ ▄█▀ ██▄       ██    ██  ██▄██    \\n  ██     ██ ██ ██   ▀████▄   ██    ██  █████    \\n  ██     ███▀▀███       ▀██  ██    ██  ██  ██▄  \\n▄▄██▄▄   ███  ███  █▄▄▄▄▄█▀  ██▄▄▄██   ██   ██▄ \\n▀▀▀▀▀▀   ▀▀▀  ▀▀▀   ▀▀▀▀▀    ▀▀▀▀▀     ▀▀    ▀▀                                                \\n===============================================\\nImmersive Web SDK v1.1.0-rc.2\\nThree.js r185\\nEliCS v3.4.2\""
+        ],
+        "columnNumber": 8,
+        "frameUrl": "https://localhost:8081/node_modules/@iwsdk/core/dist/index.js?v=caee4805",
+        "kind": "console",
+        "lineNumber": 122,
+        "url": "https://localhost:8081/node_modules/@iwsdk/core/dist/index.js?v=caee4805"
+      },
+      {
+        "timestamp": 1794870252770,
+        "level": "warn",
+        "message": "SVGLoader: createShapes() is deprecated. Use shapePath.toShapes() instead.",
+        "args": [
+          "\"SVGLoader: createShapes() is deprecated. Use shapePath.toShapes() instead.\""
+        ],
+        "columnNumber": 12,
+        "frameUrl": "https://localhost:8081/node_modules/.vite/deps/chunk-OPZYYT74.js?v=caee4805",
+        "kind": "console",
+        "lineNumber": 28730,
+        "url": "https://localhost:8081/node_modules/.vite/deps/chunk-OPZYYT74.js?v=caee4805",
+        "repeatCount": 56
+      },
+      {
+        "timestamp": 1794870252950,
+        "level": "warn",
+        "message": "THREE.Matrix3: .translate() is deprecated. Use .makeTranslation() instead.",
+        "args": [
+          "\"THREE.Matrix3: .translate() is deprecated. Use .makeTranslation() instead.\""
+        ],
+        "columnNumber": 14,
+        "frameUrl": "https://localhost:8081/node_modules/.vite/deps/chunk-WNIOHBZ6.js?v=caee4805",
+        "kind": "console",
+        "lineNumber": 296,
+        "url": "https://localhost:8081/node_modules/.vite/deps/chunk-WNIOHBZ6.js?v=caee4805"
+      },
+      {
+        "timestamp": 1794870252950,
+        "level": "warn",
+        "message": "THREE.Matrix3: .scale() is deprecated. Use .makeScale() instead.",
+        "args": [
+          "\"THREE.Matrix3: .scale() is deprecated. Use .makeScale() instead.\""
+        ],
+        "columnNumber": 14,
+        "frameUrl": "https://localhost:8081/node_modules/.vite/deps/chunk-WNIOHBZ6.js?v=caee4805",
+        "kind": "console",
+        "lineNumber": 296,
+        "url": "https://localhost:8081/node_modules/.vite/deps/chunk-WNIOHBZ6.js?v=caee4805"
+      },
+      {
+        "timestamp": 1794870310176,
+        "level": "info",
+        "message": "Frame navigated: https://localhost:8081/",
+        "args": [
+          "Frame navigated: https://localhost:8081/"
+        ],
+        "frameUrl": "https://localhost:8081/",
+        "kind": "navigation",
+        "url": "https://localhost:8081/"
+      },
+      {
+        "timestamp": 1794870311061,
+        "level": "log",
+        "message": "[IWSDK Dev] Configuration: {device: metaVRGlasses, activation: localhost, verbose: false, sem: null, ai: null}",
+        "args": [
+          "\"[IWSDK Dev] Configuration:\"",
+          "{\"device\":\"metaVRGlasses\",\"activation\":\"localhost\",\"verbose\":false,\"sem\":null,\"ai\":null,\"workspace\":{\"enabled\":true,\"open\":true,\"headless\":true,\"devUI\":true,\"browserAutomation\":true,\"viewport\":null,\"screenshotSize\":{\"width\":800,\"height\":800}},\"userAgentException\":\"/OculusBrowser/\",\"iwer\":true,\"nativeXRControl\":false}"
+        ],
+        "columnNumber": 1084215,
+        "frameUrl": "https://localhost:8081/@id/__x00__virtual:iwsdk-dev-runtime/chunks/injection-template-0HSd4CcE.js",
+        "kind": "console",
+        "lineNumber": 983,
+        "url": "https://localhost:8081/@id/__x00__virtual:iwsdk-dev-runtime/chunks/injection-template-0HSd4CcE.js"
+      },
+      {
+        "timestamp": 1794870312631,
+        "level": "log",
+        "message": "                                                 \n▄▄▄▄▄▄  ▄▄      ▄▄   ▄▄▄▄    ▄▄▄▄▄     ▄▄   ▄▄▄ \n▀▀██▀▀  ██      ██ ▄█▀▀▀▀█   ██▀▀▀██   ██  ██▀  \n  ██    ▀█▄ ██ ▄█▀ ██▄       ██    ██  ██▄██    \n  ██     ██ ██ ██   ▀████▄   ██    ██  █████    \n  ██     ███▀▀███       ▀██  ██    ██  ██  ██▄  \n▄▄██▄▄   ███  ███  █▄▄▄▄▄█▀  ██▄▄▄██   ██   ██▄ \n▀▀▀▀▀▀   ▀▀▀  ▀▀▀   ▀▀▀▀▀    ▀▀▀▀▀     ▀▀    ▀▀                                                \n===============================================\nImmersive Web SDK v1.1.0-rc.2\nThree.js r185\nEliCS v3.4.2",
+        "args": [
+          "\"                                                 \\n▄▄▄▄▄▄  ▄▄      ▄▄   ▄▄▄▄    ▄▄▄▄▄     ▄▄   ▄▄▄ \\n▀▀██▀▀  ██      ██ ▄█▀▀▀▀█   ██▀▀▀██   ██  ██▀  \\n  ██    ▀█▄ ██ ▄█▀ ██▄       ██    ██  ██▄██    \\n  ██     ██ ██ ██   ▀████▄   ██    ██  █████    \\n  ██     ███▀▀███       ▀██  ██    ██  ██  ██▄  \\n▄▄██▄▄   ███  ███  █▄▄▄▄▄█▀  ██▄▄▄██   ██   ██▄ \\n▀▀▀▀▀▀   ▀▀▀  ▀▀▀   ▀▀▀▀▀    ▀▀▀▀▀     ▀▀    ▀▀                                                \\n===============================================\\nImmersive Web SDK v1.1.0-rc.2\\nThree.js r185\\nEliCS v3.4.2\""
+        ],
+        "columnNumber": 8,
+        "frameUrl": "https://localhost:8081/node_modules/@iwsdk/core/dist/index.js?v=caee4805",
+        "kind": "console",
+        "lineNumber": 122,
+        "url": "https://localhost:8081/node_modules/@iwsdk/core/dist/index.js?v=caee4805"
+      },
+      {
+        "timestamp": 1794870314581,
+        "level": "warn",
+        "message": "SVGLoader: createShapes() is deprecated. Use shapePath.toShapes() instead.",
+        "args": [
+          "\"SVGLoader: createShapes() is deprecated. Use shapePath.toShapes() instead.\""
+        ],
+        "columnNumber": 12,
+        "frameUrl": "https://localhost:8081/node_modules/.vite/deps/chunk-OPZYYT74.js?v=caee4805",
+        "kind": "console",
+        "lineNumber": 28730,
+        "url": "https://localhost:8081/node_modules/.vite/deps/chunk-OPZYYT74.js?v=caee4805",
+        "repeatCount": 56
+      },
+      {
+        "timestamp": 1794870314774,
+        "level": "warn",
+        "message": "THREE.Matrix3: .translate() is deprecated. Use .makeTranslation() instead.",
+        "args": [
+          "\"THREE.Matrix3: .translate() is deprecated. Use .makeTranslation() instead.\""
+        ],
+        "columnNumber": 14,
+        "frameUrl": "https://localhost:8081/node_modules/.vite/deps/chunk-WNIOHBZ6.js?v=caee4805",
+        "kind": "console",
+        "lineNumber": 296,
+        "url": "https://localhost:8081/node_modules/.vite/deps/chunk-WNIOHBZ6.js?v=caee4805"
+      },
+      {
+        "timestamp": 1794870314775,
+        "level": "warn",
+        "message": "THREE.Matrix3: .scale() is deprecated. Use .makeScale() instead.",
+        "args": [
+          "\"THREE.Matrix3: .scale() is deprecated. Use .makeScale() instead.\""
+        ],
+        "columnNumber": 14,
+        "frameUrl": "https://localhost:8081/node_modules/.vite/deps/chunk-WNIOHBZ6.js?v=caee4805",
+        "kind": "console",
+        "lineNumber": 296,
+        "url": "https://localhost:8081/node_modules/.vite/deps/chunk-WNIOHBZ6.js?v=caee4805"
+      }
+    ]
+  }
+}

@@ -1,8 +1,9 @@
 /**
  * Hand energy aura for the Rift Lab (visual-only).
  *
- * Four-color spiral ribbons + ember sparks around each palm (mesh ribbons,
- * not 1px Lines). Denser on the firing hand. Optional experimental PointLight.
+ * Refs 2 / 15: dense chaotic light-paint filament nest + ember sparks around
+ * each palm (mesh ribbons, not 1px Lines). Denser on the firing hand.
+ * Optional experimental PointLight.
  */
 import {
   AdditiveBlending,
@@ -22,9 +23,9 @@ import {
 import { PAD_COLOR_NAMES, type HandSide } from './rift-energy.js';
 import { glowDotTexture, neonPadHex } from './rift-note-visuals.js';
 
-const FILAMENT_COUNT = 4;
-const FILAMENT_SEGMENTS = 32;
-const EMBER_COUNT = 40;
+const FILAMENT_COUNT = 12;
+const FILAMENT_SEGMENTS = 28;
+const EMBER_COUNT = 48;
 
 export interface HandAuraUpdate {
   left: Vector3 | null;
@@ -40,6 +41,11 @@ interface Filament {
   pos: Float32Array;
   mat: MeshBasicMaterial;
   phase: number;
+  turns: number;
+  radScale: number;
+  liftScale: number;
+  spinRate: number;
+  jitter: number;
 }
 
 interface HandBundle {
@@ -88,9 +94,9 @@ export class RiftHandAura {
       const mat = new MeshBasicMaterial({
         color: neonPadHex(colorName),
         transparent: true,
-        opacity: 0.95,
+        opacity: 0.9,
         blending: AdditiveBlending,
-        // Palm depth occluders would otherwise eat the spiral near the hand.
+        // Palm depth occluders would otherwise eat the nest near the hand.
         depthTest: false,
         depthWrite: false,
         toneMapped: false,
@@ -98,8 +104,19 @@ export class RiftHandAura {
       });
       const mesh = new Mesh(makeRibbonGeometry(FILAMENT_SEGMENTS, pos), mat);
       mesh.frustumCulled = false;
+      mesh.renderOrder = 3;
       group.add(mesh);
-      filaments.push({ mesh, pos, mat, phase: (i / FILAMENT_COUNT) * Math.PI * 2 });
+      filaments.push({
+        mesh,
+        pos,
+        mat,
+        phase: (i / FILAMENT_COUNT) * Math.PI * 2,
+        turns: 1.4 + (i % 5) * 0.35,
+        radScale: 0.75 + (i % 4) * 0.18,
+        liftScale: 0.9 + (i % 3) * 0.35,
+        spinRate: 3.2 + (i % 6) * 0.7,
+        jitter: 0.35 + (i % 5) * 0.12,
+      });
     }
 
     const emberPos = new Float32Array(EMBER_COUNT * 3);
@@ -108,8 +125,8 @@ export class RiftHandAura {
     for (let i = 0; i < EMBER_COUNT; i++) {
       emberSeeds[i * 4] = Math.random();
       emberSeeds[i * 4 + 1] = Math.random() * Math.PI * 2;
-      emberSeeds[i * 4 + 2] = 0.4 + Math.random();
-      emberSeeds[i * 4 + 3] = 0.025 + Math.random() * 0.06;
+      emberSeeds[i * 4 + 2] = 0.5 + Math.random();
+      emberSeeds[i * 4 + 3] = 0.03 + Math.random() * 0.07;
       const hex = neonPadHex(PAD_COLOR_NAMES[i % 4]);
       emberCol[i * 3] = Number.parseInt(hex.slice(1, 3), 16) / 255;
       emberCol[i * 3 + 1] = Number.parseInt(hex.slice(3, 5), 16) / 255;
@@ -121,7 +138,7 @@ export class RiftHandAura {
     const embers = new Points(
       emberGeo,
       new PointsMaterial({
-        size: 0.065,
+        size: 0.055,
         map: glowDotTexture(),
         vertexColors: true,
         transparent: true,
@@ -145,10 +162,10 @@ export class RiftHandAura {
         depthWrite: false,
         blending: AdditiveBlending,
         toneMapped: false,
-        opacity: 0.85,
+        opacity: 0.9,
       }),
     );
-    core.scale.setScalar(0.1);
+    core.scale.setScalar(0.12);
     group.add(core);
 
     const light = new PointLight(0xffffff, 0, 0.55, 2);
@@ -173,23 +190,38 @@ export class RiftHandAura {
       return;
     }
     bundle.group.visible = true;
-    const dens = firing ? 1 : 0.7;
-    // Big enough glowy spiral that it reads past the palm occluders in XR.
-    const radius = 0.09 + energy01 * 0.08 * dens;
+    const dens = firing ? 1 : 0.65;
+    const radius = 0.08 + energy01 * 0.07 * dens;
 
     for (let i = 0; i < bundle.filaments.length; i++) {
       const f = bundle.filaments[i];
-      f.mat.opacity = (firing ? 1 : 0.75) * Math.min(1, energy01 * 1.6);
-      const spin = timeSec * (4.2 + i * 0.75) + f.phase;
+      // Off-hand still shows the nest when charged; firing is denser.
+      if (!firing && i >= Math.floor(FILAMENT_COUNT * 0.55)) {
+        f.mesh.visible = false;
+        continue;
+      }
+      f.mesh.visible = true;
+      f.mat.opacity = (firing ? 0.95 : 0.7) * Math.min(1, energy01 * 1.5);
+      const spin = timeSec * f.spinRate + f.phase;
       for (let k = 0; k <= FILAMENT_SEGMENTS; k++) {
         const u = k / FILAMENT_SEGMENTS;
-        const ang = f.phase + u * Math.PI * 2 * 2.4 + spin;
-        const rad = radius * (0.7 + 0.5 * Math.sin(u * 6 + spin));
-        const y = (u - 0.5) * radius * 2.1;
-        const cx = palm.x + Math.cos(ang) * rad;
+        // Irregular light-paint path (not a clean helix).
+        const ang =
+          f.phase +
+          u * Math.PI * 2 * f.turns +
+          spin +
+          Math.sin(u * 11 + spin * 1.7) * f.jitter +
+          Math.sin(u * 3 + f.phase) * 0.4;
+        const rad =
+          radius *
+          f.radScale *
+          (0.55 + 0.55 * Math.sin(u * 7 + spin) + 0.2 * Math.sin(spin * 2.4 + u * 17));
+        const y = (u - 0.5) * radius * 2.4 * f.liftScale;
+        const xOff = Math.sin(u * 5 + spin * 0.8) * radius * 0.15;
+        const cx = palm.x + Math.cos(ang) * rad + xOff;
         const cy = palm.y + y;
         const cz = palm.z + Math.sin(ang) * rad;
-        const hw = 0.018 * dens * (1.1 - u * 0.3);
+        const hw = (firing ? 0.007 : 0.005) * dens * (1.05 - u * 0.35);
         const sx = -Math.sin(ang) * hw;
         const sz = Math.cos(ang) * hw;
         const o = k * 6;
@@ -204,7 +236,7 @@ export class RiftHandAura {
     }
 
     for (let i = 0; i < EMBER_COUNT; i++) {
-      if (!firing && i >= EMBER_COUNT / 2) {
+      if (!firing && i >= EMBER_COUNT * 0.55) {
         const o = i * 3;
         bundle.emberPos[o] = palm.x;
         bundle.emberPos[o + 1] = palm.y - 10;
@@ -212,9 +244,9 @@ export class RiftHandAura {
         continue;
       }
       const seed = bundle.emberSeeds;
-      const ang = seed[i * 4 + 1] + timeSec * seed[i * 4 + 2] * 3.4;
-      const rad = seed[i * 4 + 3] * dens * (1.2 + 0.8 * energy01);
-      const lift = ((seed[i * 4] + timeSec * 0.22) % 1) * radius * 1.8 - radius * 0.5;
+      const ang = seed[i * 4 + 1] + timeSec * seed[i * 4 + 2] * 3.8;
+      const rad = seed[i * 4 + 3] * dens * (1.3 + 0.9 * energy01);
+      const lift = ((seed[i * 4] + timeSec * 0.25) % 1) * radius * 2.0 - radius * 0.55;
       const o = i * 3;
       bundle.emberPos[o] = palm.x + Math.cos(ang) * rad;
       bundle.emberPos[o + 1] = palm.y + lift;
@@ -223,8 +255,8 @@ export class RiftHandAura {
     (bundle.embers.geometry.getAttribute('position') as Float32BufferAttribute).needsUpdate = true;
 
     bundle.core.position.copy(palm);
-    bundle.core.scale.setScalar((firing ? 0.2 : 0.12) * (0.75 + 0.55 * energy01));
-    (bundle.core.material as SpriteMaterial).opacity = firing ? 1 : 0.6;
+    bundle.core.scale.setScalar((firing ? 0.18 : 0.1) * (0.75 + 0.55 * energy01));
+    (bundle.core.material as SpriteMaterial).opacity = firing ? 1 : 0.55;
 
     if (usePalmLight && firing) {
       bundle.light.visible = true;

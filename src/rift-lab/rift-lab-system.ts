@@ -206,7 +206,9 @@ interface RiftView {
   debris: { mesh: Mesh; ang: number; spin: number; speed: number }[];
 }
 
-const SPARK_COUNT = 56;
+const SPARK_COUNT = 64;
+/** Dedicated neon notes streaming hand→rift beside the beam while sealing. */
+const TORRENT_COUNT = 32;
 
 /**
  * Living four-color fracture (style D, his concept art): a dark void with a
@@ -378,6 +380,9 @@ export class RiftLabSystem extends createSystem({
   private lastSpawnAt = 0;
   private readonly root = new Group();
   private readonly noteMeshes = new Map<number, Mesh>();
+  /** Separate from charge-orbit notes: beam-corridor sealing torrent. */
+  private readonly torrentMeshes: Mesh[] = [];
+  private readonly torrentSeeds = new Float32Array(TORRENT_COUNT * 4);
   private readonly riftViews = new Map<number, RiftView>();
   private dragging = false;
   private flatTouchInput = false;
@@ -445,6 +450,21 @@ export class RiftLabSystem extends createSystem({
       this.root.add(this.sealBeam.root);
       this.root.add(this.handAura.root);
       this.root.add(this.handOccluders.root);
+      for (let i = 0; i < TORRENT_COUNT; i++) {
+        const color = PAD_COLOR_NAMES[i % PAD_COLOR_NAMES.length];
+        const mesh = new Mesh(
+          new PlaneGeometry(NOTE_SIZE_M * 2.1, NOTE_SIZE_M * 2.1),
+          noteGlyphMaterial(color).clone(),
+        );
+        mesh.visible = false;
+        mesh.frustumCulled = false;
+        this.torrentMeshes.push(mesh);
+        this.root.add(mesh);
+        this.torrentSeeds[i * 4] = Math.random();
+        this.torrentSeeds[i * 4 + 1] = Math.random() * Math.PI * 2;
+        this.torrentSeeds[i * 4 + 2] = 0.55 + Math.random() * 0.9;
+        this.torrentSeeds[i * 4 + 3] = 0.06 + Math.random() * 0.1;
+      }
     } catch (error) {
       console.warn('[rift-lab] seal visual layers failed to construct', error);
     }
@@ -1269,6 +1289,63 @@ export class RiftLabSystem extends createSystem({
     return this.game.getBeamHand() ?? this.game.getFiringHand();
   }
 
+  /** Dedicated note torrent along the beam corridor while sealing a rift. */
+  private updateSealTorrent(
+    origin: Vector3,
+    end: Vector3,
+    sealing: boolean,
+  ): void {
+    if (this.torrentMeshes.length === 0) return;
+    if (!sealing || !this.game.isBeamActive()) {
+      for (const mesh of this.torrentMeshes) mesh.visible = false;
+      return;
+    }
+    const dx = end.x - origin.x;
+    const dy = end.y - origin.y;
+    const dz = end.z - origin.z;
+    const fl = Math.hypot(dx, dy, dz) || 1;
+    const fx = dx / fl;
+    const fy = dy / fl;
+    const fz = dz / fl;
+    const hx = Math.abs(fy) < 0.9 ? 0 : 1;
+    const hy = hx === 0 ? 1 : 0;
+    let ux = fy * 0 - fz * hy;
+    let uy = fz * hx - fx * 0;
+    let uz = fx * hy - fy * hx;
+    const ul = Math.hypot(ux, uy, uz) || 1;
+    ux /= ul;
+    uy /= ul;
+    uz /= ul;
+    const vx = fy * uz - fz * uy;
+    const vy = fz * ux - fx * uz;
+    const vz = fx * uy - fy * ux;
+    const camQ = this.world.camera.quaternion;
+    for (let i = 0; i < this.torrentMeshes.length; i++) {
+      const mesh = this.torrentMeshes[i];
+      const seed = this.torrentSeeds;
+      const speed = seed[i * 4 + 2];
+      const u = (seed[i * 4] + this.beamTimeSec * speed * 0.45) % 1;
+      const e = u * u * (3 - 2 * u);
+      const swirl = seed[i * 4 + 1] + this.beamTimeSec * 5.5 + i * 0.4;
+      const rad =
+        seed[i * 4 + 3] *
+        Math.sin(Math.PI * e) *
+        (0.85 + 0.35 * Math.sin(swirl * 0.7));
+      mesh.position.set(
+        origin.x + dx * e + (ux * Math.cos(swirl) + vx * Math.sin(swirl)) * rad,
+        origin.y + dy * e + (uy * Math.cos(swirl) + vy * Math.sin(swirl)) * rad,
+        origin.z + dz * e + (uz * Math.cos(swirl) + vz * Math.sin(swirl)) * rad,
+      );
+      const fade = e < 0.08 ? e / 0.08 : e > 0.82 ? (1 - e) / 0.18 : 1;
+      mesh.scale.setScalar(0.85 + 0.45 * (1 - e));
+      mesh.quaternion.copy(camQ);
+      const mat = mesh.material as MeshBasicMaterial;
+      mat.opacity = fade;
+      mat.depthTest = false;
+      mesh.visible = fade > 0.04;
+    }
+  }
+
   update(delta: number): void {
     if (!this.active) {
       riftTargetPositions.length = 0;
@@ -1331,82 +1408,27 @@ export class RiftLabSystem extends createSystem({
           oz = this.shapePoint[2] + (uz * Math.cos(swirl) + vz * Math.sin(swirl)) * rad;
         }
       }
-      const sealingView = [...this.riftViews.values()].find(
-        (view) => view.rift.state === 'sealing',
-      );
-      let noteScale = 1;
-      let inSealFlight = false;
-      if (sealingView != null) {
-        // Torrent of notes from the hand into the rift beside the beam:
-        // staggered launches, swirling around the beam axis, shrinking as
-        // they are absorbed.
-        const flightMs = this.game.isBeamActive()
-          ? SEAL_HOLD_MS
-          : DESKTOP_NOTES_FLIGHT_MS;
-        const p =
-          this.debugSealP ?? Math.min(1, sealingView.rift.sealProgressMs / flightMs);
-        const delay = ((note.id * 0.6180339) % 1) * 0.35;
-        const u = Math.min(1, Math.max(0, (p - delay) / 0.65));
-        const e = u * u * (3 - 2 * u);
-        inSealFlight = e > 0.02;
-        const dx = sealingView.position.x - ox;
-        const dy = sealingView.position.y - oy;
-        const dz = sealingView.position.z - oz;
-        // Spiral around the hand→rift corridor so the torrent reads next to
-        // the beam rather than collapsing into a single lump.
-        const swirl = note.id * 1.7 + e * 14 + this.beamTimeSec * 3;
-        const rad = Math.sin(Math.PI * e) * (0.08 + 0.1 * ((note.id * 0.37) % 1));
-        // Perpendicular basis from the flight direction.
-        const fl = Math.hypot(dx, dy, dz) || 1;
-        const fx = dx / fl;
-        const fy = dy / fl;
-        const fz = dz / fl;
-        const hx = Math.abs(fy) < 0.9 ? 0 : 1;
-        const hy = hx === 0 ? 1 : 0;
-        let ux = fy * 0 - fz * hy;
-        let uy = fz * hx - fx * 0;
-        let uz = fx * hy - fy * hx;
-        const ul = Math.hypot(ux, uy, uz) || 1;
-        ux /= ul;
-        uy /= ul;
-        uz /= ul;
-        const vx = fy * uz - fz * uy;
-        const vy = fz * ux - fx * uz;
-        const vz = fx * uy - fy * ux;
-        mesh.position.set(
-          ox + dx * e + (ux * Math.cos(swirl) + vx * Math.sin(swirl)) * rad,
-          oy + dy * e + (uy * Math.cos(swirl) + vy * Math.sin(swirl)) * rad,
-          oz + dz * e + (uz * Math.cos(swirl) + vz * Math.sin(swirl)) * rad,
-        );
-        noteScale = 1.15 - 0.85 * Math.max(0, (e - 0.55) / 0.45);
-      } else {
-        mesh.position.set(ox, oy, oz);
-      }
-      mesh.scale.setScalar(noteScale * (1 + (glowScale - 1) * 0.3));
+      // Charge-orbit notes stay on the hands; sealing flow uses torrentMeshes.
+      mesh.position.set(ox, oy, oz);
+      mesh.scale.setScalar(1 + (glowScale - 1) * 0.3);
       // Notes face the viewer (billboard), in XR and flat alike.
       mesh.quaternion.copy(this.world.camera.quaternion);
       const mat = mesh.material as MeshBasicMaterial;
       mat.depthTest = true;
-      if (inSealFlight) {
-        // Keep the torrent fully visible while notes race to the rift.
-        mat.opacity = 1;
-        mesh.visible = true;
-      } else {
-        // Soft fade when the note sits on the far side of the palm from the
-        // camera; depth occluders also hide notes that pass through the hand.
-        const front = noteFrontVisibility(
-          mesh.position.x,
-          mesh.position.y,
-          mesh.position.z,
-          this.palms[note.hand],
-          this.world.camera,
-          this.noteOccPalm,
-          this.noteOccCam,
-          this.noteOccNote,
-        );
-        mat.opacity = 0.2 + 0.8 * front;
-        mesh.visible = front > 0.05 || this.palms[note.hand] == null;
-      }
+      // Soft fade when the note sits on the far side of the palm from the
+      // camera; depth occluders also hide notes that pass through the hand.
+      const front = noteFrontVisibility(
+        mesh.position.x,
+        mesh.position.y,
+        mesh.position.z,
+        this.palms[note.hand],
+        this.world.camera,
+        this.noteOccPalm,
+        this.noteOccCam,
+        this.noteOccNote,
+      );
+      mat.opacity = 0.2 + 0.8 * front;
+      mesh.visible = front > 0.05 || this.palms[note.hand] == null;
     }
     for (const [id, mesh] of this.noteMeshes) {
       if (!seen.has(id)) {
@@ -1452,19 +1474,19 @@ export class RiftLabSystem extends createSystem({
       const sealing = view.rift.state === 'sealing';
       for (let i = 0; i < SPARK_COUNT; i++) {
         const sd = view.sparkSeeds;
-        const life = (age * 0.35 * sd[i * 3 + 2] + sd[i * 3]) % 1;
-        const ang = sd[i * 3 + 1] + age * 0.4;
-        // Sparks leave the portal in 3D (radial + out of the wall plane),
-        // not stuck on a flat disc. Sealing pulls them back into the hole.
+        const life = (age * 0.42 * sd[i * 3 + 2] + sd[i * 3]) % 1;
+        const ang = sd[i * 3 + 1] + age * 0.55;
+        // Cone out of the portal plane into the room (local +Z after lookAt).
+        // Sealing reverses the flow back into the hole.
         const rr = sealing
-          ? (1 - life) * 0.22
-          : (0.04 + life * 0.28) * (0.4 + 0.6 * u.uOpen.value);
+          ? (1 - life) * 0.28
+          : (0.05 + life * 0.34) * (0.4 + 0.6 * u.uOpen.value);
         const outZ = sealing
-          ? (1 - life) * 0.18 * sd[i * 3 + 2]
-          : life * (0.12 + 0.45 * sd[i * 3 + 2]);
+          ? (1 - life) * (0.1 + 0.35 * sd[i * 3 + 2])
+          : life * (0.22 + 0.7 * sd[i * 3 + 2]);
         pos.setXYZ(
           i,
-          Math.cos(ang) * rr * 0.7,
+          Math.cos(ang) * rr * 0.75,
           Math.sin(ang) * rr * 1.05,
           outZ,
         );
@@ -1477,12 +1499,12 @@ export class RiftLabSystem extends createSystem({
         if (sealing) f = 1 - f;
         const rr = (0.3 + f * 0.58) * (0.35 + 0.65 * u.uOpen.value);
         const base = spineAng[t.spine] + Math.sin(rr * 9 + t.wig * 6 + age * 1.3) * 0.12;
-        // Trail notes also lift off the wall into the room.
-        const lift = sealing ? (1 - f) * 0.12 : f * 0.2;
+        // Trail notes lift well off the wall into room space.
+        const lift = sealing ? (1 - f) * 0.22 : 0.04 + f * 0.38;
         t.sprite.position.set(
           Math.cos(base) * rr * 0.95,
           Math.sin(base) * rr * 1.1,
-          0.02 + lift,
+          lift,
         );
         const m = t.sprite.material as SpriteMaterial;
         m.opacity = Math.min(1, f * 6, (1 - f) * 4) * (1 - 0.7 * sealU);
@@ -1490,7 +1512,7 @@ export class RiftLabSystem extends createSystem({
       }
       for (const dbr of view.debris) {
         const dd = 0.3 + ((age * dbr.speed + dbr.ang) % 0.6) * 0.5;
-        const lift = 0.02 + ((age * 0.15 + dbr.ang) % 1) * 0.12;
+        const lift = 0.04 + ((age * 0.2 + dbr.ang) % 1) * 0.28;
         dbr.mesh.position.set(
           Math.cos(dbr.ang) * dd * 0.9,
           Math.sin(dbr.ang) * dd * 1.05,
@@ -1552,6 +1574,8 @@ export class RiftLabSystem extends createSystem({
           timeSec: this.beamTimeSec,
           visible: true,
         });
+        // Stream notes whenever the beam is on a rift (sealing contact).
+        this.updateSealTorrent(ray.origin, this.beamEnd, hitStrength > 0);
       } else {
         stopBeamHum();
         this.sealBeam?.update({
@@ -1561,6 +1585,7 @@ export class RiftLabSystem extends createSystem({
           timeSec: this.beamTimeSec,
           visible: false,
         });
+        this.updateSealTorrent(this.beamEnd, this.beamEnd, false);
       }
 
       // Hand aura: four-color filaments / embers around charged palms.
