@@ -116,7 +116,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: [changes, build-and-typecheck]
     if: >-
-      needs.changes.outputs.gameplay == 'true'
+      github.head_ref != 'diag/ci-back-click-evidence'
+      && github.ref_name != 'diag/ci-back-click-evidence'
+      && needs.changes.outputs.gameplay == 'true'
       && (github.event_name != 'pull_request' || github.event.action == 'opened')
     strategy:
       fail-fast: false
@@ -190,10 +192,34 @@ jobs:
             .tmp/e2e-shards/plan.json
           retention-days: 7
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
           name: playwright-report-shard-${{ matrix.shard }}
           path: playwright-report/
+          retention-days: 7
+
+  back-click-diagnostic:
+    name: Isolated Rift Lab Back click evidence
+    if: github.event_name == 'pull_request' && github.event.action == 'opened' && github.head_ref == 'diag/ci-back-click-evidence'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - name: Run original Back interaction once, retaining configured retry
+        run: npm run test:e2e -- tests/e2e/wall-tones.rift-lab.spec.ts --grep 'Rift Lab Back returns to the Lab menu'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: back-click-diagnostic-evidence
+          path: |
+            test-results/
+            playwright-report/
           retention-days: 7
 
   e2e-coverage:
