@@ -12,8 +12,8 @@ import {
 } from '../thumbs-lab/thumbs-gesture.js';
 import {
   GameOverThumbsFlow,
-  shouldRunGameOverThumbs,
   type GameOverThumbPose,
+  type GameOverThumbsEvent,
 } from './gameover-thumbs.js';
 import { playLabAnswerCue } from '../thumbs-lab/lab-cues.js';
 import { HeadNodShakeDetector } from '../nod-lab/head-gesture.js';
@@ -431,6 +431,11 @@ narrator: 'storeItemHack',
 // of it rather than touching it.
 const ARM_BAND_BEAM_EMBED = 0.008;
 
+/** No tracked hand for this long while the Game Over popup is open restarts
+ * the gesture; shorter controller/hand input-switch gaps pause it instead
+ * (Nov 17 device test). */
+const GAMEOVER_NO_HANDS_RESET_SEC = 1.0;
+
 export class WallTonesSystem extends createSystem({
 pads: { required: [WallTonePad] },
 planes: { required: [XRPlane] },
@@ -558,6 +563,11 @@ private readonly gameOverThumbs = new GameOverThumbsFlow();
  * the device check passes. */
 private gameOverDbgLeft = '-';
 private gameOverDbgRight = '-';
+/** Frame time the current no-hand-sampled stretch began; -1 = a hand is
+ * tracked. Quest drops hand sources while controllers are active, so Game
+ * Over frames without a tracked hand pause the gesture flow instead of
+ * resetting it (Nov 17 device test). */
+private gameOverNoHandsSince = -1;
 /** Active story gesture-check listen; resolved by update() hand sampling. */
 private gestureListen: {
 kind: 'thumbs' | 'nod';
@@ -4836,15 +4846,27 @@ this.gameOverDbgRight = right != null ? rightPose : 'null';
 const canRun = this.canRunGameOverThumbs();
 if (canRun !== this.gameOverThumbs.isEnabled) {
 this.gameOverThumbs.setEnabled(canRun);
+if (canRun) {
+this.gameOverNoHandsSince = -1;
+}
 }
 if (canRun) {
 const need = saverUnitsForStreak(this.game.streak);
 this.gameOverThumbs.setRetryAvailable(this.economy.getSavers() >= need);
-const event = this.gameOverThumbs.feed(
-leftPose,
-rightPose,
-now,
-);
+// Feed only frames with a tracked hand: Quest drops the hand sources while
+// controllers are active, and disabling the flow on that would reset a hold
+// or arm mid-gesture (Nov 17 device test: ht 1 -> 0 across the popup).
+// Frames with no tracked hand pause the flow; a sustained gap restarts the
+// gesture so a stale hold cannot fire instantly when tracking returns.
+let event: GameOverThumbsEvent | null = null;
+if (left != null || right != null) {
+this.gameOverNoHandsSince = -1;
+event = this.gameOverThumbs.feed(leftPose, rightPose, now);
+} else if (this.gameOverNoHandsSince < 0) {
+this.gameOverNoHandsSince = now;
+} else if (now - this.gameOverNoHandsSince >= GAMEOVER_NO_HANDS_RESET_SEC) {
+this.gameOverThumbs.reset();
+}
 if (event === 'armed') {
 // The game asked for a confirmation: acknowledge with the lab cue (owner,
 // Nov 17: the expected gesture plays the lab sound cue).
@@ -4985,15 +5007,16 @@ return true;
 return false;
 }
 
-/** Game Over thumbs gestures: popup open, immersive, hand tracking (owner,
- * Nov 17). Flat/desktop players keep the buttons only. */
+/** Game Over thumbs gestures (owner, Nov 17): the flow stays enabled while
+ * the popup is open in MR. Hand tracking on Quest drops out whenever
+ * controllers are active (Nov 17 device test: ht 1 -> 0 across the popup),
+ * so live tracking gates the per-frame feed, not the enabled state; gating
+ * the state would reset a hold or arm on every controller/hand switch.
+ * Flat/desktop players keep the buttons only. */
 private canRunGameOverThumbs(): boolean {
 return (
 this.gameOverOpen &&
-shouldRunGameOverThumbs(
-this.world.visibilityState.peek() !== VisibilityState.NonImmersive,
-this.hasHandTrackingInput(),
-)
+this.world.visibilityState.peek() !== VisibilityState.NonImmersive
 );
 }
 
@@ -5227,12 +5250,13 @@ const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
 if (panel == null) {
 return;
 }
+// The affordance stays up for the whole MR popup (owner device test,
+// Nov 17): Quest drops hand sources while controllers are active, and
+// hiding on live tracking hid the icons exactly when the player needed
+// the instruction. Flat/desktop stays hidden.
 const mr =
 this.gameOverOpen &&
-shouldRunGameOverThumbs(
-this.world.visibilityState.peek() !== VisibilityState.NonImmersive,
-this.hasHandTrackingInput(),
-);
+this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
 for (const id of ['gameover-use-saver-thumb-icon', 'gameover-newrun-thumb-icon'] as const) {
 panel.getElementById<UIKit.Container>(id)?.setProperties({ display: mr ? 'flex' : 'none' });
 }
@@ -5256,8 +5280,9 @@ hint.setProperties({ display: 'flex', text });
 
 /** TEMP XR diagnostics (Nov 17 device test): while the Game Over popup is
  * open in MR, show a one-line live readout of the gesture chain (flow phase,
- * desktop path, hand tracking, sampled poses, flow state) so a headset test
- * pinpoints where input stops. Remove after the device check passes. */
+ * desktop path, hand tracking, sampled poses, flow state, no-hand gap
+ * seconds) so a headset test pinpoints where input stops. Remove after the
+ * device check passes. */
 private syncGameOverGestureDebug(): void {
 if (!this.gameOverOpen) return;
 if (this.world.visibilityState.peek() === VisibilityState.NonImmersive) return;
@@ -5266,7 +5291,7 @@ const hint = panel?.getElementById<UIKit.Text>('gameover-gesture-hint');
 if (hint == null) return;
 hint.setProperties({
 display: 'flex',
-text: `DBG fp:${this.flowPhase} dp:${this.useDesktopPath() ? 1 : 0} ht:${this.hasHandTrackingInput() ? 1 : 0} L:${this.gameOverDbgLeft} R:${this.gameOverDbgRight} en:${this.gameOverThumbs.isEnabled ? 1 : 0} arm:${this.gameOverThumbs.isArmed ? 1 : 0}`,
+text: `DBG2 fp:${this.flowPhase} dp:${this.useDesktopPath() ? 1 : 0} ht:${this.hasHandTrackingInput() ? 1 : 0} L:${this.gameOverDbgLeft} R:${this.gameOverDbgRight} en:${this.gameOverThumbs.isEnabled ? 1 : 0} arm:${this.gameOverThumbs.isArmed ? 1 : 0} g:${this.gameOverNoHandsSince < 0 ? '0' : (performance.now() / 1000 - this.gameOverNoHandsSince).toFixed(1)}`,
 });
 }
 
