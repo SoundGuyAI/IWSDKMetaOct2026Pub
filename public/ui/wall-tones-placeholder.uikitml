@@ -397,7 +397,6 @@
         <img id="gameover-buy-saver-bars-icon" src="ui/bars-icon.png" style="width: 16px; height: 16px" />
         <ButtonLabel id="gameover-buy-saver-label">Buy saver</ButtonLabel>
       </Button>
-      <div class="status">Test values, change later.</div>
       <Button id="gameover-newrun-button" class="button">
         <ButtonIcon><RefreshCw></RefreshCw></ButtonIcon>
         <!-- MR-only gesture hint icon (owner, Nov 17): complements the label, hidden on flat/desktop. -->
