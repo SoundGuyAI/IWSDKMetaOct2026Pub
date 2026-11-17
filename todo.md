@@ -144,4 +144,4 @@ Armband verification update (Nov 13): typecheck/build and 102 unit tests pass. Q
 - [x] Front idle + sealing motion captures in pale Lab room (`artifacts/portal-shards/`, local only). Notes readable; room/rift hole still visible.
 - [ ] Side-orbit capture still weak in flat browser camera; recheck in XR/headset.
 - [ ] Quest perf sample pending (no device connected this session).
-- [ ] Draft PR base `feat/rift-seal-visuals`. No merge / no production deploy.
+- [x] Draft PR #144 base `feat/rift-seal-visuals`. No merge / no production deploy.
