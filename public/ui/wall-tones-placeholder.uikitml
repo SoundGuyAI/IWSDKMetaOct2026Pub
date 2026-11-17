@@ -389,13 +389,11 @@
       <div id="gameover-summary" class="status">You reached 0. Best 0.</div>
       <div id="gameover-saver-status" class="status">Streak savers: 0</div>
       <Button id="gameover-use-saver-button" class="button">
-        <!-- MR-only gesture hint icon (owner, Nov 17): complements the label, hidden on flat/desktop. -->
+        <!-- MR-only gesture hint icons (owner, Nov 17): the first complements the label; the second joins it while an armed confirmation waits for the second thumbs up. Hidden on flat/desktop. -->
         <ButtonIcon id="gameover-use-saver-thumb-icon" style="display: none"><ThumbsUp></ThumbsUp></ButtonIcon>
+        <ButtonIcon id="gameover-use-saver-thumb-icon-confirm" style="display: none"><ThumbsUp></ThumbsUp></ButtonIcon>
+        <img id="gameover-use-saver-bars-icon" src="ui/bars-icon.png" style="width: 16px; height: 16px; display: none" />
         <ButtonLabel id="gameover-use-saver-label">Use saver</ButtonLabel>
-      </Button>
-      <Button id="gameover-buy-saver-button" class="button">
-        <img id="gameover-buy-saver-bars-icon" src="ui/bars-icon.png" style="width: 16px; height: 16px" />
-        <ButtonLabel id="gameover-buy-saver-label">Buy saver</ButtonLabel>
       </Button>
       <Button id="gameover-newrun-button" class="button">
         <ButtonIcon><RefreshCw></RefreshCw></ButtonIcon>
