@@ -177,22 +177,82 @@ assert.ok(Math.abs(placement.awayApplied-0.06)<0.01,'head-away offset applied in
 assert.ok(placement.awayGain>0.015,'panel sits farther from the head than the palm');
 // Nov 16 hardware feedback: button presses on the floating panel do not land.
 // Exercise the same hand-ray click path the band spec proves, now against the
-// floating projector panel, and log every pointer event that fires.
-await page.evaluate(()=>{ const p=window.__armbandHarness.world.getSceneObject('wall-tones-armband');window.__projClickLog=[];for(const name of ['armband-modifiers','armband-repeat']) for(const type of ['click','pointerdown','pointerup'])p.getElementById(name)?.addEventListener(type,e=>window.__projClickLog.push({name,type,pointer:e.pointerType})); });
+// floating projector panel (PR120 button set: repeat/play/newrun/skip-voice),
+// and log every pointer event that fires.
+await page.evaluate(()=>{ const p=window.__armbandHarness.world.getSceneObject('wall-tones-armband');window.__projClickLog=[];for(const name of ['armband-play','armband-repeat']) for(const type of ['click','pointerdown','pointerup'])p.getElementById(name)?.addEventListener(type,e=>window.__projClickLog.push({name,type,pointer:e.pointerType})); });
 const projClick=await page.evaluate(async()=>{
+ const s=window.__armbandHarness.system;
+ let fires=0; const orig=s.onPlayControl.bind(s); s.onPlayControl=()=>{fires++;};
  const r=window.IWER_DEVICE.remote;
- const target=r.executeListTargets({}).targets.find(t=>t.name==='armband-modifiers')?.position;
- if(!target) return {error:'no-target'};
+ const target=r.executeListTargets({}).targets.find(t=>t.name==='armband-play')?.position;
+ if(!target) { s.onPlayControl=orig; return {error:'no-target'}; }
  await r.dispatch('look_at',{device:'hand-right',target});
  await new Promise(res=>setTimeout(res,300));
  await r.dispatch('select',{device:'hand-right',duration:.15});
  await new Promise(res=>setTimeout(res,250));
- return {store:window.__wallTonesDebug.storeOpen,events:window.__projClickLog};
+ s.onPlayControl=orig;
+ return {fires,events:window.__projClickLog};
 });
 console.log('PROJECTOR_CLICK',projClick);
-assert.equal(projClick.store,true,'Modifiers button opens the store from the floating panel');
-assert.ok(projClick.events?.some(e=>e.name==='armband-modifiers'&&e.type==='click'),'click event reached the Modifiers button');
+assert.equal(projClick.fires,1,'Play button action fires from the floating panel ray click');
+assert.ok(projClick.events?.some(e=>e.name==='armband-play'&&e.type==='click'),'click event reached the Play button');
 await page.evaluate(()=>{ window.__armbandHarness.system.storeOpen=false; });
+// Nov 17 Quest feedback: physical fingertip pokes on the small moving panel
+// were unreliable through the UIKit click path. The geometric direct-press
+// path must fire the button action exactly once on face contact (the UIKit
+// click from the same poke suppressed), push the button into the panel while
+// pressed, and re-arm only after the finger leaves the hover slab.
+const directPress=await page.evaluate(async()=>{
+ const s=window.__armbandHarness.system;
+ const panel=window.__armbandHarness.world.getSceneObject('wall-tones-armband');
+ const el=panel.getElementById('armband-play');
+ if(!el) return {error:'no-play-button'};
+ const entry=s.armbandDirectButtons.find(b=>b.id==='armband-play');
+ if(!entry) return {error:'no-registry-entry'};
+ let fires=0; const orig=entry.action;
+ let realFires=0; const origPlay=s.onPlayControl.bind(s); s.onPlayControl=()=>{realFires++;};
+ entry.action=()=>{fires++; s.onPlayControl();};
+ const V=s.armbandPressPos.constructor;
+ el.updateWorldMatrix(true,false);
+ const center=new V(); el.getWorldPosition(center);
+ const q=el.getWorldQuaternion(new (s.armbandPressQuat.constructor)());
+ const out=new V(0,0,1).applyQuaternion(q);
+ const far=new V(0,-8,0);
+ const tip=new V();
+ const put=(mode)=>{ if(mode==='hover')tip.copy(center).addScaledVector(out,0.02); else if(mode==='press')tip.copy(center).addScaledVector(out,-0.0015); else tip.copy(far); };
+ s.readIndexTipWorld=(hand,o)=>{ if(hand==='right'){o.copy(tip);} else {o.copy(far);} };
+ const wait=(ms)=>new Promise(r=>setTimeout(r,ms));
+ put('hover'); await wait(400);
+ const firesOnHover=fires;
+ put('press'); await wait(400);
+ const firesOnPress=fires;
+ const pushWhilePressed=entry.pushPx;
+ const sc=new V(); el.getWorldScale(sc);
+ const dbg={size:el.size?.value, scaleX:sc.x, worldHalfW:sc.x*0.5, tipDz:(()=>{const c=new V();el.getWorldPosition(c);return tip.clone().sub(c).dot(out);})()};
+ // The same poke's UIKit click must be suppressed: the press arms the
+ // button's click suppression window (uikit synthesizes its own event
+ // objects, so assert the armed guard instead of dispatching one).
+ const suppressArmed=entry.lastFireAt>0 && entry.suppressClickUntil>=entry.lastFireAt+700;
+ await wait(100);
+ const firesAfterClick=fires;
+ const realAfterClick=realFires;
+ put('far'); await wait(400);
+ const pushAfterRelease=entry.pushPx;
+ put('press'); await wait(400);
+ const firesOnSecondPoke=fires;
+ delete s.readIndexTipWorld; entry.action=orig; s.onPlayControl=origPlay;
+ return {firesOnHover,firesOnPress,pushWhilePressed,firesAfterClick,realAfterClick,suppressArmed,pushAfterRelease,firesOnSecondPoke,dbg};
+});
+console.log('DIRECT_PRESS',directPress);
+assert.equal(directPress.firesOnHover,0,'hovering in front of the button does not fire');
+assert.equal(directPress.firesOnPress,1,'face contact fires the action exactly once');
+assert.ok(directPress.pushWhilePressed>0,'button pushes into the panel while pressed');
+assert.equal(directPress.firesAfterClick,1,'press action stays single for the poking path');
+assert.equal(directPress.realAfterClick,1,'no stray second action from the press itself');
+assert.equal(directPress.suppressArmed,true,'UIKit click suppression armed for the poking poke');
+assert.ok(directPress.pushAfterRelease<0.5,'button springs back after release');
+assert.equal(directPress.firesOnSecondPoke,2,'press re-arms after the finger leaves');
+assert.ok(directPress.dbg.worldHalfW>0.01&&directPress.dbg.worldHalfW<0.06,`button hit region is button-sized (${directPress.dbg.worldHalfW} m half-width)`);
 // Jitter: physical tracking noise (~+-5 mm at ~8 Hz) must not shake the panel
 // or flap the open gate. Return to the jitter base pose and settle first.
 await page.evaluate(async()=>await window.IWER_DEVICE.remote.runSequence({device:'hand-left',idleHand:'keep',body:'fixed',gaze:'fixed',steps:[{position:{x:-.12,y:1.32,z:-.42},anchor:'wrist',orientation:{fingers:'forward',palm:'up'},duration:.2}]}));
