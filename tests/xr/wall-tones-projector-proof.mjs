@@ -197,6 +197,23 @@ assert.ok(placement.awayGain>0.015,'panel sits farther from the head than the pa
 // floating projector panel (PR120 button set: repeat/play/newrun/skip-voice),
 // and log every pointer event that fires.
 await page.evaluate(()=>{ const p=window.__armbandHarness.world.getSceneObject('wall-tones-armband');window.__projClickLog=[];for(const name of ['armband-play','armband-repeat']) for(const type of ['click','pointerdown','pointerup'])p.getElementById(name)?.addEventListener(type,e=>window.__projClickLog.push({name,type,pointer:e.pointerType})); });
+// Ownership gate is part of this same candidate, not a separate preview.
+const ownership=await page.evaluate(async()=>{
+ const s=window.__armbandHarness.system,d=window.__wallTonesDebug;
+ d.grantPlayLevel(0);await new Promise(r=>setTimeout(r,350));
+ const entry=s.armbandDirectButtons.find(b=>b.id==='armband-play');
+ let calls=0;const orig=s.onPlayControl;s.onPlayControl=()=>{calls++;};
+ entry.action();entry.action();
+ const key=s.armband.raisedButtons.keys.get('armband-play');
+ const disabled=window.__armbandHarness.world.getSceneObject('wall-tones-armband').getElementById('armband-play').properties.peek().disabled;
+ const blocked={calls,disabled,dim:key.material.color.getHex()};
+ s.onPlayControl=orig;d.grantPlayLevel(1);await new Promise(r=>setTimeout(r,350));
+ return blocked;
+});
+console.log('PLAY_OWNERSHIP',ownership);
+assert.equal(ownership.calls,0,'unowned shared action cannot activate Play');
+assert.equal(ownership.disabled,true,'unowned wrist Play is disabled');
+assert.equal(ownership.dim,0x4b5157,'unowned raised keycap reads gray');
 const projClick=await page.evaluate(async()=>{
  const s=window.__armbandHarness.system;
  let fires=0; const orig=s.onPlayControl.bind(s); s.onPlayControl=()=>{fires++;};
