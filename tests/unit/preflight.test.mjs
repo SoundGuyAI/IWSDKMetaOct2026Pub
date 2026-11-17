@@ -29,7 +29,8 @@ test('dynamic files syntax fails closed', () => {
   assert.throws(() => checkShardCoverage(workflow.replace(/files: .+/, 'files: ${{ inputs.files }}'), actual), /Unsupported shard files syntax/);
 });
 test('CRLF workflow is accepted', () => {
-  assert.equal(checkShardCoverage(workflow.replace(/\n/g, '\r\n'), actual), actual.length);
+  const crlf = workflow.includes('\r\n') ? workflow : workflow.replace(/\n/g, '\r\n');
+  assert.equal(checkShardCoverage(crlf, actual), actual.length);
 });
 test('full preflight includes fresh install, typecheck, units, build and complete E2E', () => {
   assert.deepEqual(preflightSteps(), [

@@ -5,8 +5,14 @@ import ts from 'typescript';
 
 test('collider debug control lives in main-menu Settings and is hidden on flat play', () => {
   const source = readFileSync(new URL('../../src/wall-tones/wall-tones-system.ts', import.meta.url), 'utf8');
-  const method = source.match(/private syncDebugCollidersButton\(\): void \{([\s\S]*?)\n\}\n/)[1];
-  const js = ts.transpileModule(`function sync() {${method}}`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  const methodMatch = source.match(
+    /private syncDebugCollidersButton\(\): void \{([\s\S]*?)\r?\n\}\r?\n/,
+  );
+  assert.ok(methodMatch, 'syncDebugCollidersButton method not found');
+  const method = methodMatch[1];
+  const js = ts.transpileModule(`function sync() {${method}}`, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022 },
+  }).outputText;
   const sync = new Function(`${js}; return sync;`)();
   let display; let text; let asked;
   const system = {
