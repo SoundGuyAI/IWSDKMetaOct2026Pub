@@ -11,6 +11,7 @@ import {
   type ThumbHandJoints,
 } from '../thumbs-lab/thumbs-gesture.js';
 import {
+  GameOverHandGapTracker,
   GameOverThumbsFlow,
   type GameOverThumbPose,
   type GameOverThumbsEvent,
@@ -563,11 +564,10 @@ private readonly gameOverThumbs = new GameOverThumbsFlow();
  * the device check passes. */
 private gameOverDbgLeft = '-';
 private gameOverDbgRight = '-';
-/** Frame time the current no-hand-sampled stretch began; -1 = a hand is
- * tracked. Quest drops hand sources while controllers are active, so Game
- * Over frames without a tracked hand pause the gesture flow instead of
- * resetting it (Nov 17 device test). */
-private gameOverNoHandsSince = -1;
+/** Game Over no-hand stretch tracker (Nov 17 device test): Quest drops hand
+ * sources while controllers are active, so frames without a tracked hand
+ * pause the gesture flow instead of resetting it. */
+private readonly gameOverHandGap = new GameOverHandGapTracker(GAMEOVER_NO_HANDS_RESET_SEC);
 /** Active story gesture-check listen; resolved by update() hand sampling. */
 private gestureListen: {
 kind: 'thumbs' | 'nod';
@@ -4847,7 +4847,7 @@ const canRun = this.canRunGameOverThumbs();
 if (canRun !== this.gameOverThumbs.isEnabled) {
 this.gameOverThumbs.setEnabled(canRun);
 if (canRun) {
-this.gameOverNoHandsSince = -1;
+this.gameOverHandGap.reset();
 }
 }
 if (canRun) {
@@ -4859,12 +4859,10 @@ this.gameOverThumbs.setRetryAvailable(this.economy.getSavers() >= need);
 // Frames with no tracked hand pause the flow; a sustained gap restarts the
 // gesture so a stale hold cannot fire instantly when tracking returns.
 let event: GameOverThumbsEvent | null = null;
-if (left != null || right != null) {
-this.gameOverNoHandsSince = -1;
+const gap = this.gameOverHandGap.note(left != null || right != null, now);
+if (gap == null) {
 event = this.gameOverThumbs.feed(leftPose, rightPose, now);
-} else if (this.gameOverNoHandsSince < 0) {
-this.gameOverNoHandsSince = now;
-} else if (now - this.gameOverNoHandsSince >= GAMEOVER_NO_HANDS_RESET_SEC) {
+} else if (gap === 'reset') {
 this.gameOverThumbs.reset();
 }
 if (event === 'armed') {
@@ -5291,7 +5289,7 @@ const hint = panel?.getElementById<UIKit.Text>('gameover-gesture-hint');
 if (hint == null) return;
 hint.setProperties({
 display: 'flex',
-text: `DBG2 fp:${this.flowPhase} dp:${this.useDesktopPath() ? 1 : 0} ht:${this.hasHandTrackingInput() ? 1 : 0} L:${this.gameOverDbgLeft} R:${this.gameOverDbgRight} en:${this.gameOverThumbs.isEnabled ? 1 : 0} arm:${this.gameOverThumbs.isArmed ? 1 : 0} g:${this.gameOverNoHandsSince < 0 ? '0' : (performance.now() / 1000 - this.gameOverNoHandsSince).toFixed(1)}`,
+text: `DBG2 fp:${this.flowPhase} dp:${this.useDesktopPath() ? 1 : 0} ht:${this.hasHandTrackingInput() ? 1 : 0} L:${this.gameOverDbgLeft} R:${this.gameOverDbgRight} en:${this.gameOverThumbs.isEnabled ? 1 : 0} arm:${this.gameOverThumbs.isArmed ? 1 : 0} g:${this.gameOverHandGap.gapSec(performance.now() / 1000).toFixed(1)}`,
 });
 }
 
