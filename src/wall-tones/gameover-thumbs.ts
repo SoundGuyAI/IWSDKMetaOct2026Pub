@@ -201,34 +201,66 @@ export class GameOverThumbsFlow {
  * popup is open (Quest auto-switches hand sources off while controllers are
  * active, so tracking comes and goes mid-popup). A short no-hand stretch
  * pauses the gesture flow; once the stretch reaches resetAfterSec the
- * caller restarts the gesture. */
+ * caller restarts the gesture.
+ *
+ * True pause: holds measure OBSERVED time only. The caller feeds the flow
+ * observedNow() instead of wall time, so seconds with no tracked hand never
+ * count toward a hold - a thumb the flow cannot see is not a thumb held up,
+ * and a deliberate hold cannot complete during a tracking gap. */
 export class GameOverHandGapTracker {
   private noHandsSince = -1;
+  /** True once the current stretch crossed the threshold (gesture restarted). */
+  private stretchReset = false;
+  /** Total wall seconds skipped while untracked since the last restart. */
+  private pausedTotal = 0;
 
   constructor(private readonly resetAfterSec: number) {}
 
-  /** One frame. Returns null when a hand is tracked (feed the flow), 'pause'
-   * during a short no-hand stretch (skip the frame), or 'reset' once the
-   * stretch reaches the threshold (restart the gesture). */
+  /** One frame. Returns null when a hand is tracked (feed the flow with
+   * observedNow(now)), 'pause' during a short no-hand stretch (skip the
+   * frame), or 'reset' once the stretch reaches the threshold (restart the
+   * gesture; idempotent while the stretch continues). */
   note(handsTracked: boolean, now: number): 'pause' | 'reset' | null {
     if (handsTracked) {
+      if (this.noHandsSince >= 0 && !this.stretchReset) {
+        this.pausedTotal += now - this.noHandsSince;
+      }
       this.noHandsSince = -1;
+      this.stretchReset = false;
       return null;
     }
     if (this.noHandsSince < 0) {
       this.noHandsSince = now;
+      this.stretchReset = false;
       return 'pause';
     }
-    return now - this.noHandsSince >= this.resetAfterSec ? 'reset' : 'pause';
+    if (!this.stretchReset && now - this.noHandsSince >= this.resetAfterSec) {
+      this.stretchReset = true;
+      // The gesture restarts: drop the paused-time bookkeeping so the next
+      // fed frame starts holds fresh from wall time.
+      this.pausedTotal = 0;
+      return 'reset';
+    }
+    return this.stretchReset ? 'reset' : 'pause';
   }
 
-  /** Length of the current no-hand stretch in seconds; 0 while tracked. */
+  /** Observed time for the flow's feed(): wall time minus the seconds spent
+   * untracked since the last restart, so a hold freezes while no hand is
+   * visible and resumes where it paused. */
+  observedNow(now: number): number {
+    return now - this.pausedTotal;
+  }
+
+  /** Length of the current no-hand stretch in wall seconds; 0 while tracked. */
   gapSec(now: number): number {
     return this.noHandsSince < 0 ? 0 : Math.max(0, now - this.noHandsSince);
   }
 
-  /** Forget the current stretch (popup open/close, world swap). */
+  /** Forget the current stretch and bookkeeping (popup open/close, world
+   * swap). */
   reset(): void {
     this.noHandsSince = -1;
+    this.stretchReset = false;
+    this.pausedTotal = 0;
   }
 }
