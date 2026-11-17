@@ -5189,10 +5189,21 @@ this.statusText = `Play: ${playCount} tones`;
 this.playbackKind = 'play';
 this.renderPanel();
 this.playbackQueue = this.playbackQueue.then(async () => {
+// Speed covers the Play modifier's entered notes the same way it covers
+// Listen and AutoPlay (his 2026-11-17 report: AutoPlay applied the speed
+// but Play did not). The covered head is the first N = max(Play,
+// Autoplay) notes; a Play note entered past the head (possible after
+// manual presses) plays at normal speed, mirroring the Listen loop.
+const speedFactor = this.economy.speedNoteTimeFactor();
+const speedNotes =
+speedFactor < 1
+? Math.min(this.game.sequence.length, this.economy.speedCoveredNoteCount())
+: 0;
 for (let i = 0; i < playCount; i += 1) {
 if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
 }
+const quick = this.game.inputStep < speedNotes;
 const padId = this.game.sequence[this.game.inputStep]!;
 if (padId == null) {
 break;
@@ -5203,8 +5214,8 @@ this.setBlinkCuePad(pad);
 flashPad(pad, true);
 this.playbackCursor = this.game.inputStep;
 this.renderPanel();
-await playPadTone(padId);
-await this.wait(NOTE_GAP_S + BLINK_HOLD_S + 0.2);
+await playPadTone(padId, quick ? NOTE_DURATION_S * speedFactor : NOTE_DURATION_S);
+await this.wait((NOTE_GAP_S + BLINK_HOLD_S + 0.2) * (quick ? speedFactor : 1));
 flashPad(pad, false);
 this.setBlinkCuePad(null);
 }
@@ -5227,7 +5238,7 @@ if (completed) {
 this.finishCompletedPattern(padId, previousBest);
 return;
 }
-await this.wait(NOTE_GAP_S);
+await this.wait(NOTE_GAP_S * (quick ? speedFactor : 1));
 }
 if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
@@ -7193,78 +7204,78 @@ const info = captionWrong != null
 if (!accessibilityChanged && this.flatCaptions.childElementCount > 0) return;
 this.flatCaptions.replaceChildren();
 const line = document.createElement('div');
-Object.assign(line.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexWrap: 'wrap' });
-const label = document.createElement('span'); label.textContent = info; line.append(label);
-if (captionWrong) {
-// Owner 2026-11-15 19:01: two stacked lines that do not grow the panel - the
-// right pattern (Expected) above what was played (Hit), each up to
-// WRONG_HIT_ROW_NOTES notes with the final one differing (e.g. RRRBG vs
-// RRRBY). The pattern (history) row stays hidden after a failure.
-const namesOn = colorNamesEnabled();
-const leadIn = captionWrong.preceding.slice(-(WRONG_HIT_ROW_NOTES - 1));
-// Owner 2026-11-15 23:23: a leading "..." on each row when the captured
-// chain has more notes than the row shows, marking it as a tail.
-const tailHidden = captionWrong.preceding.length > WRONG_HIT_ROW_NOTES - 1;
-const appendSquares = (rowEl: HTMLElement, ids: number[]) => {
-for (const id of ids) {
-const square = document.createElement('span');
-Object.assign(square.style, { width: '16px', height: '16px', borderRadius: '2px', background: `#${WALL_TONE_PADS[id].color.toString(16).padStart(6, '0')}`, display: 'inline-block', flexShrink: '0' });
-square.setAttribute('aria-label', WALL_TONE_PADS[id].name);
-square.setAttribute('data-wronghit', '1');
-rowEl.append(square);
-if (namesOn) {
-const word = document.createElement('span');
-word.textContent = WALL_TONE_PADS[id].name;
-rowEl.append(word);
-}
-}
-};
-const appendGroup = (labelText: string, finalId: number, rowName: string) => {
-const group = document.createElement('div');
-Object.assign(group.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexBasis: '100%' });
-group.setAttribute('data-wronghit-row', rowName);
-const groupLabel = document.createElement('span');
-Object.assign(groupLabel.style, { display: 'inline-block', width: '72px', textAlign: 'left' });
-groupLabel.textContent = labelText;
-group.append(groupLabel);
-if (tailHidden) {
-const dots = document.createElement('span');
-dots.textContent = '...';
-dots.setAttribute('data-wronghit-tail', '1');
-group.append(dots);
-}
-appendSquares(group, [...leadIn, finalId]);
-line.append(group);
-};
-appendGroup('Expected:', captionWrong.expected, 'expected');
-appendGroup('Hit:', captionWrong.hit, 'hit');
-}
-const captionWindowLength = captionYourTurn ? Math.min(this.game.sequence.length, captionReveal + 5) : this.playbackShownCount;const captionStart = hintWindowStart(captionWindowLength, captionYourTurn ? this.game.inputStep : this.playbackShownCount - 1);
-  if (seqVisible) for (let i = captionStart; i < Math.min(this.game.sequence.length, captionStart + HINT_WINDOW_SIZE); i++) {
-    if (captionListening && i >= this.playbackShownCount) break;
-    const unknown = captionYourTurn && i >= captionReveal;
-    if (unknown && i - captionReveal >= 5) break; // cap the grey "?" tail at 5
-  const id = this.game.sequence[i]!;
-    const square = document.createElement('span');
-    Object.assign(square.style, { width: '16px', height: '16px', borderRadius: '2px', background: unknown ? '#8a8f98' : `#${WALL_TONE_PADS[id].color.toString(16).padStart(6, '0')}`, display: 'inline-block', flexShrink: '0' });
-    if (unknown) {
-      square.textContent = '?';
-      square.setAttribute('data-unknown', '1');
-      square.setAttribute('aria-label', 'Unknown note');
-      Object.assign(square.style, { color: '#fff', fontSize: '11px', lineHeight: '16px', textAlign: 'center' });
-    } else {
-      square.setAttribute('aria-label', WALL_TONE_PADS[id].name);
-    }
-    line.append(square);
-    if (!unknown && colorNamesEnabled()) { const word = document.createElement('span'); word.textContent = WALL_TONE_PADS[id].name; line.append(word); }}
-  this.flatCaptions.append(line);
-  if (caption) { const text = document.createElement('div'); text.textContent = caption; text.style.marginTop = '5px'; this.flatCaptions.append(text); }
-  this.flatCaptionsRectDirty = true;
+  Object.assign(line.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexWrap: 'wrap' });
+  const label = document.createElement('span'); label.textContent = info; line.append(label);
+  if (captionWrong) {
+    // Owner 2026-11-15 19:01: two stacked lines that do not grow the panel - the
+  // right pattern (Expected) above what was played (Hit), each up to
+  // WRONG_HIT_ROW_NOTES notes with the final one differing (e.g. RRRBG vs
+  // RRRBY). The pattern (history) row stays hidden after a failure.
+  const namesOn = colorNamesEnabled();
+    const leadIn = captionWrong.preceding.slice(-(WRONG_HIT_ROW_NOTES - 1));
+    // Owner 2026-11-15 23:23: a leading "..." on each row when the captured
+  // chain has more notes than the row shows, marking it as a tail.
+  const tailHidden = captionWrong.preceding.length > WRONG_HIT_ROW_NOTES - 1;
+    const appendSquares = (rowEl: HTMLElement, ids: number[]) => {
+      for (const id of ids) {
+        const square = document.createElement('span');
+        Object.assign(square.style, { width: '16px', height: '16px', borderRadius: '2px', background: `#${WALL_TONE_PADS[id].color.toString(16).padStart(6, '0')}`, display: 'inline-block', flexShrink: '0' });
+        square.setAttribute('aria-label', WALL_TONE_PADS[id].name);
+        square.setAttribute('data-wronghit', '1');
+        rowEl.append(square);
+        if (namesOn) {
+          const word = document.createElement('span');
+          word.textContent = WALL_TONE_PADS[id].name;
+          rowEl.append(word);
+        }
+      }
+    };
+    const appendGroup = (labelText: string, finalId: number, rowName: string) => {
+      const group = document.createElement('div');
+      Object.assign(group.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexBasis: '100%' });
+      group.setAttribute('data-wronghit-row', rowName);
+      const groupLabel = document.createElement('span');
+      Object.assign(groupLabel.style, { display: 'inline-block', width: '72px', textAlign: 'left' });
+      groupLabel.textContent = labelText;
+      group.append(groupLabel);
+      if (tailHidden) {
+        const dots = document.createElement('span');
+        dots.textContent = '...';
+        dots.setAttribute('data-wronghit-tail', '1');
+        group.append(dots);
+      }
+      appendSquares(group, [...leadIn, finalId]);
+      line.append(group);
+    };
+    appendGroup('Expected:', captionWrong.expected, 'expected');
+    appendGroup('Hit:', captionWrong.hit, 'hit');
+  }
+  const captionWindowLength = captionYourTurn ? Math.min(this.game.sequence.length, captionReveal + 5) : this.playbackShownCount;const captionStart = hintWindowStart(captionWindowLength, captionYourTurn ? this.game.inputStep : this.playbackShownCount - 1);
+    if (seqVisible) for (let i = captionStart; i < Math.min(this.game.sequence.length, captionStart + HINT_WINDOW_SIZE); i++) {
+          if (captionListening && i >= this.playbackShownCount) break;
+          const unknown = captionYourTurn && i >= captionReveal;
+          if (unknown && i - captionReveal >= 5) break; // cap the grey "?" tail at 5
+    const id = this.game.sequence[i]!;
+          const square = document.createElement('span');
+          Object.assign(square.style, { width: '16px', height: '16px', borderRadius: '2px', background: unknown ? '#8a8f98' : `#${WALL_TONE_PADS[id].color.toString(16).padStart(6, '0')}`, display: 'inline-block', flexShrink: '0' });
+          if (unknown) {
+                  square.textContent = '?';
+                  square.setAttribute('data-unknown', '1');
+                  square.setAttribute('aria-label', 'Unknown note');
+                  Object.assign(square.style, { color: '#fff', fontSize: '11px', lineHeight: '16px', textAlign: 'center' });
+          } else {
+                  square.setAttribute('aria-label', WALL_TONE_PADS[id].name);
+          }
+          line.append(square);
+          if (!unknown && colorNamesEnabled()) { const word = document.createElement('span'); word.textContent = WALL_TONE_PADS[id].name; line.append(word); }}
+    this.flatCaptions.append(line);
+    if (caption) { const text = document.createElement('div'); text.textContent = caption; text.style.marginTop = '5px'; this.flatCaptions.append(text); }
+    this.flatCaptionsRectDirty = true;
 }
 
 private wait(seconds: number): Promise<void> {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, seconds * 1000);
-  });
+    return new Promise((resolve) => {
+          window.setTimeout(resolve, seconds * 1000);
+    });
 }
 }
