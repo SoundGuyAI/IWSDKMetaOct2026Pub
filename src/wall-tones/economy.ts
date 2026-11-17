@@ -101,10 +101,19 @@ export const PLAY_COSTS: readonly number[] = [500, 1000, 2000, 4000];
  * achievement question left to him: doubled Bars from HUMAN rounds count
  * double toward lifetime Bars/Total Score (that IS "double score" here,
  * since Total Score == lifetime human-earned Bars). */
-export const MULTIPLIER_MAX_LEVEL = 3;
-/** Proposed ladder for his approval: X2 1,000 / X3 5,000 / X4 25,000 (x5
- * growth per his "really high exponentially, not the regular progression"). */
-export const MULTIPLIER_COSTS: readonly number[] = [1000, 5000, 25000];
+export const MULTIPLIER_MAX_LEVEL = 4;
+/** Factor per owned level (1-based): X2 / X3 / X4 / X8. The fourth X8 tier
+ * is his 2026-11-17 ask ("add level X8 maybe so we have 4 levels"). */
+export const MULTIPLIER_FACTORS: readonly number[] = [2, 3, 4, 8];
+/** Proposed ladder for his approval: X2 1,000 / X3 5,000 / X4 25,000 /
+ * X8 125,000 (x5 growth per his "really high exponentially, not the regular
+ * progression"; the X8 price is provisional like the rest). */
+export const MULTIPLIER_COSTS: readonly number[] = [1000, 5000, 25000, 125000];
+/** Display/payout factor for a Multiplier level. Level 0 (unowned) maps to
+ * the first tier's X2 so labels name what buying first gives. */
+export function multiplierFactorForLevel(level: number): number {
+  return MULTIPLIER_FACTORS[Math.min(Math.max(Math.floor(level), 1), MULTIPLIER_MAX_LEVEL) - 1]!;
+}
 
 /** Index pointer (owner 2026-11-12: "same row as play, unlocking after hint
  * level 3"; added to this PR by his 2026-11-13 ask). An indicator for where
@@ -647,16 +656,16 @@ export class WallTonesEconomy {
     writeNumber(INDEX_OWNED_KEY, 1);
   }
 
-  /** Owned Multiplier level (0 = not owned; 1 = X2, 2 = X3, 3 = X4). */
+  /** Owned Multiplier level (0 = not owned; 1 = X2, 2 = X3, 3 = X4, 4 = X8). */
   getMultiplierLevel(): number {
     return this.multiplierLevel;
   }
 
-  /** Score/Bars factor at the owned level: level 1 doubles, 2 triples,
-   * 3 quadruples; 1 while not enabled. */
+  /** Score/Bars factor at the owned level (the X2/X3/X4/X8 ladder); 1
+   * while not enabled. */
   getMultiplierFactor(): number {
     if (!this.isMultiplierEnabled()) return 1;
-    return this.multiplierLevel + 1;
+    return multiplierFactorForLevel(this.multiplierLevel);
   }
 
   /** Multiplier applies while owned AND switched on (the enable/disable
@@ -677,7 +686,7 @@ export class WallTonesEconomy {
     return MULTIPLIER_COSTS[Math.min(Math.max(level, 1), MULTIPLIER_MAX_LEVEL) - 1]!;
   }
 
-  /** Buy the next Multiplier level. Three levels max (X2/X3/X4); proposed
+  /** Buy the next Multiplier level. Four levels max (X2/X3/X4/X8); proposed
    * prices, no unlock gate for now (see the constants block). */
   buyNextMultiplierLevel(): boolean {
     if (this.multiplierLevel >= MULTIPLIER_MAX_LEVEL) return false;
@@ -842,4 +851,4 @@ export class WallTonesEconomy {
     writeStringArray(FIRST_FLAGS_KEY, [...this.firstFlags]);
     return true;
   }
-      }
+  }
