@@ -284,6 +284,13 @@ storeOpen: boolean;
 gameOverOpen: boolean;
 gameOverUseSaver: () => void;
 gameOverBuySaver: () => void;
+gameOverRetry: () => void;
+gameOverThumbsArmed: boolean;
+gameOverRetryLabel: string;
+gameOverRetryLabelColor: number;
+gameOverRetryBarsIconVisible: boolean;
+gameOverRetryConfirmIconVisible: boolean;
+gameOverGestureHint: { text: string; visible: boolean };
 savers: number;
 streakNow: number;
 /** Test-only: the New run button action. */
@@ -2292,6 +2299,37 @@ return system.gameOverOpen;
 gameOverNewRun: () => system.onGameOverNewRun(),
 gameOverUseSaver: () => system.onGameOverUseSaver(),
 gameOverBuySaver: () => system.onGameOverBuySaver(),
+// Combined retry route (owner, Nov 17): the single button/gesture path -
+// spends owned savers or buys the missing ones in the same press.
+gameOverRetry: () => system.onGameOverRetry(),
+get gameOverThumbsArmed() {
+return system.gameOverThumbs.isArmed;
+},
+// Live read-backs of the rendered Game Over retry row (same pattern as
+// statusLineText): label text/color, Bars icon and confirm-thumb icon
+// visibility, gesture hint text/visibility.
+get gameOverRetryLabel() {
+return String(system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('gameover-use-saver-label')?.properties.peek().text ?? '');
+},
+get gameOverRetryLabelColor() {
+return Number(system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('gameover-use-saver-label')?.properties.peek().color ?? 0);
+},
+get gameOverRetryBarsIconVisible() {
+return (system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('gameover-use-saver-bars-icon')?.properties.peek().display ?? 'none') !== 'none';
+},
+get gameOverRetryConfirmIconVisible() {
+return (system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('gameover-use-saver-thumb-icon-confirm')?.properties.peek().display ?? 'none') !== 'none';
+},
+get gameOverGestureHint() {
+const el = system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('gameover-gesture-hint');
+const props = el?.properties.peek();
+return { text: String(props?.text ?? ''), visible: (props?.display ?? 'none') !== 'none' };
+},
 get savers() {
 return system.economy.getSavers();
 },
