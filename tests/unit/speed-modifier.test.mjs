@@ -28,6 +28,8 @@ test('speed modifier wiring: control-row slash/label, handler, store and playbac
     "case 'speed'",
     'pressSpeedControl',
     'grantSpeedLevel',
+    'cycleSpeedSelection',
+    'getSpeedSelectedLevel',
     'Speed engaged',
     'Speed disengaged',
   ]) {
@@ -102,12 +104,12 @@ test('speed: provisional ladder 1000/2000/4000/8000, four levels, no unlock gate
   assert.equal(eco.getBars(), 6000);
 });
 
-test('speed: note-time factor halves per level; the toggle restores normal time', () => {
+test('speed: note-time factor halves per selected level, off at the end of the cycle', () => {
   const eco = ecoWith(0);
   assert.equal(eco.speedNoteTimeFactor(), 1, 'unowned plays at normal time');
   assert.equal(eco.isSpeedEnabled(), false);
   eco.debugGrantSpeedLevel(1);
-  assert.equal(eco.isSpeedEnabled(), true, 'owning keeps it on');
+  assert.equal(eco.isSpeedEnabled(), true, 'owning selects full strength');
   assert.equal(eco.speedNoteTimeFactor(), 0.5);
   eco.debugGrantSpeedLevel(2);
   assert.equal(eco.speedNoteTimeFactor(), 0.25);
@@ -115,11 +117,28 @@ test('speed: note-time factor halves per level; the toggle restores normal time'
   assert.equal(eco.speedNoteTimeFactor(), 0.0625);
   eco.debugGrantSpeedLevel(9);
   assert.equal(eco.getSpeedLevel(), SPEED_MAX_LEVEL, 'grant clamps at the top level');
-  eco.setSpeedDisabled(true);
+});
+
+test('speed: the panel button cycles the bought speeds 1..owned then off (his 2026-11-17 ask)', () => {
+  const eco = ecoWith(0);
+  eco.debugGrantSpeedLevel(2);
+  assert.equal(eco.getSpeedSelectedLevel(), 2, 'owned starts at full strength');
+  assert.equal(eco.speedNoteTimeFactor(), 0.25);
+  assert.equal(eco.cycleSpeedSelection(), 0, 'past the top bought speed wraps to off');
   assert.equal(eco.isSpeedEnabled(), false);
-  assert.equal(eco.speedNoteTimeFactor(), 1, 'disabled plays at normal time');
-  eco.setSpeedDisabled(false);
-  assert.equal(eco.isSpeedEnabled(), true);
+  assert.equal(eco.speedNoteTimeFactor(), 1, 'off plays at normal time');
+  assert.equal(eco.cycleSpeedSelection(), 1);
+  assert.equal(eco.speedNoteTimeFactor(), 0.5, 'half note time at level 1');
+  assert.equal(eco.cycleSpeedSelection(), 2);
+  assert.equal(eco.speedNoteTimeFactor(), 0.25);
+  assert.equal(eco.cycleSpeedSelection(), 0, 'cycle closes');
+  eco.debugGrantSpeedLevel(3);
+  assert.equal(eco.getSpeedSelectedLevel(), 3, 'buying a higher level selects full strength');
+  assert.equal(eco.speedNoteTimeFactor(), 0.125, 'the new top level applies right away');
+  assert.equal(eco.cycleSpeedSelection(), 0, 'past the new top wraps to off');
+  assert.equal(eco.cycleSpeedSelection(), 1, 'off restarts the cycle');
+  const flat = ecoWith(0);
+  assert.equal(flat.cycleSpeedSelection(), 0, 'no-op below ownership');
 });
 
 test('speed: coverage is the higher of the Play/Autoplay note counts (his rule)', () => {
