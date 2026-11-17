@@ -6,6 +6,11 @@ export const CLIP_TRANSCRIPTS: Record<WallTonesClipId, string> = {
   howToPlay: 'Point and press one of those panels to start. Listen to the pattern and repeat it. The longer a pattern you repeat, the higher your score will be. Good luck.',
   howToPlayRest: 'Listen to the pattern and repeat it. The longer a pattern you repeat, the higher your score will be. Good luck.',
   pointAndPress: 'Point and press one of those panels to start.',
+  // MR variants (owner-approved wording Nov 17): the start instruction gains the
+  // thumbs-up option only where hand tracking exists; flat platforms keep the
+  // original clips above.
+  pointAndPressMr: 'Point and press one of those panels to start, or just give me a thumbs up.',
+  howToPlayMr: 'Point and press one of those panels to start, or just give me a thumbs up. Listen to the pattern and repeat it. The longer a pattern you repeat, the higher your score will be. Good luck.',
   cheer1: 'Nice job!', cheer2: 'Oh, you got it!', cheer3: 'Nailed it!', cheer4: 'Beautiful!', cheer5: 'Clean!', cheer6: 'Too easy!',
   milestone5: 'Five in a row!', milestone10: "Ten in a row? Okay, now you're showing off!", milestone15: 'Fifteen? Are you secretly a musician?', milestone20: "Twenty in a row? I'm calling Guinness!",
   hype1: 'This is getting ridiculous!', hype2: 'Oh, unbelievable!', hype3: "Okay, I officially can't keep up!",
