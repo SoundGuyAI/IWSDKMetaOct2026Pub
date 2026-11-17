@@ -32,6 +32,7 @@ test('speed modifier wiring: control-row slash/label, handler, store and playbac
     'getSpeedSelectedLevel',
     'Speed engaged',
     'Speed disengaged',
+    'Speed covers the Play modifier',
   ]) {
     assert.ok(sys.includes(snippet), `system missing ${snippet}`);
   }
