@@ -81,3 +81,41 @@ export function shouldRunGestureCheck(
 ): boolean {
   return windowId === 'next-window' && immersive && handTracking;
 }
+
+/**
+ * The nod half (backlog item 105): the codename window (C05-C06) ends with
+ * the lab's q3 prompt, answered by head nod for yes / head shake for no.
+ * Nod detection uses the headset pose only, so no hand tracking is needed -
+ * the gate is immersive-only. Lines are the lab-verbatim SHARED_LAB_LINES
+ * clips (docs/CYPHER_LAB_CLIPS.md), re-declared here so this module stays
+ * import-free.
+ */
+
+/** The lab's q3 prompt, verbatim (SHARED_LAB_LINES.q3 in lab-script.ts). */
+export const NOD_CHECK_INTRO: LabScriptLine = {
+  clipId: 'q3',
+  text: "Next window, I'll tell you why your machine is the one I needed. Will you keep helping me?",
+};
+
+/** Spoken after a detected nod, verbatim (SHARED_LAB_LINES.q3Yes). */
+export const NOD_CHECK_YES: LabScriptLine = {
+  clipId: 'q3-yes',
+  text: 'Yes. I knew I picked the right person. Watch for my signal between patterns.',
+};
+
+/** Spoken after a head shake or an idle timeout (idle counts as a "no", lab
+ * rule), verbatim (SHARED_LAB_LINES.q3No). */
+export const NOD_CHECK_NO: LabScriptLine = {
+  clipId: 'q3-no',
+  text: "No. I hear you. But the connection is already open. I'll ask again next window.",
+};
+
+/**
+ * The codename window gains the nod prompt only where a head answer is
+ * possible: immersive play (the detector reads the headset pose, no hand
+ * tracking required). Everywhere else the window keeps only its recorded
+ * lines.
+ */
+export function shouldRunNodCheck(windowId: string, immersive: boolean): boolean {
+  return windowId === 'codename' && immersive;
+}
