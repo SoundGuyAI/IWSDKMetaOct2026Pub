@@ -13,6 +13,7 @@ import {
 import {
   GameOverThumbsFlow,
   shouldRunGameOverThumbs,
+  type GameOverThumbPose,
 } from './gameover-thumbs.js';
 import { playLabAnswerCue } from '../thumbs-lab/lab-cues.js';
 import { HeadNodShakeDetector } from '../nod-lab/head-gesture.js';
@@ -552,6 +553,11 @@ private mrAwaitingStart = false;
 private readonly thumbStartDetector = new ThumbGestureDetector();
 /** Game Over thumbs flow (owner, Nov 17): both-up retry / arm+confirm / down new run. */
 private readonly gameOverThumbs = new GameOverThumbsFlow();
+/** TEMP XR diagnostics (Nov 17 device test): last sampled Game Over thumb
+ * poses, shown on the popup while verifying headset behavior. Remove after
+ * the device check passes. */
+private gameOverDbgLeft = '-';
+private gameOverDbgRight = '-';
 /** Active story gesture-check listen; resolved by update() hand sampling. */
 private gestureListen: {
 kind: 'thumbs' | 'nod';
@@ -1255,6 +1261,10 @@ this.flowPhase === 'playing' &&
 (this.mrAwaitingStart || this.gestureListen != null || this.gameOverOpen)
 ) {
 this.tickThumbGestures();
+}
+// TEMP XR diagnostics (Nov 17 device test): live Game Over gesture readout.
+if (this.gameOverOpen) {
+this.syncGameOverGestureDebug();
 }
 this.tickIdleReplay();
 }
@@ -4818,6 +4828,11 @@ if (this.gameOverOpen) {
 // one-up arms then a second up confirms, thumb down starts a new run. The
 // listen is alive only while the popup is open in MR with hand tracking;
 // up gestures go inert when the retry is unaffordable (never auto-buys).
+// TEMP: sampled poses are also kept for the XR diagnostic readout.
+const leftPose: GameOverThumbPose = left != null ? classifyThumbPose(left).pose : 'none';
+const rightPose: GameOverThumbPose = right != null ? classifyThumbPose(right).pose : 'none';
+this.gameOverDbgLeft = left != null ? leftPose : 'null';
+this.gameOverDbgRight = right != null ? rightPose : 'null';
 const canRun = this.canRunGameOverThumbs();
 if (canRun !== this.gameOverThumbs.isEnabled) {
 this.gameOverThumbs.setEnabled(canRun);
@@ -4826,8 +4841,8 @@ if (canRun) {
 const need = saverUnitsForStreak(this.game.streak);
 this.gameOverThumbs.setRetryAvailable(this.economy.getSavers() >= need);
 const event = this.gameOverThumbs.feed(
-left != null ? classifyThumbPose(left).pose : 'none',
-right != null ? classifyThumbPose(right).pose : 'none',
+leftPose,
+rightPose,
 now,
 );
 if (event === 'armed') {
@@ -5237,6 +5252,22 @@ const text = !affordable
 ? `Confirm: raise your other thumb, or lower and raise the same one - spending ${need} saver${need > 1 ? 's' : ''}. Thumb down for a new run`
 : `Hold both thumbs up to retry with ${need} saver${need > 1 ? 's' : ''}, or hold one and confirm - thumb down for a new run`;
 hint.setProperties({ display: 'flex', text });
+}
+
+/** TEMP XR diagnostics (Nov 17 device test): while the Game Over popup is
+ * open in MR, show a one-line live readout of the gesture chain (flow phase,
+ * desktop path, hand tracking, sampled poses, flow state) so a headset test
+ * pinpoints where input stops. Remove after the device check passes. */
+private syncGameOverGestureDebug(): void {
+if (!this.gameOverOpen) return;
+if (this.world.visibilityState.peek() === VisibilityState.NonImmersive) return;
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+const hint = panel?.getElementById<UIKit.Text>('gameover-gesture-hint');
+if (hint == null) return;
+hint.setProperties({
+display: 'flex',
+text: `DBG fp:${this.flowPhase} dp:${this.useDesktopPath() ? 1 : 0} ht:${this.hasHandTrackingInput() ? 1 : 0} L:${this.gameOverDbgLeft} R:${this.gameOverDbgRight} en:${this.gameOverThumbs.isEnabled ? 1 : 0} arm:${this.gameOverThumbs.isArmed ? 1 : 0}`,
+});
 }
 
 /** One-press purchase (owner request 2026-11-11, no confirm step): buys exactly the savers missing for an immediate retry and applies them in the same press. Cost model unchanged: missing units at 18 Bars each. */
