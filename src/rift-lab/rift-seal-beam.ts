@@ -204,6 +204,8 @@ export class RiftSealBeam {
       this.wispSprites.push(sprite);
     }
 
+    // Palm flare is filaments only — a white Sprite core read as a floating
+    // sphere on Quest and washed out the beam origin.
     this.palmCore = new Sprite(
       new SpriteMaterial({
         map: glowDotTexture(),
@@ -213,11 +215,10 @@ export class RiftSealBeam {
         depthWrite: false,
         blending: AdditiveBlending,
         toneMapped: false,
-        opacity: 0.85,
+        opacity: 0,
       }),
     );
-    // Kept so older call sites stay valid; the big white disc read as a
-    // detached orb on Quest, so it stays hidden.
+    this.palmCore.visible = false;
     this.palmHalo = new Sprite(
       new SpriteMaterial({
         map: glowDotTexture(),
@@ -232,7 +233,6 @@ export class RiftSealBeam {
     );
     this.palmHalo.visible = false;
     this.palmCore.scale.setScalar(0.05);
-    this.root.add(this.palmCore);
 
     for (let i = 0; i < PALM_WISP_COUNT; i++) {
       const pos = new Float32Array((PALM_WISP_SEGMENTS + 1) * 6);
@@ -262,6 +262,8 @@ export class RiftSealBeam {
       });
     }
 
+    // Small colored hit fleck only — a large white glowDot read as a solid
+    // mid-room sphere wherever the beam stopped on invisible XR geometry.
     this.impactMat = new SpriteMaterial({
       map: glowDotTexture(),
       color: 0xffffff,
@@ -273,7 +275,8 @@ export class RiftSealBeam {
       opacity: 0,
     });
     this.impact = new Sprite(this.impactMat);
-    this.impact.scale.setScalar(0.32);
+    this.impact.visible = false;
+    this.impact.scale.setScalar(0.04);
     this.root.add(this.impact);
   }
 
@@ -398,10 +401,9 @@ export class RiftSealBeam {
       sprite.visible = fade > 0.05;
     }
 
-    // Small palm flare. The old half-meter white halo read as a floating orb.
-    this.palmCore.position.copy(origin);
-    const pulse = 0.045 + 0.012 * Math.sin(state.timeSec * 12);
-    this.palmCore.scale.setScalar(pulse);
+    // Filament nest only at the palm — no white core sprite.
+    this.palmCore.visible = false;
+    this.palmHalo.visible = false;
     for (let i = 0; i < this.palmWisps.length; i++) {
       const w = this.palmWisps[i];
       w.mat.color.copy(this.padColors[i % 4]);
@@ -438,9 +440,15 @@ export class RiftSealBeam {
     }
 
     this.impact.position.copy(end);
+    // Only show a fleck on a real rift contact (hitStrength from sealing),
+    // not on every wall/mesh stop — that painted a fake white sphere mid-room.
     const hit = Math.max(0, Math.min(1, state.hitStrength));
-    this.impactMat.opacity = hit * (0.7 + 0.3 * Math.sin(state.timeSec * 20));
-    this.impact.scale.setScalar(0.08 + hit * 0.16);
+    const showImpact = hit >= 0.5;
+    this.impact.visible = showImpact;
+    this.impactMat.opacity = showImpact
+      ? 0.35 + 0.25 * Math.sin(state.timeSec * 20)
+      : 0;
+    this.impact.scale.setScalar(showImpact ? 0.03 + hit * 0.04 : 0.01);
   }
 
   dispose(): void {

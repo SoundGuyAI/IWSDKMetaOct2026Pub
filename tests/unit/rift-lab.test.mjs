@@ -222,6 +222,14 @@ test('the enough-energy gate is one constant shared by every platform', () => {
   assert.equal(game.canFireBeam(), false); // XR/mobile gate, same threshold
 });
 
+test('lab start grant fills one seal of energy and matching orbit notes', () => {
+  const game = new RiftLabGame(seq(0.5));
+  game.setStartingEnergy(SEAL_ENERGY_REQUIRED);
+  assert.equal(game.getEnergy(), SEAL_ENERGY_REQUIRED);
+  assert.equal(game.getNotes().length, 12 * NOTES_PER_SUCCESS);
+  assert.equal(game.canFireBeam(), true);
+});
+
 test('hand cloud is dense and volumetric: spread over a sphere shell, not one ring', () => {
   const game = new RiftLabGame(seq(0.5));
   for (let i = 0; i < 12; i++) game.addNoteEnergy('green', 'right');

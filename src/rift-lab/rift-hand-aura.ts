@@ -153,6 +153,8 @@ export class RiftHandAura {
     embers.frustumCulled = false;
     group.add(embers);
 
+    // No white core sprite — filaments/embers carry the nest; a bright core
+    // read as a detached mid-room sphere on Quest.
     const core = new Sprite(
       new SpriteMaterial({
         map: glowDotTexture(),
@@ -162,9 +164,10 @@ export class RiftHandAura {
         depthWrite: false,
         blending: AdditiveBlending,
         toneMapped: false,
-        opacity: 0.9,
+        opacity: 0,
       }),
     );
+    core.visible = false;
     core.scale.setScalar(0.045);
     group.add(core);
 
@@ -251,9 +254,8 @@ export class RiftHandAura {
     }
     (bundle.embers.geometry.getAttribute('position') as Float32BufferAttribute).needsUpdate = true;
 
-    bundle.core.position.copy(palm);
-    bundle.core.scale.setScalar((firing ? 0.055 : 0.04) * (0.85 + 0.3 * energy01));
-    (bundle.core.material as SpriteMaterial).opacity = firing ? 1 : 0.55;
+    bundle.core.visible = false;
+    (bundle.core.material as SpriteMaterial).opacity = 0;
 
     if (usePalmLight && firing) {
       bundle.light.visible = true;

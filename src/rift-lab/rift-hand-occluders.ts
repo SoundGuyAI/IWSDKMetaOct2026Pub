@@ -34,12 +34,34 @@ const OCCLUDER_JOINTS: readonly { index: number; radius: number }[] = [
 ];
 
 const sharedGeo = new SphereGeometry(1, 10, 8);
-const sharedMat = new MeshBasicMaterial({
-  colorWrite: false,
-  depthWrite: true,
-  depthTest: true,
-  toneMapped: false,
-});
+
+/** Depth-only joint proxy. Quest WebGL often ignores Material.colorWrite, so
+ * these used to draw as solid white spheres (visible against the menu). Force
+ * the GL color mask off around each draw instead. */
+function makeOccluderMaterial(): MeshBasicMaterial {
+  const mat = new MeshBasicMaterial({
+    color: 0x000000,
+    transparent: false,
+    opacity: 1,
+    colorWrite: false,
+    depthWrite: true,
+    depthTest: true,
+    toneMapped: false,
+  });
+  mat.colorWrite = false;
+  return mat;
+}
+
+function bindDepthOnlyPass(mesh: Mesh): void {
+  mesh.onBeforeRender = (renderer) => {
+    const gl = renderer.getContext();
+    gl.colorMask(false, false, false, false);
+  };
+  mesh.onAfterRender = (renderer) => {
+    const gl = renderer.getContext();
+    gl.colorMask(true, true, true, true);
+  };
+}
 
 export class RiftHandOccluders {
   readonly root = new Group();
@@ -55,10 +77,14 @@ export class RiftHandOccluders {
   private buildHand(): Mesh[] {
     const meshes: Mesh[] = [];
     for (const spec of OCCLUDER_JOINTS) {
-      const mesh = new Mesh(sharedGeo, sharedMat);
+      const mesh = new Mesh(sharedGeo, makeOccluderMaterial());
+      mesh.name = 'RiftHandOccluder';
       mesh.frustumCulled = false;
       mesh.visible = false;
       mesh.renderOrder = -10;
+      // Never participate in beam / pointer raycasts.
+      mesh.raycast = () => {};
+      bindDepthOnlyPass(mesh);
       mesh.scale.setScalar(spec.radius);
       this.root.add(mesh);
       meshes.push(mesh);

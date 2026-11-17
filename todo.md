@@ -128,7 +128,11 @@ Armband verification update (Nov 13): typecheck/build and 102 unit tests pass. Q
 - [x] Beam length follows the nearest room plane, scene mesh, or visible furniture instead of a fixed 3.5 m.
 - [x] Hit sparks are mesh quads at that contact, with an impact flare on the beam end. Note stream runs for the whole beam, not only on a rift.
 - [x] Corkscrew ribbons and hand filaments thickened; the detached white palm halo is hidden; untracked hands no longer leave a mid-air aura.
-- [ ] Owner Quest retest. No merge.
+- [x] Lab `startRun` grants 120 energy (one seal) with matching orbit notes.
+- [x] Head-height beam stop: skip synthetic y=0 `ground` when the head is near session origin (Quest unbounded/viewer). Owner confirmed the colliding plane is gone (2026-11-17).
+- [x] XR charge notes reassigned onto a tracked palm; immersive no longer parks on flat desktop anchors.
+- [ ] Remaining: visible Start-energy “sphere” / hand-orbit cloud still appears at the start pose (no longer collides). Fix in a follow-up PR — see WALL_TONES_TODO item for the white charge-cloud at session start.
+- [ ] Owner Quest retest of remaining cloud visual. No merge until he says so.
 
 ## Store scroll selection regression - 2026-11-16
 - [x] Reproduce the failure with a two-pixel touch-ray movement.
@@ -146,6 +150,9 @@ Armband verification update (Nov 13): typecheck/build and 102 unit tests pass. Q
 - [ ] Quest perf sample pending (no device connected this session).
 - [x] Draft PR #144 base `feat/rift-seal-visuals`. No merge / no production deploy.
 - [x] Merged origin/main (recorded Rift SFX #135) into this branch; kept visual beam/geometry path and wired positional hum/seal/ambience.
+- [x] Beam mid-room false hits hardened (impact fleck rift-only; XR plane mesh raycasts skipped; occluders colorMask; hub demo props hidden outside Demo).
+- [x] Synthetic head-height ground plane fixed (owner Quest confirm 2026-11-17).
+- [ ] Follow-up PR: visible white Start-energy sphere/cloud still at session-start pose (tracks energy; not colliding). Tracked in WALL_TONES_TODO.
 
 ## Accessibility settings layout fix (Nov 17) - separate PR in progress
 - [x] Fix: MR armband hand/mode buttons were accidentally nested inside the head-gaze checkbox row (bad merge in 228fd6b), rendering on one colliding line on Quest. Restored to their own container row; gaze rows keep their own rows.

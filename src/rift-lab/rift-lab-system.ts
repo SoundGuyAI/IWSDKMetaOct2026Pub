@@ -438,6 +438,9 @@ export class RiftLabSystem extends createSystem({
   private readonly pointerNoteAnchor = new Vector3();
   private dragStart = { x: 0, y: 0 };
   private aimNdc = { x: 0, y: 0 };
+  /** False until the pointer moves: default NDC (0,0) parked a Start-energy
+   * note/aura ball dead-center in front of the camera. */
+  private aimHasMoved = false;
   private lastUiUpdate = 0;
   private statusMessage = 'Press Start. Successful notes charge your hands.';
   /** Live XR palm poses per hand, refreshed each update; null when flat or
@@ -646,6 +649,7 @@ export class RiftLabSystem extends createSystem({
         x: ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
         y: -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
       };
+      this.aimHasMoved = true;
     };
     const onPointerUp = () => {
       this.fingerDown = false;
@@ -785,6 +789,10 @@ export class RiftLabSystem extends createSystem({
       return;
     }
     this.running = true;
+    // Fresh Start: don't inherit a stale center-aim from a previous hover.
+    this.aimHasMoved = false;
+    // One full seal's worth of charge ready at start (owner ask 2026-11-17).
+    this.game.setStartingEnergy(SEAL_ENERGY_REQUIRED);
     this.lastSpawnAt = performance.now();
     if (this.isMixedReality()) {
       this.roomCaptureAttempted = false;
@@ -800,6 +808,7 @@ export class RiftLabSystem extends createSystem({
         : 'Making room for a rift...',
     );
   }
+
 
   /** MR: rifts only open on detected real walls. Ask Quest for room capture
    * once when none are known; never fall back to pretend walls. */
@@ -1220,6 +1229,21 @@ export class RiftLabSystem extends createSystem({
         hand === 'right' ? this.palmAnchorRight : this.palmAnchorLeft;
       return scratch.set(palm.center[0], palm.center[1], palm.center[2]);
     }
+    // Immersive: never fall back to the flat desktop world anchors. Those
+    // sit near session start and parked the Start-energy cloud as a mid-air
+    // sphere while the live hand looked empty.
+    if (this.isImmersive()) {
+      const other = hand === 'right' ? this.palms.left : this.palms.right;
+      if (other != null) {
+        const scratch =
+          hand === 'right' ? this.palmAnchorRight : this.palmAnchorLeft;
+        return scratch.set(other.center[0], other.center[1], other.center[2]);
+      }
+      this.player.head.getWorldPosition(this.headPos);
+      const scratch =
+        hand === 'right' ? this.palmAnchorRight : this.palmAnchorLeft;
+      return scratch.copy(this.headPos);
+    }
     if (!this.isImmersive() && (this.flatTouchInput || this.touchDevice())) {
       // Touch: notes rest on the bottom-left corner orb and follow the
       // finger while it is down, like the desktop notes follow the mouse.
@@ -1236,6 +1260,12 @@ export class RiftLabSystem extends createSystem({
       return this.touchOrbPoint;
     }
     if (!this.isImmersive() && !this.flatTouchInput && !this.dragging) {
+      // Until the cursor moves, keep charge notes on the side anchors — the
+      // default aim (0,0) put a dense Start-energy ball mid-screen in front
+      // of the head.
+      if (!this.aimHasMoved) {
+        return hand === 'right' ? FLAT_RIGHT_HAND : FLAT_LEFT_HAND;
+      }
       // Desktop notes orbit the actual cursor and depart from it, while
       // touch keeps the fixed charge origin and XR keeps the live palms.
       this.desktopNdc.set(this.aimNdc.x, this.aimNdc.y);
@@ -1365,6 +1395,24 @@ export class RiftLabSystem extends createSystem({
     syncRiftAudioListener(this.world.camera);
     this.game.updateOrbit(delta);
 
+    // XR: keep every charge note on a tracked palm. setStartingEnergy splits
+    // notes across both hands, so an untracked left left a dense cloud on the
+    // flat start-space anchor while the live right hand looked empty.
+    if (this.isImmersive()) {
+      const leftOk = this.palms.left != null;
+      const rightOk = this.palms.right != null;
+      const fallback: 'left' | 'right' | null = rightOk
+        ? 'right'
+        : leftOk
+          ? 'left'
+          : null;
+      if (fallback != null) {
+        for (const note of this.game.getNotes()) {
+          if (this.palms[note.hand] == null) note.hand = fallback;
+        }
+      }
+    }
+
     // Sync orbit note meshes with the logic model.
     const seen = new Set<number>();
     for (const note of this.game.getNotes()) {
@@ -1379,6 +1427,11 @@ export class RiftLabSystem extends createSystem({
         );
         this.noteMeshes.set(note.id, mesh);
         this.root.add(mesh);
+      }
+      // Immersive + no tracked palms: hide the cloud (no flat-world park).
+      if (this.isImmersive() && this.palms[note.hand] == null) {
+        mesh.visible = false;
+        continue;
       }
       const anchor = this.handAnchor(note.hand);
       const glowScale = this.fingertipGlowScale(anchor);
@@ -1567,7 +1620,8 @@ export class RiftLabSystem extends createSystem({
             break;
           }
         }
-        if (geoHit && hitStrength <= 0) hitStrength = 0.8;
+        // Do not inflate hitStrength on ordinary wall/mesh stops — that drew a
+        // large white impact sprite mid-room that looked like a solid sphere.
         this.sealBeam?.update({
           origin,
           end: this.beamEnd,
@@ -1747,11 +1801,18 @@ export class RiftLabSystem extends createSystem({
    * Item 93 collision surfaces. Real room planes come from the XRPlane
    * query and only in mixed reality (never synthesized on desktop). The
    * y=0 session-space ground and each rift's host wall plane are known
-   * in every mode.
+   * in every mode — except when the session origin sits near the head
+   * (unbounded/viewer), where y=0 is head height and must not stop the beam.
    */
   private refreshGeometrySurfaces(): void {
     this.geoSurfaces.length = 0;
-    this.geoSurfaces.push(planeSurface('ground', 0, 1, 0, 0, 0, 0));
+    this.player.head.getWorldPosition(this.headPos);
+    // Quest MR can place the head near y=0 (unbounded/viewer). A synthetic
+    // y=0 floor then sits at head height and stops the seal beam.
+    const headNearSessionOrigin = Math.abs(this.headPos.y) < 0.55;
+    if (!headNearSessionOrigin) {
+      this.geoSurfaces.push(planeSurface('ground', 0, 1, 0, 0, 0, 0));
+    }
     for (const view of this.riftViews.values()) {
       this.riftOutwardNormal(view, this.geoScratchNormal);
       this.geoSurfaces.push(
@@ -1903,18 +1964,14 @@ export class RiftLabSystem extends createSystem({
     }
   }
 
-  /** Nearest scene mesh in front of the beam: real room meshes and planes
-   * (even when the wireframe is hidden) plus visible studio furniture. */
+  /** Nearest solid mesh in front of the beam: detected room meshes plus
+   * visible studio furniture. XR plane *meshes* are skipped here — they are
+   * thin invisible boxes that still stopped the beam mid-room; walls/floors
+   * are handled by closestSurfaceHit / geoSurfaces instead. */
   private closestMeshHit(origin: Vector3, direction: Vector3): number {
     const targets = this.beamTargets;
     targets.length = 0;
     for (const entity of this.queries.meshes.entities) {
-      const obj = entity.object3D;
-      if (obj == null) continue;
-      obj.updateWorldMatrix(true, false);
-      targets.push(obj);
-    }
-    for (const entity of this.queries.planes.entities) {
       const obj = entity.object3D;
       if (obj == null) continue;
       obj.updateWorldMatrix(true, false);
@@ -1948,15 +2005,38 @@ export class RiftLabSystem extends createSystem({
   private collectVisibleSceneMeshes(root: Object3D, out: Object3D[]): void {
     const stack = this.meshWalk;
     stack.length = 0;
+    // Skip the Lab VFX root and the XR player rig (gaze debug reticle, hand
+    // meshes, controller rays). Those sit mid-room in the view and must not
+    // stop the seal beam.
+    const labRoot = this.root;
+    const player = this.player;
     for (const child of root.children) {
-      if (child !== this.root) stack.push(child);
+      if (child !== labRoot && child !== player) stack.push(child);
     }
     while (stack.length > 0) {
       const obj = stack.pop();
-      if (obj == null || obj === this.root) continue;
-      if ((obj as Mesh).isMesh === true && obj.visible) out.push(obj);
-      for (const child of obj.children) stack.push(child);
+      if (obj == null || obj === labRoot || obj === player) continue;
+      // Named helper meshes that may sit outside the player hierarchy.
+      if (obj.name === 'gaze-reticle' || obj.name === 'RiftHandOccluder') continue;
+      // Child Visibility can stay true while a Demo parent is hidden, so a
+      // graphite gem still answered beam raycasts mid-room. Require the full
+      // ancestor chain to be visible.
+      if ((obj as Mesh).isMesh === true && this.isObjectWorldVisible(obj)) {
+        out.push(obj);
+      }
+      for (const child of obj.children) {
+        if (child !== labRoot && child !== player) stack.push(child);
+      }
     }
+  }
+
+  private isObjectWorldVisible(obj: Object3D): boolean {
+    let cur: Object3D | null = obj;
+    while (cur != null) {
+      if (!cur.visible) return false;
+      cur = cur.parent;
+    }
+    return true;
   }
 
   private debugSnapshot(): RiftLabDebugSnapshot {

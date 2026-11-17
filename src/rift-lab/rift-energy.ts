@@ -114,7 +114,8 @@ export const OPEN_RIFT_MODIFIER_FRACTION = 0.5;
 export interface OrbitNote {
   readonly id: number;
   readonly color: PadColorName;
-  readonly hand: HandSide;
+  /** Mutable so XR can move charge onto a currently tracked palm. */
+  hand: HandSide;
   /** Current orbit angle; the system advances it each frame. */
   angle: number;
   readonly radius: number;
@@ -157,6 +158,21 @@ export class RiftLabGame {
 
   getEnergy(): number {
     return this.energy;
+  }
+
+  /**
+   * Lab start grant: set charge (and matching orbit notes) so sealing is
+   * immediately testable without farming notes first.
+   */
+  setStartingEnergy(amount: number): void {
+    this.notes.length = 0;
+    this.energy = 0;
+    const target = Math.max(0, Math.min(MAX_ENERGY, Math.floor(amount)));
+    let colorIdx = 0;
+    while (this.energy < target) {
+      this.addNoteEnergy(PAD_COLOR_NAMES[colorIdx % PAD_COLOR_NAMES.length]!);
+      colorIdx++;
+    }
   }
 
   getNotes(): readonly OrbitNote[] {
