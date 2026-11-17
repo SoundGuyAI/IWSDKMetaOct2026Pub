@@ -43,3 +43,28 @@ test('debug seal path passes the rift position to playRiftSeal', () => {
   assert.match(body, /this\.riftViews\.get\(first\)\?\.position/);
   assert.match(body, /playRiftSeal\(position\)/);
 });
+
+
+test('note-sound comparison keeps the musical chime without an added recording', () => {
+  const chime = sounds.slice(sounds.indexOf('export function playNoteChime'));
+  const body = chime.slice(0, chime.indexOf('\n}'));
+  assert.match(body, /tone\(ctx, 'sine', f, f, t, 0\.45, 0\.16, out\)/);
+  assert.match(body, /tone\(ctx, 'sine', f \* 2, f \* 2, t, 0\.3, 0\.05, out\)/);
+  assert.doesNotMatch(body, /playClip|handPlink/, 'no extra recording on note input');
+  assert.match(system, /this\.game\.addNoteEnergy\(picked, hand\)/, 'charging stays enabled');
+  assert.match(system, /playNoteChime\(picked,/, 'normal chime stays wired');
+});
+
+test('closing layers are bounded excerpts and opening skips its quiet lead-in', () => {
+  assert.match(sounds, /name === 'portalOnset'\) \{ startSeconds = 0\.9; durationSeconds = 2\.5/);
+  assert.match(sounds, /name === 'sealGliss'\) \{ startSeconds = 3; durationSeconds = 0\.9/);
+  assert.match(sounds, /durationSeconds = 1\.1/);
+  assert.match(sounds, /prepareOneShot\(ctx, name, buffer\)/);
+  assert.match(sounds, /'sealChime', position, 0\.5, gliss \? 0\.15 : 0/);
+});
+
+test('approved beam arc starts at active crackle and both layers stay connected', () => {
+  assert.match(sounds, /name === 'beamCrackle' \? Math\.min\(2, buffer\.duration \/ 2\) : 0/);
+  assert.match(sounds, /'beamBed', hum\.origin, 0\.4, 0\.08/);
+  assert.match(sounds, /'beamCrackle', hum\.origin, 0\.65, 0\.08/);
+});
