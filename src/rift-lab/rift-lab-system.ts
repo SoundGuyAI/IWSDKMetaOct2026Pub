@@ -43,7 +43,11 @@ import {
   playRiftSeal,
   playSealDenied,
   startBeamHum,
+  startRiftAmbience,
+  stopAllRiftAmbience,
   stopBeamHum,
+  stopRiftAmbience,
+  syncRiftAudioListener,
 } from './rift-sounds.js';
 import { XRHandVisualAdapter } from '@iwsdk/xr-input';
 import {
@@ -626,7 +630,7 @@ export class RiftLabSystem extends createSystem({
         }
         if (best != null) {
           const fired = this.game.pcClickRift(best.rift.id);
-          if (!fired) void playSealDenied();
+          if (!fired) void playSealDenied(best.position);
           this.renderPanel(
             fired
               ? 'Notes fly to the rift.'
@@ -892,6 +896,7 @@ export class RiftLabSystem extends createSystem({
     this.running = false;
     this.awaitingWalls = false;
     stopBeamHum();
+    stopAllRiftAmbience();
     this.dragging = false;
     this.xrBeamActive = false;
     this.debugBeamOrigin = null;
@@ -916,7 +921,7 @@ export class RiftLabSystem extends createSystem({
     const picked =
       color ?? PAD_COLOR_NAMES[Math.floor(Math.random() * PAD_COLOR_NAMES.length)];
     this.game.addNoteEnergy(picked, hand);
-    void playNoteChime(picked);
+    void playNoteChime(picked, hand != null ? this.handAnchor(hand) : undefined);
     this.renderPanel(this.game.canFireBeam()
       ? this.flatTouchInput || this.touchDevice()
         ? 'Ready. Tap a rift, or drag the orb from the corner to a rift.'
@@ -1057,7 +1062,8 @@ export class RiftLabSystem extends createSystem({
     const position = wallSpot != null ? wallSpot.position : flatSpot!.pos;
     const lookTarget: Vector3 | null =
       wallSpot != null ? wallSpot.position.clone().add(wallSpot.normal) : null;
-    void playRiftOpen();
+    void playRiftOpen(position);
+    startRiftAmbience(rift.id, position);
     const group = new Group();
     // Living four-color fracture: shader void/edge plus drifting note sparks.
     const fracture = buildFracture(rift);
@@ -1090,6 +1096,7 @@ export class RiftLabSystem extends createSystem({
     const view = this.riftViews.get(id);
     if (view == null) return;
     disposePortalBurst(view.burst);
+    stopRiftAmbience(id);
     this.root.remove(view.group);
     this.riftViews.delete(id);
   }
@@ -1355,6 +1362,7 @@ export class RiftLabSystem extends createSystem({
       return;
     }
     this.updateXrHands();
+    syncRiftAudioListener(this.world.camera);
     this.game.updateOrbit(delta);
 
     // Sync orbit note meshes with the logic model.
@@ -1508,7 +1516,7 @@ export class RiftLabSystem extends createSystem({
       if (this.game.isBeamActive()) {
         const ray = this.beamRayScratch;
         this.beamRay(ray);
-        startBeamHum();
+        startBeamHum(ray.origin);
         const nowHit = performance.now();
         if (
           this.geoSurfaces.length === 0 ||
@@ -1633,11 +1641,11 @@ export class RiftLabSystem extends createSystem({
               1.1,
               2.4,
             );
+            void playRiftSeal(view.position);
             this.removeRiftView(id);
           }
         }
         this.renderPanel('Rift sealed.');
-        void playRiftSeal();
       }
       this.updateGeometryParticles(delta);
     }
@@ -1680,8 +1688,9 @@ export class RiftLabSystem extends createSystem({
     }
     this.game.applyBeamOnRift(first, 100000);
     this.game.clearSealed();
+    const position = this.riftViews.get(first)?.position;
     this.removeRiftView(first);
-    void playRiftSeal();
+    void playRiftSeal(position);
     this.renderPanel('Rift sealed.');
   }
 

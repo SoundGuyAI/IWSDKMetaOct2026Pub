@@ -1,10 +1,10 @@
 # Rift visuals: Cursor handoff
 
-Updated November 17, 2026, 00:28 Asia/Jerusalem. Documentation snapshot, not a gameplay change.
+Updated November 17, 2026, 03:30 Asia/Jerusalem. Documentation handoff, not a gameplay change. The 00:28 runtime analysis below remains a dated baseline; recheck current source and runtime before changing anything.
 
 ## Start here
 
-Main is held fixed for a combined-build test at `4cdd0fc89f5c1a254e01b9d7505b85495c7c0e7d`. Work in a new worktree, branch and draft PR. Do not merge or deploy. Read the repository's current AGENTS.md and applicable scoped project guidance. This handoff does not authorize implementation before the owner reviews the visual plan.
+Original handoff baseline: main `4cdd0fc89f5c1a254e01b9d7505b85495c7c0e7d` at00:28. That test freeze is historical, not the current main version. Current source checkpoint is `59db8e522c62cd9c591893d175900265eb4172e6`; its CI/testing-root/production transitions must be checked separately. Work in a new worktree, branch and draft PR based on current source. No gameplay merge or deployment is authorized by this handoff. Read the repository's current AGENTS.md and applicable scoped project guidance. The original request was analysis/plan, then owner review before implementation; later owner decisions govern the visual PR.
 
 The Rift Sealing Lab is already on main, from the PR91 work. It is not yet wired into the main storyline. Separate work is planning that integration: three rifts at the existing Cypher seam beat, energy from successful notes, and energy displays in the main game panel and palm projector. Its unresolved story/economy choices are not part of Cursor's visual task. Coordinate shared-file changes, especially rift-lab-system.ts, rather than copying an independent old version over newer work.
 
@@ -45,7 +45,7 @@ Preserve desktop click and mobile drag behavior, energy costs, sealing duration,
 
 ## Copyable prompt
 
-In a new worktree, branch and draft PR, improve the VISUALS of the Rift Sealing Lab. Read this handoff and the current repository guidance first. Main stays unchanged for testing.
+In a new worktree, branch and draft PR, improve the VISUALS of the Rift Sealing Lab. Read this handoff and the current repository guidance first. Do not advance main or deploy as part of this visual task; check the current source and owner instructions rather than relying on the historical freeze checkpoint.
 
 Use `docs/reference-images/15-rift-anim-f4-sealing.png` as the primary target, plus `2-rift-concept-1c-hands-4color.png` and `3-rift-concept-2b-beam-4color.png` in that directory for the luminous hand spirals, shiny four-color musical notes and energetic layered beam. Read the reference index and the forming/widening/sealed stages.
 
@@ -56,3 +56,7 @@ After approval, aim for a bright beam core with animated spiral filaments and tr
 Keep this visual-only. Preserve energy, scoring, sealing rules, gestures, desktop click/mobile drag, story and voice. Sound effects belong to a separate PR: preserve existing audio hooks/assets/triggers. Coordinate shared files with the separate Rift-to-story integration. This is the hand-to-Rift beam, NOT the palm-projector panel beam.
 
 Follow the project's prescribed rendering/testing workflow. Budget particles, transparency and draw calls for Quest; avoid per-frame allocations. Check forming/idle/firing/sealing/sealed, low energy and tracking loss. Provide comparable runtime before/after images and an animation clip, with device and performance measurements stated honestly. Separate emulator evidence from headset acceptance. Run typecheck, build, relevant unit checks and the full local end-to-end suite. Verify the preview serves the branch revision, then give Quest test steps. No merge or production deployment without my explicit approval.
+
+## Integration sequencing update (Nov17 03:21)
+
+The owner requested a separate Rift-to-game integration PR only after the new Cursor Rift Lab is merged. The new visual Lab PR129 is the scope-matching candidate at this checkpoint; confirm if a successor replaces it. Sound PR135 and geometry-particle PR131 are separate Lab work, not proof of main-game integration or permission to merge a Lab PR. Thumbs and nod integration are separate PRs. No gameplay implementation, economy change or new Cypher script is approved by this documentation update.

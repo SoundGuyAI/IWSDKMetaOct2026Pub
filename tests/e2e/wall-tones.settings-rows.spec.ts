@@ -194,3 +194,29 @@ test('checkbox click stops propagation so a box press cannot double-toggle', () 
     Object.assign(globalThis, { window: previousWindow });
   }
 });
+
+// Regression (Nov 17): a bad merge once nested the MR armband buttons inside
+// the head-gaze row, so the armband hand/mode buttons and the gaze checkbox
+// rendered on one colliding line. Each control keeps its own row.
+test('armband buttons are standalone rows, not nested in the gaze row', () => {
+  const menu = readFileSync('public/ui/main-menu.uikitml', 'utf8');
+  const gazeRow = menu.slice(
+    menu.indexOf('id="head-gaze-pinch-row"'),
+    menu.indexOf('id="native-gaze-pinch-row"'),
+  );
+  expect(gazeRow).toContain('head-gaze-pinch-checkbox');
+  expect(gazeRow).toContain('Head gaze + pinch: press pads by looking');
+  expect(gazeRow).not.toContain('armband-hand-button');
+  expect(gazeRow).not.toContain('armband-mode-button');
+  // The armband controls live in their own container row, outside either gaze row.
+  const armbandRow = menu.slice(
+    menu.indexOf('id="armband-settings-row"'),
+    menu.indexOf('Debug reset clears'),
+  );
+  expect(armbandRow).toContain('armband-hand-button');
+  expect(armbandRow).toContain('armband-mode-button');
+  expect(armbandRow).not.toContain('gaze-pinch-checkbox');
+  // MR-only like the gaze rows: hidden on PC and phone, shown on Quest.
+  const appMode = readFileSync('src/app-mode.ts', 'utf8');
+  expect(appMode).toContain("setDisplay('armband-settings-row', gazeRowsDisplay)");
+});

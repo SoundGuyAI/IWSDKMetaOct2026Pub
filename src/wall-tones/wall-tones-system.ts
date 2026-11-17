@@ -1,6 +1,6 @@
 import { hintWindowStart, HINT_WINDOW_SIZE } from './hint-window.js';
 import { armbandHand, armbandDisplayMode, ArmbandDisplay, ARMBAND_SCALE } from './armband.js';
-import { BAND_JOINT_ROTATION, PALM_PANEL_HEAD_AWAY, PALM_PANEL_LIFT, PalmJointsSmoother, palmOpenState, palmPanelPose, type PalmJoints, type PalmVec } from './palm-projector.js';
+import { BAND_JOINT_ROTATION, PALM_PANEL_HEAD_AWAY, PALM_PANEL_LIFT, PalmJointsSmoother, palmOpenState, palmPanelPose, palmProjectorPromptDue, type PalmJoints, type PalmVec } from './palm-projector.js';
 import { BackgroundProgress } from './cypher-background.js';
 import { getVoiceGender } from './speech.js';
 import { CypherProgress, type CypherWindow } from './cypher-progress.js';
@@ -4546,6 +4546,22 @@ await this.wait(BETWEEN_ROUNDS_DELAY_S);
 }
 if (explainBars && this.experienceActive && this.flowPhase === 'playing') {
 await this.speech.speakAsync('barsFirstEarn');
+}
+// Backlog item 109 (wording approved by the owner 2026-11-17): one-time
+// palm-projector prompt after the third completed pattern, in MR with the
+// projector display mode. takeFirstTime is consumed only when the line can
+// actually play, so flat-mode and wristband players keep it for a later MR
+// projector run.
+if (
+palmProjectorPromptDue(
+streak,
+this.world.visibilityState.peek() !== VisibilityState.NonImmersive,
+armbandDisplayMode(),
+) &&
+narrIntact() &&
+this.economy.takeFirstTime('palm-projector-prompt')
+) {
+await this.speech.speakAsync('palmProjector');
 }
 if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
