@@ -159,3 +159,19 @@ export const BAND_JOINT_ROTATION: readonly (readonly number[])[] = [
   [0.0098, -0.9757, 0.2189],
   [-0.9947, -0.0318, -0.0973],
 ];
+
+/**
+ * One-time narrator prompt for the palm projector (backlog item 109, wording
+ * approved by the owner 2026-11-17): due only after the THIRD completed
+ * pattern, in an immersive (MR) session, with the projector display mode
+ * active. The caller consumes the one-shot flag (economy.takeFirstTime) only
+ * when this returns true, so desktop/phone and wristband-mode players keep
+ * the prompt for a later MR projector run. Kept engine-free for node tests.
+ */
+export function palmProjectorPromptDue(
+  streak: number,
+  immersive: boolean,
+  displayMode: 'band' | 'projector',
+): boolean {
+  return streak === 3 && immersive && displayMode === 'projector';
+}
