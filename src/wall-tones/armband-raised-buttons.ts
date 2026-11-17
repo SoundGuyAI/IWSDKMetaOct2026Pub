@@ -4,7 +4,7 @@
 import { BoxGeometry, CanvasTexture, Matrix4, Mesh, MeshBasicMaterial, PlaneGeometry, Vector3, type Object3D, type UIKitMLAsset } from '@iwsdk/core';
 import type { ButtonFrameWorld } from './armband-direct-press.js';
 
-export const RAISED_BUTTON_FRONT_M = 0.030;
+export const RAISED_BUTTON_FRONT_M = 0.010; // Resting body base touches the panel.
 export const RAISED_BUTTON_THICKNESS_M = 0.010;
 export const RAISED_BUTTON_TRAVEL_M = 0.008;
 export const RAISED_BUTTON_INSET = 0.88;
@@ -40,6 +40,8 @@ export class ArmbandRaisedButtons {
       const material=new MeshBasicMaterial({color:0x306b8e,depthTest:true});
       const mesh=new Mesh(new BoxGeometry(1,1,1),material);mesh.name='raised-'+id;mesh.matrixAutoUpdate=false;
       const label=new Mesh(new PlaneGeometry(1,1),new MeshBasicMaterial({map:texture,transparent:true,depthTest:true}));
+      // Decorative bodies must not intercept UIKit ray targets beneath them.
+      mesh.raycast=()=>{};label.raycast=()=>{};
       label.position.z=.501;label.scale.set(.93,.88,1);mesh.add(label);panel.add(mesh);
       key={mesh,material,label,texture,canvas,text:'',travelM:0,base:new Matrix4(),out:new Vector3()};this.keys.set(id,key);
     }
@@ -77,4 +79,4 @@ export class ArmbandRaisedButtons {
     world.setPosition(position);key.mesh.matrix.copy(new Matrix4().copy(parent.matrixWorld).invert().multiply(world));key.mesh.matrixWorldNeedsUpdate=true;
     return 0;
   }
-      }
+}
