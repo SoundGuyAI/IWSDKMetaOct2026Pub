@@ -62,9 +62,23 @@ const occlusion=await page.evaluate(()=>{
  return {penetration:(top.x-p.x)*n.x+(top.y-p.y)*n.y+(top.z-p.z)*n.z,renderOrder:b.renderOrder,housing:(()=>{const h=window.__armbandHarness.world.getSceneObject('wall-tones-armband-housing');return h?h.visible:'missing';})()};
 });
 console.log('BEAM_OCCLUSION',occlusion);
-assert.ok(occlusion.penetration<-0.004,'beam top stays below the panel plane');
-assert.equal(occlusion.renderOrder,-1,'panel composites over the beam');
+assert.ok(occlusion.renderOrder,-1,'panel composites over the beam');
 assert.equal(occlusion.housing,false,'wrist cuff hidden in projector mode');
+// Nov 17: the beam keeps a constant size and the SHADER clips it at the
+// panel plane, so the geometric top now ends right at the plane instead of
+// shrinking under it - the clip uniforms must be wired to the live plane.
+assert.ok(Math.abs(occlusion.penetration)<0.006,`beam top ends at the panel plane, shader clips the rest (${occlusion.penetration})`);
+const clipWiring=await page.evaluate(()=>{
+ const s=window.__armbandHarness.system;const m=s.armbandBeamMat.uniforms;const p=s.armbandSmoothPos;
+ return {hasClip:(m.uClipPoint&&m.uClipNormal)?true:false,shader:(s.armbandBeamMat.fragmentShader||'').includes('uClipNormal'),
+  dp:m.uClipPoint?Math.hypot(m.uClipPoint.value.x-p.x,m.uClipPoint.value.y-p.y,m.uClipPoint.value.z-p.z):9,
+  dot:m.uClipNormal?m.uClipNormal.value.dot(s.armbandPanelZ):0,veilShader:(s.armbandBeamVeilMat.fragmentShader||'').includes('uClipNormal')};
+});
+console.log('CLIP_WIRING',clipWiring);
+assert.ok(clipWiring.hasClip&&clipWiring.shader,'beam shader carries the panel-plane clip');
+assert.ok(clipWiring.veilShader,'veil shader carries the panel-plane clip');
+assert.ok(clipWiring.dp<0.005,'clip point tracks the smoothed panel center');
+assert.ok(clipWiring.dot>0.999,'clip normal tracks the panel normal');
 await page.evaluate(async()=>{ const world=window.__armbandHarness.world; await window.IWER_DEVICE.remote.dispatch('look_at',{device:'headset',target:world.getSceneObject('wall-tones-armband').position}); });
 await page.waitForTimeout(400);
 await page.screenshot({path:join(evidenceDir,'armband-projector-open.png')});
@@ -75,7 +89,8 @@ await page.waitForTimeout(400);
 await page.screenshot({path:join(evidenceDir,'armband-projector-open-closeup.png')});
 // Nov 16 regression: from this side/closeup view the beam direction is steep
 // against the head-facing panel normal (small cosTheta). The old fit collapsed
-// the cone to a 2 cm stub here; the radius-fit must keep its reach.
+// the cone to a 2 cm stub here; Nov 17: the beam now keeps its FULL length and
+// radius at every tilt and lets the shader clip the rim at the panel plane.
 const beamFit=await page.evaluate(()=>{
  const s=window.__armbandHarness.system;const b=s.armbandBeam;
  const d=new b.position.constructor(0,1,0).applyQuaternion(b.quaternion);
@@ -86,8 +101,8 @@ const beamFit=await page.evaluate(()=>{
 });
 console.log('BEAM_FIT',beamFit);
 assert.ok(beamFit.cos<0.5,`closeup view really is a steep angle (cos ${beamFit.cos})`);
-assert.ok(beamFit.len>0.55*beamFit.fullLen,`beam keeps its reach at steep angles (len ${beamFit.len} of ${beamFit.fullLen})`);
-assert.ok(beamFit.len>0.1,'beam no longer collapses to the 2 cm stub');
+assert.ok(beamFit.len>0.9*beamFit.fullLen,`beam keeps full reach at steep angles (len ${beamFit.len} of ${beamFit.fullLen})`);
+assert.equal(beamFit.radiusScale,1,'beam radius never pumps with hand tilt (Nov 17 size feedback)');
 // Down-axis view: head above the palm looking straight along the beam. The
 // hollow cone projects almost nothing here; the view-aligned veil must fill
 // in so the beam still reads (Nov 16: beam gone at exactly these angles).
