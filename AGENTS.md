@@ -35,8 +35,9 @@ visual pass; storyline/gameplay integration and sound-effects work stay separate
 Inspect the actual reference images and current runtime, propose a gap list and
 plan, then stop for owner review before implementation. Preserve existing sound
 hooks, interaction and economy. Do not confuse the Rift hand-to-wall sealing beam
-with the palm-to-panel projector beam. Main is fixed for owner testing at the
-handoff checkpoint; use a separate worktree/branch/PR, no merge or deployment.
+with the palm-to-panel projector beam. The original main-freeze note is a dated handoff checkpoint, not current state.
+Recheck current source and later owner decisions; use a separate worktree/branch/PR.
+This handoff does not authorize gameplay merges or deployment.
 
 ## Cypher voice clips
 
