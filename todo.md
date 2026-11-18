@@ -166,3 +166,10 @@ Armband verification update (Nov 13): typecheck/build and 102 unit tests pass. Q
 ## Documentation reconciliation - November 17
 
 PR82's backlog58 status/caveat is preserved above. The authoritative game backlog and later follow-ups are in WALL_TONES_TODO.md; this historical implementation log does not override it. No headset verification is newly claimed.
+
+## PR168 rift encounter review fixes - 2026-11-19 (his desktop playtest notes, pushed, awaiting his retest)
+- [x] Slower spawn pacing: first portal 12 s after the seam window opens (lands with C16B's how-to line), later portals 20 s apart (was: 2 s / 10 s).
+- [x] No respawn in this stage: the Lab auto-spawn top-up timer no longer runs during the encounter; three portals total, sealed ones stay sealed ("we will come back to the rifts again before act 2").
+- [x] Layering: charge-note cloud renders under the game HUD (renderOrder), and flat rift placement now avoids the live Wall Tones HUD rect (was avoiding only the hidden Lab panel footprint, so portals could sit behind the HUD).
+- [x] Verified locally: typecheck, 337 unit tests, rift-lab e2e (3), desktop boot smoke (2), headed visual QA script (spawn times ~12.3 s / ~32.1 s, no top-up after a seal, HUD paints over the note cloud, portals clear of the HUD).
+- [ ] His retest on the Cloudflare preview; merge waits for his go-ahead.
