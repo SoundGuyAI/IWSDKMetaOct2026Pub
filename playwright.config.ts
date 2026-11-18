@@ -14,7 +14,7 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   workers: 1,
   reporter: process.env.CI
-    ? [['github'], ['html', { open: 'never' }]]
+    ? [['list'], ['github'], ['json', { outputFile: 'test-results/e2e-report.json' }], ['html', { open: 'never' }]]
     : [['list']],
   use: {
     baseURL: 'https://localhost:4173',

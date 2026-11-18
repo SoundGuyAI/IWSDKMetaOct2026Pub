@@ -4,7 +4,7 @@ import ts from 'typescript';
 import {readFileSync} from 'node:fs';
 const src = readFileSync('src/wall-tones/palm-projector.ts','utf8');
 const js = ts.transpileModule(src,{compilerOptions:{module:ts.ModuleKind.ESNext}}).outputText;
-const {palmPanelPose, extendedFingerCount, palmProjectorPromptDue, PALM_PANEL_LIFT, PALM_SURFACE_LIFT} = await import('data:text/javascript;base64,'+Buffer.from(js).toString('base64'));
+const {palmPanelPose, extendedFingerCount, palmProjectorPromptDue, PALM_PANEL_LIFT, PALM_SURFACE_LIFT, beamClipAlpha, BEAM_CLIP_SOFT, BEAM_TOP_RADIUS, BEAM_BOTTOM_RADIUS} = await import('data:text/javascript;base64,'+Buffer.from(js).toString('base64'));
 // Left hand, palm up, fingers forward (+z), thumb side +x. Realistic metric proportions.
 const openLeftUp = {
   wrist:{x:0,y:0,z:0},
@@ -121,6 +121,42 @@ test('PalmJointsSmoother smooths every joint and resets',()=>{
   const fresh = s.filter(openLeftUp, dt);
   assert.ok(Math.abs(fresh.wrist.x - openLeftUp.wrist.x) < 1e-9,'reset passes input through');
   void PALM_OPEN_UP_MIN; void PALM_STILL_UP_MIN;
+});
+
+test('beam clip: fully visible below the soft band, gone at the panel plane',()=>{
+  assert.equal(beamClipAlpha(-0.02), 1, 'deep below the plane renders fully');
+  assert.equal(beamClipAlpha(-BEAM_CLIP_SOFT), 1, 'band edge still fully visible');
+  assert.equal(beamClipAlpha(0), 0, 'panel plane itself is clipped');
+  assert.equal(beamClipAlpha(0.01), 0, 'above the plane never renders');
+});
+
+test('beam clip: smooth fade across the band and monotonic',()=>{
+  const mid = beamClipAlpha(-BEAM_CLIP_SOFT / 2);
+  assert.ok(Math.abs(mid - 0.5) < 1e-9, `mid-band ${mid}`);
+  let prev = 2;
+  for (const d of [-0.02, -BEAM_CLIP_SOFT, -BEAM_CLIP_SOFT * 0.6, -BEAM_CLIP_SOFT * 0.3, 0, 0.01]) {
+    const a = beamClipAlpha(d);
+    assert.ok(a <= prev + 1e-9, `not monotonic at d=${d}`);
+    prev = a;
+  }
+});
+
+test('beam clip: tilted full-size rim never shows past the panel (Nov 17 size-pump fix)',()=>{
+  // The beam now keeps ONE radius/length at every tilt; the shader clip does
+  // the panel-side work the old geometric fit did by shrinking the cone
+  // (radius down to 12%, length to 65% - the size pumping the user reported).
+  // For a full-size cone (BEAM_TOP_RADIUS) ending at the panel center at any
+  // tilt, every rim fragment on the head side of the plane clips to 0 and
+  // every fragment deeper than the soft band stays fully visible.
+  for (const cos of [1, 0.9, 0.7, 0.5, 0.3, 0.15, 0]) {
+    const sin = Math.sqrt(1 - cos * cos);
+    // Rim point farthest toward the head on a cone ending at the panel center:
+    // distance above the plane = rim radius projected on the panel normal.
+    const rimAbove = BEAM_TOP_RADIUS * sin;
+    assert.equal(beamClipAlpha(rimAbove), 0, `cos=${cos} rim above plane clipped`);
+    assert.equal(beamClipAlpha(-BEAM_CLIP_SOFT - 0.001), 1, `cos=${cos} body keeps full strength`);
+  }
+  assert.ok(BEAM_BOTTOM_RADIUS < BEAM_TOP_RADIUS, 'cone shape unchanged');
 });
 
 test('palm projector narrator prompt: only after pattern 3, in MR, projector mode (item 109)',()=>{

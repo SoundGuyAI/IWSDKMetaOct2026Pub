@@ -623,10 +623,25 @@ test('store empty space clears selection without buying or closing; tiles and Bu
     }
     throw new Error('store pointer targets did not settle with store-tile-replay present');
   };
+  // Even after the settle gate a late relayout can still move a tile between
+  // the coordinate read and the click on very slow runners (CI run 44004046220
+  // hit Listen despite settling). Re-settle and retry until the intended tile
+  // is actually selected, so a shifted grid self-corrects instead of failing.
+  const clickTile = async (name: string, want: string | null) => {
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      const t = (await settleTargets())[name];
+      await click(t.x, t.y);
+      try {
+        await expect.poll(selected, { timeout: 5_000 }).toBe(want);
+        return;
+      } catch {
+        if (attempt === 4) throw new Error(`store tile ${name} never selected ${want} after 4 attempts`);
+      }
+    }
+  };
   const settledTargets = await settleTargets();
   const replay = settledTargets['store-tile-replay'];
-  await click(replay.x, replay.y);
-  await expect.poll(selected).toBe('replay');
+  await clickTile('store-tile-replay', 'replay');
   await testInfo.attach('selected', { body: await page.screenshot(), contentType: 'image/png' });
   const before = await readState(page);
   // Empty margin beside the centered top row, inside the fixed Store popup.

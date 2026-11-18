@@ -48,10 +48,10 @@ console.log('POSE',await page.evaluate(()=>{
  const {world}=window.__armbandHarness;const o=world.getSceneObject('wall-tones-armband');
  return {position:o.position.toArray(),rotation:o.quaternion.toArray(),visible:o.visible};
 }));
-await page.evaluate(()=>{ const p=window.__armbandHarness.world.getSceneObject('wall-tones-armband');window.__clickLog=[];for(const name of ['armband-modifiers','armband-repeat']) for(const type of ['click','pointerdown','pointerup'])p.getElementById(name).addEventListener(type,e=>window.__clickLog.push({name,type,pointer:e.pointerType,at:performance.now(),store:window.__wallTonesDebug.storeOpen})); });
+await page.evaluate(()=>{ const p=window.__armbandHarness.world.getSceneObject('wall-tones-armband');window.__clickLog=[];for(const name of ['armband-play','armband-repeat']) for(const type of ['click','pointerdown','pointerup'])p.getElementById(name).addEventListener(type,e=>window.__clickLog.push({name,type,pointer:e.pointerType,at:performance.now(),store:window.__wallTonesDebug.storeOpen})); });
 assert.deepEqual(await page.evaluate(async()=>{
  const r=window.IWER_DEVICE.remote;
- const target=r.executeListTargets({}).targets.find(t=>t.name==='armband-modifiers').position;
+ const target=r.executeListTargets({}).targets.find(t=>t.name==='armband-play').position;
  await r.dispatch('set_connected',{device:'gaze',connected:false}).catch(()=>{});
  await r.dispatch('look_at',{device:'hand-right',target});
  await new Promise(resolve=>setTimeout(resolve,300));
@@ -59,6 +59,9 @@ assert.deepEqual(await page.evaluate(async()=>{
  await new Promise(resolve=>setTimeout(resolve,200));
  return {store:window.__wallTonesDebug.storeOpen};
 }), {store:true});
+// Play not owned: the wrist Play button opens the store at the Play tile.
+assert.equal(await page.evaluate(()=>window.__wallTonesDebug.storeSelected),'play');
+await page.evaluate(()=>{window.__armbandHarness.system.onToggleStore();});
 console.log('EVENTS',await page.evaluate(()=>window.__clickLog));
 async function ray(name) {
  return page.evaluate(async name=>{
@@ -68,16 +71,21 @@ async function ray(name) {
  return {store:window.__wallTonesDebug.storeOpen};
  },name);
 }
-assert.deepEqual(await ray('armband-modifiers'),{store:false});
+// Context slots stay hidden during ordinary input play.
+assert.equal(await page.evaluate(()=>window.__armbandHarness.world.getSceneObject('wall-tones-armband').getElementById('armband-newrun').properties.peek().display),'none');
+assert.equal(await page.evaluate(()=>window.__armbandHarness.world.getSceneObject('wall-tones-armband').getElementById('armband-skip-voice').properties.peek().display),'none');
 await page.evaluate(()=>{const d=window.__wallTonesDebug;d.grantBars(200);d.buyReplay();const s=window.__armbandHarness.system;s.game.sequence=[0];s.game.phase='input';s.game.inputStep=0;s.lastInputAt=performance.now()/1000;s.idleReplayQueued=false;});
 await page.waitForTimeout(300);
 assert.equal(await page.evaluate(()=>window.__wallTonesDebug.replaysTotal),1);
 await ray('armband-repeat');
 assert.equal(await page.evaluate(()=>window.__wallTonesDebug.replaysTotal),0);
-assert.deepEqual(await ray('armband-hint-button'),{store:true});
-assert.equal(await page.evaluate(()=>window.__wallTonesDebug.storeSelected),'hint');
-assert.deepEqual(await ray('armband-autoplay'),{store:true});
-assert.equal(await page.evaluate(()=>window.__wallTonesDebug.storeSelected),'autoplay');
+// Skip Voice appears only while narration is busy (mirrors the panel button).
+await page.evaluate(()=>{const s=window.__armbandHarness.system;s.speech.isBusy=()=>true;});
+await page.waitForTimeout(400);
+assert.equal(await page.evaluate(()=>window.__armbandHarness.world.getSceneObject('wall-tones-armband').getElementById('armband-skip-voice').properties.peek().display),'flex');
+await page.evaluate(()=>{const s=window.__armbandHarness.system;delete s.speech.isBusy;});
+await page.waitForTimeout(400);
+assert.equal(await page.evaluate(()=>window.__armbandHarness.world.getSceneObject('wall-tones-armband').getElementById('armband-skip-voice').properties.peek().display),'none');
 await page.waitForFunction(()=>window.__wallTonesDebug.phase==='input');
 await page.evaluate(async()=>{
  const d=window.__wallTonesDebug;d.grantBars(100000);d.buyListen();for(let i=0;i<5;i++)d.buyHint();
@@ -116,22 +124,33 @@ assert.equal(await page.evaluate(()=>window.__armbandHarness.world.getSceneObjec
 console.log('GAME_OVER',await page.evaluate(()=>{
  const p=window.__armbandHarness.world.getSceneObject('wall-tones-armband');
  return {phase:p.getElementById('armband-phase').properties.peek().text,
-  modifiersDisabled:p.getElementById('armband-modifiers').properties.peek().disabled,
-  repeatDisabled:p.getElementById('armband-repeat').properties.peek().disabled};
+  playDisabled:p.getElementById('armband-play').properties.peek().disabled,
+  repeatDisabled:p.getElementById('armband-repeat').properties.peek().disabled,
+  newRunVisible:p.getElementById('armband-newrun').properties.peek().display==='flex'};
 }));
+assert.equal(await page.evaluate(()=>window.__armbandHarness.world.getSceneObject('wall-tones-armband').getElementById('armband-play').properties.peek().disabled),true,'Play inert at game over');
+assert.equal(await page.evaluate(()=>window.__armbandHarness.world.getSceneObject('wall-tones-armband').getElementById('armband-newrun').properties.peek().display),'flex','New Run slot fills at game over');
 const gameOverPress=await page.evaluate(async()=>{
  const r=window.IWER_DEVICE.remote;
- const t=r.executeListTargets({}).targets.find(t=>t.name==='armband-modifiers');
+ const t=r.executeListTargets({}).targets.find(t=>t.name==='armband-play');
  if(t){ await r.dispatch('look_at',{device:'hand-right',target:t.position}); await new Promise(res=>setTimeout(res,300)); await r.dispatch('select',{device:'hand-right',duration:.12}); await new Promise(res=>setTimeout(res,200)); }
  return {targetListed:!!t, store:window.__wallTonesDebug.storeOpen};
 });
 console.log('GAME_OVER_PRESS',gameOverPress);
 assert.equal(gameOverPress.store,false,'store stays closed on game over');
+const newRunPress=await page.evaluate(async()=>{
+ const r=window.IWER_DEVICE.remote;
+ const t=r.executeListTargets({}).targets.find(t=>t.name==='armband-newrun');
+ if(t){ await r.dispatch('look_at',{device:'hand-right',target:t.position}); await new Promise(res=>setTimeout(res,300)); await r.dispatch('select',{device:'hand-right',duration:.12}); await new Promise(res=>setTimeout(res,400)); }
+ return {targetListed:!!t, gameOver:window.__armbandHarness.system.gameOverOpen};
+});
+console.log('NEW_RUN_PRESS',newRunPress);
+assert.equal(newRunPress.targetListed,true,'New Run slot is ray-targetable at game over');
+assert.equal(newRunPress.gameOver,false,'New Run on the wrist starts the next run');
 await page.screenshot({path:join(evidenceDir,'armband-xr-game-over.png')});
-await page.evaluate(()=>{window.__armbandHarness.system.gameOverOpen=false;});
 await page.waitForTimeout(400);
-assert.equal(await page.evaluate(()=>window.__armbandHarness.world.getSceneObject('wall-tones-armband').getElementById('armband-modifiers').properties.peek().disabled),false,'controls restore after game over');
+assert.equal(await page.evaluate(()=>window.__armbandHarness.world.getSceneObject('wall-tones-armband').getElementById('armband-newrun').properties.peek().display),'none','New Run hides once the run restarts');
 await page.evaluate(()=>{window.__armbandHarness.system.flowPhase='choose-mode';});
 await page.waitForFunction(()=>!window.__armbandHarness.world.getSceneObject('wall-tones-armband').visible);
-console.log('PASS: hand rays, Replay cost, upgrade destinations, 20 owned cues, tracking-loss hide, arm preference, game-over visible/inert/restore, setup hide. Poke and physical headset are not verified.');
+console.log('PASS: hand rays, Play opens its store tile, Replay cost, context slots (Skip Voice while narrating, New Run at game over), 20 owned cues, tracking-loss hide, arm preference, game-over wrist New Run, setup hide. Poke and physical headset are not verified.');
 } finally { await browser.close(); }
