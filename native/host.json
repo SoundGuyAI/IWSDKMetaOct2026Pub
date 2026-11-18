@@ -1,0 +1,20 @@
+{
+  "app": {
+    "name": "Wall Tones 2: Too Fast to Wall",
+    "package": "com.corbomite.walltones2"
+  },
+  "web": {
+    "dist": "../dist",
+    "origin": "https://iwsdkmetaoct2026pub.cloudflareazure.workers.dev",
+    "exclude": ["*.map"],
+    "canvasText": true,
+    "inlineScripts": true
+  },
+  "network": {
+    "allow": []
+  },
+  "xr": {
+    "autoEnter": true,
+    "preferredRate": 90
+  }
+}
