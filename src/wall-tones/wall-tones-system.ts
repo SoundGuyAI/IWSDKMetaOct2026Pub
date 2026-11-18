@@ -26,6 +26,9 @@ import {
   GESTURE_CHECK_END,
   GESTURE_CHECK_INTRO,
   NOD_CHECK_INTRO,
+  ROOM_CHECK_INTRO,
+  ROOM_CHECK_NO,
+  ROOM_CHECK_YES,
   NOD_CHECK_NO,
   NOD_CHECK_YES,
   gestureRetryLine,
@@ -600,8 +603,10 @@ private gameOverHintSyncedArmed = false;
 private readonly gameOverHandGap = new GameOverHandGapTracker(GAMEOVER_NO_HANDS_RESET_SEC);
 /** Active story gesture-check listen; resolved by update() hand sampling. */
 private gestureListen: {
-kind: 'thumbs' | 'nod';
+kind: 'thumbs' | 'nod' | 'either';
 detector: ThumbGestureDetector | HeadNodShakeDetector;
+/** 'either' only: the thumbs detector that runs beside the head detector. */
+thumbDetector?: ThumbGestureDetector;
 deadline: number;
 resolve: (answer: 'yes' | 'no' | null) => void;
 } | null = null;
@@ -5142,11 +5147,14 @@ return;
 const listen = this.gestureListen;
 if (listen != null) {
 let event: { answer: 'yes' | 'no' } | null = null;
-if (listen.kind === 'nod') {
+if (listen.kind === 'nod' || listen.kind === 'either') {
 const angles = this.sampleHeadAngles();
 event = angles == null
 ? null
 : (listen.detector as HeadNodShakeDetector).feed(angles.pitch, angles.yaw, now);
+if (event == null && listen.kind === 'either' && listen.thumbDetector != null) {
+event = listen.thumbDetector.feed(left, right, now);
+}
 } else {
 event = (listen.detector as ThumbGestureDetector).feed(left, right, now);
 }
@@ -5285,8 +5293,13 @@ return new Promise((resolve) => {
 this.player.head.getWorldQuaternion(this.nodBaselineQuat);
 const detector = new HeadNodShakeDetector();
 detector.setEnabled(true);
+// Past the two questions that teach the gestures, a head nod/shake or a
+// thumbs up/down answers the same question at once.
+const thumbDetector = new ThumbGestureDetector();
+thumbDetector.setEnabled(true);
 this.gestureListen = {
-kind: 'nod',
+kind: 'either',
+thumbDetector,
 detector,
 deadline: performance.now() / 1000 + GESTURE_ANSWER_TIMEOUT_S,
 resolve,
@@ -5318,6 +5331,23 @@ return;
 }
 await this.speech.speakStoryLine(id, cast);
 if (intact()) this.cypherProgress.lineCompleted();
+}
+// Lab q2 (room privacy) comes first, as in the labs, then q3.
+await this.cypherLabVoice.speak(set, ROOM_CHECK_INTRO);
+if (!intact()) {
+return;
+}
+const roomAnswer = await this.awaitNodAnswer();
+this.gestureListen = null;
+if (!intact()) {
+return;
+}
+if (roomAnswer != null) {
+await playLabAnswerCue(roomAnswer);
+}
+await this.cypherLabVoice.speak(set, roomAnswer === 'yes' ? ROOM_CHECK_YES : ROOM_CHECK_NO);
+if (!intact()) {
+return;
 }
 await this.cypherLabVoice.speak(set, NOD_CHECK_INTRO);
 if (!intact()) {
