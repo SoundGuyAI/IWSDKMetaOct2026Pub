@@ -4054,7 +4054,8 @@ this.setBlinkCuePad(null);
 // player. Owner feedback 2026-11-15 ("in auto play it doesn't play the
 // pattern all the way"): Autoplay may enter the final note too; when its
 // note count covers the whole pattern the round completes through the
-// exact manual-finish path, matching the Play modifier. Auto-entered// notes pay no per-press Bars (no player press).
+// exact manual-finish path, matching the Play modifier. Auto-entered
+// notes pay no per-press Bars (no player press).
 const autoCount = this.economy.isAutoplayEnabled()
 ? Math.min(
 this.economy.getAutoplayNoteCount(),
