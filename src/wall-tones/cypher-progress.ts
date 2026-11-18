@@ -7,6 +7,9 @@ export interface CypherWindow {
   readonly lines: readonly CypherLineId[];
   readonly fault?: boolean;
   readonly seam?: 'open' | 'closed';
+  /** Rift encounter gate (owner-settled Nov 18): these windows wait until all
+   * three portals are sealed; the story cannot move past an open encounter. */
+  readonly gate?: 'rift-sealed';
 }
 
 /** First-play preview cadence. One window per successful pattern, never over notes.
@@ -24,11 +27,20 @@ export const CYPHER_WINDOWS: readonly CypherWindow[] = [
   { id: 'hidden-channel', minStreak: 0, speaker: 'cypher', lines: ['C10', 'C11', 'C12', 'C13'] },
   { id: 'next-lock', minStreak: 0, speaker: 'cypher', lines: ['C14'] },
   { id: 'routine-repair', minStreak: 0, speaker: 'narrator', lines: ['N02', 'N03'], fault: true },
-  { id: 'seam', minStreak: 15, speaker: 'cypher', lines: ['C15', 'C16'], seam: 'open' },
+  { id: 'seam', minStreak: 15, speaker: 'cypher', lines: ['C15', 'C16A', 'C16B', 'C16C'], seam: 'open' },
+  // The narrator's unexplained apology reacts to the open portals, so this
+  // window is intentionally NOT rift-gated (his "doesn't know" beat, Nov 18).
   { id: 'seam-repaired', minStreak: 0, speaker: 'narrator', lines: ['N04', 'N05'], seam: 'closed' },
-  { id: 'longer-window', minStreak: 0, speaker: 'cypher', lines: ['C17', 'C18', 'C19'] },
-  { id: 'last-check', minStreak: 0, speaker: 'narrator', lines: ['N06', 'N07'], fault: true },
+  { id: 'rift-reason-17', minStreak: 17, speaker: 'cypher', lines: ['C20', 'C21'], gate: 'rift-sealed' },
+  { id: 'rift-reason-18', minStreak: 18, speaker: 'cypher', lines: ['C22', 'C23'], gate: 'rift-sealed' },
+  { id: 'longer-window', minStreak: 0, speaker: 'cypher', lines: ['C17', 'C18', 'C19'], gate: 'rift-sealed' },
+  { id: 'last-check', minStreak: 0, speaker: 'narrator', lines: ['N06', 'N07'], fault: true, gate: 'rift-sealed' },
 ];
+
+/** Index of a window in the Act 1 sequence, or -1. */
+export function cypherWindowIndex(id: string): number {
+  return CYPHER_WINDOWS.findIndex((window) => window.id === id);
+}
 
 export const CYPHER_PROGRESS_KEY = 'wall-tones-cypher-act1-progress-v1';
 interface StoryStorage { getItem(key: string): string | null; setItem(key: string, value: string): void; }
@@ -62,6 +74,15 @@ export class CypherProgress {
     if (!window || streak < window.minStreak) return undefined;
     this.next += 1;
     this.save();
+    return window;
+  }
+  /** The next fresh window without consuming it (gate checks look before
+   * they leap). Returns undefined while an interrupted window waits to
+   * resume: beginWindow would return that one regardless of gates. */
+  peekWindow(streak: number): CypherWindow | undefined {
+    if (this.active) return undefined;
+    const window = CYPHER_WINDOWS[this.next];
+    if (!window || streak < window.minStreak) return undefined;
     return window;
   }
   /** Restore an interrupted window at its first unfinished line. Mission gates
