@@ -1,4 +1,4 @@
-import { armbandHand, setArmbandHand } from './wall-tones/armband.js';
+app-modeimport { armbandHand, setArmbandHand } from './wall-tones/armband.js';
 import { captureCypherCast } from './wall-tones/cypher-voice.js';
 import { hearingSubtitlesEnabled, colorNamesEnabled, setHearingSubtitles, setColorNames, voicesOffEnabled, setVoicesOff, headGazePinchEnabled, setHeadGazePinch, nativeGazePinchEnabled, setNativeGazePinch } from './wall-tones/accessibility.js';
 import { GAZE_SOURCE_EVENT, gazeSourceStatusText, type GazeSourceStatus } from './wall-tones/gaze-source.js';
@@ -76,8 +76,6 @@ const DEMO_PROP_NODE_IDS = [
 const HUB_DRESSING_NODE_IDS = [
   'studio-floor',
   'stage',
-  'gallery-set',
-  'sideboard-set',
 ] as const;
 
 const MEDITATION_NODE_IDS = ['welcome-panel', 'gaze-debug-panel'] as const;

@@ -1,4 +1,4 @@
-/**
+panel/**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
@@ -34,8 +34,10 @@ const XR_LAUNCH_PANEL_NODE_IDS = ['welcome-panel'] as const;
 
 /** Desktop: pull the hub menu closer/larger so Enter XR fills more of the frame. */
 const MAIN_MENU_DESKTOP = {
-  position: [0, 1.42, -1.55] as const,
-  scale: 0.5,
+  // Cover layout (Nov 18): smaller and lower so the full panel fits the
+  // frame without clipping, leaving the upper half for the cover pads.
+  position: [0, 1.02, -1.55] as const,
+  scale: 0.35,
 } as const;
 
 /**
@@ -416,6 +418,17 @@ export class PanelSystem extends createSystem({}) {
         ?.setProperties({
           display: !is2D && this.world.xrEnabled ? 'flex' : 'none',
         });
+      if (nodeId === 'main-menu-panel') {
+        const phoneFlat =
+          is2D && !showEnterXr && isCompactFlatViewport();
+        panel
+          ?.getElementById('main-menu-body')
+          ?.setProperties({
+            text: phoneFlat
+              ? 'Tap Start Wall Tones to play.'
+              : 'Start on desktop, or Enter XR to jump straight into Wall Tones in your room.',
+          } as never);
+      }
     }
   }
 

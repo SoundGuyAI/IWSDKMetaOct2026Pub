@@ -11,14 +11,14 @@ const mode = (page: import('@playwright/test').Page) =>
 test('Lab entry opens the Lab menu and Back returns to the main menu', async ({ page }) => {
   await page.goto('/');
   await page.locator('#wt-loading').waitFor({ state: 'detached', timeout: 60000 });
-  await page.mouse.click(1100, 320);
+  await page.mouse.click(958, 405);
   await expect.poll(() => mode(page)).toBe('lab');
   expect(await page.title()).toBe('Wall Tones 2: Lab');
   // Let the Lab menu take the flat layout and render before clicking Back
   // (bottom row; sits under the connected Rift Sealing Lab row).
   await page.waitForTimeout(2000);
-  await page.mouse.move(640, 532);
-  await page.mouse.click(640, 532);
+  await page.mouse.move(639, 547);
+  await page.mouse.click(639, 547);
   await expect.poll(() => mode(page)).toBe('menu');
 });
 
@@ -35,7 +35,7 @@ for (const gender of ['male', 'female'] as const) {
     }, gender);
     await page.goto('/');
     await page.locator('#wt-loading').waitFor({ state: 'detached', timeout: 60000 });
-    await page.mouse.click(1100, 320);
+    await page.mouse.click(958, 405);
     await expect.poll(() => mode(page)).toBe('lab');
     await expect.poll(() => page.evaluate(() => (window as any).__labSources.length), {timeout: 45000}).toBe(4);
     const durations = await page.evaluate(() => (window as any).__labSources as number[]);
@@ -47,7 +47,7 @@ for (const gender of ['male', 'female'] as const) {
     expect(durations[3]).toBeCloseTo(0.22, 1);
     // Back is the bottom row, under the connected Rift Sealing Lab row
     // (same coordinates as the Back test above).
-    await page.mouse.click(640, 532);
+    await page.mouse.click(639, 547);
     await expect.poll(() => mode(page)).toBe('menu');
   });
 }
@@ -63,12 +63,12 @@ test('leaving Lab during narration cancels the pending Cypher window', async ({ 
   });
   await page.goto('/');
   await page.locator('#wt-loading').waitFor({ state: 'detached', timeout: 60000 });
-  await page.mouse.click(1100, 320);
+  await page.mouse.click(958, 405);
   await expect.poll(() => page.evaluate(() => (window as any).__labSources.length)).toBe(1);
   await page.waitForTimeout(2000);
   // Back is the bottom row, under the connected Rift Sealing Lab row.
-  await page.mouse.move(640, 532);
-  await page.mouse.click(640, 532);
+  await page.mouse.move(639, 547);
+  await page.mouse.click(639, 547);
   await expect.poll(() => mode(page)).toBe('menu');
   await page.waitForTimeout(11000);
   expect(await page.evaluate(() => (window as any).__labSources.length)).toBe(1);

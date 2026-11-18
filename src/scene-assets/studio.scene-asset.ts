@@ -1,4 +1,4 @@
-/**
+studio/**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * This source code is licensed under the MIT license found in the
@@ -37,8 +37,8 @@ import {
 const clayMaterial = createSceneMaterial({
   id: 'studio-clay',
   model: 'standard',
-  baseColor: '#EEE9E0',
-  roughness: 0.9,
+  baseColor: '#151B24',
+  roughness: 0.55,
 });
 
 const stoneMaterial = createSceneMaterial({
@@ -56,8 +56,8 @@ const stoneMaterial = createSceneMaterial({
         { frequency: [240, 240], amplitude: 0.3 },
       ],
       ramp: [
-        { at: 0, color: '#A59E93' },
-        { at: 1, color: '#B0A99E' },
+        { at: 0, color: '#232A34' },
+        { at: 1, color: '#2B333F' },
       ],
       // Tiled twice: a quarter of the pixels to generate, same grain size.
       sampler: { repeat: [2, 2] },
@@ -134,8 +134,8 @@ function pixelTexture(size: number, pixels: Uint8Array): DataTexture {
  * a 2.5 px line, so it needs no DOM.
  */
 function createLatticeTexture(size = 512): DataTexture {
-  const clay = [0xea, 0xe6, 0xdf];
-  const line = [151, 155, 166];
+  const clay = [0x10, 0x16, 0x20];
+  const line = [44, 54, 70];
   const half = size / 2;
   const pixels = new Uint8Array(size * size * 4);
   for (let y = 0; y < size; y += 1) {

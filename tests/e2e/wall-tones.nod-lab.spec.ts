@@ -42,7 +42,7 @@ async function enterNodLab(page: import('@playwright/test').Page) {
   // Lab row: the merged Lab menu's rows are hardcoded in lab-menu.uikitml
   // (nod, thumbs, rift) with the intro text above them, so the nod row is
   // the first row, centred near y=290 at 1280x800.
-  await page.mouse.click(1100, 320);
+  await page.mouse.click(958, 405);
   await page.waitForFunction(
     () => sessionStorage.getItem('iwsdk-experience-mode') === 'lab',
     null,
@@ -50,7 +50,7 @@ async function enterNodLab(page: import('@playwright/test').Page) {
   );
   // Let the Lab menu take the flat layout and render before clicking the row.
   await page.waitForTimeout(2000);
-  await page.mouse.click(640, 290);
+  await page.mouse.click(640, 386);
 }
 
 async function answer(page: import('@playwright/test').Page, value: 'yes' | 'no') {

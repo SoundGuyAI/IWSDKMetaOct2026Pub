@@ -22,7 +22,7 @@ test('the splash lifts once the menu is usable, and Start Wall Tones enters the 
   // The menu really works afterwards: a real click on Start Wall Tones enters
   // the game (viewport fixed at 1280x800 by playwright.config; the button is
   // the top of the three on the centred menu panel).
-  await page.mouse.click(640, 285);
+  await page.mouse.click(640, 374);
   await page.waitForFunction(
     () =>
       (window as unknown as { __wallTonesDebug?: { flatAwaitingStart: boolean } })

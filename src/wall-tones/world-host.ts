@@ -13,6 +13,7 @@ import { GuidedSensingSystem } from '../guided-sensing.js';
 import { PanelSystem } from '../panel.js';
 import { RobotSystem } from '../robot.js';
 import { WallTonesSystem } from './wall-tones-system.js';
+import { CoverStageSystem } from './cover-stage.js';
 import { NodLabSystem } from '../nod-lab/nod-lab-system.js';
 import { RiftLabSystem } from '../rift-lab/rift-lab-system.js';
 import { ThumbsLabSystem } from '../thumbs-lab/thumbs-lab-system.js';
@@ -35,6 +36,7 @@ let switchChain: Promise<unknown> = Promise.resolve();
 
 function registerHubSystems(world: World): void {
   world.registerSystem(AppModeSystem);
+  world.registerSystem(CoverStageSystem);
   world.registerSystem(GuidedSensingSystem);
   world.registerSystem(RobotSystem);
   world.registerSystem(PanelSystem);
