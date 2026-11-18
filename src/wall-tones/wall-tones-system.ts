@@ -413,6 +413,7 @@ ownsIndex: boolean;
 buyIndex: () => void;
 /** Test-only streak seeding for e2e Game Over cost checks. */
 setStreak: (streak: number) => void;
+growSequenceTo: (length: number) => void;
 flatAwaitingStart: boolean;
 slotCandidateCount: number;
 selectedSlotCount: number;
@@ -2876,6 +2877,10 @@ void system.onAutoplayControl();
 setStreak: (streak: number) => {
 system.debugSetStreak(streak);
 },
+/** Test hook: lengthen the current pattern so the next completed pattern reaches a given streak. */
+growSequenceTo: (length: number) => {
+while (system.game.sequence.length < length) system.game.appendRandomPad();
+},
 get flatAwaitingStart() {
 return system.flatAwaitingStart;
 },
@@ -4907,7 +4912,7 @@ const window = this.cypherProgress.beginWindow(streak);
 if (window) await this.playCypherWindow(window, narrIntact);
 else {
 // Skip/interrupt leaves the line unheard (lineCompleted is not reached), so it retries at the next quiet pattern boundary.
-const line = this.backgroundProgress.successfulPattern(this.cypherProgress.finished, !this.speech.isBusy());
+const line = this.backgroundProgress.successfulPattern(streak, !this.speech.isBusy());
 if (line && narrIntact()) {
 const cast = captureCypherCast(getVoiceGender());
 await this.speech.speakBackgroundEffect(this.backgroundProgress.completedLines % 3 === 2 ? 'squawk' : 'open');
