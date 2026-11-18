@@ -522,6 +522,10 @@ export class WallTonesEconomy {
     // achievements (his 2026-11-15 rule); only the autoplay-multiply choice
     // itself is provisional.
     amount *= this.getMultiplierFactor();
+    // Open-rift encounter penalty (owner-settled Nov 18: score AND Bars carry
+    // one x0.5 while a portal is open; energy earning is unaffected). The
+    // provider is injected by WallTonesSystem so the economy stays game-agnostic.
+    amount *= this.scoreFactorProvider?.() ?? 1;
     this.bars += amount;
     if (countAsEarned) {
       this.barsTotal += amount;
@@ -767,6 +771,15 @@ export class WallTonesEconomy {
 
   /** Score/Bars factor at the owned level (the X2/X3/X4/X8 ladder); 1
    * while not enabled. */
+  private scoreFactorProvider: (() => number) | null = null;
+
+  /** External score/Bars factor hook (the rift encounter's open-portal
+   * penalty). Applied inside award() so press, completion and record awards
+   * all carry the single settled factor. */
+  setScoreFactorProvider(provider: (() => number) | null): void {
+    this.scoreFactorProvider = provider;
+  }
+
   getMultiplierFactor(): number {
     if (!this.isMultiplierEnabled()) return 1;
     return multiplierFactorForLevel(this.multiplierLevel);
