@@ -231,9 +231,9 @@ test('phone returning reminder is visible, times out safely, and cannot reset pr
 });
 
 
-test('all reviewed return clips in both casts load and decode as real audio',async({page})=>{
+test('all reviewed return clips and opening transitions in both casts load and decode as real audio',async({page})=>{
  await page.goto('/');
- const paths=Object.entries(RETURN_DIALOGUE).flatMap(([id,line])=>['male','female'].map(g=>`audio/return-reminders/${line.speaker}/${g}/${id.toLowerCase()}.mp3`));
+ const paths=[...Object.entries(RETURN_DIALOGUE).flatMap(([id,line])=>['male','female'].map(g=>`audio/return-reminders/${line.speaker}/${g}/${id.toLowerCase()}.mp3`)),...['male','female'].map(g=>`audio/speech/${g}/opening-pattern.mp3`)];
  const decoded=await page.evaluate(async paths=>{
   const context=new AudioContext();
   try { return await Promise.all(paths.map(async path=>{
@@ -241,7 +241,7 @@ test('all reviewed return clips in both casts load and decode as real audio',asy
    const buffer=await context.decodeAudioData(await response.arrayBuffer());return {path,duration:buffer.duration,channels:buffer.numberOfChannels};
   })); }finally{await context.close();}
  },paths);
- expect(decoded).toHaveLength(22);for(const clip of decoded){expect(clip.duration).toBeGreaterThan(1);expect(clip.channels).toBe(1);}
+ expect(decoded).toHaveLength(24);for(const clip of decoded){expect(clip.duration).toBeGreaterThan(1);expect(clip.channels).toBe(1);}
 });
 
 
@@ -255,3 +255,31 @@ test('returning round reminder can be skipped without blocking play',async({page
  await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');
  expect(await page.evaluate(()=>window.__wallTonesDebug!.reminderListening)).toBe(false);
 });
+
+for (const gender of ['male','female'] as const) {
+ test(`opening pattern transition completes before existing tutorial, persists on reload (${gender})`,async({page})=>{
+  await page.setViewportSize({width:1280,height:720});
+  const requested:string[]=[];page.on('request',r=>{if(r.url().includes('/audio/speech/'))requested.push(r.url());});
+  await page.addInitScript(gender=>{sessionStorage.setItem('iwsdk-experience-mode','walltones');localStorage.setItem('wall-tones-voice-gender',gender);},gender);
+  await page.goto('/');await page.waitForFunction(()=>Boolean(window.__wallTonesDebug?.flatAwaitingStart));
+  // Normal pointer start on a visible pad. Debug is only a read-only phase observer.
+  await page.waitForFunction(()=>!window.__wallTonesDebug!.speechBusy);
+  await page.mouse.move(315,245,{steps:4});await page.mouse.move(335,251,{steps:4});await page.waitForTimeout(400);
+  await page.mouse.down();await page.mouse.move(338,253,{steps:3});await page.waitForTimeout(150);await page.mouse.up();
+  await page.waitForFunction(()=>JSON.parse(localStorage.getItem('wall-tones-instructions-v1')??'{}').heard?.includes('howToPlayRest'));
+  const opening=requested.findIndex(x=>x.endsWith(`/${gender}/opening-pattern.mp3`));
+  const rest=requested.findIndex(x=>x.endsWith(`/${gender}/how-to-play-rest.mp3`));
+  expect(opening).toBeGreaterThanOrEqual(0);expect(rest).toBeGreaterThan(opening);
+  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('wall-tones-instructions-v1')!).heard)).toContain('openingPattern');
+  await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');
+  await page.screenshot({path:`test-results/opening-pattern-${gender}.png`});
+  requested.length=0;await page.reload();await page.waitForFunction(()=>Boolean(window.__wallTonesDebug?.flatAwaitingStart));
+  await page.waitForFunction(()=>!window.__wallTonesDebug!.speechBusy);
+  await page.mouse.move(315,245,{steps:4});await page.mouse.move(335,251,{steps:4});await page.waitForTimeout(400);await page.mouse.down();await page.mouse.move(338,253,{steps:3});await page.waitForTimeout(150);await page.mouse.up();
+  // Returning offer is dismissed with the real keyboard, not a debug answer.
+  await page.waitForFunction(()=>window.__wallTonesDebug!.reminderListening,{},{timeout:30000});await page.keyboard.press('n');
+  await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');
+  expect(requested.some(x=>x.endsWith('/opening-pattern.mp3'))).toBe(false);
+  expect(requested.some(x=>x.endsWith('/how-to-play-rest.mp3'))).toBe(false);
+ });
+}

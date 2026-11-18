@@ -3964,13 +3964,20 @@ return;
 // A user skip during the intro also swallows this remaining line, without
 // aborting the round flow that follows.
 if (narrMark === this.narrationInterrupt) {
+// Keep the platform-specific start direction in its existing position, but
+// split the tutorial so the transition sits immediately before Listen/repeat.
+if (!this.startPromptSpoken) {
 await this.speech.speakAsync(
-this.startPromptSpoken
-? 'howToPlayRest'
-: this.world.visibilityState.peek() !== VisibilityState.NonImmersive
-? 'howToPlayMr'
-: 'howToPlay',
+this.world.visibilityState.peek() !== VisibilityState.NonImmersive
+? 'pointAndPressMr' : 'pointAndPress',
 );
+}
+if (narrMark === this.narrationInterrupt && this.experienceActive && this.flowPhase === 'playing') {
+await this.speech.speakAsync('openingPattern');
+}
+if (narrMark === this.narrationInterrupt && this.experienceActive && this.flowPhase === 'playing') {
+await this.speech.speakAsync('howToPlayRest');
+}
 }
 this.startPromptSpoken = false;
 await this.wait(POST_INTRO_DELAY_S);

@@ -28,6 +28,7 @@ import { ACHV_INTRO_FEMALE_MR } from './achv-intro-female-mr.js';
 import { ensureAudioRunning, primeWallTonesAudioFromGesture, needsExplicitMobileSoundUnlock } from './audio.js';
 
 export type WallTonesClipId =
+  | 'openingPattern'
   | 'welcome'
   | 'chooseMode'
   | 'howToPlay'
@@ -106,6 +107,7 @@ export type WallTonesClipId =
 
 /** Clip files under public/audio/speech/. */
 export const WALL_TONES_CLIP_FILES: Record<WallTonesClipId, string> = {
+  openingPattern: 'opening-pattern.mp3',
   welcome: 'welcome.mp3',
   chooseMode: 'choose-mode.mp3',
   howToPlay: 'how-to-play.mp3',

@@ -59,7 +59,7 @@ async function loadSpeech({ rejectFirst = false, subtitles = false } = {}) {
   // Only non-routing dependencies are replaced. The production mobile element
   // and gesture/queue/cancellation implementation below remains under test.
   source = source.replace(/^import .* from '.\/clip-transcripts.js';/m,
-    "const CLIP_TRANSCRIPTS = new Proxy({}, {get: (_target, id) => String(id)});");
+    readFileSync(new URL('../../src/wall-tones/clip-transcripts.ts', import.meta.url), 'utf8').replace(/^import type .*;\n/m, ''));
   source = source.replace(/^import .* from '.\/accessibility.js';/m,
     'const startSpokenCaption = (t) => { globalThis.__captions.push(t); return 1; }; const endSpokenCaption = () => { globalThis.__captions.push(""); }; const hearingSubtitlesEnabled = () => globalThis.__subtitles; const voicesOffEnabled = () => !!globalThis.__voicesOff;');
   source = source.replace(/^import .* from '.\/new-best-(male|female).js';/gm, '');
@@ -125,7 +125,7 @@ test('opted-in native welcome renders its own caption before world startup', asy
   const h = await loadSpeech({subtitles: true});
   await h.gesture(() => h.speech.startMobileWelcomeFromGesture());
   h.instances[0].onplaying();
-  assert.equal(h.elements[0].textContent, 'welcome');
+  assert.equal(h.elements[0].textContent, 'Hello and welcome to Wall Tones, a musical memory game.');
   assert.equal(h.elements[0].id, 'wall-tones-startup-subtitle');
   h.instances[0].end();
   assert.equal(h.elements[0].removed, true);
@@ -139,12 +139,12 @@ test('voices off + subtitles on shows captions without audio', async () => {
   const voice = new h.speech.WallTonesSpeech();
   const line = voice.speakAsync('welcome', false);
   await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
-  assert.deepEqual(globalThis.__captions, ['welcome'], 'caption text shown');
+  assert.deepEqual(globalThis.__captions, ['Hello and welcome to Wall Tones, a musical memory game.'], 'caption text shown');
   assert.equal(voice.isBusy(), true, 'line still paces the queue');
   assert.equal(h.instances.length, 0, 'no audio element created');
   await line;
   assert.equal(voice.isBusy(), false);
-  assert.deepEqual(globalThis.__captions, ['welcome', ''], 'caption cleared');
+  assert.deepEqual(globalThis.__captions, ['Hello and welcome to Wall Tones, a musical memory game.', ''], 'caption cleared');
 }, 15000);
 
 test('voices off + subtitles off stays fully silent', async () => {
@@ -266,4 +266,14 @@ test('explicit reminder replays once without clearing heard status; ordinary sub
 test('mobile trusted Start uses reviewed returning welcome and queue consumes it without duplicate',async()=>{
  const h=await loadSpeech();localStorage.setItem('wall-tones-return-visit-v1','1');await h.gesture(()=>h.speech.startMobileWelcomeFromGesture());h.speech.unlockSpeechFromGesture();assert.match(h.instances[0].src,/return-reminders\/narrator\/male\/n-r01.mp3$/);
  const voice=new h.speech.WallTonesSpeech();const run=voice.speakReturnLine('N-R01');await Promise.resolve();h.instances[0].end();await run;assert.equal(h.instances[0].played.length,1);
+});
+
+test('opening transition remains eligible after Skip, completes once, and keeps its exact caption',async()=>{
+ const h=await loadSpeech({subtitles:true});await h.gesture(()=>h.speech.startMobileWelcomeFromGesture());h.instances[0].end();h.speech.unlockSpeechFromGesture();
+ let voice=new h.speech.WallTonesSpeech();let run=voice.speakAsync('openingPattern');await Promise.resolve();h.instances[0].onplaying();
+ assert.equal(globalThis.__captions.at(-1),"That opening pattern was your signal that the game is about to start. Now it's time to play.");
+ voice.cancel();await run;assert.equal(voice.hasHeardInstruction('openingPattern'),false);
+ run=voice.speakAsync('openingPattern');await Promise.resolve();h.instances[0].end();await run;
+ assert.equal(voice.hasHeardInstruction('openingPattern'),true);assert.equal(voice.hasHeardInstruction('howToPlayRest'),false);
+ const count=h.instances[0].played.length;voice=new h.speech.WallTonesSpeech();await voice.speakAsync('openingPattern');assert.equal(h.instances[0].played.length,count);
 });

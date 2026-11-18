@@ -27,3 +27,23 @@ test('full and split how-to recordings share heard words but preserve the MR-spe
  const s=store(),m=new InstructionMemory(s);m.completed('howToPlay');assert.equal(m.hasHeard('howToPlayRest'),true);assert.equal(m.hasHeard('pointAndPress'),true);assert.equal(m.hasHeard('howToPlayMr'),false);assert.equal(m.hasHeard('pointAndPressMr'),false);
  const n=new InstructionMemory(store());n.completed('howToPlayRest');assert.equal(n.hasHeard('howToPlay'),false);n.completed('pointAndPress');assert.equal(n.hasHeard('howToPlay'),true);assert.equal(n.hasHeard('howToPlayMr'),false);
 });
+
+
+test('opening transition has its own completion memory and does not reteach completed tutorials',()=>{
+ const s=store(),m=new InstructionMemory(s);assert.equal(m.hasHeard('openingPattern'),false);
+ m.completed('openingPattern');assert.equal(new InstructionMemory(s).hasHeard('openingPattern'),true);
+ assert.equal(m.hasHeard('howToPlayRest'),false);
+ m.reset();assert.equal(m.hasHeard('openingPattern'),false);
+ for(const id of ['howToPlay','howToPlayMr','howToPlayRest']){
+  const n=new InstructionMemory(store());n.completed(id);assert.equal(n.hasHeard('openingPattern'),true);
+ }
+});
+
+test('transition runs after fanfare, after platform start direction, before unchanged Listen/repeat, with Skip guards',()=>{
+ const s=readFileSync(new URL('../../src/wall-tones/wall-tones-system.ts',import.meta.url),'utf8');
+ const intro=s.slice(s.indexOf('private beginRoundWithIntro'),s.indexOf('private async playSequence'));
+ assert.ok(intro.indexOf('playSimonStartupFanfare()')<intro.indexOf("speakAsync('openingPattern')"));
+ assert.ok(intro.indexOf("? 'pointAndPressMr' : 'pointAndPress'")<intro.indexOf("speakAsync('openingPattern')"));
+ assert.ok(intro.indexOf("speakAsync('openingPattern')")<intro.indexOf("speakAsync('howToPlayRest')"));
+ assert.equal((intro.match(/narrMark === this.narrationInterrupt/g)||[]).length,3);
+});

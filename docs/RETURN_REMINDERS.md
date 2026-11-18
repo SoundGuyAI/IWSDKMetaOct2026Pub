@@ -53,3 +53,14 @@ clips.
   achievements, and same-page re-entry does not offer twice.
 - Complete all existing local suites against the final reconciled tree and
   check CI discovery/roster before publication. No merge is implied.
+
+## Opening-pattern transition
+
+A separately tracked clean narrator clip identifies the startup pattern as a
+start signal after the fanfare and platform start direction, immediately before
+the unchanged listen/repeat recording. Both narrator sets use the same words.
+Natural completion remembers the transition; Skip or failure does not. Existing
+completed how-to tutorials stay complete, without resetting heard memory.
+Explicit gameplay reminders retain their existing audio: they happen before the
+fanfare, where a past-tense reference to the opening pattern would be misleading.
+Original tutorial recordings and MR thumbs-up wording remain unchanged.

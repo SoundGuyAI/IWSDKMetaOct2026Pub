@@ -6,7 +6,7 @@ export interface InstructionStorage { getItem(key: string): string | null; setIt
 /** State-dependent setup directions, praise, feedback and story are deliberately
  * excluded. They describe the current situation, not a reusable tutorial. */
 const SECTION_BY_CLIP: Readonly<Record<string, InstructionSection>> = {
-  howToPlay: 'gameplay', howToPlayMr: 'gameplay', howToPlayRest: 'gameplay',
+  openingPattern: 'gameplay', howToPlay: 'gameplay', howToPlayMr: 'gameplay', howToPlayRest: 'gameplay',
   pointAndPress: 'gameplay', pointAndPressMr: 'gameplay',
   barsFirstEarn: 'gameplay', palmProjector: 'gameplay', gameoverGestures: 'gameplay',
   storeWelcome: 'store', storeHints: 'store', storeIntro: 'store',
@@ -33,6 +33,8 @@ export class InstructionMemory {
   }
   hasHeard(clip: string): boolean {
     if (this.heard.has(clip)) return true;
+    // Existing completed how-to tutorials stay complete when the startup cue changes.
+    if (clip === 'openingPattern') return this.heard.has('howToPlayRest') || this.heard.has('howToPlay') || this.heard.has('howToPlayMr');
     if (clip === 'howToPlay') return this.heard.has('pointAndPress') && this.heard.has('howToPlayRest');
     if (clip === 'howToPlayMr') return this.heard.has('pointAndPressMr') && this.heard.has('howToPlayRest');
     return false;
