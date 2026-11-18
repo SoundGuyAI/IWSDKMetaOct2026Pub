@@ -146,6 +146,32 @@ export class PalmJointsSmoother {
   reset(): void { for (const key of Object.keys(this.filters)) delete this.filters[key]; }
 }
 
+/** Cone top (panel-side) radius of the projector beam, meters. */
+export const BEAM_TOP_RADIUS = 0.055;
+/** Cone base (palm-side) radius of the projector beam, meters. */
+export const BEAM_BOTTOM_RADIUS = 0.006;
+/** Soft fade band just under the panel plane: the beam's last 5 mm ease out
+ * instead of being hard-clipped. */
+export const BEAM_CLIP_SOFT = 0.005;
+
+/**
+ * Shader-mirrored panel-plane clip for the projector beam, as a pure function
+ * so unit tests can slice it. The beam keeps ONE constant radius and length
+ * at every hand tilt (Nov 17 Quest feedback: the previous geometric fit
+ * shrank the radius to 12% and the length to 65% as the palm rotated, so the
+ * beam visibly pumped fat/thin). Instead the fragment shader fades out any
+ * fragment on the head side of the panel plane: distanceAbovePlane is
+ * dot(worldPos - panelCenter, panelNormalTowardHead). Fully visible below
+ * the soft band, gone at or above the plane, smoothstep in between.
+ */
+export function beamClipAlpha(distanceAbovePlane: number, soft: number = BEAM_CLIP_SOFT): number {
+  if (distanceAbovePlane <= -soft) return 1;
+  if (distanceAbovePlane >= 0) return 0;
+  const t = (distanceAbovePlane + soft) / soft;
+  const s = t * t * (3 - 2 * t);
+  return 1 - s;
+}
+
 /**
  * Band-mode joint frame as a constant rotation on top of the anatomical frame
  * A = [wrist->middle-MCP, palm normal, their cross]. Measured Nov 2026 from the

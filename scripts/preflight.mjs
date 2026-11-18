@@ -7,21 +7,21 @@ import { fileURLToPath } from 'node:url';
 // Fail closed if the workflow format changes, so local coverage cannot go green
 // after silently failing to understand the workflow.
 export function checkShardCoverage(workflow, actual) {
-  const matrix = workflow.match(/^      matrix:\r?\n        include:\r?\n([\s\S]*?)(?=^    name:)/m);
+  const matrix = workflow.match(/^      matrix:\r?\n        shard: \[([^\]]+)\]/m);
   const coverage = workflow.match(/^  e2e-coverage:\r?\n([\s\S]*?)(?=^  [a-z][\w-]*:|(?![\s\S]))/m);
   if (!matrix || !coverage) throw new Error('Cannot read CI shard matrix or coverage job; update preflight for the new workflow format.');
-  const rows = [...matrix[1].matchAll(/^            files: (.+)$/gm)];
-  if (!rows.length) throw new Error('CI shard matrix has no literal files rows.');
-  const assigned = rows.flatMap(row => row[1].trim().split(/\s+/));
-  if (assigned.some(path => !/^tests\/e2e\/[\w.-]+\.spec\.ts$/.test(path))) {
-    throw new Error('Unsupported shard files syntax; expected literal tests/e2e/*.spec.ts paths.');
+  const shards = matrix[1].split(',').map(value => Number(value.trim()));
+  if (shards.length !== 10 || shards.some((value, index) => value !== index + 1)
+      || !workflow.includes('node scripts/e2e-shards.mjs plan 10')
+      || !workflow.includes('--test-list .tmp/e2e-shards/${{ matrix.shard }}.txt')) {
+    throw new Error('Unsupported shard plan: expected ten audited case lists.');
   }
   const listed = [...coverage[1].matchAll(/^\s+(tests\/e2e\/[\w.-]+\.spec\.ts)\s*\\?\s*$/gm)].map(row => row[1]);
   if (!listed.length) throw new Error('Cannot read CI coverage list; update preflight for the new workflow format.');
   const expected = new Set(actual);
   if (!expected.size) throw new Error('No local E2E spec files found.');
   const errors = [];
-  for (const [label, paths] of [['matrix', assigned], ['coverage list', listed]]) {
+  for (const [label, paths] of [['coverage list', listed]]) {
     const seen = new Set();
     for (const path of paths) {
       if (seen.has(path)) errors.push(`${label}: duplicate ${path}`);
@@ -50,7 +50,7 @@ export function main(args = process.argv.slice(2)) {
   if (args.some(arg => arg !== '--coverage-only')) throw new Error('Usage: node scripts/preflight.mjs [--coverage-only]');
   const actual = readdirSync('tests/e2e').filter(name => name.endsWith('.spec.ts')).map(name => `tests/e2e/${name}`);
   const count = checkShardCoverage(readFileSync('.github/workflows/ci.yml', 'utf8'), actual);
-  console.log(`Shard coverage passed: ${count} specs in both CI lists.`);
+  console.log(`Shard coverage passed: ${count} specs in the CI roster; the case planner audits exact runtime assignments.`);
   for (const [command, argv] of preflightSteps(args.includes('--coverage-only'))) {
     console.log(`\n> ${command} ${argv.join(' ')}`);
     // Node 22 supports glob expansion for --test; use explicit file arguments
