@@ -194,6 +194,7 @@ import {
   MULTIPLIER_MAX_LEVEL,
   multiplierFactorForLevel,
   INDEX_COST,
+  SKIP_PATTERN_COST,
   LISTEN_COST,
   REPLAY_FREE_CAP,
   REPLAY_PRICE_BARS,
@@ -411,6 +412,12 @@ grantIndex: () => void;
 pressAutoplayControl: () => void;
 ownsIndex: boolean;
 buyIndex: () => void;
+ownsSkipPattern: boolean;
+buySkipPattern: () => void;
+grantSkipPattern: () => void;
+/** Test-only: press the Skip pattern button (no-op unless shown). */
+pressSkipPattern: () => void;
+skipPatternVisible: boolean;
 /** Test-only streak seeding for e2e Game Over cost checks. */
 setStreak: (streak: number) => void;
 flatAwaitingStart: boolean;
@@ -706,6 +713,11 @@ private blinkCueRoot: Object3D | null = null;
 private blinkCueEntity: Entity | null = null;
 /** Panel Skip voice button mirrors speech.isBusy(); polled each frame. */
 private skipVoiceVisible = false;
+/** Skip pattern button shown (owner 2026-11-18): demo playing, owned, no voice. */
+private skipPatternVisible = false;
+/** Set by the Skip pattern button; ends the current demonstration early. */
+private skipDemoRequested = false;
+private flatSkipPatternButton: HTMLButtonElement | null = null;
 private headCaptionVisible = false;
 private headCaptionText = '';
 private readonly headCaptionOffset = new Vector3();
@@ -1568,6 +1580,9 @@ panel
 panel
 .getElementById('skip-voice-button')
 ?.addEventListener('click', () => this.onSkipVoice());
+panel
+.getElementById('skip-pattern-button')
+?.addEventListener('click', () => this.onSkipPattern());
 this.syncSkipVoiceButton();
 this.syncDebugCollidersButton();
 this.applyTouchDebugVisibility();
@@ -2247,11 +2262,30 @@ this.narrationInterrupt += 1;
 this.speech.cancel();
 }
 
+/** Skip pattern (owner 2026-11-18): ends the tone demonstration only; the
+ * player's turn is untouched. Ignored unless the button is showing. */
+private onSkipPattern(): void {
+if (!this.skipPatternVisible) return;
+this.skipDemoRequested = true;
+}
+
 private tickSkipVoiceButton(): void {
 const busy = this.speech.isBusy();
 const flat = this.isFlatView();
-if (busy !== this.skipVoiceVisible || flat !== this.skipVoiceViewFlat) {
+// Same slot as Skip voice: a spoken line owns it; the demonstration
+// button shows only when no voice is playing (owner 2026-11-18 11:44).
+const patternShown =
+!busy &&
+this.economy.ownsSkipPattern() &&
+this.game.phase === 'playback' &&
+this.playbackKind === 'listen';
+if (
+busy !== this.skipVoiceVisible ||
+patternShown !== this.skipPatternVisible ||
+flat !== this.skipVoiceViewFlat
+) {
 this.skipVoiceVisible = busy;
+this.skipPatternVisible = patternShown;
 this.skipVoiceViewFlat = flat;
 this.syncSkipVoiceButton();
 }
@@ -2269,7 +2303,47 @@ this.world
 .getSceneObject<UIKitMLAsset>('wall-tones-panel')
 ?.getElementById('skip-voice-button')
 ?.setProperties({ display: this.skipVoiceVisible && !flat ? 'flex' : 'none' });
+this.world
+.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('skip-pattern-button')
+?.setProperties({ display: this.skipPatternVisible && !flat ? 'flex' : 'none' });
 this.syncFlatSkipButton(flat);
+this.syncFlatSkipPatternButton(flat);
+}
+
+private syncFlatSkipPatternButton(flat: boolean): void {
+if (flat && this.skipPatternVisible) {
+if (this.flatSkipPatternButton == null) {
+const button = document.createElement('button');
+button.type = 'button';
+button.id = 'wall-tones-skip-pattern-flat';
+button.textContent = 'Skip pattern';
+Object.assign(button.style, {
+position: 'fixed',
+right: 'max(12px, env(safe-area-inset-right))',
+bottom: 'max(24px, env(safe-area-inset-bottom))',
+zIndex: '100002',
+fontSize: '16px',
+padding: '12px 18px',
+borderRadius: '12px',
+border: 'none',
+background: '#f5d90a',
+color: '#1c1d20',
+fontWeight: '700',
+boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
+cursor: 'pointer',
+});
+button.addEventListener('click', (event) => {
+event.preventDefault();
+this.onSkipPattern();
+});
+document.body.appendChild(button);
+this.flatSkipPatternButton = button;
+}
+this.flatSkipPatternButton.style.display = 'block';
+} else if (this.flatSkipPatternButton != null) {
+this.flatSkipPatternButton.style.display = 'none';
+}
 }
 
 private syncFlatSkipButton(flat: boolean): void {
@@ -2733,6 +2807,22 @@ system.onBuySelected();
 buyIndex: () => {
 system.forceSelectStoreTile('index');
 system.onBuySelected();
+},
+buySkipPattern: () => {
+system.forceSelectStoreTile('skip');
+system.onBuySelected();
+},
+grantSkipPattern: () => {
+system.economy.debugGrantSkipPattern();
+},
+pressSkipPattern: () => {
+system.onSkipPattern();
+},
+get ownsSkipPattern() {
+return system.economy.ownsSkipPattern();
+},
+get skipPatternVisible() {
+return system.skipPatternVisible;
 },
 buyReplay: () => {
 system.forceSelectStoreTile('replay');
@@ -3920,6 +4010,7 @@ this.playbackKind = 'listen';
 this.playbackCursor = -1;
 this.enteredByModifier.clear();
 this.arrowSeqIndex = -1;
+this.skipDemoRequested = false;
 this.renderPanel();
 // Speed modifier (backlog 96, his 2026-11-14 proposal): the head of the
 // Listen playback plays faster, covering the first N notes where N is the
@@ -3934,6 +4025,7 @@ speedFactor < 1
 ? Math.min(this.game.sequence.length, this.economy.speedCoveredNoteCount())
 : 0;
 for (let index = 0; index < this.game.sequence.length; index += 1) {
+if (this.skipDemoRequested) break;
 const quick = index < speedNotes;
 const padId = this.game.sequence[index]!;
 const pad = this.padById(padId);
@@ -3944,19 +4036,25 @@ this.playbackShownCount = index + 1;
 this.playbackCursor = index;
 this.renderPanel();
 await playPadTone(padId, quick ? NOTE_DURATION_S * speedFactor : NOTE_DURATION_S);
-await this.wait((NOTE_GAP_S + BLINK_HOLD_S + 0.2) * (quick ? speedFactor : 1));
+await this.waitDemo((NOTE_GAP_S + BLINK_HOLD_S + 0.2) * (quick ? speedFactor : 1));
 flashPad(pad, false);
 this.setBlinkCuePad(null);
 }
-await this.wait(NOTE_GAP_S * (quick ? speedFactor : 1));
+await this.waitDemo(NOTE_GAP_S * (quick ? speedFactor : 1));
+}
+// Skip pattern pressed: drop any note still lit and go on to the same
+// tail (Play/Autoplay entry, then the player's turn).
+if (this.skipDemoRequested) {
+this.skipDemoRequested = false;
+for (const pad of this.pads) flashPad(pad, false);
+this.setBlinkCuePad(null);
 }
 // Autoplay store modifier (store test values, balance TBD): after
 // the Listen playback, the game enters the first level*5 notes for the
 // player. Owner feedback 2026-11-15 ("in auto play it doesn't play the
 // pattern all the way"): Autoplay may enter the final note too; when its
 // note count covers the whole pattern the round completes through the
-// exact manual-finish path, matching the Play modifier. Auto-entered
-// notes pay no per-press Bars (no player press).
+// exact manual-finish path, matching the Play modifier. Auto-entered// notes pay no per-press Bars (no player press).
 const autoCount = this.economy.isAutoplayEnabled()
 ? Math.min(
 this.economy.getAutoplayNoteCount(),
@@ -6426,6 +6524,15 @@ icon: eco.playUnlocked(),
 },
 // Index pointer (owner add 2026-11-13): same row as Play, gated at Hint
 // level 3 (owner 2026-11-12). One-off test price 500 (approved 2026-11-14).
+// Skip pattern (owner 2026-11-18): unlocks once Play is owned; one-off.
+{
+id: 'skip',
+name: 'Skip pattern',
+badge: eco.ownsSkipPattern() ? '\u2713' : '',
+state: eco.ownsSkipPattern() ? 'on' : 'off',
+price: eco.ownsSkipPattern() ? 'Owned' : eco.skipPatternUnlocked() ? `${SKIP_PATTERN_COST}` : 'Locked',
+icon: false,
+},
 {
 id: 'index',
 name: 'Index',
@@ -6758,6 +6865,18 @@ cost = eco.playCost(playLevel + 1);
 buyText = `Play L${playLevel + 1} - ${cost}`;
 }
 break;
+case 'skip':
+titleText = 'Skip pattern';
+bodyText = !eco.skipPatternUnlocked()
+? 'Locked: buy Play first.'
+: eco.ownsSkipPattern()
+? 'Owned. Press Skip pattern during the demonstration to go straight to your turn.'
+: 'Lets you skip the pattern the game plays before your turn. One-off, initial price.';
+if (eco.skipPatternUnlocked() && !eco.ownsSkipPattern()) {
+cost = SKIP_PATTERN_COST;
+buyText = `Skip pattern - ${SKIP_PATTERN_COST}`;
+}
+break;
 case 'index':
 titleText = 'Index';
 bodyText = !eco.indexUnlocked()
@@ -6888,7 +7007,7 @@ h: ROW_CONN_H,
 },
 // Play's row leaves room beside it for the Index pointer (owner 2026-11-12:
 // "same row as play").
-{ ids: ['play', 'index'], node: (() => {
+{ ids: ['skip', 'play', 'index'], node: (() => {
 // Owner layout 2026-11-14: Play sits centered on the vertical
 // progression axis; Index is independent, pinned to the right edge
 // without displacing Play.
@@ -6897,6 +7016,15 @@ flexDirection: 'row',
 justifyContent: 'center',
 width: TREE_W,
 });
+// Skip pattern sits left of Play, mirroring Index on the right
+// (owner 2026-11-15 23:48).
+const skipSlot = new UIKit.Container({
+positionType: 'absolute',
+positionLeft: 0,
+positionTop: 0,
+});
+skipSlot.add(makeTile(byId.get('skip')!));
+duo.add(skipSlot);
 duo.add(makeTile(byId.get('play')!));
 const indexSlot = new UIKit.Container({
 positionType: 'absolute',
@@ -7564,6 +7692,14 @@ deny(
 );
 return;
 }
+if (id === 'skip' && !this.economy.skipPatternUnlocked()) {
+deny('Locked: buy Play first.');
+return;
+}
+if (id === 'skip' && this.economy.ownsSkipPattern()) {
+deny('Skip pattern is already owned.');
+return;
+}
 if (id === 'index' && !this.economy.indexUnlocked()) {
 deny(!this.economy.ownsListen() ? 'Locked: buy Listen first.' : 'Locked: reach Hint level 3 first.');
 return;
@@ -7592,6 +7728,7 @@ id === 'listen' ? this.economy.buyListen()
 : id === 'speed' ? this.economy.buyNextSpeedLevel()
 : id === 'multiplier' ? this.economy.buyNextMultiplierLevel()
 : id === 'index' ? this.economy.buyIndex()
+: id === 'skip' ? this.economy.buySkipPattern()
 : id === 'replay' ? this.economy.buyReplay()
 : id === 'saver' ? this.economy.buySaver(SAVER_PRICE_BARS)
 : id === 'secret' ? this.economy.buyTopSecret()
@@ -8127,6 +8264,21 @@ if ((!show && !menuCaption) || !flat) {
   this.flatCaptions.append(line);
   if (caption) { const text = document.createElement('div'); text.textContent = caption; text.style.marginTop = '5px'; this.flatCaptions.append(text); }
   this.flatCaptionsRectDirty = true;
+}
+
+/** Like wait(), but returns early once Skip pattern is pressed. */
+private waitDemo(seconds: number): Promise<void> {
+  return new Promise((resolve) => {
+    const end = performance.now() + seconds * 1000;
+    const poll = (): void => {
+      if (this.skipDemoRequested || performance.now() >= end) {
+        resolve();
+        return;
+      }
+      window.setTimeout(poll, 30);
+    };
+    poll();
+  });
 }
 
 private wait(seconds: number): Promise<void> {
