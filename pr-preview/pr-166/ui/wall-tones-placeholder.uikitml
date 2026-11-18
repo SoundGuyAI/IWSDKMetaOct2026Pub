@@ -396,7 +396,8 @@
   </div>
   <div id="gameover-popup" class="popup-overlay" style="display: none">
     <div class="popup-card">
-      <div class="heading" style="font-size: 22px">Game Over</div>
+      <div id="gameover-heading" class="heading" style="font-size: 22px">Game Over</div>
+      <div id="gameover-error-banner" style="display: none; flex-direction: column; padding: 8px; border-radius: 8px; background-color: #b3122a; border-width: 2px; border-color: #ff5a6e"><div id="gameover-error-banner-text" class="status" style="color: #ffffff; font-weight: 700">Timing fault in the corrupt code. Possible hack.</div></div>
       <!-- No justify-content here: centering would give each wrapped line its own center, breaking the column alignment between the history/Expected/Hit lines (reviewer pixel pass 2026-11-15). -->
       <div id="gameover-wronghit-row" style="display: none; flex-direction: row; flex-wrap: wrap; gap: 5px; align-items: center"></div>
       <div id="gameover-summary" class="status">You reached 0. Best 0.</div>
