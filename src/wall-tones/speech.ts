@@ -30,12 +30,15 @@ export type WallTonesClipId =
   | 'chooseMode'
   | 'howToPlay'
   | 'pointAndPress'
+  | 'pointAndPressMr'
+  | 'howToPlayMr'
   | 'howToPlayRest'
   | 'newBest1'
   | 'newBest2'
   | 'newBest3'
   | 'barsFirstEarn'
   | 'palmProjector'
+  | 'gameoverGestures'
   | 'storeWelcome'
   | 'storeHints'
   | 'storeIntro'
@@ -105,6 +108,8 @@ export const WALL_TONES_CLIP_FILES: Record<WallTonesClipId, string> = {
   chooseMode: 'choose-mode.mp3',
   howToPlay: 'how-to-play.mp3',
   pointAndPress: 'point-and-press.mp3',
+  pointAndPressMr: 'point-and-press-mr.mp3',
+  howToPlayMr: 'how-to-play-mr.mp3',
   howToPlayRest: 'how-to-play-rest.mp3',
   newBest1: 'new-best-1.mp3',
   newBest2: 'new-best-2.mp3',
@@ -121,6 +126,7 @@ export const WALL_TONES_CLIP_FILES: Record<WallTonesClipId, string> = {
   milestone20: 'milestone-20.mp3',
   barsFirstEarn: 'bars-first-earn.mp3',
   palmProjector: 'palm-projector.mp3',
+  gameoverGestures: 'gameover-gestures.mp3',
   storeWelcome: 'store-welcome.mp3',
   storeHints: 'store-hints.mp3',
   storeIntro: 'store-intro.mp3',

@@ -36,3 +36,28 @@ export function saverRetryPlan(
   const affordable = bars >= costBars;
   return { buy: affordable ? missing : 0, costBars, affordable, apply: affordable };
 }
+
+/** Combined Game Over retry presentation (owner, Nov 17): one button spends
+ * owned savers when there are enough, otherwise buys the missing savers with
+ * Bars and retries in the same press. `affordable` false means the retry is
+ * out of reach (not enough Bars) and the panel shows the cost in red. */
+export function gameOverRetryPresentation(
+  haveSavers: number,
+  needSavers: number,
+  bars: number,
+): { text: string; buying: boolean; affordable: boolean } {
+  if (needSavers > 0 && haveSavers >= needSavers) {
+    return {
+      text: `Use ${needSavers} saver${needSavers > 1 ? 's' : ''} - retry same pattern`,
+      buying: false,
+      affordable: true,
+    };
+  }
+  const plan = saverRetryPlan(haveSavers, needSavers, bars, SAVER_PRICE_BARS);
+  const missing = Math.max(0, needSavers - haveSavers);
+  return {
+    text: `Buy ${missing} saver${missing > 1 ? 's' : ''} & retry - ${plan.costBars}`,
+    buying: true,
+    affordable: plan.affordable,
+  };
+}
