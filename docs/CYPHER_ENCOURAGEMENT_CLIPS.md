@@ -31,7 +31,7 @@ MP3 encode. This is the second batch. The first batch used a paraphrased
 direction and was replaced.
 
 Deviations from the recipe, stated plainly:
-- Splitting used silence gaps, not faster-whisper word timestamps (notinstalled). Each clip's transcript was checked with an audio transcript
+- Splitting used silence gaps, not faster-whisper word timestamps (not installed). Each clip's transcript was checked with an audio transcript
 reader and matches its line.
 - The recipe's safety limiter ceiling is 0.85. The final MP3 true peak must be
 at or under -1.5 dBTP, so the limiter ceiling is 0.82 on seven clips and 0.70
