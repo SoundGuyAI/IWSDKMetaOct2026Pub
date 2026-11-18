@@ -4,7 +4,7 @@ import ts from 'typescript';
 import {readFileSync} from 'node:fs';
 const src = readFileSync('src/wall-tones/palm-projector.ts','utf8');
 const js = ts.transpileModule(src,{compilerOptions:{module:ts.ModuleKind.ESNext}}).outputText;
-const {palmPanelPose, extendedFingerCount, PALM_PANEL_LIFT, PALM_SURFACE_LIFT, beamClipAlpha, BEAM_CLIP_SOFT, BEAM_TOP_RADIUS, BEAM_BOTTOM_RADIUS} = await import('data:text/javascript;base64,'+Buffer.from(js).toString('base64'));
+const {palmPanelPose, extendedFingerCount, palmProjectorPromptDue, PALM_PANEL_LIFT, PALM_SURFACE_LIFT, beamClipAlpha, BEAM_CLIP_SOFT, BEAM_TOP_RADIUS, BEAM_BOTTOM_RADIUS} = await import('data:text/javascript;base64,'+Buffer.from(js).toString('base64'));
 // Left hand, palm up, fingers forward (+z), thumb side +x. Realistic metric proportions.
 const openLeftUp = {
   wrist:{x:0,y:0,z:0},
@@ -157,4 +157,15 @@ test('beam clip: tilted full-size rim never shows past the panel (Nov 17 size-pu
     assert.equal(beamClipAlpha(-BEAM_CLIP_SOFT - 0.001), 1, `cos=${cos} body keeps full strength`);
   }
   assert.ok(BEAM_BOTTOM_RADIUS < BEAM_TOP_RADIUS, 'cone shape unchanged');
+});
+
+test('palm projector narrator prompt: only after pattern 3, in MR, projector mode (item 109)',()=>{
+  assert.equal(palmProjectorPromptDue(3,true,'projector'),true);
+  // Patterns 2 and 4 stay quiet; the prompt fires once after the third only.
+  assert.equal(palmProjectorPromptDue(2,true,'projector'),false);
+  assert.equal(palmProjectorPromptDue(4,true,'projector'),false);
+  // Flat desktop/phone: keep the one-shot for a later MR run.
+  assert.equal(palmProjectorPromptDue(3,false,'projector'),false);
+  // Wristband display mode: the open-palm instruction would be wrong there.
+  assert.equal(palmProjectorPromptDue(3,true,'band'),false);
 });

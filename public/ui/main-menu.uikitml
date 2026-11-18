@@ -172,17 +172,19 @@
     </div>
     <div id="head-gaze-pinch-row" style="flex-direction: row; gap: 12px; align-items: center; padding: 6px; cursor: pointer">
       <Checkbox id="head-gaze-pinch-checkbox"></Checkbox>
-      <Button id="armband-hand-button" class="button" style="height: 52px">
-      <ButtonLabel id="armband-hand-setting-label" class="button-label">MR armband: Left hand</ButtonLabel>
-    </Button>
-    <Button id="armband-mode-button" class="button" style="height: 52px">
-      <ButtonLabel id="armband-mode-setting-label" class="button-label">Wrist display: Wristband</ButtonLabel>
-    </Button>
-    <div class="body">Head gaze + pinch: press pads by looking</div>
+      <div class="body">Head gaze + pinch: press pads by looking</div>
     </div>
     <div id="native-gaze-pinch-row" style="flex-direction: row; gap: 12px; align-items: center; padding: 6px; cursor: pointer">
       <Checkbox id="native-gaze-pinch-checkbox"></Checkbox>
       <div id="native-gaze-status" class="body">Eye gaze + pinch (experimental) - Eye tracking: unknown</div>
+    </div>
+    <div id="armband-settings-row" style="flex-direction: column; gap: 3px; align-items: stretch">
+      <Button id="armband-hand-button" class="button" style="height: 52px">
+        <ButtonLabel id="armband-hand-setting-label" class="button-label">MR armband: Left hand</ButtonLabel>
+      </Button>
+      <Button id="armband-mode-button" class="button" style="height: 52px">
+        <ButtonLabel id="armband-mode-setting-label" class="button-label">Wrist display: Wristband</ButtonLabel>
+      </Button>
     </div>
     <div class="body" style="padding-left: 12px; padding-right: 12px; font-size: 13px">Debug reset clears Bars, total score, streaks, achievements, purchased hint levels, purchase and press counters, and first-time flags. Settings and accessibility stay.</div>
     <Button id="reset-stats-button" class="button" style="height: 48px">

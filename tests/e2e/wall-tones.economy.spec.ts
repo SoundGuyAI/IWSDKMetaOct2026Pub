@@ -36,6 +36,7 @@ interface DebugSnap {
   flatAwaitingStart: boolean;
   roundCardText: string;
   roundCardVisibleText: string | null;
+  roundCardBonusVisibleText: string;
   barFloatsActive: boolean;
   infoRowVisible: boolean;
 }
@@ -72,6 +73,7 @@ const readState = (page: Page): Promise<DebugSnap> =>
       flatAwaitingStart: d.flatAwaitingStart,
       roundCardText: d.roundCardText,
       roundCardVisibleText: d.roundCardVisibleText,
+      roundCardBonusVisibleText: d.roundCardBonusVisibleText,
       barFloatsActive: d.barFloatsActive,
       infoRowVisible: d.infoRowVisible,
     };
@@ -176,7 +178,8 @@ test.describe('Wall Tones economy: Bars, store, hints, achievements', () => {
     // read back the text actually set on the rendered element.
     await expect
       .poll(async () => (await readState(page)).roundCardVisibleText)
-      .toBe('+3 (+2 bonus)');
+      .toBe('+3');
+    expect((await readState(page)).roundCardBonusVisibleText).toBe('(+2 bonus)');
     let snap = await readState(page);
     expect(snap.bestStreak).toBe(1);
     // Categories: the first pattern's single press counts toward Pad presses.
@@ -199,6 +202,7 @@ test.describe('Wall Tones economy: Bars, store, hints, achievements', () => {
     expect(snap.roundCardText).toBe('');
     // Still rendered after the reset, showing +0 - no appearing/disappearing.
     expect((await readState(page)).roundCardVisibleText).toBe('+0');
+    expect((await readState(page)).roundCardBonusVisibleText).toBe('');
 
     // A later completion does not replay the first-Bars line.
     speechRequests.length = 0;
@@ -207,7 +211,8 @@ test.describe('Wall Tones economy: Bars, store, hints, achievements', () => {
     // No new record this time: per-press +1 and completion +1 land.
     await expect.poll(async () => (await readState(page)).bars).toBe(5);
     expect((await readState(page)).roundCardText).toBe('+2 (Pads +1 - Completion +1)');
-    expect((await readState(page)).roundCardVisibleText).toBe('+2 (+1 bonus)');
+    expect((await readState(page)).roundCardVisibleText).toBe('+2');
+    expect((await readState(page)).roundCardBonusVisibleText).toBe('(+1 bonus)');
     await page.waitForTimeout(3_000); // let the speech chain finish
     expect(
       speechRequests.filter((u) => u.includes('bars-first-earn.mp3')).length,

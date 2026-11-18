@@ -121,15 +121,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - shard: 1
-            files: tests/e2e/wall-tones.economy.spec.ts
-          - shard: 2
-            files: tests/e2e/wall-tones.desktop.spec.ts tests/e2e/wall-tones.desktop.pointer.spec.ts tests/e2e/wall-tones.settings-rows.spec.ts
-          - shard: 3
-            files: tests/e2e/wall-tones.store-tree.spec.ts tests/e2e/wall-tones.store-scroll.spec.ts tests/e2e/wall-tones.store-drag-click.spec.ts tests/e2e/wall-tones.store-touch-drag.spec.ts tests/e2e/wall-tones.gaze-pinch-toggle.spec.ts tests/e2e/wall-tones.frustum-volumes.spec.ts
-          - shard: 4
-            files: tests/e2e/wall-tones.head-caption.spec.ts tests/e2e/wall-tones.celebration.spec.ts tests/e2e/wall-tones.celebration-wiring.spec.ts tests/e2e/wall-tones.accessibility.spec.ts tests/e2e/wall-tones.feedback.spec.ts tests/e2e/wall-tones.loading.spec.ts tests/e2e/wall-tones.misc.spec.ts tests/e2e/wall-tones.mute.spec.ts tests/e2e/wall-tones.polish.spec.ts tests/e2e/wall-tones.xr-entry.spec.ts tests/e2e/wall-tones.lab-menu.spec.ts tests/e2e/wall-tones.rift-lab.spec.ts tests/e2e/wall-tones.rift-lab-mobile.spec.ts tests/e2e/wall-tones.movement.spec.ts tests/e2e/wall-tones.nod-lab.spec.ts tests/e2e/wall-tones.thumbs-lab.spec.ts
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     name: e2e-desktop (shard ${{ matrix.shard }})
     steps:
       - uses: actions/checkout@v4
@@ -183,12 +175,20 @@ jobs:
             launch_check
           fi
       - run: npm run build
-      # Serial per runner (workers: 1) because gameplay timing and audio are
-      # global to a page. Groups are split by measured CI duration (run
-      # 42421269922): economy and the desktop journeys dominate, so the heavy
-      # files each get a runner and the lighter files share the third. Keep
-      # the file lists here and in the coverage check below in sync.
-      - run: npm run test:e2e -- ${{ matrix.files }}
+      # Keep one worker per runner. Exact case lists spread slow files across
+      # runners without changing test bodies, retries, assertions or timeouts.
+      - name: Plan and audit duration-balanced case shards
+        run: node scripts/e2e-shards.mjs plan 10
+      - name: Run every selected case, including slow tests
+        run: npm run test:e2e -- --test-list .tmp/e2e-shards/${{ matrix.shard }}.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-timings-shard-${{ matrix.shard }}
+          path: |
+            test-results/e2e-report.json
+            .tmp/e2e-shards/plan.json
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -197,7 +197,7 @@ jobs:
           retention-days: 7
 
   e2e-coverage:
-    name: Check every e2e spec is assigned to a shard
+    name: Check the E2E spec roster (case coverage is audited by the planner)
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.gameplay == 'true'
@@ -235,7 +235,7 @@ jobs:
             tests/e2e/wall-tones.xr-entry.spec.ts \
             | sort > assigned.txt
           diff actual.txt assigned.txt || {
-            echo '::error::Every tests/e2e/*.spec.ts file must be listed in the e2e-desktop matrix (and here).'
+            echo '::error::Every tests/e2e/*.spec.ts file must be listed in this coverage roster. Case assignment is audited by scripts/e2e-shards.mjs.'
             exit 1
           }
 

@@ -11,6 +11,7 @@ export const CLIP_TRANSCRIPTS: Record<WallTonesClipId, string> = {
   hype1: 'This is getting ridiculous!', hype2: 'Oh, unbelievable!', hype3: "Okay, I officially can't keep up!",
   newBest1: 'New best streak!', newBest2: 'You beat your best again!', newBest3: 'Another new best!',
   barsFirstEarn: 'Your first pattern complete, and your first gold Bars earned! Take a look in the store to see what you can unlock.',
+  palmProjector: 'Open your hand flat, palm up. Your projector shows your progress and controls, right above your hand.',
   storeWelcome: 'Welcome to the store! Spend your gold Bars on upgrades.',
   storeHints: 'Each hint upgrade unlocks five more colors in your Your Turn hint. Buy it once, and keep it.',
   storeIntro: "Welcome to the store! Spend your gold Bars on upgrades. Select any item and I'll tell you what it does.",
