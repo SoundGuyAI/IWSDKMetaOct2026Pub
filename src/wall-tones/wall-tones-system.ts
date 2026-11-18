@@ -373,6 +373,9 @@ pressSpeedControl: () => void;
 pressMultiplierControl: () => void;
 /** Test-only: selects a store tile like a tap on its tile. */
 selectStoreTile: (id: string) => void;
+/** Test-only: speaks an achievement tile's narrator line like a tap
+ * pin-open, through the same once-only guard. */
+selectAchievementTile: (id: string) => void;
 storePointerTargets: Record<string, { x: number; y: number }>;
 storeSelected: string | null;
 /** Store tree scroll state (test-only reads). */
@@ -463,6 +466,19 @@ replay: 'storeItemReplay',
 saver: 'storeItemSaver',
 secret: 'storeItemSecret',
 narrator: 'storeItemHack',
+};
+
+/** Achievement category -> its narrator line (owner-approved words
+ * 2026-11-15). The hidden Secret achievement stays silent; movement
+ * activates when PR #72's category lands. Module-level so the once-only
+ * speak path (speakAchievementClipOnce) shares it with the tile grid. */
+const ACHV_CLIPS: Partial<Record<string, WallTonesClipId>> = {
+streak: 'achvStreak',
+bars: 'achvBars',
+score: 'achvScore',
+store: 'achvStore',
+presses: 'achvPresses',
+movement: 'achvMovement',
 };
 
 // How far the projector cone's root is sunk into the palm glow orb (m),
@@ -2940,6 +2956,9 @@ return system.storeSelected;
 },
 selectStoreTile: (id: string) => {
 system.selectStoreTile(id);
+},
+selectAchievementTile: (id: string) => {
+system.speakAchievementClipOnce(id);
 },
 // Test-only: fund the wallet without grinding rounds.
 grantBars: (amount: number) => {
@@ -7340,18 +7359,6 @@ popup.setProperties({ display: 'none' });
 // progress, no stored data and no achievement rules are touched.
 const demoParam = typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('demoAchievements');
 const demoLevels: Record<string, number> = { streak: 3, bars: 4, score: 1, presses: 2 };
-/** Achievement category -> its narrator line (owner-approved words
- * 2026-11-15). The hidden Secret achievement stays silent; movement
- * activates when PR #72's category lands. */
-const ACHV_CLIPS: Partial<Record<string, WallTonesClipId>> = {
-streak: 'achvStreak',
-bars: 'achvBars',
-score: 'achvScore',
-store: 'achvStore',
-presses: 'achvPresses',
-movement: 'achvMovement',
-};
-
 type TileCat = { id: string; label: string; description: string; levels: readonly number[]; hidden?: boolean; glyph?: string };
 const showMovement = movementUiVisible({
 immersive: this.world.visibilityState.peek() !== VisibilityState.NonImmersive,
@@ -7450,8 +7457,7 @@ stickyCat = cat.id;
 setSel(true);
 // Narrator line on tap/click pin-open only - never on hover/gaze, which
 // opens details passively (owner-approved words 2026-11-15).
-const achvClip = ACHV_CLIPS[cat.id];
-if (achvClip != null) this.speech.speak(achvClip);
+this.speakAchievementClipOnce(cat.id);
 });
 list.add(tile);
 }
@@ -7637,6 +7643,21 @@ this.renderPanel();
  * opens, with the instruction for the platform in use. Voices-off and Skip
  * voice still apply; when voices are off nothing plays and nothing is
  * marked, so it can still play after voices are turned back on. */
+/** Achievement tile narrator line: plays on tap/click pin-open (never on
+ * hover/gaze) and only the first time per category (owner rule 2026-11-19),
+ * remembered across sessions through the shared one-shot flags; voices-off
+ * does not consume the flag, and the stat reset re-enables the line. */
+private speakAchievementClipOnce(catId: string): void {
+const clip = ACHV_CLIPS[catId];
+if (
+clip != null &&
+!voicesOffEnabled() &&
+this.economy.takeFirstTime(`achv-cat-${catId}`)
+) {
+this.speech.speak(clip);
+}
+}
+
 private playAchievementsIntroOnce(): void {
 const key = 'wall-tones-achievements-intro-played';
 try {
@@ -7710,8 +7731,18 @@ private storeSelected: string | null = null;
 private selectStoreTile(id: string): void {
 this.storeSelected = this.storeSelected === id ? null : id;
 if (this.storeSelected != null) {
+// Each modifier's description line plays only the first time its tile is
+// opened (owner rule 2026-11-19), remembered across sessions through the
+// same one-shot flags as the other play-once lines; voices-off does not
+// consume the flag, and the stat reset re-enables the line.
 const clip = STORE_ITEM_CLIPS[this.storeSelected];
-if (clip != null) this.speech.speak(clip);
+if (
+clip != null &&
+!voicesOffEnabled() &&
+this.economy.takeFirstTime(`store-item-${this.storeSelected}`)
+) {
+this.speech.speak(clip);
+}
 }
 this.renderPanel();
 // A new selection resets the status line, so a previous tile's "Bought."
