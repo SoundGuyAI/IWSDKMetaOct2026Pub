@@ -695,3 +695,55 @@ test('store empty space clears selection without buying or closing; tiles and Bu
   await click(replay.x, replay.y);
   await expect.poll(selected).toBe(null);
 });
+
+  test('Skip pattern: locked without Play, 1000 Bars once Play is owned, button ends the demo and leaves the turn', async ({
+    page,
+  }) => {
+    test.slow();
+    await abortSpeech(page);
+    await bootWallTones(page, true, '?demoBars=0');
+    const owns = () =>
+      page.evaluate(() => (window as any).__wallTonesDebug.ownsSkipPattern);
+    const visible = () =>
+      page.evaluate(() => (window as any).__wallTonesDebug.skipPatternVisible);
+    await grantBars(page, 1500);
+    await dbg(page, 'toggleStore');
+    await dbg(page, 'buySkipPattern');
+    expect(await owns(), 'refused while Play is not owned').toBe(false);
+    expect((await readState(page)).bars).toBe(1500);
+    await grantPlayLevel(page, 1);
+    await dbg(page, 'buySkipPattern');
+    expect(await owns()).toBe(true);
+    expect((await readState(page)).bars).toBe(500);
+    await dbg(page, 'buySkipPattern');
+    expect((await readState(page)).bars, 'one-off').toBe(500);
+    await dbg(page, 'toggleStore');
+
+    await submitPad(page, 0); // start tap
+    await playToStreak(page, 4);
+    // Wait for a demonstration of 5 notes, then press Skip pattern.
+    await expect
+      .poll(
+        async () => {
+          const s = await readState(page);
+          return s.phase === 'playback' && s.sequence.length >= 5;
+        },
+        { timeout: 120_000, intervals: [50] },
+      )
+      .toBe(true);
+    await expect.poll(visible, { timeout: 10_000 }).toBe(true);
+    const t0 = Date.now();
+    await dbg(page, 'pressSkipPattern');
+    await expect
+      .poll(async () => (await readState(page)).phase, { timeout: 5_000 })
+      .toBe('input');
+    // A full 5-note demo takes several seconds; the skip lands well inside it.
+    expect(Date.now() - t0).toBeLessThan(2_500);
+    const snap = await readState(page);
+    expect(snap.inputStep, 'player turn untouched').toBe(0);
+    expect(snap.streak).toBe(4);
+    await expect.poll(visible, { timeout: 5_000 }).toBe(false);
+    // The turn still works note by note.
+    await submitPad(page, snap.sequence[0]!);
+    expect((await readState(page)).inputStep).toBe(1);
+  });
