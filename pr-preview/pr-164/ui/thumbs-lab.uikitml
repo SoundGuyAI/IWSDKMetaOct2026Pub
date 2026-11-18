@@ -1,0 +1,131 @@
+<!--
+  Nod Yes/No research lab panel (backlog item 52, head-gesture half).
+  Isolated Cypher dialogue scene: one-way channel, answers by nod/shake.
+-->
+<style>
+  .thumbs-lab-root {
+    flex-direction: column;
+    width: 560px;
+  }
+
+  .thumbs-lab-content {
+    flex-direction: column;
+    gap: 10px;
+    padding: 24px;
+  }
+
+  .thumbs-lab-eyebrow {
+    color: #6b5a00;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+  }
+
+  .thumbs-lab-eyebrow:dark {
+    color: #f5d90a;
+  }
+
+  .thumbs-lab-heading {
+    color: #1c1d20;
+    font-size: 30px;
+    font-weight: 700;
+    line-height: 36px;
+  }
+
+  .thumbs-lab-heading:dark {
+    color: #fafaf7;
+  }
+
+  .thumbs-lab-body {
+    color: #3a3b40;
+    font-size: 17px;
+    line-height: 24px;
+  }
+
+  .thumbs-lab-body:dark {
+    color: #dddfe3;
+  }
+
+  .thumbs-lab-line {
+    color: #1c1d20;
+    font-size: 19px;
+    font-weight: 700;
+    line-height: 26px;
+    margin-top: 4px;
+    margin-bottom: 4px;
+  }
+
+  .thumbs-lab-line:dark {
+    color: #fafaf7;
+  }
+
+  .thumbs-lab-telemetry {
+    color: #6a6c72;
+    font-size: 13px;
+    line-height: 18px;
+  }
+
+  .thumbs-lab-telemetry:dark {
+    color: #9a9ea6;
+  }
+
+  .thumbs-lab-button {
+    justify-content: center;
+    height: 56px;
+    margin-left: 24px;
+    margin-right: 24px;
+    margin-bottom: 10px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+
+  .thumbs-lab-button-label {
+    font-size: 20px;
+    font-weight: 700;
+    transform-translate-y: 1px;
+  }
+
+  .thumbs-lab-answer-row {
+    flex-direction: row;
+    gap: 12px;
+    margin-left: 24px;
+    margin-right: 24px;
+    margin-bottom: 10px;
+  }
+
+  .thumbs-lab-answer-button {
+    justify-content: center;
+    flex-grow: 1;
+    height: 56px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+</style>
+<Panel id="thumbs-lab-root" class="thumbs-lab-root">
+  <div class="thumbs-lab-content">
+    <div id="thumbs-lab-eyebrow" class="thumbs-lab-eyebrow">RESEARCH LAB</div>
+    <div id="thumbs-lab-heading" class="thumbs-lab-heading">Thumbs Yes / No</div>
+    <div id="thumbs-lab-intro" class="thumbs-lab-body">Cypher's channel is one-way: he can see you through the link, but he can't hear you. Answer with a thumbs up (yes) or thumbs down (no). Enter XR first for hand tracking; on desktop use the buttons.</div>
+    <div id="thumbs-lab-status" class="thumbs-lab-body">...</div>
+    <div id="thumbs-lab-line" class="thumbs-lab-line">...</div>
+    <div id="thumbs-lab-voice" class="thumbs-lab-telemetry">Cypher voice: checking...</div>
+    <div id="thumbs-lab-telemetry" class="thumbs-lab-telemetry">telemetry starts with the link</div>
+  </div>
+  <Button id="thumbs-lab-start-button" class="thumbs-lab-button">
+    <ButtonLabel id="thumbs-lab-start-label" class="thumbs-lab-button-label">Open the link</ButtonLabel>
+  </Button>
+  <div class="thumbs-lab-answer-row">
+    <Button id="thumbs-lab-yes-button" class="thumbs-lab-answer-button">
+      <ButtonLabel class="thumbs-lab-button-label">Yes</ButtonLabel>
+    </Button>
+    <Button id="thumbs-lab-no-button" class="thumbs-lab-answer-button">
+      <ButtonLabel class="thumbs-lab-button-label">No</ButtonLabel>
+    </Button>
+  </div>
+  <Button id="thumbs-lab-repeat-button" class="thumbs-lab-button">
+    <ButtonLabel class="thumbs-lab-button-label">Repeat the line</ButtonLabel>
+  </Button>
+  <Button id="thumbs-lab-back-button" class="thumbs-lab-button" style="margin-bottom: 24px">
+    <ButtonLabel class="thumbs-lab-button-label">Back to menu</ButtonLabel>
+  </Button>
+</Panel>
