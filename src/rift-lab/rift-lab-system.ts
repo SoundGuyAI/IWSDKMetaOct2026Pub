@@ -88,6 +88,7 @@ import {
   SEAL_HOLD_MS,
   isOverLabPanel,
 } from './rift-energy.js';
+import { riftEncounter } from '../wall-tones/rift-encounter.js';
 import {
   closestSurfaceHit,
   createGeometryParticlePool,
@@ -431,6 +432,10 @@ export class RiftLabSystem extends createSystem({
   private telemetryText: UIKit.Text | null = null;
   private active = false;
   private running = false;
+  /** Gameplay encounter drive: active inside Wall Tones mode while the
+   * three-portal encounter runs (owner-settled rules in rift-encounter.ts). */
+  private encounterLive = false;
+  private lastMode = 'menu';
   private lastSpawnAt = 0;
   /** Debug-bridge opt-in only; always false in normal play. */
   private autoSpawnPaused = false;
@@ -694,13 +699,13 @@ export class RiftLabSystem extends createSystem({
 
     const onModeChange = (event: Event) => {
       const mode = (event as CustomEvent<{ mode: string }>).detail.mode;
+      this.lastMode = mode;
       this.setActive(mode === 'riftlab');
+      this.syncEncounterDrive();
     };
     window.addEventListener('experience-mode-changed', onModeChange);
-    this.setActive(
-      (window.sessionStorage.getItem('iwsdk-experience-mode') ?? 'menu') ===
-        'riftlab',
-    );
+    this.lastMode = window.sessionStorage.getItem('iwsdk-experience-mode') ?? 'menu';
+    this.setActive(this.lastMode === 'riftlab');
 
     this.cleanupFuncs.push(() => {
       canvas.removeEventListener('pointerdown', onPointerDown);
@@ -893,13 +898,23 @@ export class RiftLabSystem extends createSystem({
   }
 
   /** A spot on a real detected wall, at reachable height, facing the room. */
-  private pickWallSpot(): { position: Vector3; normal: Vector3 } | null {
+  private pickWallSpot(preferFrontWall = false): { position: Vector3; normal: Vector3 } | null {
     const walls = this.currentWalls();
     if (walls.length === 0) return null;
     const existing = [...this.riftViews.values()].map((v) => v.position);
     const crowd = (w: (typeof walls)[number]) =>
       existing.filter((p) => p.distanceTo(new Vector3(w.center.x, p.y, w.center.z)) < 1.5).length;
-    const ordered = [...walls].sort((a, b) => crowd(a) - crowd(b));
+    // Encounter rule (his words): portals go on the wall in front of the
+    // player when possible - the wall holding the pads. Crowding on that
+    // wall still yields to another wall rather than stacking portals.
+    const pref = preferFrontWall ? riftEncounter.getPreferredWallPosition() : null;
+    const prefDist = (w: (typeof walls)[number]) =>
+      pref == null
+        ? 0
+        : Math.hypot(w.center.x - pref.x, w.center.z - pref.z);
+    const ordered = [...walls].sort(
+      (a, b) => crowd(a) - crowd(b) || prefDist(a) - prefDist(b),
+    );
     for (const wall of ordered) {
       const object = wall.entity.object3D;
       if (object == null) continue;
@@ -1104,13 +1119,13 @@ export class RiftLabSystem extends createSystem({
     }
   }
 
-  private spawnRift(): void {
+  private spawnRift(preferFrontWall = false): void {
     if (this.riftViews.size >= MAX_OPEN_RIFTS) return;
     let wallSpot: { position: Vector3; normal: Vector3 } | null = null;
     if (this.isImmersive()) {
       // MR: only on real detected walls. No wall spot means no rift: pretend
       // walls would misstate what this Lab is testing.
-      wallSpot = this.isMixedReality() ? this.pickWallSpot() : null;
+      wallSpot = this.isMixedReality() ? this.pickWallSpot(preferFrontWall) : null;
       if (wallSpot == null) return;
     }
     // Flat mode: a spot clear of the menu and of other rifts, or defer (the
@@ -1455,12 +1470,73 @@ export class RiftLabSystem extends createSystem({
     }
   }
 
+  /**
+   * Encounter drive: while the Wall Tones rift encounter runs, this system
+   * renders portals and sealing inside the main game instead of the Lab.
+   * Spawns, charge and run resets come from the shared RiftEncounter
+   * controller; sealing input/visuals are the Lab's existing paths. The Lab
+   * panel, Start flow, starting-energy grant and auto-spawn stay Lab-only.
+   */
+  private syncEncounterDrive(): void {
+    const want = this.lastMode === 'walltones' && riftEncounter.encounterActive();
+    if (want === this.encounterLive) return;
+    this.encounterLive = want;
+    if (want) {
+      this.active = true;
+      this.root.visible = true;
+      this.running = true;
+      this.aimHasMoved = false;
+      this.awaitingWalls = false;
+      return;
+    }
+    // Drive lost (mode change or encounter resolved): drop encounter scene
+    // state. The controller decides what the rules keep (onDriveLost).
+    if (this.lastMode !== 'riftlab') {
+      this.active = false;
+      this.root.visible = false;
+    }
+    riftEncounter.onDriveLost();
+    this.stopRun();
+  }
+
+  /** Encounter servicing each frame while the drive is live. */
+  private serviceEncounterDrive(): void {
+    if (riftEncounter.consumeClearRequested()) {
+      for (const id of [...this.riftViews.keys()]) {
+        this.removeRiftView(id);
+      }
+      this.game.resetRun();
+    }
+    while (riftEncounter.consumeDueSpawn()) {
+      const before = this.riftViews.size;
+      this.spawnRift(true);
+      if (this.riftViews.size === before) {
+        // No safe spot (MR walls unknown yet, flat crowding): retry soon,
+        // never skip the portal.
+        riftEncounter.failLastSpawn();
+        break;
+      }
+    }
+    let charge: PadColorName | null;
+    while ((charge = riftEncounter.consumeCharge()) != null) {
+      this.game.addNoteEnergy(charge);
+    }
+    riftEncounter.setOpenRifts(
+      this.game
+        .getRifts()
+        .filter((rift) => rift.state === 'open' || rift.state === 'opening')
+        .length,
+    );
+  }
+
   update(delta: number): void {
+    this.syncEncounterDrive();
     if (!this.active) {
       riftTargetPositions.length = 0;
       riftAimRays.length = 0;
       return;
     }
+    if (this.encounterLive) this.serviceEncounterDrive();
     this.updateXrHands();
     syncRiftAudioListener(this.world.camera);
     this.game.updateOrbit(delta);
@@ -1756,6 +1832,7 @@ export class RiftLabSystem extends createSystem({
       }
 
       const cleared = this.game.clearSealed();
+      if (cleared > 0 && this.encounterLive) riftEncounter.noteSealed(cleared);
       if (cleared > 0) {
         for (const [id, view] of this.riftViews) {
           if (view.rift.state === 'sealed') {
