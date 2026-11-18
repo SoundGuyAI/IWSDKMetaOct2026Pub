@@ -274,6 +274,9 @@ cypherWindowsStarted: number;
 backgroundLinesCompleted: number;
 cypherSeamVisible: boolean;
 previewCypherSeam: (visible: boolean) => void;
+/** Test-only: begins the rift encounter as the seam window would (visual
+ * QA for spawn pacing and layering without reaching streak 15). */
+previewRiftEncounter: () => void;
 phase: string;
 flowPhase: string;
 sequence: readonly number[];
@@ -2404,6 +2407,7 @@ get backgroundLinesCompleted() { return system.backgroundProgress.completedLines
 get cypherWindowsStarted() { return system.cypherProgress.completedWindows; },
 get cypherSeamVisible() { return system.cypherSeam != null; },
 previewCypherSeam: (visible) => { system.setCypherSeam(visible); },
+previewRiftEncounter: () => { riftEncounter.noteSeamWindowStarted(); },
 get phase() {
 return system.game.phase;
 },
