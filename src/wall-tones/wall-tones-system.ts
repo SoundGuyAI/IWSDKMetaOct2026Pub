@@ -4904,8 +4904,11 @@ return;
 }
 if (narrIntact()) {
 const window = this.cypherProgress.beginWindow(streak);
-if (window) await this.playCypherWindow(window, narrIntact);
-else {
+if (window) {
+await this.playCypherWindow(window, narrIntact);
+// Timing-fault beat: next pattern starts fresh at one note. Streak, score, owned savers and story progress stay.
+if (window.fault && narrIntact()) this.game.restartPatternKeepStreak();
+} else {
 // Skip/interrupt leaves the line unheard (lineCompleted is not reached), so it retries at the next quiet pattern boundary.
 const line = this.backgroundProgress.successfulPattern(this.cypherProgress.finished, !this.speech.isBusy());
 if (line && narrIntact()) {

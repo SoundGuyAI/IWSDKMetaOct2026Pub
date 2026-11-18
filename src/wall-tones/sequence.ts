@@ -10,6 +10,8 @@ export class WallTonesSequence {
   readonly sequence: WallTonePadId[] = [];
   inputStep = 0;
   streak = 0;
+  /** Completed patterns carried over from before a timing-fault reset. Streak = carried + current pattern length. */
+  private carriedStreak = 0;
   bestStreak = 0;
   /** Best before this run, since bestStreak updates as soon as a round ends. */
   private bestStreakBeforeRun = 0;
@@ -28,6 +30,7 @@ export class WallTonesSequence {
     this.sequence.length = 0;
     this.inputStep = 0;
     this.streak = 0;
+    this.carriedStreak = 0;
   }
 
   resetAllScores(): void {
@@ -42,6 +45,15 @@ export class WallTonesSequence {
     this.sequence.length = 0;
     this.inputStep = 0;
     this.streak = 0;
+    this.carriedStreak = 0;
+    this.appendRandomPad();
+  }
+
+  /** Timing-fault reset: start a fresh one-note pattern, keep the earned streak and best. Score, owned savers and story progress are held elsewhere and untouched. */
+  restartPatternKeepStreak(): void {
+    this.carriedStreak = this.streak;
+    this.sequence.length = 0;
+    this.inputStep = 0;
     this.appendRandomPad();
   }
 
@@ -56,7 +68,7 @@ export class WallTonesSequence {
     if (this.inputStep < this.sequence.length) {
       return false;
     }
-    this.streak = this.sequence.length;
+    this.streak = this.carriedStreak + this.sequence.length;
     if (this.streak > this.bestStreak) {
       this.bestStreak = this.streak;
     }
