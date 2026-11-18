@@ -44,6 +44,48 @@ const readChevronOpacity = async (
   };
 };
 
+/** Debug-bridge pointer target for one named element (live projection). */
+const readTarget = (
+  page: Page,
+  name: string,
+): Promise<{ x: number; y: number } | undefined> =>
+  page.evaluate(
+    (n) =>
+      (window as unknown as {
+        __wallTonesDebug: { storePointerTargets: Record<string, { x: number; y: number }> };
+      }).__wallTonesDebug.storePointerTargets[n],
+    name,
+  );
+
+/**
+ * Setup grounding for pointer tests: the targets are live projections of a
+ * 3D panel that can still be settling right after the store opens, so wait
+ * until the named target holds still (<1px between two reads ~150ms apart)
+ * before using its coordinates. A timeout here is a SETUP failure (the
+ * panel never settled), not a product assertion about scrolling.
+ */
+const waitForStableTarget = async (
+  page: Page,
+  name: string,
+): Promise<{ x: number; y: number }> => {
+  const deadline = Date.now() + 15_000;
+  let prev = await readTarget(page, name);
+  while (Date.now() < deadline) {
+    await page.waitForTimeout(150);
+    const next = await readTarget(page, name);
+    if (
+      prev != null &&
+      next != null &&
+      Math.abs(next.x - prev.x) < 1 &&
+      Math.abs(next.y - prev.y) < 1
+    ) {
+      return next;
+    }
+    prev = next;
+  }
+  throw new Error(`SETUP: store pointer target "${name}" did not stabilize within 15s`);
+};
+
 const readBalance = (page: Page): Promise<string | null> =>
   page.evaluate(
     () =>
@@ -196,7 +238,7 @@ test.describe('Wall Tones store scrolling (MR critical fix)', () => {
 
   test('touch taps on the chevrons scroll the tree (phone-style input)', async ({
     browser,
-  }) => {
+  }, testInfo) => {
     // Touch input needs a touch-capable context, like a phone: pointer
     // events then arrive with pointerType 'touch', which is also how uikit
     // sees XR rays (nativeEvent carries no mouse pointerType).
@@ -206,6 +248,38 @@ test.describe('Wall Tones store scrolling (MR critical fix)', () => {
       ignoreHTTPSErrors: true,
     });
     const page = await context.newPage();
+    // Diagnostic only: log the tap's raw DOM events so a missing click can
+    // be told apart from an over-budget or mis-targeted gesture. Nothing
+    // here asserts on wall-clock timing; the outcome assertion below is the
+    // actual scroll.
+    await page.addInitScript(() => {
+      const rec = (e: Event) => {
+        const pe = e as PointerEvent;
+        const te = e as TouchEvent;
+        (window as unknown as { __tapLog: unknown[] }).__tapLog.push({
+          type: e.type,
+          pointerType: pe.pointerType ?? null,
+          x: pe.clientX ?? te.changedTouches?.[0]?.clientX ?? null,
+          y: pe.clientY ?? te.changedTouches?.[0]?.clientY ?? null,
+          ts: Math.round(e.timeStamp),
+        });
+      };
+      (window as unknown as { __tapLog: unknown[] }).__tapLog = [];
+      for (const t of ['pointerover', 'pointerdown', 'pointerup', 'pointercancel', 'touchstart', 'touchend']) {
+        window.addEventListener(t, rec, true);
+      }
+    });
+    const attachTapLog = async (name: string) => {
+      const log = await page
+        .evaluate(() => (window as unknown as { __tapLog: unknown[] }).__tapLog)
+        .catch(() => null);
+      if (log != null) {
+        await testInfo.attach(name, {
+          body: JSON.stringify(log, null, 1),
+          contentType: 'application/json',
+        });
+      }
+    };
     try {
       await abortSpeech(page);
       await bootWallTones(page);
@@ -213,29 +287,36 @@ test.describe('Wall Tones store scrolling (MR critical fix)', () => {
       await expect
         .poll(async () => (await readScroll(page)).maxY, { timeout: 30_000 })
         .toBeGreaterThan(0);
-      const chevron = await page.evaluate(
-        () =>
-          (window as unknown as {
-            __wallTonesDebug: { storePointerTargets: Record<string, { x: number; y: number }> };
-          }).__wallTonesDebug.storePointerTargets['store-scroll-down'],
-      );
-      expect(chevron).toBeDefined();
+      // Readiness: the down chevron must be live (not dimmed) before a tap
+      // can scroll; this is the same enabled rule the product applies.
+      await expect
+        .poll(async () => (await readChevronOpacity(page)).down, { timeout: 10_000 })
+        .toBe(1);
+      // Setup grounding: pointer targets are live world projections, so wait
+      // for the chevron to stop moving before tapping its rendered position.
+      // A miss here is a setup failure, not a product assertion.
+      const chevron = await waitForStableTarget(page, 'store-scroll-down');
       const cdp = await context.newCDPSession(page);
       const touch = async (type: string, x: number, y: number) =>
         cdp.send('Input.dispatchTouchEvent', {
           type,
           touchPoints: type === 'touchEnd' ? [] : [{ x, y, id: 1 }],
         });
-      await touch('touchStart', chevron!.x, chevron!.y);
+      await page.evaluate(() => {
+        (window as unknown as { __tapLog: unknown[] }).__tapLog = [];
+      });
+      await touch('touchStart', chevron.x, chevron.y);
       await page.waitForTimeout(120);
-      await touch('touchEnd', chevron!.x, chevron!.y);
+      await touch('touchEnd', chevron.x, chevron.y);
       await expect
         .poll(async () => (await readScroll(page)).y, { timeout: 10_000 })
         .toBeGreaterThan(0);
       // Back to the top.
       await dbg(page, 'scrollStore', -100000);
       expect((await readScroll(page)).y).toBe(0);
+      await attachTapLog('touch-tap-events.json');
     } finally {
+      await attachTapLog('touch-tap-events-final.json');
       await context.close();
     }
   });
