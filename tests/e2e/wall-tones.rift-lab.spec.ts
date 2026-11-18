@@ -36,6 +36,14 @@ test('Rift Sealing Lab opens from the Lab menu and runs the charge-seal loop', a
   // Start grants one full seal (120 energy / 72 orbit notes).
   expect(snap.energy).toBe(120);
   expect(snap.noteCount).toBe(72);
+  // Item 118 diagnostics: flat mode draws the Start charge cloud and reports it.
+  expect(snap.chargeCloud.immersive).toBe(false);
+  expect(snap.chargeCloud.totalNotes).toBe(72);
+  // Meshes are created on the next frame, so poll for the drawn cloud.
+  await expect
+    .poll(async () => (await snapshot(page)).chargeCloud.visibleNotes)
+    .toBe(72);
+  expect((await snapshot(page)).chargeCloud.centroidFromHeadM).not.toBeNull();
   expect(snap.status).toMatch(/^Ready\./);
   expect(snap.status).not.toContain('Not enough');
 
