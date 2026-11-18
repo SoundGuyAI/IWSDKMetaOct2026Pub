@@ -747,3 +747,94 @@ test('store empty space clears selection without buying or closing; tiles and Bu
     await submitPad(page, snap.sequence[0]!);
     expect((await readState(page)).inputStep).toBe(1);
   });
+
+  test('Store layout: Multiplier shares the Speed row; Pad 5, Hack and ????? share the last row; Skip pattern line from Play', async ({
+    page,
+  }) => {
+    test.slow();
+    await abortSpeech(page);
+    await bootWallTones(page, true, '?demoBars=0');
+    await dbg(page, 'toggleStore');
+    const read = () =>
+      page.evaluate(
+        () =>
+          (window as any).__wallTonesDebug.storePointerTargets as Record<
+            string,
+            { x: number; y: number }
+          >,
+      );
+    await expect
+      .poll(
+        async () => {
+          const t = await read();
+          return ['speed', 'multiplier', 'pads56', 'narrator', 'secret', 'skip', 'play'].every(
+            (k) => t['store-tile-' + k] != null,
+          );
+        },
+        { timeout: 30_000 },
+      )
+      .toBe(true);
+    // Let the tree settle before comparing positions.
+    await page.waitForTimeout(1500);
+    const t = await read();
+    const at = (k: string) => t['store-tile-' + k]!;
+    expect(Math.abs(at('speed').y - at('multiplier').y), 'Speed and Multiplier share a row').toBeLessThanOrEqual(2);
+    expect(at('multiplier').x).toBeGreaterThan(at('speed').x + 20);
+    expect(Math.abs(at('pads56').y - at('narrator').y)).toBeLessThanOrEqual(2);
+    expect(Math.abs(at('narrator').y - at('secret').y), 'Pad 5, Hack, Secret share a row').toBeLessThanOrEqual(2);
+    expect(at('pads56').x).toBeLessThan(at('narrator').x);
+    expect(at('narrator').x).toBeLessThan(at('secret').x);
+    expect(at('secret').y, 'Secret row is below Multiplier row').toBeGreaterThan(at('multiplier').y + 40);
+    expect(Math.abs(at('skip').y - at('play').y), 'Skip pattern sits in Play row').toBeLessThanOrEqual(2);
+    expect(at('skip').x).toBeLessThan(at('play').x);
+  });
+
+  test('Play regression: used at a streak in one run, still works at the same streak in the next run', async ({
+    page,
+  }) => {
+    test.slow();
+    await abortSpeech(page);
+    await bootWallTones(page, true);
+    await grantPlayLevel(page, 1);
+    await submitPad(page, 0); // start tap
+    await expect
+      .poll(async () => (await readState(page)).phase, { timeout: 90_000 })
+      .toBe('input');
+    // Run 1, round 1: Play enters the single note (marks Play used at streak 0).
+    await dbg(page, 'pressPlay');
+    await expect
+      .poll(async () => (await readState(page)).streak, { timeout: 90_000 })
+      .toBe(1);
+    // Round 2 begins; fail on purpose and start a new run from Game Over.
+    await expect
+      .poll(
+        async () => {
+          const s = await readState(page);
+          return s.phase === 'input' && s.sequence.length === 2;
+        },
+        { timeout: 90_000 },
+      )
+      .toBe(true);
+    const snap = await readState(page);
+    await submitPad(page, (snap.sequence[0]! + 1) % 4);
+    await expect
+      .poll(() => page.evaluate(() => (window as any).__wallTonesDebug.gameOverOpen), {
+        timeout: 30_000,
+      })
+      .toBe(true);
+    await dbg(page, 'gameOverNewRun');
+    await expect
+      .poll(
+        async () => {
+          const s = await readState(page);
+          return s.phase === 'input' && s.sequence.length === 1 && s.streak === 0;
+        },
+        { timeout: 90_000 },
+      )
+      .toBe(true);
+    // Fresh run, same streak number as when Play was used: it must work.
+    await dbg(page, 'pressPlay');
+    await expect
+      .poll(async () => (await readState(page)).streak, { timeout: 90_000 })
+      .toBe(1);
+  });

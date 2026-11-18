@@ -164,7 +164,7 @@ export const REPLAY_EARN_STEP = 5;
 
 /** One-time Top Secret store item price (user-settled Nov 7): grants the
  * hidden Secret Revealed achievement and nothing else. */
-export const TOP_SECRET_COST = 10000;
+export const TOP_SECRET_COST = 100000;
 
 /** Bars per correct pad press (provisional value, user to calibrate). */
 export const PRESS_BARS = 1;
@@ -861,7 +861,7 @@ export class WallTonesEconomy {
     return this.skipPatternOwned;
   }
 
-  /** Gate (owner 2026-11-18 11:44): available once the player has Play. */
+  /** Gate: available once the player has Play. */
   skipPatternUnlocked(): boolean {
     return this.playLevel >= 1;
   }

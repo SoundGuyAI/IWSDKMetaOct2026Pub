@@ -293,7 +293,7 @@ test('Play 500/1000/2000/4000 and Index 500 one-off (owner approved test prices 
   assert.equal(poor.getBars(), pb);
 });
 
-test('Skip pattern: one-off 1000 Bars, needs Play owned, never consumed (owner 2026-11-18)', () => {
+test('Skip pattern: one-off 1000 Bars, needs Play owned, never consumed', () => {
   assert.equal(SKIP_PATTERN_COST, 1000);
   const eco = ecoWith(5000);
   assert.equal(eco.skipPatternUnlocked(), false, 'locked without Play');
@@ -325,4 +325,17 @@ test('Skip pattern wiring: button, flat overlay, demo-only skip, store tile left
   ]) {
     assert.ok(sys.includes(snippet), `system missing ${snippet}`);
   }
+});
+
+test('Store layout steering: Secret costs 100000 and reads ?????, shared rows, Play-to-Skip line', () => {
+  assert.match(src, /export const TOP_SECRET_COST = 100000;/);
+  for (const snippet of [
+    "'?????'",
+    "ids: ['speed', 'multiplier']",
+    "ids: ['pads56', 'narrator', 'secret']",
+    "storeChipGlyphSrc('arrow-left'",
+  ]) {
+    assert.ok(sys.includes(snippet), `system missing ${snippet}`);
+  }
+  assert.ok(!sys.includes("ids: ['secret']"), 'Secret no longer has its own row');
 });

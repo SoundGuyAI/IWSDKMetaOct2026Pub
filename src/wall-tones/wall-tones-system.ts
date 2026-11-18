@@ -527,7 +527,7 @@ private gameOverOpen = false;
 /** Run id whose single automatic replay has been used. */
 private idleReplayUsedRunId = -1;
 /** Once-per-pattern Play use key (the streak identifies the pattern). */
-private playUsedForStreak = -1;
+private playUsedForPattern = '';
 /** Until this time the status line shows the caption-only idle nudge. */
 private idleNudgeUntil = 0;
 private readonly viewer = new Vector3();
@@ -713,7 +713,7 @@ private blinkCueRoot: Object3D | null = null;
 private blinkCueEntity: Entity | null = null;
 /** Panel Skip voice button mirrors speech.isBusy(); polled each frame. */
 private skipVoiceVisible = false;
-/** Skip pattern button shown (owner 2026-11-18): demo playing, owned, no voice. */
+/** Skip pattern button shown: demo playing, owned, no voice. */
 private skipPatternVisible = false;
 /** Set by the Skip pattern button; ends the current demonstration early. */
 private skipDemoRequested = false;
@@ -2262,7 +2262,7 @@ this.narrationInterrupt += 1;
 this.speech.cancel();
 }
 
-/** Skip pattern (owner 2026-11-18): ends the tone demonstration only; the
+/** Skip pattern: ends the tone demonstration only; the
  * player's turn is untouched. Ignored unless the button is showing. */
 private onSkipPattern(): void {
 if (!this.skipPatternVisible) return;
@@ -6068,9 +6068,12 @@ return;
 if (this.game.phase !== 'input' || this.game.sequence.length === 0) {
 return;
 }
-// Owner rule 2026-11-13: once per pattern (keyed on the streak, which
-// identifies the current pattern and resets on failure).
-if (this.playUsedForStreak === this.game.streak) {
+// Rule: Play is once per pattern. A pattern is identified by the
+// run AND the streak: the streak alone repeats after a failure (a new run
+// climbs back through the same numbers), which wrongly denied Play on a
+// fresh pattern after it was used at that streak in an earlier run.
+const patternKey = `${this.game.runId}:${this.game.streak}`;
+if (this.playUsedForPattern === patternKey) {
 this.statusText = 'Play is once per pattern.';
 this.renderPanel();
 void playErrorTone();
@@ -6083,7 +6086,7 @@ this.game.sequence.length - this.game.inputStep,
 if (playCount <= 0) {
 return;
 }
-this.playUsedForStreak = this.game.streak;
+this.playUsedForPattern = patternKey;
 this.lastInputAt = performance.now() / 1000;
 this.idleReplayQueued = false;
 this.game.phase = 'playback';
@@ -6525,7 +6528,7 @@ icon: eco.playUnlocked(),
 },
 // Index pointer (owner add 2026-11-13): same row as Play, gated at Hint
 // level 3 (owner 2026-11-12). One-off test price 500 (approved 2026-11-14).
-// Skip pattern (owner 2026-11-18): unlocks once Play is owned; one-off.
+// Skip pattern: unlocks once Play is owned; one-off.
 {
 id: 'skip',
 name: 'Skip pattern',
@@ -6562,7 +6565,8 @@ icon: true,
 },
 {
 id: 'secret',
-name: 'Secret',
+// Hidden until bought.
+name: eco.ownsTopSecret() ? 'Secret' : '?????',
 badge: eco.ownsTopSecret() ? '\u2713' : '?',
 state: eco.ownsTopSecret() ? 'on' : 'off',
 price: eco.ownsTopSecret() ? 'Owned' : `${TOP_SECRET_COST}`,
@@ -6798,6 +6802,31 @@ col.add(makeTile(t));
 col.add(levelTrack(level, color));
 return col;
 };
+// Two gated tiles side by side, each with its level track below.
+const pairChainRow = (
+a: [StoreTile, number, number],
+b: [StoreTile, number, number],
+): UIKit.Container => {
+const row = new UIKit.Container({
+flexDirection: 'row',
+justifyContent: 'center',
+gap: 8,
+width: TREE_W,
+});
+for (const [t, level, color] of [a, b]) {
+const cell = new UIKit.Container({
+flexDirection: 'row',
+flexWrap: 'wrap',
+justifyContent: 'center',
+gap: 4,
+width: TILE_S + 8,
+});
+cell.add(makeTile(t));
+cell.add(levelTrack(level, color));
+row.add(cell);
+}
+return row;
+};
 const soloRow = (t: StoreTile): UIKit.Container => {
 const row = new UIKit.Container({
 flexDirection: 'row',
@@ -6909,12 +6938,12 @@ buyText = 'Saver - ' + SAVER_PRICE_BARS;
 cost = SAVER_PRICE_BARS;
 break;
 case 'secret':
-titleText = 'Top Secret';
+titleText = eco.ownsTopSecret() ? 'Top Secret' : '?????';
 if (eco.ownsTopSecret()) {
 bodyText = 'Secret Revealed.';
 } else {
 bodyText = 'A secret. It stays secret.';
-buyText = `Top Secret - ${TOP_SECRET_COST}`;
+buyText = `????? - ${TOP_SECRET_COST}`;
 cost = TOP_SECRET_COST;
 }
 break;
@@ -6981,10 +7010,11 @@ topRow.add(makeTile(byId.get(id)!));
 const bottomRow = new UIKit.Container({
 flexDirection: 'row',
 flexWrap: 'wrap',
+justifyContent: 'center',
 gap: 8,
 width: TREE_W,
 });
-for (const id of ['pads56', 'narrator']) {
+for (const id of ['pads56', 'narrator', 'secret']) {
 bottomRow.add(makeTile(byId.get(id)!));
 }
 // Rows in display order; the detail card overlays the viewport bottom
@@ -7029,6 +7059,34 @@ positionTop: 0,
 });
 skipSlot.add(makeTile(byId.get('skip')!));
 duo.add(skipSlot);
+// Prerequisite line from Play to Skip pattern: Skip
+// pattern needs Play owned (Play level 1+), so the line turns green once
+// that holds. Sits in the gap between the two tiles at tile-icon height.
+const skipLineColor = eco.skipPatternUnlocked() ? LINE_OK : LINE_COLOR;
+const skipLink = new UIKit.Container({
+positionType: 'absolute',
+positionLeft: TILE_S + 2,
+positionTop: 0,
+width: Math.floor((TREE_W - TILE_S) / 2) - TILE_S - 4,
+height: TILE_S,
+flexDirection: 'row',
+alignItems: 'center',
+});
+skipLink.add(
+new UIKit.Image({
+src: storeChipGlyphSrc('arrow-left', skipLineColor === LINE_OK ? '#4cc38a' : '#9aa4b6'),
+width: 6,
+height: 10,
+}),
+);
+skipLink.add(
+new UIKit.Container({
+flexGrow: 1,
+height: 3,
+backgroundColor: skipLineColor,
+}),
+);
+duo.add(skipLink);
 duo.add(makeTile(byId.get('play')!));
 const indexSlot = new UIKit.Container({
 positionType: 'absolute',
@@ -7055,11 +7113,18 @@ h: ROW_CONN_H,
 // each future tile already says 'Locked' under its name, and a floating
 // label here reads as Autoplay's own state even after purchase.
 // Speed sits on its own row with level pips (same treatment as Play).
-{ ids: ['speed'], node: chainRow(byId.get('speed')!, speedLevel, 0x38d9c8), h: ROW_CHAIN_H },
-// Multiplier sits on its own row with level pips (same as Play).
-{ ids: ['multiplier'], node: chainRow(byId.get('multiplier')!, multiplierLevel, 0xf59a4a), h: ROW_CHAIN_H },
-{ ids: ['pads56', 'narrator'], node: bottomRow, h: ROW_TILE_H },
-{ ids: ['secret'], node: soloRow(byId.get('secret')!), h: ROW_TILE_H },
+// Speed and Multiplier share one row, each with its level pips below
+//.
+{
+ids: ['speed', 'multiplier'],
+node: pairChainRow(
+[byId.get('speed')!, speedLevel, 0x38d9c8],
+[byId.get('multiplier')!, multiplierLevel, 0xf59a4a],
+),
+h: ROW_CHAIN_H,
+},
+// Pad 5, Hack and Secret share the last row.
+{ ids: ['pads56', 'narrator', 'secret'], node: bottomRow, h: ROW_TILE_H },
 ];
 // The detail card itself. popup-card geometry (uikitml px): 12 padding +
 // 26 heading + 6 gap put the list top at 44; the viewport bottom is

@@ -237,14 +237,14 @@ export function storeTileSrc(id: string, state: TileState, badge: string, glyphL
  * once it opens, and the downward arrow under the chip. Canvas-drawn like the
  * tiles - text glyphs render as boxes in some UIKit fonts.
  */
-export type ChipGlyph = 'lock' | 'check' | 'arrow';
+export type ChipGlyph = 'lock' | 'check' | 'arrow' | 'arrow-left';
 
 export function storeChipGlyphSrc(kind: ChipGlyph, color: string): string {
   const key = `store-chip:${kind}:${color}`;
   const hit = cache.get(key);
   if (hit !== undefined) return hit;
-  const w = kind === 'arrow' ? 10 : 12;
-  const h = kind === 'lock' ? 14 : kind === 'arrow' ? 6 : 12;
+  const w = kind === 'arrow' ? 10 : kind === 'arrow-left' ? 6 : 12;
+  const h = kind === 'lock' ? 14 : kind === 'arrow' ? 6 : kind === 'arrow-left' ? 10 : 12;
   const c = document.createElement('canvas');
   c.width = w * ART_PX;
   c.height = h * ART_PX;
@@ -273,6 +273,14 @@ export function storeChipGlyphSrc(kind: ChipGlyph, color: string): string {
     ctx.lineTo(4.5, 10);
     ctx.lineTo(10.5, 2);
     ctx.stroke();
+  } else if (kind === 'arrow-left') {
+    // Left-pointing triangle (Play -> Skip pattern prerequisite line).
+    ctx.beginPath();
+    ctx.moveTo(0, 5);
+    ctx.lineTo(6, 0);
+    ctx.lineTo(6, 10);
+    ctx.closePath();
+    ctx.fill();
   } else {
     // Downward triangle.
     ctx.beginPath();
