@@ -5,8 +5,13 @@ import type { PadColorName } from '../rift-lab/rift-energy.js';
  * each parameter from his verbatim answers, not Lab defaults):
  *
  * - Arms at a run streak of 15 (the seam window; "let's keep 15").
- * - Three portals spawn ONE BY ONE, 10 seconds apart, and may accumulate:
- *   the next one arrives on time even if earlier ones are still open.
+ * - Three portals spawn ONE BY ONE and may accumulate: the next one
+ *   arrives on time even if earlier ones are still open. Pacing revised
+ *   after his Nov 19 desktop playtest: the first portal waits 12 s so the
+ *   seam window's how-to line (C16B) lands before anything appears, later
+ *   portals arrive 20 s apart ("let them wait a little longer"), and a
+ *   sealed portal never respawns in this stage ("we will come back to the
+ *   rifts again before act 2").
  * - Portals prefer the wall in front of the player (the pads' wall) when
  *   possible; placement falls back to the renderer's normal wall rules.
  * - Sealing is possible ANY TIME the player has enough energy.
@@ -31,8 +36,8 @@ import type { PadColorName } from '../rift-lab/rift-energy.js';
 
 export const RIFT_STREAK_GATE = 15;
 export const RIFT_PORTAL_COUNT = 3;
-export const RIFT_FIRST_SPAWN_DELAY_MS = 2_000;
-export const RIFT_SPAWN_INTERVAL_MS = 10_000;
+export const RIFT_FIRST_SPAWN_DELAY_MS = 12_000;
+export const RIFT_SPAWN_INTERVAL_MS = 20_000;
 export const RIFT_SPAWN_RETRY_MS = 2_000;
 export const RIFT_OPEN_SCORE_FACTOR = 0.5;
 export const RIFT_ACK_LINE_ID = 'C24' as const;
@@ -140,8 +145,8 @@ export class RiftEncounter {
   }
 
   /**
-   * Spawn schedule: one portal when due, up to three total, ten seconds
-   * apart. The renderer calls failLastSpawn when no safe spot exists yet,
+   * Spawn schedule: one portal when due, up to three total, twenty seconds
+   * apart. Sealed portals never respawn: three spawns per encounter, ever. The renderer calls failLastSpawn when no safe spot exists yet,
    * which re-arms the same portal for a near retry without skipping it.
    */
   consumeDueSpawn(): boolean {
