@@ -1,3 +1,4 @@
+import { ArmbandRaisedButtons } from './armband-raised-buttons.js';
 import { hintWindowStart, HINT_WINDOW_SIZE } from './hint-window.js';
 /** The armband preference is independent of the player's input/dominant hand. */
 export type ArmbandHand = 'left' | 'right';
@@ -44,7 +45,7 @@ export interface ArmbandReadout {
   gameOver: boolean; bars: number;
   /** Narration playing/queued: Skip Voice is relevant only then. */
   narrationBusy: boolean;
-  /** Play modifier level (item 66): 0 = not owned, Play opens its store tile. */
+  /** Play modifier level (item 66): 0 = not owned - Play stays disabled until bought. */
   playLevel: number;
 }
 /** No free hints: the same ownership/phase rules as the game-board strip. */
@@ -54,8 +55,14 @@ export function armbandCueIds(state: ArmbandReadout): readonly number[] {
   return [];
 }
 
+/** Play modifier (item 66) gate: until it is owned the wrist Play key reads
+ * grayed and stays inert; the store tile remains the purchase path. */
+export const armbandPlayDisabled = (state: { gameOver: boolean; phase: string; playLevel: number }): boolean =>
+  state.gameOver || state.phase !== 'input' || state.playLevel < 1;
+
 /** Shared by hand joints and controller grip poses; never billboarded to the head. */
 export class ArmbandDisplay {
+  readonly raisedButtons = new ArmbandRaisedButtons();
   readonly position = new Vector3();
   readonly orientation = new Quaternion();
   private readonly offset = new Vector3();
@@ -104,7 +111,7 @@ export class ArmbandDisplay {
       disabled: state.gameOver || state.phase !== 'input' || state.replays < 1,
     } as never);
     this.panel.getElementById('armband-play')?.setProperties({
-      disabled: state.gameOver || state.phase !== 'input',
+      disabled: armbandPlayDisabled(state),
     } as never);
     // Reserved slots, context-only: New Run at Game Over, Skip Voice while narrating.
     this.panel.getElementById('armband-newrun')?.setProperties({ display: state.gameOver ? 'flex' : 'none' } as never);

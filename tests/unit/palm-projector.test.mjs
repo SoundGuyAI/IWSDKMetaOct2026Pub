@@ -4,7 +4,7 @@ import ts from 'typescript';
 import {readFileSync} from 'node:fs';
 const src = readFileSync('src/wall-tones/palm-projector.ts','utf8');
 const js = ts.transpileModule(src,{compilerOptions:{module:ts.ModuleKind.ESNext}}).outputText;
-const {palmPanelPose, extendedFingerCount, palmProjectorPromptDue, PALM_PANEL_LIFT, PALM_SURFACE_LIFT, fitBeamUnderPanel, BEAM_TOP_RADIUS, BEAM_TOP_MARGIN, BEAM_MAX_SHORTEN_RATIO, BEAM_MIN_RADIUS_SCALE} = await import('data:text/javascript;base64,'+Buffer.from(js).toString('base64'));
+const {palmPanelPose, extendedFingerCount, palmProjectorPromptDue, PALM_PANEL_LIFT, PALM_SURFACE_LIFT, beamClipAlpha, BEAM_CLIP_SOFT, BEAM_TOP_RADIUS, BEAM_BOTTOM_RADIUS} = await import('data:text/javascript;base64,'+Buffer.from(js).toString('base64'));
 // Left hand, palm up, fingers forward (+z), thumb side +x. Realistic metric proportions.
 const openLeftUp = {
   wrist:{x:0,y:0,z:0},
@@ -123,53 +123,40 @@ test('PalmJointsSmoother smooths every joint and resets',()=>{
   void PALM_OPEN_UP_MIN; void PALM_STILL_UP_MIN;
 });
 
-test('beam fit: head-on beam keeps full reach and full radius',()=>{
-  const fit = fitBeamUnderPanel(0.19, 1);
-  assert.ok(Math.abs(fit.length - (0.19 - BEAM_TOP_MARGIN)) < 1e-9, `length ${fit.length}`);
-  assert.equal(fit.radiusScale, 1);
+test('beam clip: fully visible below the soft band, gone at the panel plane',()=>{
+  assert.equal(beamClipAlpha(-0.02), 1, 'deep below the plane renders fully');
+  assert.equal(beamClipAlpha(-BEAM_CLIP_SOFT), 1, 'band edge still fully visible');
+  assert.equal(beamClipAlpha(0), 0, 'panel plane itself is clipped');
+  assert.equal(beamClipAlpha(0.01), 0, 'above the plane never renders');
 });
 
-test('beam fit: tilted beam no longer collapses to a stub (Nov 16 regression)',()=>{
-  // Old fit: len = full - (0.055*sin+0.006)/cos -> 2 cm floor at steep tilts.
-  for (const cos of [0.7, 0.5, 0.3, 0.15, 0.05]) {
-    const fit = fitBeamUnderPanel(0.19, cos);
-    assert.ok(fit.length >= 0.19 * (1 - BEAM_MAX_SHORTEN_RATIO) - 1e-9,
-      `cos=${cos} length ${fit.length} collapsed below the shortening cap`);
-    const oldLen = Math.max(0.02, 0.19 - (BEAM_TOP_RADIUS * Math.sqrt(1 - cos*cos) + BEAM_TOP_MARGIN) / cos);
-    if (oldLen < 0.19 * (1 - BEAM_MAX_SHORTEN_RATIO)) {
-      // Collapse zone: the old formula fell below the shortening cap.
-      assert.ok(fit.length > oldLen + 0.02, `cos=${cos} new ${fit.length} must beat old stub ${oldLen}`);
-    } else {
-      // Mild tilt: the length-only fit already sufficed; keep it, full radius.
-      assert.ok(Math.abs(fit.length - oldLen) < 1e-9, `cos=${cos} length ${fit.length} vs ${oldLen}`);
-      assert.equal(fit.radiusScale, 1, `cos=${cos} radius`);
-    }
-  }
-});
-
-test('beam fit: rim stays on the palm side of the panel plane',()=>{
-  // Rim clearance along the panel normal: (full-len)*cos - r*sin >= margin,
-  // except in the clamped corner where the radius floor wins and the panel
-  // face itself hides the rim (cos -> 0, beam running along the panel).
-  for (const cos of [1, 0.9, 0.7, 0.5, 0.35, 0.2]) {
-    const sin = Math.sqrt(1 - cos*cos);
-    const fit = fitBeamUnderPanel(0.19, cos);
-    const clearance = (0.19 - fit.length) * cos - fit.radiusScale * BEAM_TOP_RADIUS * sin;
-    assert.ok(clearance >= BEAM_TOP_MARGIN - 1e-9, `cos=${cos} clearance ${clearance}`);
-  }
-});
-
-test('beam fit: radius shrinks with tilt and respects its floor',()=>{
+test('beam clip: smooth fade across the band and monotonic',()=>{
+  const mid = beamClipAlpha(-BEAM_CLIP_SOFT / 2);
+  assert.ok(Math.abs(mid - 0.5) < 1e-9, `mid-band ${mid}`);
   let prev = 2;
-  for (const cos of [0.9, 0.7, 0.5, 0.3, 0.15]) {
-    const fit = fitBeamUnderPanel(0.19, cos);
-    assert.ok(fit.radiusScale <= prev + 1e-9, `radiusScale not monotonic at cos=${cos}`);
-    assert.ok(fit.radiusScale >= BEAM_MIN_RADIUS_SCALE, `radiusScale floor at cos=${cos}`);
-    prev = fit.radiusScale;
+  for (const d of [-0.02, -BEAM_CLIP_SOFT, -BEAM_CLIP_SOFT * 0.6, -BEAM_CLIP_SOFT * 0.3, 0, 0.01]) {
+    const a = beamClipAlpha(d);
+    assert.ok(a <= prev + 1e-9, `not monotonic at d=${d}`);
+    prev = a;
   }
-  const side = fitBeamUnderPanel(0.19, 0);
-  assert.equal(side.radiusScale, 1, 'beam running along the panel keeps full radius');
-  assert.ok(side.length > 0.17, 'side beam keeps its reach');
+});
+
+test('beam clip: tilted full-size rim never shows past the panel (Nov 17 size-pump fix)',()=>{
+  // The beam now keeps ONE radius/length at every tilt; the shader clip does
+  // the panel-side work the old geometric fit did by shrinking the cone
+  // (radius down to 12%, length to 65% - the size pumping the user reported).
+  // For a full-size cone (BEAM_TOP_RADIUS) ending at the panel center at any
+  // tilt, every rim fragment on the head side of the plane clips to 0 and
+  // every fragment deeper than the soft band stays fully visible.
+  for (const cos of [1, 0.9, 0.7, 0.5, 0.3, 0.15, 0]) {
+    const sin = Math.sqrt(1 - cos * cos);
+    // Rim point farthest toward the head on a cone ending at the panel center:
+    // distance above the plane = rim radius projected on the panel normal.
+    const rimAbove = BEAM_TOP_RADIUS * sin;
+    assert.equal(beamClipAlpha(rimAbove), 0, `cos=${cos} rim above plane clipped`);
+    assert.equal(beamClipAlpha(-BEAM_CLIP_SOFT - 0.001), 1, `cos=${cos} body keeps full strength`);
+  }
+  assert.ok(BEAM_BOTTOM_RADIUS < BEAM_TOP_RADIUS, 'cone shape unchanged');
 });
 
 test('palm projector narrator prompt: only after pattern 3, in MR, projector mode (item 109)',()=>{

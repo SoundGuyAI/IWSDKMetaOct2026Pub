@@ -1,6 +1,7 @@
 import { hintWindowStart, HINT_WINDOW_SIZE } from './hint-window.js';
 import { armbandHand, armbandDisplayMode, ArmbandDisplay, ARMBAND_SCALE } from './armband.js';
-import { BAND_JOINT_ROTATION, BEAM_BOTTOM_RADIUS, BEAM_TOP_RADIUS, fitBeamUnderPanel, PALM_PANEL_HEAD_AWAY, PALM_PANEL_LIFT, PalmJointsSmoother, palmOpenState, palmPanelPose, palmProjectorPromptDue, type PalmJoints, type PalmVec } from './palm-projector.js';
+import { BAND_JOINT_ROTATION, BEAM_BOTTOM_RADIUS, BEAM_TOP_RADIUS, BEAM_CLIP_SOFT, PALM_PANEL_HEAD_AWAY, PALM_PANEL_LIFT, PalmJointsSmoother, palmOpenState, palmPanelPose, palmProjectorPromptDue, type PalmJoints, type PalmVec } from './palm-projector.js';
+import { DIRECT_PRESS_PUSH_MAX_M, DIRECT_PRESS_REFIRE_MS, directPressNext, directPressSample, type DirectPressHandState } from './armband-direct-press.js';
 import { BackgroundProgress } from './cypher-background.js';
 import { getVoiceGender } from './speech.js';
 import { CypherProgress, type CypherWindow } from './cypher-progress.js';
@@ -679,15 +680,17 @@ if (!this.armband) {
   const bind = (id: string, action: () => void) => {
     const button = panel.getElementById(id);
     if (!button) return;
+    // Direct fingertip presses (updateArmbandDirectPress) fire the same action;
+    // suppress the UIKit click the same poke may also deliver so one press
+    // never runs the action twice (Nov 17 Quest feedback).
     button.name = id;
-    button.addEventListener('click', action);
-    this.cleanupFuncs.push(() => button.removeEventListener('click', action));
+    const direct = { id, action, hands: { left: { hover: false, pressed: false }, right: { hover: false, pressed: false } } as Record<'left' | 'right', DirectPressHandState>, suppressClickUntil: 0, lastFireAt: 0, pushPx: 0 }; this.armbandDirectButtons.push(direct); const guarded = () => { if (performance.now() < direct.suppressClickUntil) return; action(); }; button.addEventListener('click', guarded); this.cleanupFuncs.push(() => button.removeEventListener('click', guarded));
   };
   bind('armband-repeat', () => {
     if (this.armbandUsable() && this.game.phase === 'input' && this.economy.getReplaysTotal() > 0) void this.onRepeatPattern();
   });
   // Play modifier (item 66): same action as the panel's Play control.
-  bind('armband-play', () => { if (this.armbandUsable()) void this.onPlayControl(); });
+  bind('armband-play', () => { if (this.armbandUsable() && this.economy.getPlayLevel() >= 1) void this.onPlayControl(); });
   // New Run on the wrist while Game Over owns the retry decision; Skip Voice
   // while narration is playing (mirrors the panel button's relevance rule).
   bind('armband-newrun', () => { if (this.armbandTrackable() && this.gameOverOpen) this.onGameOverNewRun(); });
@@ -735,7 +738,7 @@ if (session) for (const candidate of session.inputSources) {
     const mesh = node as Mesh;
     const mats = Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : [];
     for (const mat of mats) {
-      mat.depthTest = false;
+      mat.depthTest = true;
       mat.depthWrite = false;
     }
   });
@@ -862,6 +865,7 @@ if (floating) {
   this.armbandSmoothQuat.toArray(orientation);
   scale[0] = scale[1] = scale[2] = ARMBAND_SCALE * (0.35 + 0.65 * e);
   this.updateArmbandBeam(floating, e, delta);
+  this.updateArmbandDirectPress(panel);
 } else {
   this.armband.position.toArray(position);
   this.armband.orientation.toArray(orientation);
@@ -926,6 +930,13 @@ private readonly armbandVeilViewDir = new Vector3();
 private readonly armbandHeadQuatInv = new Quaternion();
 private readonly armbandVeilSpin = new Quaternion();
 private armbandLastPose: import('./palm-projector.js').PalmPanelPose | undefined;
+  private readonly armbandDirectButtons: Array<{ id: string; action: () => void; hands: Record<'left' | 'right', DirectPressHandState>; suppressClickUntil: number; lastFireAt: number; pushPx: number }> = [];
+  private readonly armbandPressPos = new Vector3();
+  private readonly armbandPressQuat = new Quaternion();
+  private readonly armbandPressScale = new Vector3();
+  private readonly armbandPressRight = new Vector3();
+  private readonly armbandPressUp = new Vector3();
+  private readonly armbandPressOut = new Vector3();
 private readonly armbandPanelX = new Vector3();
 private readonly armbandPanelY = new Vector3();
 private readonly armbandPanelZ = new Vector3();
@@ -940,11 +951,18 @@ private ensureArmbandBeam(): void {
     depthWrite: false,
     blending: AdditiveBlending,
     side: DoubleSide,
-    uniforms: { uTime: { value: 0 }, uStrength: { value: 0 } },
-    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    uniforms: {
+      uTime: { value: 0 }, uStrength: { value: 0 },
+      uClipPoint: { value: new Vector3() },
+      uClipNormal: { value: new Vector3(0, 1, 0) },
+      uClipSoft: { value: BEAM_CLIP_SOFT },
+    },
+    vertexShader: 'varying vec2 vUv; varying vec3 vWorld; void main(){ vUv = uv; vec4 w = modelMatrix * vec4(position, 1.0); vWorld = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
     fragmentShader: [
-      'uniform float uTime; uniform float uStrength; varying vec2 vUv;',
+      'uniform float uTime; uniform float uStrength; uniform vec3 uClipPoint; uniform vec3 uClipNormal; uniform float uClipSoft; varying vec2 vUv; varying vec3 vWorld;',
       'void main(){',
+      '  float clipA = 1.0 - smoothstep(-uClipSoft, 0.0, dot(vWorld - uClipPoint, uClipNormal));',
+      '  if (clipA < 0.004) discard;',
       '  float rays = 0.55 + 0.45 * sin(vUv.x * 43.0 + sin(vUv.y * 9.0 - uTime * 7.0) * 1.5 + uTime * 2.5);',
       '  float rise = fract(vUv.y * 2.0 - uTime * 1.6);',
       '  float pulse = 0.75 + 0.25 * sin(uTime * 11.0 + vUv.y * 25.0);',
@@ -954,7 +972,7 @@ private ensureArmbandBeam(): void {
       // palm itself).
       '  float body = smoothstep(0.0, 0.04, vUv.y) * (1.0 - vUv.y * 0.55);',
       '  vec3 color = mix(vec3(0.30, 1.0, 0.65), vec3(0.55, 1.0, 0.9), vUv.y);',
-      '  float a = uStrength * body * pulse * (0.35 + 0.65 * rays) * (0.6 + 0.4 * rise);',
+      '  float a = uStrength * body * pulse * (0.35 + 0.65 * rays) * (0.6 + 0.4 * rise) * clipA;',
       '  gl_FragColor = vec4(color * a, a);',
       '}',
     ].join('\n'),
@@ -979,18 +997,25 @@ private ensureArmbandBeam(): void {
     depthWrite: false,
     blending: AdditiveBlending,
     side: DoubleSide,
-    uniforms: { uTime: { value: 0 }, uStrength: { value: 0 } },
-    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    uniforms: {
+      uTime: { value: 0 }, uStrength: { value: 0 },
+      uClipPoint: { value: new Vector3() },
+      uClipNormal: { value: new Vector3(0, 1, 0) },
+      uClipSoft: { value: BEAM_CLIP_SOFT },
+    },
+    vertexShader: 'varying vec2 vUv; varying vec3 vWorld; void main(){ vUv = uv; vec4 w = modelMatrix * vec4(position, 1.0); vWorld = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
     fragmentShader: [
-      'uniform float uTime; uniform float uStrength; varying vec2 vUv;',
+      'uniform float uTime; uniform float uStrength; uniform vec3 uClipPoint; uniform vec3 uClipNormal; uniform float uClipSoft; varying vec2 vUv; varying vec3 vWorld;',
       'void main(){',
+      '  float clipA = 1.0 - smoothstep(-uClipSoft, 0.0, dot(vWorld - uClipPoint, uClipNormal));',
+      '  if (clipA < 0.004) discard;',
       '  float across = 1.0 - abs(vUv.y * 2.0 - 1.0);',
       '  float body = smoothstep(0.0, 0.14, across);',
       '  float ends = smoothstep(0.0, 0.06, vUv.x) * (1.0 - smoothstep(0.72, 1.0, vUv.x));',
       '  float rays = 0.55 + 0.45 * sin(vUv.y * 18.0 - uTime * 7.0 + sin(vUv.x * 9.0 + uTime * 2.5) * 1.5);',
       '  float pulse = 0.75 + 0.25 * sin(uTime * 11.0 + vUv.x * 25.0);',
       '  vec3 color = mix(vec3(0.30, 1.0, 0.65), vec3(0.55, 1.0, 0.9), vUv.x);',
-      '  float a = uStrength * body * ends * pulse * (0.45 + 0.55 * rays);',
+      '  float a = uStrength * body * ends * pulse * (0.45 + 0.55 * rays) * clipA;',
       '  gl_FragColor = vec4(color * a, a);',
       '}',
     ].join('\n'),
@@ -1038,25 +1063,14 @@ private updateArmbandBeam(floating: { open: number; center: PalmVec; normal: Pal
   this.armbandBeamDir.copy(this.armbandSmoothPos).sub(this.armbandBeamBase);
   const fullLen = Math.max(this.armbandBeamDir.length(), 0.001);
   this.armbandBeamDir.normalize();
-  // Stop the cone just under the panel. Its wide top disc (radius
-  // BEAM_TOP_RADIUS) is tilted against the head-facing panel plane, so ending
-  // exactly at the panel center let the rim poke through to the head side and
-  // draw over the buttons (Nov 16 user feedback). fitBeamUnderPanel keeps
-  // every rim point on the palm side of the plane while capping how much the
-  // beam shortens: the old length-only fit collapsed the beam to a stub at
-  // tilted hand angles, hiding it exactly where the user looked for it (Nov
-  // 16 hardware feedback). The top radius shrinks to absorb the rest.
-  const cosTheta = this.armbandBeamDir.dot(this.armbandPanelZ);
-  const fit = fitBeamUnderPanel(fullLen, cosTheta);
-  const len = fit.length;
-  // The cone's local axis is +Y, so map THAT onto the beam direction.
-  // setFromUnitVectors(handUp, dir) only aligned the grip's up with the beam:
-  // the cone axis stayed rotated away by the grip twist and its base visibly
-  // floated off the glow orb (Nov 16 review). EMBED roots the cone's cut disc
-  // inside the orb so the beam reads as growing out of it, not touching it.
+  /* constant beam size: the fragment shader clips against the head-facing panel plane (uClipPoint/uClipNormal); no more size pumping at tilted hands (Nov 17 Quest feedback). Cone axis +Y; EMBED roots the cut disc in the glow orb. */ const len = fullLen;
   beam.position.copy(this.armbandBeamBase).addScaledVector(this.armbandBeamDir, (len - ARM_BAND_BEAM_EMBED) * 0.5);
   beam.quaternion.setFromUnitVectors(this.armbandBeamAxis, this.armbandBeamDir);
-  beam.scale.set(fit.radiusScale, len + ARM_BAND_BEAM_EMBED, fit.radiusScale);
+  beam.scale.set(1, len + ARM_BAND_BEAM_EMBED, 1);
+  this.armbandBeamMat!.uniforms.uClipPoint!.value.copy(this.armbandSmoothPos);
+  this.armbandBeamMat!.uniforms.uClipNormal!.value.copy(this.armbandPanelZ);
+  this.armbandBeamVeilMat!.uniforms.uClipPoint!.value.copy(this.armbandSmoothPos);
+  this.armbandBeamVeilMat!.uniforms.uClipNormal!.value.copy(this.armbandPanelZ);
   this.armbandBeamMat!.uniforms.uTime!.value = this.armbandBeamTime;
   (this.armbandGlow!.material as ShaderMaterial).uniforms.uTime!.value = this.armbandBeamTime;
   this.armbandBeamMat!.uniforms.uStrength!.value = e;
@@ -1091,6 +1105,67 @@ private updateArmbandBeamVeil(len: number, e: number): void {
   this.armbandBeamVeilMat!.uniforms.uStrength!.value = strength;
   veil.visible = e > 0.05 && strength > 0.01;
 }
+  /** Index fingertip world position for one hand; a seam the XR tests can stub. */
+  private readIndexTipWorld(hand: 'left' | 'right', out: Vector3): void {
+    this.player.indexTipSpaces[hand].getWorldPosition(out);
+  }
+  /** Direct fingertip presses on the floating projector buttons (Nov 17 Quest
+  * feedback: UIKit poke clicks were unreliable on the small moving panel; the
+  * pads' geometric fingertip hit test is the proven path on hardware). Fires
+  * the same guarded actions as the click bindings, suppresses the duplicate
+  * UIKit click a poke can also deliver, and pushes the pressed button into
+  * the panel for a physical, 3D-press feel. */
+  private updateArmbandDirectPress(panel: UIKitMLAsset): void {
+    this.armband!.raisedButtons.hideAll();
+    if (this.armbandDirectButtons.length === 0) return;
+    const now = performance.now();
+    for (const entry of this.armbandDirectButtons) {
+      const el = panel.getElementById(entry.id) as unknown as Mesh | null;
+      if (!el) continue;
+      const setProps = (el as unknown as { setProperties?: (p: object) => void }).setProperties?.bind(el);
+      const size = (el as unknown as { size?: { value?: [number, number] } }).size?.value;
+      const display = (el as unknown as { properties?: { peek?: () => { display?: string } } }).properties?.peek?.().display;
+      if (!el.visible || display === 'none' || !size || size[0] <= 0 || size[1] <= 0) {
+        if (entry.pushPx !== 0) { entry.pushPx = 0; setProps?.({ transformTranslateZ: 0 } as never); }
+        for (const hand of XR_HANDS) entry.hands[hand] = { hover: false, pressed: false };
+        continue;
+      }
+      el.updateWorldMatrix(true, false);
+      el.getWorldPosition(this.armbandPressPos);
+      el.getWorldQuaternion(this.armbandPressQuat);
+      el.getWorldScale(this.armbandPressScale);
+      if (this.armbandPressScale.x < 1e-9) continue;
+      this.armbandPressRight.set(1, 0, 0).applyQuaternion(this.armbandPressQuat);
+      this.armbandPressUp.set(0, 1, 0).applyQuaternion(this.armbandPressQuat);
+      this.armbandPressOut.set(0, 0, 1).applyQuaternion(this.armbandPressQuat);
+      const raised = this.armband!.raisedButtons.update(panel, entry.id, el);
+      const frame = raised.frame;
+      if (!raised.active) {
+        for (const hand of XR_HANDS) entry.hands[hand] = { hover: false, pressed: false };
+        continue;
+      }
+      let deepest = 0;
+      for (const hand of XR_HANDS) {
+        const adapter = this.input.xr.visualAdapters[hand].peek();
+        if (adapter == null || !adapter.connected) { entry.hands[hand] = { hover: false, pressed: false }; continue; }
+        this.readIndexTipWorld(hand, this.tipScratch);
+        const sample = directPressSample({ x: this.tipScratch.x, y: this.tipScratch.y, z: this.tipScratch.z }, frame);
+        const next = directPressNext(entry.hands[hand], sample);
+        entry.hands[hand] = next.state;
+        if (next.fire && now - entry.lastFireAt >= DIRECT_PRESS_REFIRE_MS) {
+          entry.lastFireAt = now;
+          entry.suppressClickUntil = now + 800;
+          entry.action();
+        }
+        if (next.state.pressed) deepest = Math.max(deepest, sample.depth);
+      }
+      const pushPx = this.armband!.raisedButtons.push(entry.id, deepest);
+      if (Math.abs(pushPx - entry.pushPx) > 0.5) {
+        entry.pushPx = pushPx;
+        setProps?.({ transformTranslateZ: -pushPx } as never);
+      }
+    }
+  }
 
 /** World-space palm joints for projector mode; null when any joint pose is missing. */
 private readPalmJoints(hand: XRHand, frame: XRFrame, reference: XRReferenceSpace): PalmJoints | null {
