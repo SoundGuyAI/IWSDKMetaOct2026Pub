@@ -84,5 +84,10 @@ export class CypherProgress {
   /** Explicit story reset only. Starting a run or leaving the game never calls it. */
   reset(): void { this.next = 0; this.active = undefined; this.save(); }
   get finished(): boolean { return this.next >= CYPHER_WINDOWS.length && !this.active; }
+  /** Actual fully spoken/consumed windows, excluding an in-flight window. */
+  get completedWindowIds(): readonly string[] {
+    const end = this.active?.index ?? this.next;
+    return CYPHER_WINDOWS.slice(0, end).map(window => window.id);
+  }
   get completedWindows(): number { return this.next; }
 }

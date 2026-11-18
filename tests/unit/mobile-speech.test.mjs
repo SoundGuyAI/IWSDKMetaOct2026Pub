@@ -6,6 +6,8 @@ import { readFileSync } from 'node:fs';
 // Run the production speech module with a strict, element-scoped Safari media
 // policy. This tests routing/gesture timing, not physical iOS audio output.
 async function loadSpeech({ rejectFirst = false, subtitles = false } = {}) {
+  const data = new Map();
+  globalThis.localStorage = {getItem: k => data.get(k) ?? null, setItem: (k,v) => data.set(k,v), removeItem: k => data.delete(k)};
   const elements = [];
   const instances = [];
   let gesture = false;
@@ -47,7 +49,7 @@ async function loadSpeech({ rejectFirst = false, subtitles = false } = {}) {
   let source = readFileSync(new URL('../../src/wall-tones/speech.ts', import.meta.url), 'utf8');
   source = source.replace("import { LAB_INTRO_AUDIO } from '../lab-menu/intro-audio.js';", readFileSync(new URL('../../src/lab-menu/intro-audio.ts', import.meta.url), 'utf8'));
   // Inline real, dependency-free story modules in this data-URL test harness.
-  for (const name of ['cypher-voice', 'cypher-script', 'cypher-background']) {
+  for (const name of ['cypher-voice', 'cypher-script', 'cypher-background', 'instruction-memory', 'return-dialogue']) {
     const dependency = readFileSync(new URL(`../../src/wall-tones/${name}.ts`, import.meta.url), 'utf8');
     source = source.replace(new RegExp(`^import .* from './${name}\\.js';`, 'm'), '');
     source = dependency + '\n' + source;
@@ -229,4 +231,39 @@ test('Lab lines keep captured opposite cast, exact captions and mobile cancellat
   speech.cancel(); await cypher;
   assert.equal(speech.isBusy(), false);
   assert.equal(h.instances.length, 1);
+});
+
+test('completed tutorials stay silent across speech instances; section reset re-enables only that section', async () => {
+ const h=await loadSpeech();
+ await h.gesture(()=>h.speech.startMobileWelcomeFromGesture());h.instances[0].end();h.speech.unlockSpeechFromGesture();
+ let voice=new h.speech.WallTonesSpeech();
+ const first=voice.speakAsync('howToPlayRest');await Promise.resolve();h.instances[0].end();await first;
+ const count=h.instances[0].played.length;
+ voice=new h.speech.WallTonesSpeech();await voice.speakAsync('howToPlayRest');assert.equal(h.instances[0].played.length,count);
+ voice.resetInstructionSection('store');await voice.speakAsync('howToPlayRest');assert.equal(h.instances[0].played.length,count);
+ voice.resetInstructionSection('gameplay');const replay=voice.speakAsync('howToPlayRest');await Promise.resolve();assert.equal(h.instances[0].played.length,count+1);h.instances[0].end();await replay;
+});
+test('cancel, media error and muted captions do not record a tutorial as heard', async () => {
+ const h=await loadSpeech({subtitles:true});await h.gesture(()=>h.speech.startMobileWelcomeFromGesture());h.instances[0].end();h.speech.unlockSpeechFromGesture();
+ const voice=new h.speech.WallTonesSpeech();let run=voice.speakAsync('storeItemHint');await Promise.resolve();voice.cancel();await run;
+ let saved=JSON.parse(localStorage.getItem('wall-tones-instructions-v1')??'null');assert.equal(saved,null);
+ run=voice.speakAsync('storeItemHint');await Promise.resolve();h.instances[0].onerror();await run;h.instances[0].end();
+ assert.equal(localStorage.getItem('wall-tones-instructions-v1'),null);
+ globalThis.__voicesOff=true;run=voice.speakAsync('storeItemHint');await Promise.resolve();voice.cancel();await run;
+ assert.equal(localStorage.getItem('wall-tones-instructions-v1'),null);
+ globalThis.__voicesOff=false;run=voice.speakAsync('storeItemHint');await Promise.resolve();h.instances[0].end();await run;
+ saved=JSON.parse(localStorage.getItem('wall-tones-instructions-v1'));assert.deepEqual(saved.heard,['storeItemHint']);
+});
+
+test('explicit reminder replays once without clearing heard status; ordinary subsequent playback stays suppressed', async () => {
+ const h=await loadSpeech();await h.gesture(()=>h.speech.startMobileWelcomeFromGesture());h.instances[0].end();h.speech.unlockSpeechFromGesture();
+ const voice=new h.speech.WallTonesSpeech();let run=voice.speakAsync('storeIntro');await Promise.resolve();h.instances[0].end();await run;
+ const saved=localStorage.getItem('wall-tones-instructions-v1'), count=h.instances[0].played.length;
+ run=voice.replayInstruction('storeIntro');await Promise.resolve();assert.equal(h.instances[0].played.length,count+1);h.instances[0].end();await run;
+ assert.equal(localStorage.getItem('wall-tones-instructions-v1'),saved);assert.equal(voice.hasHeardInstruction('storeIntro'),true);await voice.speakAsync('storeIntro');assert.equal(h.instances[0].played.length,count+1);
+});
+
+test('mobile trusted Start uses reviewed returning welcome and queue consumes it without duplicate',async()=>{
+ const h=await loadSpeech();localStorage.setItem('wall-tones-return-visit-v1','1');await h.gesture(()=>h.speech.startMobileWelcomeFromGesture());h.speech.unlockSpeechFromGesture();assert.match(h.instances[0].src,/return-reminders\/narrator\/male\/n-r01.mp3$/);
+ const voice=new h.speech.WallTonesSpeech();const run=voice.speakReturnLine('N-R01');await Promise.resolve();h.instances[0].end();await run;assert.equal(h.instances[0].played.length,1);
 });

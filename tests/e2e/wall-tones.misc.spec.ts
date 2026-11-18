@@ -1,3 +1,4 @@
+import { RETURN_DIALOGUE } from '../../src/wall-tones/return-dialogue.js';
 import { readFileSync } from 'node:fs';
 
 import { shouldAnnounceRecord } from '../../src/wall-tones/record-feedback.js';
@@ -174,4 +175,83 @@ test('background review proposal: afterAct1, every second completed pattern, cap
   expect(requests.some(url=>url.endsWith('/effects/close.mp3'))).toBe(true);
   expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('wall-tones-cypher-background-progress-v1')!).next)).toBe(1);
   await page.screenshot({path:test.info().outputPath('background-female-gameplay.png')});
+});
+
+
+test('returning store reminder uses binary answer once after reopening and retains heard data', async ({page}) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('iwsdk-experience-mode','walltones');
+    if (!localStorage.getItem('reminder-test-seeded')) {
+      localStorage.setItem('wall-tones-return-visit-v1','1');
+      localStorage.setItem('wall-tones-instructions-v1',JSON.stringify({version:1,heard:['storeIntro']}));
+      localStorage.setItem('reminder-test-seeded','1');
+    }
+  });
+  await page.goto('/');
+  await page.waitForFunction(()=>Boolean(window.__wallTonesDebug?.flatAwaitingStart));
+  await page.waitForTimeout(1500);
+  // Skip only pre-existing entry speech, never the reminder under test.
+  await page.evaluate(()=>window.__wallTonesDebug!.skipSpeech());
+  await page.evaluate(()=>window.__wallTonesDebug!.toggleStore());
+  await page.waitForFunction(()=>window.__wallTonesDebug!.reminderListening);
+  expect(await page.evaluate(()=>window.__wallTonesDebug!.reminderQuestion)).toBe('Would you like a reminder of how the store works?');
+  const heard=await page.evaluate(()=>localStorage.getItem('wall-tones-instructions-v1'));
+  await page.screenshot({path:'test-results/return-store-reminder-desktop.png'});
+  // Pixel-inspected rendered Yes button, actual pointer route rather than debug answer.
+  await page.mouse.click(811,437);
+  await expect.poll(()=>page.evaluate(()=>window.__wallTonesDebug!.reminderListening),{timeout:1000}).toBe(false);
+  expect(await page.evaluate(()=>window.__wallTonesDebug!.reminderBusy)).toBe(true);
+  await page.waitForFunction(()=>!window.__wallTonesDebug!.reminderBusy);
+  expect(await page.evaluate(()=>localStorage.getItem('wall-tones-instructions-v1'))).toBe(heard);
+  await page.evaluate(()=>{window.__wallTonesDebug!.toggleStore();window.__wallTonesDebug!.toggleStore();});
+  expect(await page.evaluate(()=>window.__wallTonesDebug!.reminderBusy)).toBe(false);
+  await page.reload();await page.waitForFunction(()=>Boolean(window.__wallTonesDebug?.flatAwaitingStart));
+  await page.waitForTimeout(1500);await page.evaluate(()=>{window.__wallTonesDebug!.skipSpeech();window.__wallTonesDebug!.toggleStore();});
+  await page.waitForFunction(()=>window.__wallTonesDebug!.reminderListening);
+  await page.keyboard.press('n');await page.waitForFunction(()=>!window.__wallTonesDebug!.reminderBusy);
+  expect(await page.evaluate(()=>localStorage.getItem('wall-tones-instructions-v1'))).toBe(heard);
+});
+
+
+test('phone returning reminder is visible, times out safely, and cannot reset progress', async ({page}) => {
+  await page.setViewportSize({width:390,height:844});
+  await page.addInitScript(()=>{
+    sessionStorage.setItem('iwsdk-experience-mode','walltones');
+    localStorage.setItem('wall-tones-return-visit-v1','1');
+    localStorage.setItem('wall-tones-instructions-v1',JSON.stringify({version:1,heard:['storeIntro']}));
+    localStorage.setItem('wall-tones-bars','75');
+  });
+  await page.goto('/');await page.waitForFunction(()=>Boolean(window.__wallTonesDebug?.flatAwaitingStart));
+  await page.waitForTimeout(1500);await page.evaluate(()=>{window.__wallTonesDebug!.skipSpeech();window.__wallTonesDebug!.toggleStore();});
+  await page.waitForFunction(()=>window.__wallTonesDebug!.reminderListening);
+  const before=await page.evaluate(()=>JSON.stringify(Object.fromEntries(Object.entries(localStorage))));
+  await page.screenshot({path:'test-results/return-store-reminder-phone.png'});
+  await page.waitForFunction(()=>!window.__wallTonesDebug!.reminderBusy);
+  expect(await page.evaluate(()=>JSON.stringify(Object.fromEntries(Object.entries(localStorage))))).toBe(before);
+});
+
+
+test('all reviewed return clips in both casts load and decode as real audio',async({page})=>{
+ await page.goto('/');
+ const paths=Object.entries(RETURN_DIALOGUE).flatMap(([id,line])=>['male','female'].map(g=>`audio/return-reminders/${line.speaker}/${g}/${id.toLowerCase()}.mp3`));
+ const decoded=await page.evaluate(async paths=>{
+  const context=new AudioContext();
+  try { return await Promise.all(paths.map(async path=>{
+   const response=await fetch(path);if(!response.ok)throw Error(path+': '+response.status);
+   const buffer=await context.decodeAudioData(await response.arrayBuffer());return {path,duration:buffer.duration,channels:buffer.numberOfChannels};
+  })); }finally{await context.close();}
+ },paths);
+ expect(decoded).toHaveLength(22);for(const clip of decoded){expect(clip.duration).toBeGreaterThan(1);expect(clip.channels).toBe(1);}
+});
+
+
+test('returning round reminder can be skipped without blocking play',async({page})=>{
+ await page.addInitScript(()=>{sessionStorage.setItem('iwsdk-experience-mode','walltones');localStorage.setItem('wall-tones-return-visit-v1','1');localStorage.setItem('wall-tones-instructions-v1',JSON.stringify({version:1,heard:['howToPlay','pointAndPress','howToPlayRest']}));});
+ await page.goto('/');await page.waitForFunction(()=>Boolean(window.__wallTonesDebug?.flatAwaitingStart));
+ await page.evaluate(()=>window.__wallTonesDebug!.submitPad(0));
+ await page.waitForFunction(()=>window.__wallTonesDebug!.reminderListening);
+ expect(await page.evaluate(()=>window.__wallTonesDebug!.reminderQuestion)).toBe('Would you like a reminder of how to play?');
+ await page.evaluate(()=>window.__wallTonesDebug!.skipSpeech());
+ await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');
+ expect(await page.evaluate(()=>window.__wallTonesDebug!.reminderListening)).toBe(false);
 });

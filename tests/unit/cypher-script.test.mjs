@@ -132,3 +132,8 @@ test('reload and skipped playback resume the first unfinished line losslessly', 
   reloaded.lineCompleted();
   assert.equal(new CypherProgress(storage).beginWindow(1).id, 'your-machine');
 });
+
+test('return stage export excludes a taken but unfinished story window',async()=>{
+ const {CypherProgress}=await load('cypher-progress');const data=new Map();const store={getItem:k=>data.get(k)??null,setItem:(k,v)=>data.set(k,v)};const p=new CypherProgress(store);
+ p.beginWindow(5);assert.deepEqual(p.completedWindowIds,[]);p.lineCompleted();assert.deepEqual(p.completedWindowIds,['connection']);p.beginWindow(5);assert.deepEqual(p.completedWindowIds,['connection']);assert.deepEqual(new CypherProgress(store).completedWindowIds,['connection']);
+});
