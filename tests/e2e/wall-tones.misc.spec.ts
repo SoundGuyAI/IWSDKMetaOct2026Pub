@@ -283,3 +283,65 @@ for (const gender of ['male','female'] as const) {
   expect(requested.some(x=>x.endsWith('/how-to-play-rest.mp3'))).toBe(false);
  });
 }
+
+for (const gender of ['male','female'] as const) {
+ test(`first-note coaching after three misses and next-demonstration color after four (${gender})`,async({page})=>{
+  // Fixture: returning profile with paid retry inventory. Game flow and counters
+  // are production behavior; assistance audio is never aborted or mocked.
+  await page.addInitScript(gender=>{sessionStorage.setItem('iwsdk-experience-mode','walltones');localStorage.setItem('wall-tones-voice-gender',gender);localStorage.setItem('wall-tones-instructions-v1',JSON.stringify({version:1,heard:['howToPlay','howToPlayMr','howToPlayRest','openingPattern']}));},gender);
+  const help:string[]=[];page.on('request',r=>{if(r.url().includes('/audio/first-note-help/'))help.push(r.url());});
+  await page.goto('/');await page.waitForFunction(()=>Boolean(window.__wallTonesDebug?.flatAwaitingStart));
+  await page.evaluate(()=>{window.__wallTonesDebug!.grantSavers(8);window.__wallTonesDebug!.submitPad(0);});
+  await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');
+  const wrong=async()=>{await page.evaluate(()=>{const d=window.__wallTonesDebug!;d.submitPad((d.sequence[0]!+1)%4);});await page.waitForFunction(()=>window.__wallTonesDebug!.gameOverOpen);};
+  const retry=async()=>{await page.evaluate(()=>window.__wallTonesDebug!.gameOverUseSaver());await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');};
+  for(let miss=1;miss<=4;miss++){
+   await wrong();expect(help.filter(x=>x.endsWith('/guidance.mp3'))).toHaveLength(miss>=3?1:0);
+   if(miss<4){await retry();expect(help.some(x=>/press-/.test(x))).toBe(false);}
+  }
+  const first=await page.evaluate(()=>window.__wallTonesDebug!.sequence[0]);const colors=['green','red','blue','yellow'];
+  await page.evaluate(()=>window.__wallTonesDebug!.gameOverUseSaver());
+  await page.waitForRequest(r=>r.url().endsWith(`/first-note-help/${gender}/press-${colors[first!]}.mp3`));
+  expect(await page.evaluate(()=>window.__wallTonesDebug!.phase)).toBe('playback');
+  await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');
+  expect(help.filter(x=>/press-/.test(x))).toEqual([expect.stringContaining(`/${gender}/press-${colors[first!]}.mp3`)]);
+  // A correct first note clears assistance. Subsequent round receives no cue.
+  await page.evaluate(()=>{const d=window.__wallTonesDebug!;d.submitPad(d.sequence[0]!);});
+  await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input'&&window.__wallTonesDebug!.sequence.length===2);
+  expect(help.filter(x=>/press-/.test(x))).toHaveLength(1);
+  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('wall-tones-instructions-v1')!).heard)).not.toContain('guidance');
+ });
+}
+
+test('all ten first-note assistance clips fetch and decode with real audio bytes',async({page})=>{
+ await page.goto('/');
+ const result=await page.evaluate(async()=>{const ctx=new AudioContext();const out=[];for(const cast of ['male','female'])for(const clip of ['guidance','press-green','press-red','press-blue','press-yellow']){const r=await fetch(new URL(`audio/first-note-help/${cast}/${clip}.mp3`,document.baseURI));const b=await r.arrayBuffer();const bytes=b.byteLength;const decoded=await ctx.decodeAudioData(b);out.push({ok:r.ok,bytes,duration:decoded.duration});}await ctx.close();return out;});
+ expect(result).toHaveLength(10);for(const x of result){expect(x.ok).toBe(true);expect(x.bytes).toBeGreaterThan(1000);expect(x.duration).toBeGreaterThan(0.4);}
+});
+
+test('first-note help applies to a longer pattern and Skip releases assisted playback without clearing the struggle',async({page})=>{
+ await page.addInitScript(()=>{sessionStorage.setItem('iwsdk-experience-mode','walltones');localStorage.setItem('wall-tones-hearing-subtitles','true');localStorage.setItem('wall-tones-instructions-v1',JSON.stringify({version:1,heard:['howToPlay','howToPlayMr','howToPlayRest','openingPattern','barsFirstEarn']}));});
+ const cues:string[]=[];page.on('request',r=>{if(r.url().includes('/audio/first-note-help/'))cues.push(r.url());});
+ await page.goto('/');await page.waitForFunction(()=>Boolean(window.__wallTonesDebug?.flatAwaitingStart));
+ await page.evaluate(()=>{const d=window.__wallTonesDebug!;d.grantSavers(8);d.submitPad(0);});await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');
+ await page.evaluate(()=>{const d=window.__wallTonesDebug!;d.submitPad(d.sequence[0]!);});await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input'&&window.__wallTonesDebug!.sequence.length===2);
+ const sequence=await page.evaluate(()=>[...window.__wallTonesDebug!.sequence]);
+ for(let miss=1;miss<=4;miss++){
+  await page.evaluate(()=>{const d=window.__wallTonesDebug!;d.submitPad((d.sequence[0]!+1)%4);});await page.waitForFunction(()=>window.__wallTonesDebug!.gameOverOpen);
+  if(miss<4){await page.evaluate(()=>window.__wallTonesDebug!.gameOverUseSaver());await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');}
+ }
+ const color=['green','red','blue','yellow'][sequence[0]!];
+ await page.evaluate(()=>window.__wallTonesDebug!.gameOverUseSaver());await page.waitForRequest(r=>r.url().endsWith(`/press-${color}.mp3`));
+ await page.waitForFunction(()=>window.__wallTonesDebug!.speechBusy);
+ expect(await page.evaluate(()=>window.__wallTonesDebug!.phase)).toBe('playback');
+ await page.screenshot({path:'/downloads/wt-first-note-assisted-longer.png'});
+ await page.keyboard.press('.');await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');
+ expect(await page.evaluate(()=>window.__wallTonesDebug!.sequence)).toEqual(sequence);
+ // Skip does not fake a correct answer. The following retry remains assisted.
+ await page.evaluate(()=>{const d=window.__wallTonesDebug!;d.submitPad((d.sequence[0]!+1)%4);});await page.waitForFunction(()=>window.__wallTonesDebug!.gameOverOpen);
+ // Cached audio need not issue another request, so observe the spoken caption.
+ await page.evaluate(()=>window.__wallTonesDebug!.gameOverUseSaver());
+ await expect(page.locator('#wall-tones-flat-subtitles')).toContainText(`Press ${color}.`);
+ await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');
+ expect(cues.filter(x=>x.endsWith('/guidance.mp3'))).toHaveLength(1);
+});

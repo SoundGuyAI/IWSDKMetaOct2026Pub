@@ -1,3 +1,4 @@
+import { FirstNoteHelp, firstNoteColorClip } from './first-note-help.js';
 import { ReminderInputs } from './reminder-inputs.js';
 import { returnReminderSession, returnCypherLine, reminderTutorial, REMINDER_QUESTION } from './return-reminders.js';
 import { RETURN_DIALOGUE } from './return-dialogue.js';
@@ -487,6 +488,7 @@ slotHovered: { required: [WallSlotCandidate, Hovered] },
 slotPressed: { required: [WallSlotCandidate, Pressed] },
 }) {
 private readonly speech = new WallTonesSpeech();
+private readonly firstNoteHelp = new FirstNoteHelp();
 private readonly reminderInputs = new ReminderInputs();
 private reminderBusy = false;
 private reminderPromptVisible = false;
@@ -3998,6 +4000,9 @@ this.game.phase = 'playback';
 this.inputNeedsClear = true;
 this.armAllPads();
 this.statusText = 'Listen:';
+const helpCast = getVoiceGender();
+const assistedFirstNote = this.firstNoteHelp.needsColorCue();
+const helpNarrationMark = this.narrationInterrupt;
 // User ask (Nov 7): Listen squares appear one by one as each note plays.
 this.playbackShownCount = 0;
 this.playbackKind = 'listen';
@@ -4031,6 +4036,13 @@ await playPadTone(padId, quick ? NOTE_DURATION_S * speedFactor : NOTE_DURATION_S
 await this.wait((NOTE_GAP_S + BLINK_HOLD_S + 0.2) * (quick ? speedFactor : 1));
 flashPad(pad, false);
 this.setBlinkCuePad(null);
+}
+if (index === 0 && assistedFirstNote) {
+const cue = firstNoteColorClip(padId);
+if (cue != null && helpNarrationMark === this.narrationInterrupt && this.experienceActive && this.flowPhase === 'playing') {
+await this.speech.speakFirstNoteHelp(cue, helpCast);
+if (!this.experienceActive || this.flowPhase !== 'playing') return;
+}
 }
 await this.wait(NOTE_GAP_S * (quick ? speedFactor : 1));
 }
@@ -4839,6 +4851,7 @@ if (padIndex !== expected) {
 void this.onWrongInput(padIndex, expected);
 return;
 }
+this.firstNoteHelp.correct(this.game.inputStep);
 // Any instruction still finishing is obsolete once a correct pad is hit.
 this.speech.cancel();
 // Backlog 30 research: pad-reach estimate between correct presses (MR only;
@@ -5499,6 +5512,9 @@ this.inputNeedsClear = true;
 // popup, even without a purchased hint or subtitles (item 75). The status text
 // element stays blank while the rows show.
 const missStep = this.game.inputStep;
+const firstNoteGuidanceDue = this.firstNoteHelp.wrong(missStep);
+const helpNarrationMark = this.narrationInterrupt;
+const helpCast = getVoiceGender();
 this.wrongHit = {
 hit,
 expected,
@@ -5518,7 +5534,14 @@ this.showAchievementToasts();
 this.playbackQueue = this.playbackQueue.then(async () => {
 // A personal best does not turn a missed note into a success (item 60a).
 // Keep the existing failure recordings; the full wording review is separate.
+if (!this.experienceActive || this.flowPhase !== 'playing') return;
+if (firstNoteGuidanceDue) {
+if (helpNarrationMark === this.narrationInterrupt) {
+await this.speech.speakFirstNoteHelp('guidance', helpCast);
+}
+} else {
 await this.speech.speakAsync(randomWrongClip());
+}
 await this.wait(WRONG_RESET_DELAY_S);
 if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;

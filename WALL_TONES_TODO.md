@@ -13,6 +13,8 @@ Game backlog for what still needs work. Current open items come first; completed
 
 ## Not started
 
+- [ ] First-note assistance visual follow-up: consider an arrow pointing to the correct pad during an assisted attempt. Backlog only for a later separate PR. No arrow behavior or implementation is included in the audio-help change.
+
 - [ ] 128. Consider streak-saver gifts at streak milestones, with an award celebration (Oded, 2026-11-18 12:37). Decide which milestones qualify, how many savers to give and how often; none selected. Planning only, no economy or reward implementation approved. Numbers 125-127 are reserved for the platform explorations recorded on PR165's branch, not yet merged into main.
 - [ ] 129. Investigate the framerate drop when pressing a button (Oded, 2026-11-18 12:38). The +1 particles are a suspected cause, not a confirmed diagnosis. Profile the button-press path and particles before choosing a fix; no particle removal or other implementation approved by this backlog request.
 
