@@ -100,6 +100,11 @@ import {
 } from './rift-geometry-particles.js';
 import { RiftHandAura } from './rift-hand-aura.js';
 import { noteFrontVisibility, RiftHandOccluders } from './rift-hand-occluders.js';
+import {
+  formatChargeCloudDiag,
+  summarizeChargeCloud,
+  type ChargeCloudDiag,
+} from './rift-charge-diag.js';
 import { noteGlyphMaterial } from './rift-note-visuals.js';
 import {
   createGeoSparkDraw,
@@ -209,6 +214,8 @@ export interface RiftLabDebugSnapshot {
   };
   targets: { id: number; position: number[]; ndc: number[] }[];
   noteOriginNdc: number[];
+  /** Read-only: where the visible charge-orbit notes are (item 118 diagnosis). */
+  chargeCloud: ChargeCloudDiag;
   /** On-screen radius (CSS px) the dragged note cloud is sized to. */
   noteCloudRadiusPx: number;
   /** Viewer pose, for QA placement of synthetic hands. */
@@ -519,6 +526,7 @@ export class RiftLabSystem extends createSystem({
   private readonly palmAnchorLeft = new Vector3();
   private readonly palmAnchorRight = new Vector3();
   private readonly headPos = new Vector3();
+  private readonly diagNotePos = new Vector3();
   private debugSealP: number | null = null;
   private readonly debugHands: Record<'left' | 'right', PalmPose | null> = {
     left: null,
@@ -723,6 +731,37 @@ export class RiftLabSystem extends createSystem({
     } catch {
       return false;
     }
+  }
+
+  /** Opt-in on-panel diagnostics for the item 118 headset check: add
+   * ?riftDiag=1 to the page URL. Off by default; changes no gameplay. */
+  private chargeDiagOptedIn(): boolean {
+    try {
+      return new URLSearchParams(window.location.search).get('riftDiag') === '1';
+    } catch {
+      return false;
+    }
+  }
+
+  /** Where the charge notes that are actually drawn sit, versus head and palms. */
+  private chargeCloudDiag(): ChargeCloudDiag {
+    const visible: [number, number, number][] = [];
+    for (const mesh of this.noteMeshes.values()) {
+      if (!this.isObjectWorldVisible(mesh)) continue;
+      const wp = mesh.getWorldPosition(this.diagNotePos);
+      visible.push([wp.x, wp.y, wp.z]);
+    }
+    this.player.head.getWorldPosition(this.headPos);
+    const l = this.palms.left;
+    const r = this.palms.right;
+    return summarizeChargeCloud({
+      immersive: this.isImmersive(),
+      leftPalm: l != null ? [l.center[0], l.center[1], l.center[2]] : null,
+      rightPalm: r != null ? [r.center[0], r.center[1], r.center[2]] : null,
+      head: [this.headPos.x, this.headPos.y, this.headPos.z],
+      totalNotes: this.game.getNotes().length,
+      visibleNotePositions: visible,
+    });
   }
 
   private installDebugBridge(): void {
@@ -1812,6 +1851,13 @@ export class RiftLabSystem extends createSystem({
     this.telemetryText?.setProperties({
       text: `Rifts open: ${open}. ${modifier}.`,
     } as never);
+    if (this.chargeDiagOptedIn()) {
+      this.telemetryText?.setProperties({
+        text:
+          'Rifts open: ' + open + '. ' + modifier + '. | ' +
+          formatChargeCloudDiag(this.chargeCloudDiag()),
+      } as never);
+    }
   }
 
   private debugSealFirstRift(): void {
@@ -2141,6 +2187,7 @@ export class RiftLabSystem extends createSystem({
       beamActive: this.game.isBeamActive(),
       status: this.statusMessage,
       noteOriginNdc: this.handAnchor('right').clone().project(this.world.camera).toArray(),
+      chargeCloud: this.chargeCloudDiag(),
       noteCloudRadiusPx: Math.min(
         CLOUD_MAX_RADIUS_M * 1.12 * this.fingertipGlowScale(this.handAnchor('right')) *
           this.pxPerMeterAt(this.handAnchor('right')),
