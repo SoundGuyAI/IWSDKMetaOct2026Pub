@@ -232,6 +232,7 @@ jobs:
             tests/e2e/wall-tones.store-touch-drag.spec.ts \
             tests/e2e/wall-tones.settings-rows.spec.ts \
             tests/e2e/wall-tones.store-tree.spec.ts \
+            tests/e2e/wall-tones.timing-fault-system-error.spec.ts \
             tests/e2e/wall-tones.xr-entry.spec.ts \
             | sort > assigned.txt
           diff actual.txt assigned.txt || {

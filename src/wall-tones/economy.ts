@@ -172,6 +172,9 @@ export interface AchievementDef {
   id: string;
   label: string;
   description: string;
+  /** Celebration-only variant: replaces the title word and turns the show red (system error). Never stored or awarded. */
+  celebrationTitle?: string;
+  celebrationError?: boolean;
 }
 
 /** Achievement categories with levels (user redesign): one row per category

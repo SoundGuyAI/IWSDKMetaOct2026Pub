@@ -71,6 +71,8 @@ const T = {
 } as const;
 
 const TITLE_WORD = 'ACHIEVEMENT UNLOCKED';
+/** Gold to red for the system-error variant (flat CSS and MR canvas). */
+const ERROR_FILTER = 'hue-rotate(-42deg) saturate(1.5)';
 
 /** Spark burst layout from the approved prototype (angle deg, travel px). */
 const SPARKS: ReadonlyArray<{ angle: number; dist: number }> = [
@@ -380,6 +382,11 @@ function ensureFlatStyle(): void {
   position: fixed; inset: 0; z-index: 100002; pointer-events: none;
   display: grid; place-items: center; perspective: 900px;
 }
+.wt-achv-error { filter: hue-rotate(-42deg) saturate(1.5); }
+.wt-achv-error .wt-achv-copy { background: rgba(26, 2, 8, .86); border: 1px solid rgba(255, 110, 130, .7); border-radius: 12px; padding: 10px 18px; }
+.wt-achv-error .wt-achv-name { font-size: 16px; font-weight: 700; color: #ffe3e6; }
+.wt-achv-error .wt-achv-fly { animation: wt-achv-err-out .4s ease ${T.FLY_START}s both; }
+@keyframes wt-achv-err-out { 0% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1.06); } }
 .wt-achv-fly { animation: wt-achv-fly ${T.FLY}s cubic-bezier(.5, -.05, .7, .4) ${T.FLY_START}s both; }
 @keyframes wt-achv-fly {
   0% { transform: translate(0, 0) scale(1); opacity: 1; }
@@ -556,9 +563,10 @@ const easeOutCubic = (t: number): number => 1 - (1 - t) ** 3;
 const clamp01 = (t: number): number => Math.min(Math.max(t, 0), 1);
 
 /** Draw one frame of the approved choreography onto the MR panel canvas. */
-function drawMrFrame(ctx: CanvasRenderingContext2D, t: number, name: string, icon: HTMLImageElement | null, hasFlame: boolean): void {
+function drawMrFrame(ctx: CanvasRenderingContext2D, t: number, name: string, icon: HTMLImageElement | null, hasFlame: boolean, titleWord: string = TITLE_WORD, error = false): void {
   const w = MR_CANVAS_W, h = MR_CANVAS_H;
   ctx.clearRect(0, 0, w, h);
+  ctx.filter = error ? ERROR_FILTER : 'none';
 
   // Translucent billboard panel.
   roundRectPath(ctx, 2, 2, w - 4, h - 4, 42);
@@ -681,8 +689,8 @@ function drawMrFrame(ctx: CanvasRenderingContext2D, t: number, name: string, ico
   ctx.textBaseline = 'middle';
   ctx.font = `700 44px sans-serif`;
   const spacing = 44 * 0.8 + 44 * 0.16;
-  const totalW = (TITLE_WORD.length - 1) * spacing;
-  for (let i = 0; i < TITLE_WORD.length; i++) {
+  const totalW = (titleWord.length - 1) * spacing;
+  for (let i = 0; i < titleWord.length; i++) {
     const lt = clamp01((t - T.LETTERS_DELAY - i * T.LETTER_STAGGER) / 0.45);
     if (lt <= 0) continue;
     const e = easeOutCubic(lt);
@@ -691,7 +699,7 @@ function drawMrFrame(ctx: CanvasRenderingContext2D, t: number, name: string, ico
     ctx.fillStyle = `rgba(255, 233, 168, ${lt})`;
     ctx.shadowColor = 'rgba(245, 198, 46, .65)';
     ctx.shadowBlur = 14;
-    ctx.fillText(TITLE_WORD[i]!, x, y);
+    ctx.fillText(titleWord[i]!, x, y);
     ctx.shadowBlur = 0;
   }
 
@@ -752,7 +760,7 @@ export class AchievementCelebration {
   /** Test-only read: "title|name" of the showing celebration, else null. */
   debugText(): string | null {
     if (this.active == null) return null;
-    return `${TITLE_WORD}|${this.active.def.label}`;
+    return `${this.active.def.celebrationTitle ?? TITLE_WORD}|${this.active.def.label}`;
   }
 
   /** Test-only: freeze the show clock (with CSS paused page-side this gives
@@ -834,8 +842,10 @@ export class AchievementCelebration {
       mr: null,
     };
     this.active = show;
-    this.sfxPlays += 1;
-    void playAchievementCelebrationSfx();
+    if (next.def.celebrationError !== true) {
+      this.sfxPlays += 1;
+      void playAchievementCelebrationSfx();
+    }
     if (flat) {
       this.buildFlatDom(show, camera);
     } else {
@@ -868,7 +878,7 @@ export class AchievementCelebration {
   private buildFlatDom(show: ActiveShow, camera: Camera): void {
     ensureFlatStyle();
     const root = document.createElement('div');
-    root.className = 'wt-achv-celebration';
+    root.className = show.def.celebrationError === true ? 'wt-achv-celebration wt-achv-error' : 'wt-achv-celebration';
     root.setAttribute('aria-hidden', 'true');
 
     const fly = document.createElement('div');
@@ -939,9 +949,10 @@ export class AchievementCelebration {
     pop.appendChild(badge);
 
     const copy = document.createElement('div');
+    copy.className = 'wt-achv-copy';
     const title = document.createElement('div');
     title.className = 'wt-achv-title';
-    TITLE_WORD.split('').forEach((ch, i) => {
+    (show.def.celebrationTitle ?? TITLE_WORD).split('').forEach((ch, i) => {
       const span = document.createElement('span');
       span.className = 'wt-achv-letter';
       span.style.animationDelay = `${T.LETTERS_DELAY + i * T.LETTER_STAGGER}s`;
@@ -1132,6 +1143,8 @@ export class AchievementCelebration {
       show.def.label,
       this.iconFor(this.categoryId(show.def)),
       mr.flame?.visible === true,
+      show.def.celebrationTitle ?? TITLE_WORD,
+      show.def.celebrationError === true,
     );
     mr.texture.needsUpdate = true;
   }
