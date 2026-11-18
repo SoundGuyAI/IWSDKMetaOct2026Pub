@@ -214,6 +214,8 @@ export interface RiftLabDebugSnapshot {
   /** Viewer pose, for QA placement of synthetic hands. */
   cameraPos: number[];
   cameraDir: number[];
+  /** Read-only per-rift seal state for tests (no effect on gameplay). */
+  rifts: { id: number; state: string; sealProgressMs: number }[];
 }
 
 declare global {
@@ -224,6 +226,10 @@ declare global {
       start: () => void;
       playNote: (color: PadColorName, hand?: 'left' | 'right') => void;
       spawnRift: () => void;
+      /** Present only when a test opts in (sessionStorage iwsdk-rift-lab-test-controls=1).
+       * false pauses the 6 s auto-spawn timer only. Default is on and it is reset to on
+       * by Start and when the Lab deactivates. It never spawns, seals or charges. */
+      setAutoSpawn?: (enabled: boolean) => void;
       sealFirstRift: () => void;
       /** Visual QA: pin the seal flight at progress 0..1 (null releases). */
       freezeSealProgress: (p: number | null) => void;
@@ -426,6 +432,8 @@ export class RiftLabSystem extends createSystem({
   private active = false;
   private running = false;
   private lastSpawnAt = 0;
+  /** Debug-bridge opt-in only; always false in normal play. */
+  private autoSpawnPaused = false;
   private readonly root = new Group();
   private readonly noteMeshes = new Map<number, Mesh>();
   /** Separate from charge-orbit notes: beam-corridor sealing torrent. */
@@ -709,6 +717,14 @@ export class RiftLabSystem extends createSystem({
     this.renderPanel('Press Start. Successful notes charge your hands.');
   }
 
+  private testControlsOptedIn(): boolean {
+    try {
+      return sessionStorage.getItem('iwsdk-rift-lab-test-controls') === '1';
+    } catch {
+      return false;
+    }
+  }
+
   private installDebugBridge(): void {
     window.__riftLabDebug = {
       snapshot: () => this.debugSnapshot(),
@@ -716,6 +732,13 @@ export class RiftLabSystem extends createSystem({
       start: () => this.startRun(),
       playNote: (color, hand) => this.playNote(color, hand),
       spawnRift: () => this.spawnRift(),
+      ...(this.testControlsOptedIn()
+        ? {
+            setAutoSpawn: (enabled: boolean) => {
+              this.autoSpawnPaused = !enabled;
+            },
+          }
+        : {}),
       sealFirstRift: () => this.debugSealFirstRift(),
       freezeSealProgress: (p) => {
         this.debugSealP = p;
@@ -766,6 +789,7 @@ export class RiftLabSystem extends createSystem({
     this.active = active;
     this.root.visible = active;
     if (!active) {
+      this.autoSpawnPaused = false;
       this.stopRun();
     } else {
       this.renderPanel('Press Start. Successful notes charge your hands.');
@@ -806,6 +830,7 @@ export class RiftLabSystem extends createSystem({
       return;
     }
     this.running = true;
+    this.autoSpawnPaused = false;
     // Fresh Start: don't inherit a stale center-aim from a previous hover.
     this.aimHasMoved = false;
     // One full seal's worth of charge ready at start (owner ask 2026-11-17).
@@ -1603,6 +1628,7 @@ export class RiftLabSystem extends createSystem({
       this.updateXrBeam();
       const now = performance.now();
       if (
+        !this.autoSpawnPaused &&
         this.riftViews.size < MAX_OPEN_RIFTS &&
         now - this.lastSpawnAt >= RIFT_SPAWN_INTERVAL_MS
       ) {
@@ -2135,6 +2161,7 @@ export class RiftLabSystem extends createSystem({
           .length,
         groundSurface: this.geoSurfaces.some((s) => s.kind === 'ground'),
       },
+      rifts: this.game.getRifts().map((r) => ({ id: r.id, state: r.state, sealProgressMs: r.sealProgressMs })),
       targets: [...this.riftViews.values()].map((v) => ({
         id: v.rift.id,
         position: v.position.toArray(),
