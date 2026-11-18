@@ -27,7 +27,8 @@ test('changed matrix syntax or unaudited execution fails closed', () => {
   assert.throws(() => checkShardCoverage(workflow.replace('node scripts/e2e-shards.mjs plan 10', 'echo skip'), actual), /Unsupported shard plan/);
 });
 test('CRLF workflow is accepted', () => {
-  assert.equal(checkShardCoverage(workflow.replace(/\n/g, '\r\n'), actual), actual.length);
+  const crlf = workflow.includes('\r\n') ? workflow : workflow.replace(/\n/g, '\r\n');
+  assert.equal(checkShardCoverage(crlf, actual), actual.length);
 });
 test('full preflight retains fresh install, typecheck, units, build and full E2E', () => {
   assert.deepEqual(preflightSteps(), [

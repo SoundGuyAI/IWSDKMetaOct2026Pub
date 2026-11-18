@@ -157,6 +157,21 @@ test('the gate funds exactly one full seal (no impossible seal)', () => {
   assert.equal(game.getEnergy(), 0);
 });
 
+test('multi-frame beam drain seals when energy hits 0 (float-safe)', () => {
+  // Regression: per-frame applyBeamOnRift undershot SEAL_HOLD_MS by float
+  // when energy reached 0, abandoned the seal, and left mobile e2e flaky.
+  const game = new RiftLabGame(seq(0.5));
+  game.setStartingEnergy(SEAL_ENERGY_REQUIRED);
+  const rift = game.spawnRift();
+  assert.ok(game.startBeam({ kind: 'mobile-drag', dx: 0, dy: 0 }));
+  for (let i = 0; i < 200 && game.isBeamActive(); i++) {
+    game.applyBeamOnRift(rift.id, 1000 / 60);
+  }
+  assert.equal(rift.state, 'sealed');
+  assert.equal(game.getEnergy(), 0);
+  assert.equal(game.isBeamActive(), false);
+});
+
 test('clearSealed leaves open rifts untouched (respawn stays isolated)', () => {
   const game = new RiftLabGame(seq(0.5));
   for (let i = 0; i < 12; i++) game.addNoteEnergy('yellow');
@@ -222,6 +237,14 @@ test('the enough-energy gate is one constant shared by every platform', () => {
   assert.equal(game.canFireBeam(), false); // XR/mobile gate, same threshold
 });
 
+test('lab start grant fills one seal of energy and matching orbit notes', () => {
+  const game = new RiftLabGame(seq(0.5));
+  game.setStartingEnergy(SEAL_ENERGY_REQUIRED);
+  assert.equal(game.getEnergy(), SEAL_ENERGY_REQUIRED);
+  assert.equal(game.getNotes().length, 12 * NOTES_PER_SUCCESS);
+  assert.equal(game.canFireBeam(), true);
+});
+
 test('hand cloud is dense and volumetric: spread over a sphere shell, not one ring', () => {
   const game = new RiftLabGame(seq(0.5));
   for (let i = 0; i < 12; i++) game.addNoteEnergy('green', 'right');
@@ -253,4 +276,57 @@ test('discardRift removes an open rift without sealing or clearing it', () => {
   assert.equal(game.discardRift(a.id), true);
   assert.deepEqual(game.getRifts().map((r) => r.id), [b.id]);
   assert.equal(game.discardRift(a.id), false);
+});
+
+test('portal spark/shard shaders do not redeclare instanceColor (Three injects it)', () => {
+  const burst = readFileSync(
+    join(root, 'src', 'rift-lab', 'rift-portal-burst.ts'),
+    'utf8',
+  );
+  assert.equal(
+    (burst.match(/^\s*attribute\s+vec3\s+instanceColor\s*;/gm) || []).length,
+    0,
+    'custom shaders must not redeclare Three-injected instanceColor',
+  );
+  assert.ok(burst.includes('vColor = instanceColor'));
+});
+
+test('startRun grants one seal of energy (matches owner Lab Start ask)', () => {
+  const system = readFileSync(
+    join(root, 'src', 'rift-lab', 'rift-lab-system.ts'),
+    'utf8',
+  );
+  assert.ok(
+    system.includes('this.game.setStartingEnergy(SEAL_ENERGY_REQUIRED)'),
+    'Lab Start must grant one seal so Quest sealing QA can fire immediately',
+  );
+});
+
+test('hub dressing including studio-floor hides only in Rift Lab', () => {
+  const app = readFileSync(join(root, 'src', 'app-mode.ts'), 'utf8');
+  assert.ok(app.includes('HUB_DRESSING_NODE_IDS'));
+  assert.ok(app.includes("'studio-floor'"));
+  assert.ok(app.includes("this.setNodeVisible(nodeId, !showRiftLab)"));
+  // Must not gate hub dressing on Demo alone — that hid the floor in Menu /
+  // Wall Tones / other labs and broke locomotion.
+  assert.equal(app.includes('HUB_SET_NODE_IDS'), false);
+  assert.equal(
+    /HUB_DRESSING_NODE_IDS\)[\s\S]{0,80}showDemo/.test(app),
+    false,
+  );
+});
+
+test('a beam swept across partly hit rifts cannot seal a rift on leftover energy', () => {
+  const game = new RiftLabGame();
+  game.setStartingEnergy(SEAL_ENERGY_REQUIRED);
+  const a = game.spawnRift();
+  const b = game.spawnRift();
+  game.startBeam({ kind: 'mobile-drag', dx: 0, dy: 0 });
+  for (let i = 0; i < 50; i++) game.applyBeamOnRift(a.id, 20); // 1000 ms on A
+  assert.equal(a.state, 'sealing');
+  for (let i = 0; i < 100 && game.isBeamActive(); i++) game.applyBeamOnRift(b.id, 20);
+  assert.notEqual(b.state, 'sealed', 'B must not seal on 40 leftover energy');
+  assert.equal(b.state, 'open');
+  assert.ok(b.sealProgressMs < SEAL_HOLD_MS);
+  assert.equal(game.isBeamActive(), false);
 });

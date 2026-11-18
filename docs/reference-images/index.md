@@ -48,6 +48,7 @@ The upload tool added a number prefix (`N-`) to every image file name. In this i
 | [marketing-concept-6-remember-the-melody.png](31-marketing-concept-6-remember-the-melody.png) | 31-marketing-concept-6-remember-the-melody.png |
 | [marketing-enhanced-glass-pads.png](32-marketing-enhanced-glass-pads.png) | 32-marketing-enhanced-glass-pads.png |
 | [marketing-g4c-key-image.png](33-marketing-g4c-key-image.png) | 33-marketing-g4c-key-image.png |
+| [rift-portal-note-shards.jpg](38-rift-portal-note-shards.jpg) | 38-rift-portal-note-shards.jpg |
 | [marketing-leaderboard-hero.png](34-marketing-leaderboard-hero.png) | 34-marketing-leaderboard-hero.png |
 | [marketing-thumbnail-gameplay.png](35-marketing-thumbnail-gameplay.png) | 35-marketing-thumbnail-gameplay.png |
 | [marketing-voice-script-hero.png](36-marketing-voice-script-hero.png) | 36-marketing-voice-script-hero.png |
@@ -87,6 +88,7 @@ Armband concept B (slimmer cuff) was shown to him but was not chosen. Its image 
 | [rift-motion-mockup.gif](21-rift-motion-mockup.gif) | Motion mockup: hand beam in MR, pointer energy on desktop, rift closing stages. | FEEDBACK (Nov 13 13:34): "good. i dont' liek teh shake. i was thinkoing more of the note particles would be animated as well as how the actions for the rift closgin will be. i like the stages of the rift closgin." On a later version (13:41): "the dots needs to be colorful notes. their origin is wrong in most of the frames". Later (14:45): "the direction of the notes in the desktop moves in the wrong way". The original MP4 versions were not recovered. |
 | (Quest notes, Nov 13 23:50, voice note) | On the built Lab rift. | FEEDBACK: "I'm expecting the notes to move towards the rift like in the visualization and animations we made before. Right now, it doesn't look great. And also the rift isn't looking as amazing as they did in the concept art". |
 | (Nov 14 03:35 to 03:41, text) | On the reference vs the rendered Lab effect. The side-by-side image is a technical comparison and is not archived. | FEEDBACK: "wanna go over the rift lab one again and see the reference and see if we can make it closer to the reference ? can you do a sbs comparison for me/". Then: "that energy beam. look up some shades or make some that would look this good. with light coming out of the." (his sentence ends there), "another diffrece is how these notes look glowy too . that's a shader i suppoer too", "and the rift also has those note particles coming out of it.", and about sparks: with physics. |
+| [rift-portal-note-shards.jpg](38-rift-portal-note-shards.jpg) | Revised portal particle target (Nov 17): neon musical notes + fine sharp sparks + small luminous angular fragments on the real Lab room/Rift placement. | PROPOSED target for Lab VFX. Limits: do not copy exaggerated wall cracks; do not change rift outline/scale/room/furniture; no rocks/rubble/gems/glowing balls/confetti/ribbons/smoke; keep red/green/blue/yellow; enough empty space to see room and dark rift interior; idle/sealing emission only — no sealing beam on an idle rift. |
 
 ## 3. Marketing concept art (kept separate; Nov 5-8)
 

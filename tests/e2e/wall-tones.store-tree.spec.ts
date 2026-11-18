@@ -133,6 +133,18 @@ async function bootWallTones(
     if (!window.sessionStorage.getItem('wt-keep-storage')) {
       window.localStorage.clear();
     }
+    // Diagnostic only: record raw pointer events so the click helper can
+    // release the button as soon as the page processed pointerdown, instead
+    // of holding a fixed wall-clock duration (see the click helper below).
+    const rec = (e: Event) => {
+      (window as unknown as { __tapLog: { type: string }[] }).__tapLog.push({
+        type: e.type,
+      });
+    };
+    (window as unknown as { __tapLog: unknown[] }).__tapLog = [];
+    for (const t of ['pointerdown', 'pointerup', 'click']) {
+      window.addEventListener(t, rec, true);
+    }
   });
   await page.goto(`/${query}`);
   await page.waitForFunction(
@@ -590,11 +602,32 @@ test('store empty space clears selection without buying or closing; tiles and Bu
   await dbg(page, 'toggleStore');
   const selected = () => page.evaluate(() => (window as any).__wallTonesDebug.storeSelected);
   const targets = () => page.evaluate(() => (window as any).__wallTonesDebug.storePointerTargets);
+  // No fixed wall-clock hold: @pmndrs/pointer-events emits the internal
+  // click only when down/up land within clickThresholdMs = 300ms
+  // (pointer.js:216-218, 323-331), and a fixed hold can stretch past that
+  // under runner load (CI run 44259947366: this case's empty-space click
+  // never cleared the selection on a loaded shard; the store-popup clear
+  // rides the internal click while tile selection rides pointerdown).
+  // Release as soon as the page processed the pointerdown instead; the DOM
+  // tap log records window-level events only and is not proof the internal
+  // handler ran, so outcome assertions below remain the real check.
   const click = async (x: number, y: number) => {
     await page.mouse.move(x, y, { steps: 8 });
     await page.waitForTimeout(800);
+    const logged = await page.evaluate(
+      () => (window as unknown as { __tapLog: unknown[] }).__tapLog.length,
+    );
     await page.mouse.down();
-    await page.waitForTimeout(150);
+    await page
+      .waitForFunction(
+        (n) =>
+          (window as unknown as { __tapLog: { type: string }[] }).__tapLog
+            .slice(n)
+            .some((e) => e.type === 'pointerdown'),
+        logged,
+        { timeout: 5_000 },
+      )
+      .catch(() => {});
     await page.mouse.up();
     await page.waitForTimeout(600); // allow rebuilt UIKit layout/world matrices to settle
   };
