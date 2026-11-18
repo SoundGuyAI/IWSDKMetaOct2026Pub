@@ -1,6 +1,8 @@
 name: Apply timing fault reset
 on:
-  workflow_dispatch:
+  push:
+    branches: [feat/timing-fault-pattern-reset]
+    paths: [".github/workflows/apply-timing-reset.yml"]
 permissions:
   contents: write
 jobs:
