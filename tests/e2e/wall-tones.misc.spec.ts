@@ -319,7 +319,7 @@ test('all ten first-note assistance clips fetch and decode with real audio bytes
  expect(result).toHaveLength(10);for(const x of result){expect(x.ok).toBe(true);expect(x.bytes).toBeGreaterThan(1000);expect(x.duration).toBeGreaterThan(0.4);}
 });
 
-test('first-note help applies to a longer pattern and Skip releases assisted playback without clearing the struggle',async({page})=>{
+test('first-note help applies to a longer pattern and Skip releases assisted playback without clearing the struggle',async({page},testInfo)=>{
  await page.addInitScript(()=>{sessionStorage.setItem('iwsdk-experience-mode','walltones');localStorage.setItem('wall-tones-hearing-subtitles','true');localStorage.setItem('wall-tones-instructions-v1',JSON.stringify({version:1,heard:['howToPlay','howToPlayMr','howToPlayRest','openingPattern','barsFirstEarn']}));});
  const cues:string[]=[];page.on('request',r=>{if(r.url().includes('/audio/first-note-help/'))cues.push(r.url());});
  await page.goto('/');await page.waitForFunction(()=>Boolean(window.__wallTonesDebug?.flatAwaitingStart));
@@ -334,7 +334,7 @@ test('first-note help applies to a longer pattern and Skip releases assisted pla
  await page.evaluate(()=>window.__wallTonesDebug!.gameOverUseSaver());await page.waitForRequest(r=>r.url().endsWith(`/press-${color}.mp3`));
  await page.waitForFunction(()=>window.__wallTonesDebug!.speechBusy);
  expect(await page.evaluate(()=>window.__wallTonesDebug!.phase)).toBe('playback');
- await page.screenshot({path:'/downloads/wt-first-note-assisted-longer.png'});
+ await page.screenshot({path:testInfo.outputPath('first-note-assisted-longer.png')});
  await page.keyboard.press('.');await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');
  expect(await page.evaluate(()=>window.__wallTonesDebug!.sequence)).toEqual(sequence);
  // Skip does not fake a correct answer. The following retry remains assisted.
