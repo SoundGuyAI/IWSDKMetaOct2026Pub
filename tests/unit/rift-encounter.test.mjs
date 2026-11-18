@@ -38,10 +38,12 @@ function rig() {
   return { storage, encounter, advance: (ms) => { now += ms; } };
 }
 
-test('settled constants: streak gate 15, three portals, ten seconds apart, x0.5 while open', () => {
+test('settled constants: streak gate 15, three portals, paced spawns, x0.5 while open', () => {
   assert.equal(RIFT_STREAK_GATE, 15);
   assert.equal(RIFT_PORTAL_COUNT, 3);
-  assert.equal(RIFT_SPAWN_INTERVAL_MS, 10_000);
+  // Nov 19 playtest pacing: slower, staged spawns; sealed portals never respawn.
+  assert.equal(RIFT_FIRST_SPAWN_DELAY_MS, 12_000);
+  assert.equal(RIFT_SPAWN_INTERVAL_MS, 20_000);
   assert.equal(RIFT_OPEN_SCORE_FACTOR, 0.5);
   assert.equal(RIFT_ACK_LINE_ID, 'C24');
 });
