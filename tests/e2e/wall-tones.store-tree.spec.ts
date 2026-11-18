@@ -133,6 +133,18 @@ async function bootWallTones(
     if (!window.sessionStorage.getItem('wt-keep-storage')) {
       window.localStorage.clear();
     }
+    // Diagnostic only: record raw pointer events so the click helper can
+    // release the button as soon as the page processed pointerdown, instead
+    // of holding a fixed wall-clock duration (see the click helper below).
+    const rec = (e: Event) => {
+      (window as unknown as { __tapLog: { type: string }[] }).__tapLog.push({
+        type: e.type,
+      });
+    };
+    (window as unknown as { __tapLog: unknown[] }).__tapLog = [];
+    for (const t of ['pointerdown', 'pointerup', 'click']) {
+      window.addEventListener(t, rec, true);
+    }
   });
   await page.goto(`/${query}`);
   await page.waitForFunction(
@@ -590,11 +602,32 @@ test('store empty space clears selection without buying or closing; tiles and Bu
   await dbg(page, 'toggleStore');
   const selected = () => page.evaluate(() => (window as any).__wallTonesDebug.storeSelected);
   const targets = () => page.evaluate(() => (window as any).__wallTonesDebug.storePointerTargets);
+  // No fixed wall-clock hold: @pmndrs/pointer-events emits the internal
+  // click only when down/up land within clickThresholdMs = 300ms
+  // (pointer.js:216-218, 323-331), and a fixed hold can stretch past that
+  // under runner load (CI run 44259947366: this case's empty-space click
+  // never cleared the selection on a loaded shard; the store-popup clear
+  // rides the internal click while tile selection rides pointerdown).
+  // Release as soon as the page processed the pointerdown instead; the DOM
+  // tap log records window-level events only and is not proof the internal
+  // handler ran, so outcome assertions below remain the real check.
   const click = async (x: number, y: number) => {
     await page.mouse.move(x, y, { steps: 8 });
     await page.waitForTimeout(800);
+    const logged = await page.evaluate(
+      () => (window as unknown as { __tapLog: unknown[] }).__tapLog.length,
+    );
     await page.mouse.down();
-    await page.waitForTimeout(150);
+    await page
+      .waitForFunction(
+        (n) =>
+          (window as unknown as { __tapLog: { type: string }[] }).__tapLog
+            .slice(n)
+            .some((e) => e.type === 'pointerdown'),
+        logged,
+        { timeout: 5_000 },
+      )
+      .catch(() => {});
     await page.mouse.up();
     await page.waitForTimeout(600); // allow rebuilt UIKit layout/world matrices to settle
   };
@@ -623,10 +656,25 @@ test('store empty space clears selection without buying or closing; tiles and Bu
     }
     throw new Error('store pointer targets did not settle with store-tile-replay present');
   };
+  // Even after the settle gate a late relayout can still move a tile between
+  // the coordinate read and the click on very slow runners (CI run 44004046220
+  // hit Listen despite settling). Re-settle and retry until the intended tile
+  // is actually selected, so a shifted grid self-corrects instead of failing.
+  const clickTile = async (name: string, want: string | null) => {
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      const t = (await settleTargets())[name];
+      await click(t.x, t.y);
+      try {
+        await expect.poll(selected, { timeout: 5_000 }).toBe(want);
+        return;
+      } catch {
+        if (attempt === 4) throw new Error(`store tile ${name} never selected ${want} after 4 attempts`);
+      }
+    }
+  };
   const settledTargets = await settleTargets();
   const replay = settledTargets['store-tile-replay'];
-  await click(replay.x, replay.y);
-  await expect.poll(selected).toBe('replay');
+  await clickTile('store-tile-replay', 'replay');
   await testInfo.attach('selected', { body: await page.screenshot(), contentType: 'image/png' });
   const before = await readState(page);
   // Empty margin beside the centered top row, inside the fixed Store popup.

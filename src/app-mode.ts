@@ -61,6 +61,25 @@ const DEMO_NODE_IDS = [
   'spin-plinth',
 ] as const;
 
+/** Grabbable demo props are separate entities with their own Visibility. Parent
+ * plinth hide alone left Graphite Gem raycastable (and sometimes drawn) in Lab. */
+const DEMO_PROP_NODE_IDS = [
+  'graphite-cube',
+  'graphite-gem',
+  'graphite-knot',
+  'graphite-ring',
+] as const;
+
+/** Hub room dressing — hide only in Rift Lab so the seal beam is not stopped
+ * by studio meshes (floor included) and so the set does not float in MR.
+ * Other modes keep `studio-floor` for LocomotionEnvironment / DomeFade. */
+const HUB_DRESSING_NODE_IDS = [
+  'studio-floor',
+  'stage',
+  'gallery-set',
+  'sideboard-set',
+] as const;
+
 const MEDITATION_NODE_IDS = ['welcome-panel', 'gaze-debug-panel'] as const;
 
 const DEMO_NAV_ID = 'demo-nav-panel';
@@ -238,7 +257,13 @@ export class AppModeSystem extends createSystem({}) {
     for (const nodeId of DEMO_NODE_IDS) {
       this.setNodeVisible(nodeId, showDemo);
     }
+    for (const nodeId of DEMO_PROP_NODE_IDS) {
+      this.setNodeVisible(nodeId, showDemo);
+    }
     this.setNodeVisible(DEMO_NAV_ID, showDemo);
+    for (const nodeId of HUB_DRESSING_NODE_IDS) {
+      this.setNodeVisible(nodeId, !showRiftLab);
+    }
 
     for (const nodeId of MEDITATION_NODE_IDS) {
       this.setNodeVisible(nodeId, showMeditation);

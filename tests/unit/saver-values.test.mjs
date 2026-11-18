@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 const src = readFileSync(new URL('../../src/wall-tones/consumable-values.ts', import.meta.url), 'utf8');
 const js = ts.transpileModule(src, { compilerOptions: { module: 'esnext', target: 'es2022' } }).outputText;
-const { saverUnitsForStreak, SAVER_PRICE_BARS, saverRetryPlan } = await import('data:text/javascript;base64,' + Buffer.from(js).toString('base64'));
+const { saverUnitsForStreak, SAVER_PRICE_BARS, saverRetryPlan, gameOverRetryPresentation } = await import('data:text/javascript;base64,' + Buffer.from(js).toString('base64'));
 test('saver units double every 10 streaks and keep doubling', () => {
   const at = [1, 10, 11, 20, 21, 31, 41, 50, 51, 61].map(saverUnitsForStreak);
   assert.deepEqual(at, [1, 1, 2, 2, 4, 8, 16, 16, 32, 64]);
@@ -23,4 +23,35 @@ test('saverRetryPlan: one press buys the missing units and applies them', () => 
   assert.deepEqual(saverRetryPlan(1, 4, 53, 18), { buy: 0, costBars: 54, affordable: false, apply: false });
   // Degenerate: no retry needed.
   assert.deepEqual(saverRetryPlan(0, 0, 100, 18), { buy: 0, costBars: 0, affordable: false, apply: false });
+});
+
+test('gameOverRetryPresentation: one combined retry button (owner, Nov 17)', () => {
+  // Enough owned savers: spend them, no purchase framing.
+  assert.deepEqual(gameOverRetryPresentation(1, 1, 0), {
+    text: 'Use 1 saver - retry same pattern',
+    buying: false,
+    affordable: true,
+  });
+  assert.deepEqual(gameOverRetryPresentation(4, 2, 0), {
+    text: 'Use 2 savers - retry same pattern',
+    buying: false,
+    affordable: true,
+  });
+  // None owned: the same button buys exactly the missing savers and retries.
+  assert.deepEqual(gameOverRetryPresentation(0, 1, 18), {
+    text: 'Buy 1 saver & retry - 18',
+    buying: true,
+    affordable: true,
+  });
+  assert.deepEqual(gameOverRetryPresentation(1, 4, 60), {
+    text: 'Buy 3 savers & retry - 54',
+    buying: true,
+    affordable: true,
+  });
+  // Not enough Bars: still the buy text (red in the panel), retry out of reach.
+  assert.deepEqual(gameOverRetryPresentation(0, 1, 10), {
+    text: 'Buy 1 saver & retry - 18',
+    buying: true,
+    affordable: false,
+  });
 });

@@ -51,6 +51,8 @@ export const MAX_ENERGY = 240;
 export const BEAM_DRAIN_PER_SECOND = 80;
 /** Beam must stay on one rift this long to seal it. */
 export const SEAL_HOLD_MS = 1500;
+/** Float tolerance when comparing seal progress to the hold time. */
+const SEAL_PROGRESS_EPSILON_MS = 1e-6;
 /**
  * "Enough energy" gate, settled 13:38: sealing needs enough energy on EVERY
  * platform (desktop click, mobile drag, XR palm). Threshold settled 14:46:
@@ -114,7 +116,8 @@ export const OPEN_RIFT_MODIFIER_FRACTION = 0.5;
 export interface OrbitNote {
   readonly id: number;
   readonly color: PadColorName;
-  readonly hand: HandSide;
+  /** Mutable so XR can move charge onto a currently tracked palm. */
+  hand: HandSide;
   /** Current orbit angle; the system advances it each frame. */
   angle: number;
   readonly radius: number;
@@ -157,6 +160,21 @@ export class RiftLabGame {
 
   getEnergy(): number {
     return this.energy;
+  }
+
+  /**
+   * Lab start grant: set charge (and matching orbit notes) so sealing is
+   * immediately testable without farming notes first.
+   */
+  setStartingEnergy(amount: number): void {
+    this.notes.length = 0;
+    this.energy = 0;
+    const target = Math.max(0, Math.min(MAX_ENERGY, Math.floor(amount)));
+    let colorIdx = 0;
+    while (this.energy < target) {
+      this.addNoteEnergy(PAD_COLOR_NAMES[colorIdx % PAD_COLOR_NAMES.length]!);
+      colorIdx++;
+    }
   }
 
   getNotes(): readonly OrbitNote[] {
@@ -315,13 +333,22 @@ export class RiftLabGame {
     const applied = Math.min(drain, this.energy);
     this.energy -= applied;
     rift.state = 'sealing';
-    rift.sealProgressMs += dtMs * (applied / drain);
-    if (this.energy <= 0 && rift.sealProgressMs < SEAL_HOLD_MS) {
-      this.stopBeam();
-      return rift;
+    // dtMs==0 would 0/0; skip progress that frame.
+    if (drain > 0) {
+      rift.sealProgressMs += dtMs * (applied / drain);
     }
-    if (rift.sealProgressMs >= SEAL_HOLD_MS) {
+    // Gate funds exactly one seal (drain×hold == SEAL_ENERGY_REQUIRED). Across
+    // many frames, float can leave progress a hair under SEAL_HOLD_MS when
+    // energy hits 0 — the old abandon path stranded an almost-done mobile
+    // seal with status still "Ready…". Exhausting the charge completes it.
+    // Float tolerance only: progress within a hair of the hold counts as done.
+    // A genuinely short beam (partial pool left over from other rifts) still
+    // dies with the rift open and its progress kept.
+    if (rift.sealProgressMs >= SEAL_HOLD_MS - SEAL_PROGRESS_EPSILON_MS) {
       rift.state = 'sealed';
+      this.energy = 0;
+      this.stopBeam();
+    } else if (this.energy <= 0) {
       this.stopBeam();
     }
     return rift;

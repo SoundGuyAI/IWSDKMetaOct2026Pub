@@ -105,12 +105,12 @@ The merge-ready procedure is an enduring rule for every merge, not work in this 
 4. [ ] After Cypher gameplay, item 52 separate yes/no feasibility PR also explores thumbs-up/down, alongside nod/headshake and voice.
 5. [ ] Oded rereads the current draft; no voice generation, gameplay deployment or merge is approved by this revision.
 
-## Backlog #58 menu / XR / scan loss - in progress 2026-11-12
+## Backlog #58 menu / XR / scan loss - done 2026-11-12 (PR #78 merged)
 - [x] Keep live world on Back to menu (`returnToMenuInPlace`); do not `switchBackToHubMenu`/`destroyActiveWorld`.
 - [x] Strengthen choose-mode rescan capture/look-around recovery.
 - [x] Unit policy test `tests/unit/back-to-menu-world.test.mjs`.
 - [x] Full local `npm run test:e2e` green before PR push (51 passed; pointer first-press retry hardened).
-- [ ] Headset verification called out separately (not claimed by desktop suite).
+- [ ] Headset verification still separate (not claimed by desktop suite / merge).
 
 
 - [ ] MR armband (backlog 7): Concept A approved Nov 13. Separate feat/mr-armband PR in progress; left/right Accessibility, functional controls, owned Hint/Listen cues and streak readout. No merge or production promotion. Backlog 76 tracks the >20 Hint policy; in-game board surface confirmed. Headset acceptance pending.
@@ -124,14 +124,45 @@ Armband verification update (Nov 13): typecheck/build and 102 unit tests pass. Q
 - On Lab entry: narrator welcome, radio open, Cypher nudge, radio close. Leaving Lab cancels the queue. Existing voices-off/subtitle settings apply.
 - Local typecheck, build and 114 unit tests pass. Real-click entry plus both cast sequences pass. Full local regression suite and fresh merge-ready CI still required before merge. Expanded version needs owner preview review.
 
+## PR129 rift seal visuals - in progress 2026-11-17
+- [x] Beam length follows the nearest room plane, scene mesh, or visible furniture instead of a fixed 3.5 m.
+- [x] Hit sparks are mesh quads at that contact, with an impact flare on the beam end. Note stream runs for the whole beam, not only on a rift.
+- [x] Corkscrew ribbons and hand filaments thickened; the detached white palm halo is hidden; untracked hands no longer leave a mid-air aura.
+- [x] Lab `startRun` grants 120 energy (one seal) with matching orbit notes.
+- [x] Head-height beam stop: skip synthetic y=0 `ground` when the head is near session origin (Quest unbounded/viewer). Owner confirmed the colliding plane is gone (2026-11-17).
+- [x] XR charge notes reassigned onto a tracked palm; immersive no longer parks on flat desktop anchors.
+- [ ] Remaining: visible Start-energy “sphere” / hand-orbit cloud still appears at the start pose (no longer collides). Fix in a follow-up PR — see WALL_TONES_TODO item for the white charge-cloud at session start.
+- [ ] Owner Quest retest of remaining cloud visual. No merge until he says so.
+
 ## Store scroll selection regression - 2026-11-16
 - [x] Reproduce the failure with a two-pixel touch-ray movement.
 - [x] Restore small-movement taps on release while ignoring duplicate clicks; keep repeated drags scrolling without selection.
 - [ ] Full local/CI checks and deployed preview verification.
 - [ ] Owner headset retest, including tile details and Buy after repeated up/up/down drags. No merge approval. PR95 unchanged.
 
+## Rift portal note shards (feat/rift-portal-shards, Nov 17) - in progress
+- [x] Branch off `feat/rift-seal-visuals` (not folded into PR #129).
+- [x] Replace blurry glow-dot Points + flat note Sprites + dark rock chips with thick neon notes, sharp sparks, luminous shards (`rift-portal-burst.ts`), lightweight rim/core shaders, no bloom stack.
+- [x] Redraw geometry-collision pool as sharp instanced sparks; physics unchanged.
+- [x] Archive ref `docs/reference-images/38-rift-portal-note-shards.jpg` + index limits.
+- [x] Front idle + sealing motion captures in pale Lab room (`artifacts/portal-shards/`, local only). Notes readable; room/rift hole still visible.
+- [ ] Side-orbit capture still weak in flat browser camera; recheck in XR/headset.
+- [ ] Quest perf sample pending (no device connected this session).
+- [x] Draft PR #144 base `feat/rift-seal-visuals`. No merge / no production deploy.
+- [x] Merged origin/main (recorded Rift SFX #135) into this branch; kept visual beam/geometry path and wired positional hum/seal/ambience.
+- [x] Beam mid-room false hits hardened (impact fleck rift-only; XR plane mesh raycasts skipped; occluders colorMask; hub demo props hidden outside Demo).
+- [x] Synthetic head-height ground plane fixed (owner Quest confirm 2026-11-17).
+- [x] PR144 review fixes (2026-11-17): drop redeclared `instanceColor` in spark/shard shaders; hide hub dressing (incl. studio-floor) only in Rift Lab; billboard welding/portal sparks; sync rift-lab desktop/mobile e2e with Start energy grant; Three color-mask cache for hand occluders; remove unused palmCore sprite; keep synthetic ground for spark bounce but exclude it from beam stop; skip scene-mesh beam stops during flat touch drag (unnamed floor/dome was killing orb→rift at ~0.1 m).
+- [x] PR #155: soft-lock flat-touch beam onto rift under finger; complete seal when beam charge hits 0 (multi-frame float used to abandon under SEAL_HOLD_MS); mobile e2e holds on live rift NDC.
+- [ ] Follow-up PR: visible white Start-energy sphere/cloud still at session-start pose (tracks energy; not colliding). Tracked in WALL_TONES_TODO.
+- [x] Local typecheck + unit + rift desktop/mobile e2e green on reconciled head (2026-11-17). Full suite + merge-ready CI still required before owner merge.
+
 ## Accessibility settings layout fix (Nov 17) - separate PR in progress
 - [x] Fix: MR armband hand/mode buttons were accidentally nested inside the head-gaze checkbox row (bad merge in 228fd6b), rendering on one colliding line on Quest. Restored to their own container row; gaze rows keep their own rows.
 - [x] Armband controls keep Quest-only visibility (setDisplay on the new row, same rule as the gaze rows) - desktop/phone dialog unchanged from current main.
 - [x] Regression test: armband buttons are standalone rows, not nested in the gaze row.
 - [ ] CI, Codex review, his preview test on Quest. No merge without his go-ahead.
+
+## Documentation reconciliation - November 17
+
+PR82's backlog58 status/caveat is preserved above. The authoritative game backlog and later follow-ups are in WALL_TONES_TODO.md; this historical implementation log does not override it. No headset verification is newly claimed.

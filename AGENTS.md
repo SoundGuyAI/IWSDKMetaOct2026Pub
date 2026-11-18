@@ -28,6 +28,17 @@ ones in progress (owner rule, 2026-11-08). Keep pushed but unaccepted work in pr
 
 `docs/reference-images/` holds the reference images made for Wall Tones (armband, rift, marketing concept art, unlock glow) with `index.md`, which has Oded's own comments, picks and rejections. Read `docs/reference-images/index.md` before changing anything that has a visual reference. Concept art is direction, not gameplay or final art. Some earlier mockups were not recovered; the index lists their comments without images. When you make a new reference image or get new comments, add the file and an index row in the same PR. Each project keeps its references in its own repo. This repo is public until Oded makes it private, so only add images he asked to archive.
 
+## Current Rift visual handoff (November 17)
+
+Before Rift visual work, read `docs/RIFT_CURSOR_HANDOFF.md`. Cursor owns the new
+visual pass; storyline/gameplay integration and sound-effects work stay separate.
+Inspect the actual reference images and current runtime, propose a gap list and
+plan, then stop for owner review before implementation. Preserve existing sound
+hooks, interaction and economy. Do not confuse the Rift hand-to-wall sealing beam
+with the palm-to-panel projector beam. The original main-freeze note is a dated handoff checkpoint, not current state.
+Recheck current source and later owner decisions; use a separate worktree/branch/PR.
+This handoff does not authorize gameplay merges or deployment.
+
 ## Cypher voice clips
 
 `docs/CYPHER_VOICE_RECIPE.md` is the approved recipe for making or changing any

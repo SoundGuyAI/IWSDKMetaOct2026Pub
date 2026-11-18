@@ -44,6 +44,48 @@ const readChevronOpacity = async (
   };
 };
 
+/** Debug-bridge pointer target for one named element (live projection). */
+const readTarget = (
+  page: Page,
+  name: string,
+): Promise<{ x: number; y: number } | undefined> =>
+  page.evaluate(
+    (n) =>
+      (window as unknown as {
+        __wallTonesDebug: { storePointerTargets: Record<string, { x: number; y: number }> };
+      }).__wallTonesDebug.storePointerTargets[n],
+    name,
+  );
+
+/**
+ * Setup grounding for pointer tests: the targets are live projections of a
+ * 3D panel that can still be settling right after the store opens, so wait
+ * until the named target holds still (<1px between two reads ~150ms apart)
+ * before using its coordinates. A timeout here is a SETUP failure (the
+ * panel never settled), not a product assertion about scrolling.
+ */
+const waitForStableTarget = async (
+  page: Page,
+  name: string,
+): Promise<{ x: number; y: number }> => {
+  const deadline = Date.now() + 15_000;
+  let prev = await readTarget(page, name);
+  while (Date.now() < deadline) {
+    await page.waitForTimeout(150);
+    const next = await readTarget(page, name);
+    if (
+      prev != null &&
+      next != null &&
+      Math.abs(next.x - prev.x) < 1 &&
+      Math.abs(next.y - prev.y) < 1
+    ) {
+      return next;
+    }
+    prev = next;
+  }
+  throw new Error(`SETUP: store pointer target "${name}" did not stabilize within 15s`);
+};
+
 const readBalance = (page: Page): Promise<string | null> =>
   page.evaluate(
     () =>
@@ -70,6 +112,18 @@ async function bootWallTones(page: Page, query = ''): Promise<void> {
   await page.addInitScript(() => {
     window.sessionStorage.setItem('iwsdk-experience-mode', 'walltones');
     window.localStorage.clear();
+    // Diagnostic only: record raw pointer events so click helpers can
+    // release the button as soon as the page processed pointerdown instead
+    // of holding a fixed wall-clock duration.
+    const rec = (e: Event) => {
+      (window as unknown as { __tapLog: { type: string }[] }).__tapLog.push({
+        type: e.type,
+      });
+    };
+    (window as unknown as { __tapLog: unknown[] }).__tapLog = [];
+    for (const t of ['pointerdown', 'pointerup', 'click']) {
+      window.addEventListener(t, rec, true);
+    }
   });
   await page.goto(`/${query}`);
   await page.waitForFunction(
@@ -160,11 +214,29 @@ test.describe('Wall Tones store scrolling (MR critical fix)', () => {
             __wallTonesDebug: { storePointerTargets: Record<string, { x: number; y: number }> };
           }).__wallTonesDebug.storePointerTargets,
       );
+    // No fixed wall-clock hold: chevron scrolling rides the internal click
+    // (pointerdown would not scroll), and @pmndrs/pointer-events emits it
+    // only when down/up land within clickThresholdMs = 300ms; a fixed hold
+    // can stretch past that under runner load. Release as soon as the page
+    // processed the pointerdown. The DOM tap log is not proof the internal
+    // handler ran; the scroll assertions below remain the real check.
     const click = async (x: number, y: number) => {
       await page.mouse.move(x, y, { steps: 8 });
       await page.waitForTimeout(800);
+      const logged = await page.evaluate(
+        () => (window as unknown as { __tapLog: unknown[] }).__tapLog.length,
+      );
       await page.mouse.down();
-      await page.waitForTimeout(150);
+      await page
+        .waitForFunction(
+          (n) =>
+            (window as unknown as { __tapLog: { type: string }[] }).__tapLog
+              .slice(n)
+              .some((e) => e.type === 'pointerdown'),
+          logged,
+          { timeout: 5_000 },
+        )
+        .catch(() => {});
       await page.mouse.up();
       await page.waitForTimeout(600);
     };
@@ -196,7 +268,7 @@ test.describe('Wall Tones store scrolling (MR critical fix)', () => {
 
   test('touch taps on the chevrons scroll the tree (phone-style input)', async ({
     browser,
-  }) => {
+  }, testInfo) => {
     // Touch input needs a touch-capable context, like a phone: pointer
     // events then arrive with pointerType 'touch', which is also how uikit
     // sees XR rays (nativeEvent carries no mouse pointerType).
@@ -206,6 +278,38 @@ test.describe('Wall Tones store scrolling (MR critical fix)', () => {
       ignoreHTTPSErrors: true,
     });
     const page = await context.newPage();
+    // Diagnostic only: log the tap's raw DOM events so a missing click can
+    // be told apart from an over-budget or mis-targeted gesture. Nothing
+    // here asserts on wall-clock timing; the outcome assertion below is the
+    // actual scroll.
+    await page.addInitScript(() => {
+      const rec = (e: Event) => {
+        const pe = e as PointerEvent;
+        const te = e as TouchEvent;
+        (window as unknown as { __tapLog: unknown[] }).__tapLog.push({
+          type: e.type,
+          pointerType: pe.pointerType ?? null,
+          x: pe.clientX ?? te.changedTouches?.[0]?.clientX ?? null,
+          y: pe.clientY ?? te.changedTouches?.[0]?.clientY ?? null,
+          ts: Math.round(e.timeStamp),
+        });
+      };
+      (window as unknown as { __tapLog: unknown[] }).__tapLog = [];
+      for (const t of ['pointerover', 'pointerdown', 'pointerup', 'pointercancel', 'touchstart', 'touchend', 'click']) {
+        window.addEventListener(t, rec, true);
+      }
+    });
+    const attachTapLog = async (name: string) => {
+      const log = await page
+        .evaluate(() => (window as unknown as { __tapLog: unknown[] }).__tapLog)
+        .catch(() => null);
+      if (log != null) {
+        await testInfo.attach(name, {
+          body: JSON.stringify(log, null, 1),
+          contentType: 'application/json',
+        });
+      }
+    };
     try {
       await abortSpeech(page);
       await bootWallTones(page);
@@ -213,29 +317,65 @@ test.describe('Wall Tones store scrolling (MR critical fix)', () => {
       await expect
         .poll(async () => (await readScroll(page)).maxY, { timeout: 30_000 })
         .toBeGreaterThan(0);
-      const chevron = await page.evaluate(
-        () =>
-          (window as unknown as {
-            __wallTonesDebug: { storePointerTargets: Record<string, { x: number; y: number }> };
-          }).__wallTonesDebug.storePointerTargets['store-scroll-down'],
-      );
-      expect(chevron).toBeDefined();
+      // Readiness: the down chevron must be live (not dimmed) before a tap
+      // can scroll; this is the same enabled rule the product applies.
+      await expect
+        .poll(async () => (await readChevronOpacity(page)).down, { timeout: 10_000 })
+        .toBe(1);
+      // Setup grounding: pointer targets are live world projections, so wait
+      // for the chevron to stop moving before tapping its rendered position.
+      // A miss here is a setup failure, not a product assertion.
+      const chevron = await waitForStableTarget(page, 'store-scroll-down');
       const cdp = await context.newCDPSession(page);
       const touch = async (type: string, x: number, y: number) =>
         cdp.send('Input.dispatchTouchEvent', {
           type,
           touchPoints: type === 'touchEnd' ? [] : [{ x, y, id: 1 }],
         });
-      await touch('touchStart', chevron!.x, chevron!.y);
-      await page.waitForTimeout(120);
-      await touch('touchEnd', chevron!.x, chevron!.y);
+      await page.evaluate(() => {
+        (window as unknown as { __tapLog: unknown[] }).__tapLog = [];
+      });
+      // Genuine short tap, no wall-clock hold. Chromium processes CDP touch
+      // commands in order and dispatches each event synchronously, and the
+      // pointer-events layer computes the down intersection inside the
+      // pointerover/pointerdown dispatch (over() -> computeIntersection ->
+      // commit), so once the page has seen pointerdown, down processing is
+      // complete and the up can follow immediately - this is also how
+      // Playwright's own touchscreen.tap issues touchStart/touchEnd with no
+      // delay. The previous fixed 120ms sleep stretched under runner load
+      // (measured 231-315ms), and the one observed failure had the only
+      // hold past the 300ms clickThresholdMs in @pmndrs/pointer-events.
+      // Whether that threshold actually suppressed the internal click in
+      // that attempt is unobserved: the tap log records DOM events only,
+      // and a DOM click here is not proof of the internal 3D handler's
+      // click. The event-driven wait below keeps real taps in the tens of
+      // ms regardless of runner load, and the tap log records the actual
+      // event timing either way.
+      await touch('touchStart', chevron.x, chevron.y);
+      await expect
+        .poll(
+          async () =>
+            page
+              .evaluate(
+                () =>
+                  (window as unknown as { __tapLog: { type: string }[] }).__tapLog.map(
+                    (e) => e.type,
+                  ),
+              )
+              .catch(() => [] as string[]),
+          { timeout: 5_000 },
+        )
+        .toContain('pointerdown');
+      await touch('touchEnd', chevron.x, chevron.y);
       await expect
         .poll(async () => (await readScroll(page)).y, { timeout: 10_000 })
         .toBeGreaterThan(0);
       // Back to the top.
       await dbg(page, 'scrollStore', -100000);
       expect((await readScroll(page)).y).toBe(0);
+      await attachTapLog('touch-tap-events.json');
     } finally {
+      await attachTapLog('touch-tap-events-final.json');
       await context.close();
     }
   });

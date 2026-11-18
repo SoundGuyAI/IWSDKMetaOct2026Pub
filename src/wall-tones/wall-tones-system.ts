@@ -1,9 +1,37 @@
 import { hintWindowStart, HINT_WINDOW_SIZE } from './hint-window.js';
 import { armbandHand, armbandDisplayMode, ArmbandDisplay, ARMBAND_SCALE } from './armband.js';
-import { BAND_JOINT_ROTATION, PALM_PANEL_HEAD_AWAY, PALM_PANEL_LIFT, PalmJointsSmoother, palmOpenState, palmPanelPose, palmProjectorPromptDue, type PalmJoints, type PalmVec } from './palm-projector.js';
+import { BAND_JOINT_ROTATION, BEAM_BOTTOM_RADIUS, BEAM_TOP_RADIUS, BEAM_CLIP_SOFT, PALM_PANEL_HEAD_AWAY, PALM_PANEL_LIFT, PalmJointsSmoother, palmOpenState, palmPanelPose, palmProjectorPromptDue, type PalmJoints, type PalmVec } from './palm-projector.js';
+import { DIRECT_PRESS_PUSH_MAX_M, DIRECT_PRESS_REFIRE_MS, directPressNext, directPressSample, type DirectPressHandState } from './armband-direct-press.js';
 import { BackgroundProgress } from './cypher-background.js';
 import { getVoiceGender } from './speech.js';
 import { CypherProgress, type CypherWindow } from './cypher-progress.js';
+import {
+  THUMB_JOINT_NAMES,
+  ThumbGestureDetector,
+  classifyThumbPose,
+  type ThumbHandJoints,
+} from '../thumbs-lab/thumbs-gesture.js';
+import {
+  GameOverHandGapTracker,
+  GameOverThumbsFlow,
+  type GameOverThumbPose,
+  type GameOverThumbsEvent,
+} from './gameover-thumbs.js';
+import { playLabAnswerCue } from '../thumbs-lab/lab-cues.js';
+import { HeadNodShakeDetector } from '../nod-lab/head-gesture.js';
+import { Euler } from 'three';
+import { CypherLabVoice, cypherLabVoiceSet } from '../thumbs-lab/lab-voice.js';
+import {
+  GESTURE_ANSWER_TIMEOUT_S,
+  GESTURE_CHECK_END,
+  GESTURE_CHECK_INTRO,
+  NOD_CHECK_INTRO,
+  NOD_CHECK_NO,
+  NOD_CHECK_YES,
+  gestureRetryLine,
+  shouldRunGestureCheck,
+  shouldRunNodCheck,
+} from './gesture-check.js';
 import { captureCypherCast } from './cypher-voice.js';
 import {selectionPanelPose, horizontalLookAway, panelOverlapsPad, rectangleInsidePolygon} from './panel-placement.js';
 import { shouldAnnounceRecord } from './record-feedback.js';
@@ -16,6 +44,7 @@ import { MovementTracker, formatMetersNumber, movementUiVisible, readLifetimeMov
 import {
 AdditiveBlending,
 ConeGeometry,
+PlaneGeometry,
 Matrix4,
 Raycaster,
 CylinderGeometry,
@@ -62,6 +91,7 @@ PHONE_PAD_SIZE_M,
 PHONE_PANEL_FLAT,
 BLINK_CUE_OFFSCREEN_DEG,
 BLINK_HOLD_S,
+NOTE_DURATION_S,
 NOTE_GAP_S,
 BETWEEN_ROUNDS_DELAY_S,
 IDLE_REPLAY_S,
@@ -160,6 +190,9 @@ import {
   AUTOPLAY_UNLOCK_PLAY_LEVEL,
   PLAY_UNLOCK_HINT_LEVEL,
   PLAY_MAX_LEVEL,
+  SPEED_MAX_LEVEL,
+  MULTIPLIER_MAX_LEVEL,
+  multiplierFactorForLevel,
   INDEX_COST,
   LISTEN_COST,
   REPLAY_FREE_CAP,
@@ -177,7 +210,12 @@ import {
   storeTapHandledOnRelease,
 } from './store-drag-guard.js';
 import { STORE_SCROLL_STEP, clampStoreScroll, storeScrollEnabled } from './store-scroll.js';
-import { SAVER_PRICE_BARS, saverRetryPlan, saverUnitsForStreak } from './consumable-values.js';
+import {
+  SAVER_PRICE_BARS,
+  gameOverRetryPresentation,
+  saverRetryPlan,
+  saverUnitsForStreak,
+} from './consumable-values.js';
 import {
 getActiveWorldKind,
 returnToMenuInPlace,
@@ -252,6 +290,13 @@ storeOpen: boolean;
 gameOverOpen: boolean;
 gameOverUseSaver: () => void;
 gameOverBuySaver: () => void;
+gameOverRetry: () => void;
+gameOverThumbsArmed: boolean;
+gameOverRetryLabel: string;
+gameOverRetryLabelColor: number;
+gameOverRetryBarsIconVisible: boolean;
+gameOverRetryConfirmIconVisible: boolean;
+gameOverGestureHint: { text: string; visible: boolean };
 savers: number;
 streakNow: number;
 /** Test-only: the New run button action. */
@@ -278,6 +323,7 @@ sequenceBoxesShown: number;
 sequenceUnknownShown: number;
 roundCardText: string;
 roundCardVisibleText: string | null;
+roundCardBonusVisibleText: string;
 headCaptionVisibleText: string | null;
 /** Test-only: drives the exact head-caption setter path tickHeadCaption uses. */
 probeHeadCaptionText: (text: string) => void;
@@ -303,6 +349,8 @@ buyHint: () => void;
 buyListen: () => void;
 buyAutoplay: () => void;
 buyPlay: () => void;
+buySpeed: () => void;
+buyMultiplier: () => void;
 buyReplay: () => void;
 buySaver: () => void;
 buyTopSecret: () => void;
@@ -316,6 +364,12 @@ readonly achievementsButtonScreen: { x: number; y: number } | null;
 repeatPattern: () => void;
 /** Test-only: the control-row Play button path (greyed -> Store). */
 pressPlay: () => void;
+/** Test-only: the control-row Speed button path (greyed -> Store,
+ * owned -> on/off toggle). */
+pressSpeedControl: () => void;
+/** Test-only: the control-row Multiplier button path (greyed -> Store,
+ * owned -> on/off toggle). */
+pressMultiplierControl: () => void;
 /** Test-only: selects a store tile like a tap on its tile. */
 selectStoreTile: (id: string) => void;
 storePointerTargets: Record<string, { x: number; y: number }>;
@@ -336,6 +390,8 @@ hintUnlocked: boolean;
 autoplayLevel: number;
 autoplayUnlocked: boolean;
 playLevel: number;
+speedLevel: number;
+multiplierLevel: number;
 replaysFree: number;
 replaysPaid: number;
 replaysTotal: number;
@@ -347,6 +403,8 @@ grantBars: (amount: number) => void;
 grantSavers: (units: number) => void;
 /** Test-only: seed the Play level while its prices are unset. */
 grantPlayLevel: (level: number) => void;
+grantSpeedLevel: (level: number) => void;
+grantMultiplierLevel: (level: number) => void;
 /** Test-only: grant the Index pointer while its price is unset. */
 grantIndex: () => void;
 /** Test-only: press the control-row Autoplay button (toggle when owned). */
@@ -404,6 +462,12 @@ narrator: 'storeItemHack',
 // so the cut disc is hidden inside the orb and the beam reads as growing out
 // of it rather than touching it.
 const ARM_BAND_BEAM_EMBED = 0.008;
+const Z_AXIS = new Vector3(0, 0, 1);
+
+/** No tracked hand for this long while the Game Over popup is open restarts
+ * the gesture; shorter controller/hand input-switch gaps pause it instead
+ * (Nov 17 device test). */
+const GAMEOVER_NO_HANDS_RESET_SEC = 1.0;
 
 export class WallTonesSystem extends createSystem({
 pads: { required: [WallTonePad] },
@@ -521,6 +585,31 @@ private panelBound = false;
 private flatBackdropHidden = false;
 private wasNonImmersive = true;
 private flatAwaitingStart = false;
+/** MR-only start gate (owner, Nov 17): after the pads are placed the round
+ * waits for a pad press or a thumbs up, matching the MR start narration. */
+private mrAwaitingStart = false;
+private readonly thumbStartDetector = new ThumbGestureDetector();
+/** Game Over thumbs flow (owner, Nov 17): both-up retry / arm+confirm / down new run. */
+private readonly gameOverThumbs = new GameOverThumbsFlow();
+/** Last arm state pushed to the Game Over panel; the tick mirrors changes
+ * (including gap-reset disarms, which emit no event). */
+private gameOverHintSyncedArmed = false;
+/** Game Over no-hand stretch tracker (Nov 17 device test): Quest drops hand
+ * sources while controllers are active, so frames without a tracked hand
+ * pause the gesture flow instead of resetting it. */
+private readonly gameOverHandGap = new GameOverHandGapTracker(GAMEOVER_NO_HANDS_RESET_SEC);
+/** Active story gesture-check listen; resolved by update() hand sampling. */
+private gestureListen: {
+kind: 'thumbs' | 'nod';
+detector: ThumbGestureDetector | HeadNodShakeDetector;
+deadline: number;
+resolve: (answer: 'yes' | 'no' | null) => void;
+} | null = null;
+private readonly nodBaselineQuat = new Quaternion();
+private readonly nodHeadQuat = new Quaternion();
+private readonly nodRelQuat = new Quaternion();
+private readonly nodRelEuler = new Euler();
+private readonly cypherLabVoice = new CypherLabVoice();
 /** After playback, ignore touches until every pad is clear (avoids stuck finger auto-hitting). */
 private inputNeedsClear = false;
 private airOrientation: AirOrientation = 'vertical';
@@ -660,21 +749,21 @@ if (!this.armband) {
   const bind = (id: string, action: () => void) => {
     const button = panel.getElementById(id);
     if (!button) return;
+    // Direct fingertip presses (updateArmbandDirectPress) fire the same action;
+    // suppress the UIKit click the same poke may also deliver so one press
+    // never runs the action twice (Nov 17 Quest feedback).
     button.name = id;
-    button.addEventListener('click', action);
-    this.cleanupFuncs.push(() => button.removeEventListener('click', action));
+    const direct = { id, action, hands: { left: { hover: false, pressed: false }, right: { hover: false, pressed: false } } as Record<'left' | 'right', DirectPressHandState>, suppressClickUntil: 0, lastFireAt: 0, pushPx: 0 }; this.armbandDirectButtons.push(direct); const guarded = () => { if (performance.now() < direct.suppressClickUntil) return; action(); }; button.addEventListener('click', guarded); this.cleanupFuncs.push(() => button.removeEventListener('click', guarded));
   };
   bind('armband-repeat', () => {
     if (this.armbandUsable() && this.game.phase === 'input' && this.economy.getReplaysTotal() > 0) void this.onRepeatPattern();
   });
-  bind('armband-modifiers', () => { if (this.armbandUsable()) this.onToggleStore(); });
-  const upgrade = (id: string) => {
-    if (!this.armbandUsable()) return;
-    if (!this.storeOpen) this.onToggleStore();
-    this.forceSelectStoreTile(id);
-  };
-  bind('armband-hint-button', () => upgrade('hint'));
-  bind('armband-autoplay', () => upgrade('autoplay'));
+  // Play modifier (item 66): same action as the panel's Play control.
+  bind('armband-play', () => { if (this.armbandUsable() && this.economy.getPlayLevel() >= 1) void this.onPlayControl(); });
+  // New Run on the wrist while Game Over owns the retry decision; Skip Voice
+  // while narration is playing (mirrors the panel button's relevance rule).
+  bind('armband-newrun', () => { if (this.armbandTrackable() && this.gameOverOpen) this.onGameOverNewRun(); });
+  bind('armband-skip-voice', () => { if (this.armbandTrackable()) this.onSkipVoice(); });
 }
 const hand = armbandHand();
 const adapter = this.input.xr.visualAdapters[hand].peek();
@@ -718,7 +807,7 @@ if (session) for (const candidate of session.inputSources) {
     const mesh = node as Mesh;
     const mats = Array.isArray(mesh.material) ? mesh.material : mesh.material ? [mesh.material] : [];
     for (const mat of mats) {
-      mat.depthTest = false;
+      mat.depthTest = true;
       mat.depthWrite = false;
     }
   });
@@ -783,6 +872,7 @@ entity.object3D.visible = tracked && panelShown;
 if (housing?.object3D) housing.object3D.visible = tracked && armbandDisplayMode() === 'band';
 if (!tracked || !panelShown) {
   if (this.armbandBeam) this.armbandBeam.visible = false;
+  if (this.armbandBeamVeil) this.armbandBeamVeil.visible = false;
   if (this.armbandGlow) this.armbandGlow.visible = false;
   return;
 }
@@ -844,12 +934,14 @@ if (floating) {
   this.armbandSmoothQuat.toArray(orientation);
   scale[0] = scale[1] = scale[2] = ARMBAND_SCALE * (0.35 + 0.65 * e);
   this.updateArmbandBeam(floating, e, delta);
+  this.updateArmbandDirectPress(panel);
 } else {
   this.armband.position.toArray(position);
   this.armband.orientation.toArray(orientation);
   scale[0] = scale[1] = scale[2] = ARMBAND_SCALE;
   // Band mode has no beam; hide it if the session flipped from projector.
   if (this.armbandBeam) this.armbandBeam.visible = false;
+  if (this.armbandBeamVeil) this.armbandBeamVeil.visible = false;
   if (this.armbandGlow) this.armbandGlow.visible = false;
 }
 if (housing) {
@@ -865,7 +957,8 @@ this.armband.render({ streak: this.game.streak, best: this.game.bestStreak,
   hintCount: this.economy.getHintRevealCount(), listen: this.economy.ownsListen(),
   playbackShown: this.playbackShownCount, replays: this.economy.getReplaysTotal(),
   autoplay: this.economy.getAutoplayLevel(), colorNames: colorNamesEnabled(),
-  gameOver: this.gameOverOpen, bars: this.economy.getBars() });
+  gameOver: this.gameOverOpen, bars: this.economy.getBars(),
+  narrationBusy: this.speech.isBusy(), playLevel: this.economy.getPlayLevel() });
 }
 
 /** The band stays on the wrist for the whole run, including the Game Over popup. */
@@ -896,9 +989,23 @@ private readonly armbandBeamDir = new Vector3();
 private readonly armbandBeamAxis = new Vector3(0, 1, 0);
 private armbandBeam: Mesh | undefined;
 private armbandBeamMat: ShaderMaterial | undefined;
+private armbandBeamVeil: Mesh | undefined;
+private armbandBeamVeilMat: ShaderMaterial | undefined;
 private armbandGlow: Mesh | undefined;
 private armbandBeamTime = 0;
+private readonly armbandVeilMid = new Vector3();
+private readonly armbandVeilCamDir = new Vector3();
+private readonly armbandVeilViewDir = new Vector3();
+private readonly armbandHeadQuatInv = new Quaternion();
+private readonly armbandVeilSpin = new Quaternion();
 private armbandLastPose: import('./palm-projector.js').PalmPanelPose | undefined;
+  private readonly armbandDirectButtons: Array<{ id: string; action: () => void; hands: Record<'left' | 'right', DirectPressHandState>; suppressClickUntil: number; lastFireAt: number; pushPx: number }> = [];
+  private readonly armbandPressPos = new Vector3();
+  private readonly armbandPressQuat = new Quaternion();
+  private readonly armbandPressScale = new Vector3();
+  private readonly armbandPressRight = new Vector3();
+  private readonly armbandPressUp = new Vector3();
+  private readonly armbandPressOut = new Vector3();
 private readonly armbandPanelX = new Vector3();
 private readonly armbandPanelY = new Vector3();
 private readonly armbandPanelZ = new Vector3();
@@ -907,17 +1014,24 @@ private readonly armbandJointMatrix = new Matrix4();
 /** The palm-center light beam + emitter glow for projector mode (concept art: rays from the open palm). */
 private ensureArmbandBeam(): void {
   if (this.armbandBeam) return;
-  const geo = new CylinderGeometry(0.055, 0.006, 1, 24, 1, true);
+  const geo = new CylinderGeometry(BEAM_TOP_RADIUS, BEAM_BOTTOM_RADIUS, 1, 24, 1, true);
   this.armbandBeamMat = new ShaderMaterial({
     transparent: true,
     depthWrite: false,
     blending: AdditiveBlending,
     side: DoubleSide,
-    uniforms: { uTime: { value: 0 }, uStrength: { value: 0 } },
-    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    uniforms: {
+      uTime: { value: 0 }, uStrength: { value: 0 },
+      uClipPoint: { value: new Vector3() },
+      uClipNormal: { value: new Vector3(0, 1, 0) },
+      uClipSoft: { value: BEAM_CLIP_SOFT },
+    },
+    vertexShader: 'varying vec2 vUv; varying vec3 vWorld; void main(){ vUv = uv; vec4 w = modelMatrix * vec4(position, 1.0); vWorld = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
     fragmentShader: [
-      'uniform float uTime; uniform float uStrength; varying vec2 vUv;',
+      'uniform float uTime; uniform float uStrength; uniform vec3 uClipPoint; uniform vec3 uClipNormal; uniform float uClipSoft; varying vec2 vUv; varying vec3 vWorld;',
       'void main(){',
+      '  float clipA = 1.0 - smoothstep(-uClipSoft, 0.0, dot(vWorld - uClipPoint, uClipNormal));',
+      '  if (clipA < 0.004) discard;',
       '  float rays = 0.55 + 0.45 * sin(vUv.x * 43.0 + sin(vUv.y * 9.0 - uTime * 7.0) * 1.5 + uTime * 2.5);',
       '  float rise = fract(vUv.y * 2.0 - uTime * 1.6);',
       '  float pulse = 0.75 + 0.25 * sin(uTime * 11.0 + vUv.y * 25.0);',
@@ -927,7 +1041,7 @@ private ensureArmbandBeam(): void {
       // palm itself).
       '  float body = smoothstep(0.0, 0.04, vUv.y) * (1.0 - vUv.y * 0.55);',
       '  vec3 color = mix(vec3(0.30, 1.0, 0.65), vec3(0.55, 1.0, 0.9), vUv.y);',
-      '  float a = uStrength * body * pulse * (0.35 + 0.65 * rays) * (0.6 + 0.4 * rise);',
+      '  float a = uStrength * body * pulse * (0.35 + 0.65 * rays) * (0.6 + 0.4 * rise) * clipA;',
       '  gl_FragColor = vec4(color * a, a);',
       '}',
     ].join('\n'),
@@ -939,6 +1053,46 @@ private ensureArmbandBeam(): void {
   // cone where they overlap (Nov 16 user feedback).
   this.armbandBeam.renderOrder = -1;
   this.world.scene.add(this.armbandBeam);
+  // View-aligned veil: the cone above is a hollow shell, so looking along the
+  // beam axis (the natural reading pose: palm up, panel billboarded at the
+  // head) projects almost none of its surface and the beam vanishes (Nov 16
+  // hardware feedback). This quad fully faces the head and stretches along
+  // the screen projection of the beam, so it reads at every angle - it can
+  // only foreshorten into a soft blob, never a zero-width line. It fades in
+  // as the view turns axial and stays off at side angles, where the cone
+  // carries the volumetric look on its own.
+  this.armbandBeamVeilMat = new ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    blending: AdditiveBlending,
+    side: DoubleSide,
+    uniforms: {
+      uTime: { value: 0 }, uStrength: { value: 0 },
+      uClipPoint: { value: new Vector3() },
+      uClipNormal: { value: new Vector3(0, 1, 0) },
+      uClipSoft: { value: BEAM_CLIP_SOFT },
+    },
+    vertexShader: 'varying vec2 vUv; varying vec3 vWorld; void main(){ vUv = uv; vec4 w = modelMatrix * vec4(position, 1.0); vWorld = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
+    fragmentShader: [
+      'uniform float uTime; uniform float uStrength; uniform vec3 uClipPoint; uniform vec3 uClipNormal; uniform float uClipSoft; varying vec2 vUv; varying vec3 vWorld;',
+      'void main(){',
+      '  float clipA = 1.0 - smoothstep(-uClipSoft, 0.0, dot(vWorld - uClipPoint, uClipNormal));',
+      '  if (clipA < 0.004) discard;',
+      '  float across = 1.0 - abs(vUv.y * 2.0 - 1.0);',
+      '  float body = smoothstep(0.0, 0.14, across);',
+      '  float ends = smoothstep(0.0, 0.06, vUv.x) * (1.0 - smoothstep(0.72, 1.0, vUv.x));',
+      '  float rays = 0.55 + 0.45 * sin(vUv.y * 18.0 - uTime * 7.0 + sin(vUv.x * 9.0 + uTime * 2.5) * 1.5);',
+      '  float pulse = 0.75 + 0.25 * sin(uTime * 11.0 + vUv.x * 25.0);',
+      '  vec3 color = mix(vec3(0.30, 1.0, 0.65), vec3(0.55, 1.0, 0.9), vUv.x);',
+      '  float a = uStrength * body * ends * pulse * (0.45 + 0.55 * rays) * clipA;',
+      '  gl_FragColor = vec4(color * a, a);',
+      '}',
+    ].join('\n'),
+  });
+  this.armbandBeamVeil = new Mesh(new PlaneGeometry(1, 1), this.armbandBeamVeilMat);
+  this.armbandBeamVeil.visible = false;
+  this.armbandBeamVeil.renderOrder = -1;
+  this.world.scene.add(this.armbandBeamVeil);
   // Fresnel falloff so the emitter reads as a small glowing orb from every
   // angle; a flat additive fill looked like a 2D disc from the side (Nov 16
   // user feedback).
@@ -978,25 +1132,14 @@ private updateArmbandBeam(floating: { open: number; center: PalmVec; normal: Pal
   this.armbandBeamDir.copy(this.armbandSmoothPos).sub(this.armbandBeamBase);
   const fullLen = Math.max(this.armbandBeamDir.length(), 0.001);
   this.armbandBeamDir.normalize();
-  // Stop the cone just under the panel. Its wide top disc (radius 0.055) is
-  // tilted against the head-facing panel plane, so ending exactly at the
-  // panel center let the rim poke through to the head side and draw over the
-  // buttons (Nov 16 user feedback). Gap = r*tan(theta) + margin/cos(theta)
-  // keeps every rim point on the palm side of the plane.
-  const cosTheta = this.armbandBeamDir.dot(this.armbandPanelZ);
-  let len = fullLen;
-  if (cosTheta > 1e-3) {
-    const sinTheta = Math.sqrt(Math.max(0, 1 - cosTheta * cosTheta));
-    len = Math.max(0.02, fullLen - (0.055 * sinTheta + 0.006) / cosTheta);
-  }
-  // The cone's local axis is +Y, so map THAT onto the beam direction.
-  // setFromUnitVectors(handUp, dir) only aligned the grip's up with the beam:
-  // the cone axis stayed rotated away by the grip twist and its base visibly
-  // floated off the glow orb (Nov 16 review). EMBED roots the cone's cut disc
-  // inside the orb so the beam reads as growing out of it, not touching it.
+  /* constant beam size: the fragment shader clips against the head-facing panel plane (uClipPoint/uClipNormal); no more size pumping at tilted hands (Nov 17 Quest feedback). Cone axis +Y; EMBED roots the cut disc in the glow orb. */ const len = fullLen;
   beam.position.copy(this.armbandBeamBase).addScaledVector(this.armbandBeamDir, (len - ARM_BAND_BEAM_EMBED) * 0.5);
   beam.quaternion.setFromUnitVectors(this.armbandBeamAxis, this.armbandBeamDir);
   beam.scale.set(1, len + ARM_BAND_BEAM_EMBED, 1);
+  this.armbandBeamMat!.uniforms.uClipPoint!.value.copy(this.armbandSmoothPos);
+  this.armbandBeamMat!.uniforms.uClipNormal!.value.copy(this.armbandPanelZ);
+  this.armbandBeamVeilMat!.uniforms.uClipPoint!.value.copy(this.armbandSmoothPos);
+  this.armbandBeamVeilMat!.uniforms.uClipNormal!.value.copy(this.armbandPanelZ);
   this.armbandBeamMat!.uniforms.uTime!.value = this.armbandBeamTime;
   (this.armbandGlow!.material as ShaderMaterial).uniforms.uTime!.value = this.armbandBeamTime;
   this.armbandBeamMat!.uniforms.uStrength!.value = e;
@@ -1005,7 +1148,93 @@ private updateArmbandBeam(floating: { open: number; center: PalmVec; normal: Pal
   const pulse = 1 + 0.18 * Math.sin(this.armbandBeamTime * 9);
   glow.scale.set(pulse, pulse, pulse);
   glow.visible = beam.visible;
+  this.updateArmbandBeamVeil(len, e);
 }
+
+/** Screen-facing beam veil: always read, even looking straight down the cone. */
+private updateArmbandBeamVeil(len: number, e: number): void {
+  const veil = this.armbandBeamVeil!;
+  this.player.head.getWorldQuaternion(this.armbandHeadQuatInv).invert();
+  // Beam direction in head space: x right, y up, z behind the viewer.
+  this.armbandVeilCamDir.copy(this.armbandBeamDir).applyQuaternion(this.armbandHeadQuatInv);
+  const projected = Math.hypot(this.armbandVeilCamDir.x, this.armbandVeilCamDir.y);
+  this.armbandVeilMid.copy(this.armbandBeamBase).addScaledVector(this.armbandBeamDir, len * 0.5);
+  this.armbandVeilViewDir.copy(this.armbandVeilMid).sub(this.viewer).normalize();
+  const axial = Math.abs(this.armbandBeamDir.dot(this.armbandVeilViewDir));
+  // Only the near-axial zone: at side angles the cone carries the look alone.
+  const strength = e * Math.min(1, Math.max(0, (axial - 0.6) / 0.3));
+  veil.position.copy(this.armbandVeilMid);
+  this.player.head.getWorldQuaternion(veil.quaternion);
+  this.armbandVeilSpin.setFromAxisAngle(Z_AXIS, Math.atan2(this.armbandVeilCamDir.y, this.armbandVeilCamDir.x));
+  veil.quaternion.multiply(this.armbandVeilSpin);
+  // Foreshortened length in the screen plane, floored so the axial view keeps
+  // a soft glowing blob where the beam points straight at the head.
+  veil.scale.set(Math.max(0.045, len * projected), 0.032, 1);
+  this.armbandBeamVeilMat!.uniforms.uTime!.value = this.armbandBeamTime;
+  this.armbandBeamVeilMat!.uniforms.uStrength!.value = strength;
+  veil.visible = e > 0.05 && strength > 0.01;
+}
+  /** Index fingertip world position for one hand; a seam the XR tests can stub. */
+  private readIndexTipWorld(hand: 'left' | 'right', out: Vector3): void {
+    this.player.indexTipSpaces[hand].getWorldPosition(out);
+  }
+  /** Direct fingertip presses on the floating projector buttons (Nov 17 Quest
+  * feedback: UIKit poke clicks were unreliable on the small moving panel; the
+  * pads' geometric fingertip hit test is the proven path on hardware). Fires
+  * the same guarded actions as the click bindings, suppresses the duplicate
+  * UIKit click a poke can also deliver, and pushes the pressed button into
+  * the panel for a physical, 3D-press feel. */
+  private updateArmbandDirectPress(panel: UIKitMLAsset): void {
+    this.armband!.raisedButtons.hideAll();
+    if (this.armbandDirectButtons.length === 0) return;
+    const now = performance.now();
+    for (const entry of this.armbandDirectButtons) {
+      const el = panel.getElementById(entry.id) as unknown as Mesh | null;
+      if (!el) continue;
+      const setProps = (el as unknown as { setProperties?: (p: object) => void }).setProperties?.bind(el);
+      const size = (el as unknown as { size?: { value?: [number, number] } }).size?.value;
+      const display = (el as unknown as { properties?: { peek?: () => { display?: string } } }).properties?.peek?.().display;
+      if (!el.visible || display === 'none' || !size || size[0] <= 0 || size[1] <= 0) {
+        if (entry.pushPx !== 0) { entry.pushPx = 0; setProps?.({ transformTranslateZ: 0 } as never); }
+        for (const hand of XR_HANDS) entry.hands[hand] = { hover: false, pressed: false };
+        continue;
+      }
+      el.updateWorldMatrix(true, false);
+      el.getWorldPosition(this.armbandPressPos);
+      el.getWorldQuaternion(this.armbandPressQuat);
+      el.getWorldScale(this.armbandPressScale);
+      if (this.armbandPressScale.x < 1e-9) continue;
+      this.armbandPressRight.set(1, 0, 0).applyQuaternion(this.armbandPressQuat);
+      this.armbandPressUp.set(0, 1, 0).applyQuaternion(this.armbandPressQuat);
+      this.armbandPressOut.set(0, 0, 1).applyQuaternion(this.armbandPressQuat);
+      const raised = this.armband!.raisedButtons.update(panel, entry.id, el);
+      const frame = raised.frame;
+      if (!raised.active) {
+        for (const hand of XR_HANDS) entry.hands[hand] = { hover: false, pressed: false };
+        continue;
+      }
+      let deepest = 0;
+      for (const hand of XR_HANDS) {
+        const adapter = this.input.xr.visualAdapters[hand].peek();
+        if (adapter == null || !adapter.connected) { entry.hands[hand] = { hover: false, pressed: false }; continue; }
+        this.readIndexTipWorld(hand, this.tipScratch);
+        const sample = directPressSample({ x: this.tipScratch.x, y: this.tipScratch.y, z: this.tipScratch.z }, frame);
+        const next = directPressNext(entry.hands[hand], sample);
+        entry.hands[hand] = next.state;
+        if (next.fire && now - entry.lastFireAt >= DIRECT_PRESS_REFIRE_MS) {
+          entry.lastFireAt = now;
+          entry.suppressClickUntil = now + 800;
+          entry.action();
+        }
+        if (next.state.pressed) deepest = Math.max(deepest, sample.depth);
+      }
+      const pushPx = this.armband!.raisedButtons.push(entry.id, deepest);
+      if (Math.abs(pushPx - entry.pushPx) > 0.5) {
+        entry.pushPx = pushPx;
+        setProps?.({ transformTranslateZ: -pushPx } as never);
+      }
+    }
+  }
 
 /** World-space palm joints for projector mode; null when any joint pose is missing. */
 private readPalmJoints(hand: XRHand, frame: XRFrame, reference: XRReferenceSpace): PalmJoints | null {
@@ -1081,6 +1310,9 @@ document.title = 'Wall Tones 2: too fast to wall';
 this.bindPanelIfNeeded();
 this.clearPads();
 this.flatAwaitingStart = false;
+this.mrAwaitingStart = false;
+this.thumbStartDetector.setEnabled(false);
+this.cancelGestureListen();
 this.flowPhase = 'choose-mode';
 this.resetSetupPanelAnchor();
 this.setFlatHintVisible(false);
@@ -1198,10 +1430,20 @@ this.readDesktopTouches();
 }
 } else if (
 this.flowPhase === 'playing' &&
-(this.game.phase === 'input' || this.inputNeedsClear)
+(this.game.phase === 'input' || this.inputNeedsClear || this.mrAwaitingStart)
 ) {
 this.readFingertipTouches();
 this.readRayAndGazeTouches();
+}
+if (
+!this.useDesktopPath() &&
+this.flowPhase === 'playing' &&
+(this.mrAwaitingStart || this.gestureListen != null || this.gameOverOpen)
+) {
+this.tickThumbGestures();
+}
+// TEMP XR diagnostics (Nov 17 device test): live Game Over gesture readout.
+if (this.gameOverOpen) {
 }
 this.tickIdleReplay();
 }
@@ -1270,10 +1512,10 @@ panel
 ?.addEventListener('click', () => void this.onAutoplayControl());
 panel
 .getElementById('control-speed-button')
-?.addEventListener('click', () => this.openStoreAtTile('speed'));
+?.addEventListener('click', () => void this.onSpeedControl());
 panel
 .getElementById('control-multiplier-button')
-?.addEventListener('click', () => this.openStoreAtTile('multiplier'));
+?.addEventListener('click', () => void this.onMultiplierControl());
 panel
 .getElementById('rescan-room-button')
 ?.addEventListener('click', () => void this.onRescanRoom());
@@ -1318,10 +1560,7 @@ panel
 ?.addEventListener('click', () => this.setAchievementsOpen(false));
 panel
 .getElementById('gameover-use-saver-button')
-?.addEventListener('click', () => this.onGameOverUseSaver());
-panel
-.getElementById('gameover-buy-saver-button')
-?.addEventListener('click', () => this.onGameOverBuySaver());
+?.addEventListener('click', () => this.onGameOverRetry());
 panel
 .getElementById('gameover-newrun-button')
 ?.addEventListener('click', () => this.onGameOverNewRun());
@@ -1359,6 +1598,9 @@ this.bindPointerAudioUnlock();
 if (sessionStorage.getItem('wall-tones-awaiting-mode') === '1') {
 this.clearPads();
 this.flatAwaitingStart = false;
+this.mrAwaitingStart = false;
+this.thumbStartDetector.setEnabled(false);
+this.cancelGestureListen();
 this.flowPhase = 'choose-mode';
 this.resetSetupPanelAnchor();
 this.setFlatHintVisible(false);
@@ -1379,6 +1621,9 @@ return;
 
 this.clearPads();
 this.flatAwaitingStart = false;
+this.mrAwaitingStart = false;
+this.thumbStartDetector.setEnabled(false);
+this.cancelGestureListen();
 this.flowPhase = 'choose-mode';
 this.resetSetupPanelAnchor();
 this.setFlatHintVisible(false);
@@ -1412,6 +1657,10 @@ this.recordBeatenThisAttempt = false;
 this.barsFirstEarnedPending = false;
 this.hideRoundBarsCard();
 this.flatAwaitingStart = false;
+this.mrAwaitingStart = false;
+this.thumbStartDetector.setEnabled(false);
+this.cancelGestureListen();
+this.cypherLabVoice.cancel();
 this.inputNeedsClear = false;
 this.mediaUnlockApplied = false;
 this.airOrientationLocked = null;
@@ -1914,6 +2163,9 @@ this.wasNonImmersive
 // Always drop the flat 2×2 when entering XR — setup must not show it.
 this.clearPads();
 this.flatAwaitingStart = false;
+this.mrAwaitingStart = false;
+this.thumbStartDetector.setEnabled(false);
+this.cancelGestureListen();
 this.showStudioBackdrop();
 this.setFlatHintVisible(false);
 if (this.setupMode == null && this.flowPhase !== 'scanning') {
@@ -2207,6 +2459,37 @@ return system.gameOverOpen;
 gameOverNewRun: () => system.onGameOverNewRun(),
 gameOverUseSaver: () => system.onGameOverUseSaver(),
 gameOverBuySaver: () => system.onGameOverBuySaver(),
+// Combined retry route (owner, Nov 17): the single button/gesture path -
+// spends owned savers or buys the missing ones in the same press.
+gameOverRetry: () => system.onGameOverRetry(),
+get gameOverThumbsArmed() {
+return system.gameOverThumbs.isArmed;
+},
+// Live read-backs of the rendered Game Over retry row (same pattern as
+// statusLineText): label text/color, Bars icon and confirm-thumb icon
+// visibility, gesture hint text/visibility.
+get gameOverRetryLabel() {
+return String(system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('gameover-use-saver-label')?.properties.peek().text ?? '');
+},
+get gameOverRetryLabelColor() {
+return Number(system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('gameover-use-saver-label')?.properties.peek().color ?? 0);
+},
+get gameOverRetryBarsIconVisible() {
+return (system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('gameover-use-saver-bars-icon')?.properties.peek().display ?? 'none') !== 'none';
+},
+get gameOverRetryConfirmIconVisible() {
+return (system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('gameover-use-saver-thumb-icon-confirm')?.properties.peek().display ?? 'none') !== 'none';
+},
+get gameOverGestureHint() {
+const el = system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('gameover-gesture-hint');
+const props = el?.properties.peek();
+return { text: String(props?.text ?? ''), visible: (props?.display ?? 'none') !== 'none' };
+},
 get savers() {
 return system.economy.getSavers();
 },
@@ -2302,6 +2585,13 @@ return system.lastRoundCardText;
 },
 // Live read-back of the text actually set on the rendered panel element
 // (catches the uikitml empty-div compile trap, where setProperties no-ops).
+get roundCardBonusVisibleText() {
+const el = system.world
+.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('wall-tones-round-card-extra');
+const props = (el as { properties?: { value?: { text?: string; display?: string } } } | null)?.properties?.value;
+return props?.display === 'none' ? '' : props?.text ?? '';
+},
 get roundCardVisibleText() {
 const el = system.world
 .getSceneObject<UIKitMLAsset>('wall-tones-panel')
@@ -2432,6 +2722,14 @@ buyPlay: () => {
 system.forceSelectStoreTile('play');
 system.onBuySelected();
 },
+buySpeed: () => {
+system.forceSelectStoreTile('speed');
+system.onBuySelected();
+},
+buyMultiplier: () => {
+system.forceSelectStoreTile('multiplier');
+system.onBuySelected();
+},
 buyIndex: () => {
 system.forceSelectStoreTile('index');
 system.onBuySelected();
@@ -2460,6 +2758,12 @@ void system.onRepeatPattern();
 pressPlay: () => {
 void system.onPlayControl();
 },
+pressSpeedControl: () => {
+void system.onSpeedControl();
+},
+pressMultiplierControl: () => {
+void system.onMultiplierControl();
+},
 get ownsTopSecret() {
 return system.economy.ownsTopSecret();
 },
@@ -2477,6 +2781,12 @@ return system.economy.autoplayUnlocked();
 },
 get playLevel() {
 return system.economy.getPlayLevel();
+},
+get speedLevel() {
+return system.economy.getSpeedLevel();
+},
+get multiplierLevel() {
+return system.economy.getMultiplierLevel();
 },
 get ownsIndex() {
 return system.economy.ownsIndex();
@@ -2550,6 +2860,12 @@ system.debugGrantSavers(units);
 },
 grantPlayLevel: (level: number) => {
 system.debugGrantPlayLevel(level);
+},
+grantSpeedLevel: (level: number) => {
+system.economy.debugGrantSpeedLevel(level);
+},
+grantMultiplierLevel: (level: number) => {
+system.economy.debugGrantMultiplierLevel(level);
 },
 grantIndex: () => {
 system.economy.debugGrantIndex();
@@ -3280,9 +3596,7 @@ this.setAirOrientUiVisible(false);
 this.setRescanUiVisible(false);
 this.setRepeatUiVisible(true);
 this.setSpatialMeshesVisible(false);
-this.statusText = 'Get ready...';
-this.beginRoundWithIntro();
-this.renderPanel();
+this.enterMrAwaitingStart();
 return;
 }
 // Short prompts for pads 2-4; the full positioning phrase only plays for
@@ -3460,9 +3774,7 @@ this.layoutPanelForMrPlay();
 this.setRescanUiVisible(false);
 this.setRepeatUiVisible(true);
 this.syncDebugCollidersButton();
-this.statusText = 'Get ready...';
-this.beginRoundWithIntro(line);
-this.renderPanel();
+this.enterMrAwaitingStart(line);
 }
 
 private spawnDesktopPads(): void {
@@ -3576,7 +3888,11 @@ return;
 // aborting the round flow that follows.
 if (narrMark === this.narrationInterrupt) {
 await this.speech.speakAsync(
-this.startPromptSpoken ? 'howToPlayRest' : 'howToPlay',
+this.startPromptSpoken
+? 'howToPlayRest'
+: this.world.visibilityState.peek() !== VisibilityState.NonImmersive
+? 'howToPlayMr'
+: 'howToPlay',
 );
 }
 this.startPromptSpoken = false;
@@ -3605,7 +3921,20 @@ this.playbackCursor = -1;
 this.enteredByModifier.clear();
 this.arrowSeqIndex = -1;
 this.renderPanel();
+// Speed modifier (backlog 96, his 2026-11-14 proposal): the head of the
+// Listen playback plays faster, covering the first N notes where N is the
+// higher of the Play/Autoplay note counts, capped at the pattern length.
+// Without Play or Autoplay nothing is sped up (flagged for him: Speed is
+// dead weight until one of those is owned). The provisional curve halves
+// the note time per level (1/2, 1/4, 1/8, 1/16 - his own "maybe too
+// much" concern stands, balance pass decides).
+const speedFactor = this.economy.speedNoteTimeFactor();
+const speedNotes =
+speedFactor < 1
+? Math.min(this.game.sequence.length, this.economy.speedCoveredNoteCount())
+: 0;
 for (let index = 0; index < this.game.sequence.length; index += 1) {
+const quick = index < speedNotes;
 const padId = this.game.sequence[index]!;
 const pad = this.padById(padId);
 if (pad != null) {
@@ -3614,12 +3943,12 @@ flashPad(pad, true);
 this.playbackShownCount = index + 1;
 this.playbackCursor = index;
 this.renderPanel();
-await playPadTone(padId);
-await this.wait(NOTE_GAP_S + BLINK_HOLD_S + 0.2);
+await playPadTone(padId, quick ? NOTE_DURATION_S * speedFactor : NOTE_DURATION_S);
+await this.wait((NOTE_GAP_S + BLINK_HOLD_S + 0.2) * (quick ? speedFactor : 1));
 flashPad(pad, false);
 this.setBlinkCuePad(null);
 }
-await this.wait(NOTE_GAP_S);
+await this.wait(NOTE_GAP_S * (quick ? speedFactor : 1));
 }
 // Autoplay store modifier (store test values, balance TBD): after
 // the Listen playback, the game enters the first level*5 notes for the
@@ -3657,8 +3986,11 @@ this.setBlinkCuePad(pad);
 flashPad(pad, true);
 this.playbackCursor = index;
 this.renderPanel();
-await playPadTone(padId);
-await this.wait(NOTE_GAP_S + BLINK_HOLD_S + 0.2);
+// Speed applies to AutoPlay's entered notes too (his 2026-11-17 ask);
+// its covered count is the higher of the Play/Autoplay note counts, so
+// every note AutoPlay enters is inside the covered head by definition.
+await playPadTone(padId, NOTE_DURATION_S * speedFactor);
+await this.wait((NOTE_GAP_S + BLINK_HOLD_S + 0.2) * speedFactor);
 flashPad(pad, false);
 this.setBlinkCuePad(null);
 }
@@ -3675,7 +4007,7 @@ if (completed) {
 this.finishCompletedPattern(padId, previousBest, false);
 return;
 }
-await this.wait(NOTE_GAP_S);
+await this.wait(NOTE_GAP_S * speedFactor);
 }
 if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
@@ -4389,6 +4721,10 @@ if (this.flatAwaitingStart && this.useDesktopPath()) {
 void this.startFlatPlayFromPad(padIndex);
 return;
 }
+if (this.mrAwaitingStart) {
+this.startMrPlay('pad', padIndex);
+return;
+}
 if (this.game.phase !== 'input') {
 return;
 }
@@ -4589,6 +4925,17 @@ await this.playSequence();
 
 /** Between patterns only: all voices and effects share the existing Skip lifecycle. */
 private async playCypherWindow(window: CypherWindow, intact: () => boolean): Promise<void> {
+// MR + hand tracking: the C02 beat becomes the interactive thumbs connection
+// check. Every other platform keeps the recorded line below.
+if (this.canRunGestureCheck(window.id)) {
+await this.playGestureCheckWindow(intact);
+return;
+}
+// Immersive: the codename window ends with the nod-answered q3 prompt.
+if (this.canRunNodCheck(window.id)) {
+await this.playNodCheckWindow(window, intact);
+return;
+}
 const cast = captureCypherCast(getVoiceGender());
 if (window.seam === 'closed') this.setCypherSeam(false);
 if (window.fault) {
@@ -4674,6 +5021,380 @@ this.welcomeSpoken = true;
 this.beginRoundWithIntro(leadIn);
 }
 
+/** MR start gate: the placed pads wait for a pad press or a thumbs up. The
+ * start instruction plays as the MR pointAndPress variant up front, so the
+ * round intro continues with howToPlayRest (same split as the flat entry). */
+private enterMrAwaitingStart(leadIn?: WallTonesClipId): void {
+this.mrAwaitingStart = true;
+this.thumbStartDetector.reset();
+this.thumbStartDetector.setEnabled(true);
+this.statusText = 'Press a pad or give a thumbs up to start';
+if (this.speech.canSpeakNow()) {
+if (leadIn != null) {
+this.speech.speak(leadIn);
+}
+this.speech.speak('pointAndPressMr');
+this.startPromptSpoken = true;
+}
+this.renderPanel();
+}
+
+private startMrPlay(source: 'pad' | 'thumbs', padIndex?: number): void {
+if (!this.mrAwaitingStart || !this.experienceActive) {
+return;
+}
+this.mrAwaitingStart = false;
+this.thumbStartDetector.setEnabled(false);
+// Stop the start instruction; the round intro takes over.
+this.speech.cancel();
+if (source === 'pad' && padIndex != null) {
+const pad = this.padById(padIndex);
+if (pad != null) {
+flashPad(pad, true);
+void playPadTone(padIndex);
+window.setTimeout(() => flashPad(pad, false), 280);
+}
+}
+if (source === 'thumbs') {
+// The game asked for a thumbs up: acknowledge it with the lab cue (owner,
+// Nov 17: the expected gesture plays the lab sound cue).
+void playLabAnswerCue('yes');
+}
+this.statusText = 'Get ready...';
+this.renderPanel();
+this.beginRoundWithIntro();
+}
+
+private cancelGestureListen(): void {
+const listen = this.gestureListen;
+if (listen != null) {
+this.gestureListen = null;
+listen.resolve(null);
+}
+}
+
+/** Per-frame thumbs sampling for the MR start gate, the story gesture check
+ * and the Game Over thumbs flow. */
+private tickThumbGestures(): void {
+const now = performance.now() / 1000;
+const left = this.sampleThumbHand('left');
+const right = this.sampleThumbHand('right');
+if (this.gameOverOpen) {
+// Game Over thumbs (owner, Nov 17): both-up hold retries (owned savers, or
+// the same buy-and-retry press as the button when short), one-up arms then
+// a second up confirms, thumb down starts a new run. The listen is alive
+// only while the popup is open in MR; up gestures go inert only when the
+// retry is out of reach (not enough Bars to buy).
+const leftPose: GameOverThumbPose = left != null ? classifyThumbPose(left).pose : 'none';
+const rightPose: GameOverThumbPose = right != null ? classifyThumbPose(right).pose : 'none';
+const canRun = this.canRunGameOverThumbs();
+if (canRun !== this.gameOverThumbs.isEnabled) {
+this.gameOverThumbs.setEnabled(canRun);
+if (canRun) {
+this.gameOverHandGap.reset();
+this.gameOverHintSyncedArmed = false;
+}
+}
+if (canRun) {
+const need = saverUnitsForStreak(this.game.streak);
+const pres = gameOverRetryPresentation(this.economy.getSavers(), need, this.economy.getBars());
+this.gameOverThumbs.setRetryAvailable(!pres.buying || pres.affordable);
+// Feed only frames with a tracked hand: Quest drops the hand sources while
+// controllers are active, and disabling the flow on that would reset a hold
+// or arm mid-gesture (Nov 17 device test: ht 1 -> 0 across the popup).
+// Frames with no tracked hand pause the flow - fed with observed time, so
+// unseen seconds never count toward a deliberate hold - and a sustained gap
+// restarts the gesture so a stale hold cannot fire when tracking returns.
+let event: GameOverThumbsEvent | null = null;
+const gap = this.gameOverHandGap.note(left != null || right != null, now);
+if (gap == null) {
+event = this.gameOverThumbs.feed(leftPose, rightPose, this.gameOverHandGap.observedNow(now));
+} else if (gap === 'reset') {
+this.gameOverThumbs.reset();
+}
+if (event === 'armed') {
+// The game asked for a confirmation: acknowledge with the lab cue (owner,
+// Nov 17: the expected gesture plays the lab sound cue).
+void playLabAnswerCue('yes');
+} else if (event === 'retry') {
+void playLabAnswerCue('yes');
+this.onGameOverRetry();
+} else if (event === 'new-run') {
+void playLabAnswerCue('no');
+this.onGameOverNewRun();
+}
+// A gap reset can disarm without an event: mirror the arm state to the
+// button/hint so the confirmation wording never goes stale.
+if (this.gameOverThumbs.isArmed !== this.gameOverHintSyncedArmed) {
+this.gameOverHintSyncedArmed = this.gameOverThumbs.isArmed;
+this.syncGameOverGestureHint();
+}
+}
+return;
+}
+if (this.mrAwaitingStart) {
+const event = this.thumbStartDetector.feed(left, right, now);
+if (event?.answer === 'yes') {
+this.startMrPlay('thumbs');
+return;
+}
+}
+const listen = this.gestureListen;
+if (listen != null) {
+let event: { answer: 'yes' | 'no' } | null = null;
+if (listen.kind === 'nod') {
+const angles = this.sampleHeadAngles();
+event = angles == null
+? null
+: (listen.detector as HeadNodShakeDetector).feed(angles.pitch, angles.yaw, now);
+} else {
+event = (listen.detector as ThumbGestureDetector).feed(left, right, now);
+}
+if (event != null) {
+this.gestureListen = null;
+listen.resolve(event.answer);
+return;
+}
+if (now >= listen.deadline) {
+this.gestureListen = null;
+// Lab canon: about six seconds idle counts as a "no".
+listen.resolve(null);
+}
+}
+}
+
+/** Baseline-relative headset pitch/yaw (radians) for the nod detector. */
+private sampleHeadAngles(): { pitch: number; yaw: number } | null {
+const session = this.xrManager.getSession();
+if (session == null || session.visibilityState !== 'visible') {
+return null;
+}
+this.player.head.getWorldQuaternion(this.nodHeadQuat);
+this.nodRelQuat.copy(this.nodBaselineQuat).invert().multiply(this.nodHeadQuat);
+this.nodRelEuler.setFromQuaternion(this.nodRelQuat, 'YXZ');
+return { pitch: this.nodRelEuler.x, yaw: this.nodRelEuler.y };
+}
+
+/** Read one hand's thumb-classifier joints from the live XR frame. */
+private sampleThumbHand(handedness: 'left' | 'right'): ThumbHandJoints | null {
+const session = this.xrManager.getSession();
+const frame = this.xrManager.getFrame();
+const reference = this.xrManager.getReferenceSpace();
+if (
+session == null ||
+frame == null ||
+reference == null ||
+typeof frame.getJointPose !== 'function' ||
+session.visibilityState !== 'visible'
+) {
+return null;
+}
+for (const source of session.inputSources) {
+if (source.handedness !== handedness || source.hand == null) {
+continue;
+}
+const hand = source.hand;
+const read = (joint: string) => {
+const space = hand.get(joint as XRHandJoint);
+if (space == null) {
+return null;
+}
+try {
+const pose = frame.getJointPose?.(space, reference);
+return pose?.transform.position ?? null;
+} catch {
+return null;
+}
+};
+const wrist = read(THUMB_JOINT_NAMES.wrist);
+const thumbProximal = read(THUMB_JOINT_NAMES.thumbProximal);
+const thumbTip = read(THUMB_JOINT_NAMES.thumbTip);
+const indexProximal = read(THUMB_JOINT_NAMES.indexProximal);
+const indexTip = read(THUMB_JOINT_NAMES.indexTip);
+const middleProximal = read(THUMB_JOINT_NAMES.middleProximal);
+const middleTip = read(THUMB_JOINT_NAMES.middleTip);
+if (
+wrist == null ||
+thumbProximal == null ||
+thumbTip == null ||
+indexProximal == null ||
+indexTip == null ||
+middleProximal == null ||
+middleTip == null
+) {
+return null;
+}
+return {
+wrist,
+thumbProximal,
+thumbTip,
+indexProximal,
+indexTip,
+middleProximal,
+middleTip,
+};
+}
+return null;
+}
+
+/** The C02 beat is interactive only where a thumb answer is possible. */
+private canRunGestureCheck(windowId: string): boolean {
+const immersive =
+this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
+return shouldRunGestureCheck(windowId, immersive, this.hasHandTrackingInput());
+}
+
+/** True when the active XR session has a hand-tracking input source. */
+private hasHandTrackingInput(): boolean {
+const session = this.xrManager.getSession();
+if (session == null) {
+return false;
+}
+for (const source of session.inputSources) {
+if (source.hand != null) {
+return true;
+}
+}
+return false;
+}
+
+/** Game Over thumbs gestures (owner, Nov 17): the flow stays enabled while
+ * the popup is open in MR. Hand tracking on Quest drops out whenever
+ * controllers are active (Nov 17 device test: ht 1 -> 0 across the popup),
+ * so live tracking gates the per-frame feed, not the enabled state; gating
+ * the state would reset a hold or arm on every controller/hand switch.
+ * Flat/desktop players keep the buttons only. */
+private canRunGameOverThumbs(): boolean {
+return (
+this.gameOverOpen &&
+this.world.visibilityState.peek() !== VisibilityState.NonImmersive
+);
+}
+
+/** The codename nod prompt needs only the headset pose: immersive play. */
+private canRunNodCheck(windowId: string): boolean {
+const immersive =
+this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
+return shouldRunNodCheck(windowId, immersive);
+}
+
+private awaitNodAnswer(): Promise<'yes' | 'no' | null> {
+return new Promise((resolve) => {
+// Re-anchor the head baseline at the moment the prompt starts listening,
+// so a nod is measured from the resting pose (same rule as the nod lab).
+this.player.head.getWorldQuaternion(this.nodBaselineQuat);
+const detector = new HeadNodShakeDetector();
+detector.setEnabled(true);
+this.gestureListen = {
+kind: 'nod',
+detector,
+deadline: performance.now() / 1000 + GESTURE_ANSWER_TIMEOUT_S,
+resolve,
+};
+});
+}
+
+/**
+ * Immersive codename window: C05-C06 play as recorded, then Cypher asks the
+ * lab's q3 ("Will you keep helping me?") and the player answers with a head
+ * nod for yes / head shake for no. A detected answer plays the lab
+ * recognition chime (owner, Nov 17: the expected gesture plays the lab sound
+ * cue) and Cypher replies with the matching q3 branch line; about six idle
+ * seconds count as a "no" (lab rule). One prompt, no retries, so play is
+ * never wedged; the your-machine window then fulfils q3's "next window"
+ * promise. Interrupts leave unspoken lines uncompleted, as before.
+ */
+private async playNodCheckWindow(window: CypherWindow, intact: () => boolean): Promise<void> {
+const set = cypherLabVoiceSet();
+const cast = captureCypherCast(getVoiceGender());
+// Same entry effect as the recorded codename window.
+await this.speech.speakStoryEffect('open');
+if (!intact()) {
+return;
+}
+for (const id of window.lines) {
+if (!intact()) {
+return;
+}
+await this.speech.speakStoryLine(id, cast);
+if (intact()) this.cypherProgress.lineCompleted();
+}
+await this.cypherLabVoice.speak(set, NOD_CHECK_INTRO);
+if (!intact()) {
+return;
+}
+const answer = await this.awaitNodAnswer();
+this.gestureListen = null;
+if (!intact()) {
+return;
+}
+if (answer != null) {
+await playLabAnswerCue(answer);
+}
+await this.cypherLabVoice.speak(set, answer === 'yes' ? NOD_CHECK_YES : NOD_CHECK_NO);
+if (intact()) {
+await this.speech.speakStoryEffect('close');
+}
+}
+
+private awaitThumbAnswer(): Promise<'yes' | 'no' | null> {
+return new Promise((resolve) => {
+const detector = new ThumbGestureDetector();
+detector.setEnabled(true);
+this.gestureListen = {
+kind: 'thumbs',
+detector,
+deadline: performance.now() / 1000 + GESTURE_ANSWER_TIMEOUT_S,
+resolve,
+};
+});
+}
+
+/**
+ * MR-only interactive replacement for the C02 beat: the thumbs lab's
+ * connection check with its owner-approved verbatim lines and clips, the lab
+ * recognition chime on each detected answer, and about six idle seconds
+ * counting as a "no" (lab rules). Bounded retries: when they run out Cypher
+ * closes the window so play is never wedged between patterns. Interrupts
+ * leave the window uncompleted so it retries at the next boundary.
+ */
+private async playGestureCheckWindow(intact: () => boolean): Promise<void> {
+const set = cypherLabVoiceSet();
+await this.speech.speakStoryEffect('squawk');
+if (!intact()) {
+return;
+}
+await this.cypherLabVoice.speak(set, GESTURE_CHECK_INTRO);
+let attempt = 0;
+while (intact()) {
+const answer = await this.awaitThumbAnswer();
+this.gestureListen = null;
+if (!intact()) {
+return;
+}
+if (answer != null) {
+await playLabAnswerCue(answer);
+}
+if (answer === 'yes') {
+break;
+}
+// A thumbs down or an idle timeout both count as a "no" (lab rule).
+const retry = gestureRetryLine(attempt);
+attempt += 1;
+if (retry == null) {
+break;
+}
+await this.cypherLabVoice.speak(set, retry);
+}
+if (intact()) {
+await this.cypherLabVoice.speak(set, GESTURE_CHECK_END);
+}
+if (intact()) {
+await this.speech.speakStoryEffect('close');
+this.cypherProgress.lineCompleted();
+}
+}
+
 private async onWrongInput(hit: number, expected: number): Promise<void> {
 this.setCypherSeam(false);
 this.firstRun = false;
@@ -4726,12 +5447,25 @@ this.gameOverOpen = true;
 this.syncMenuPopupVisibility();
 this.renderGameOverSummary();
 this.renderPanel();
+// First MR Game Over: one-time narrator explainer of the thumbs gesture
+// controls (owner-approved exact line, Nov 17). takeFirstTime is consumed
+// only when the line can actually play, so flat/desktop players and muted
+// sessions keep it for a later MR run.
+if (
+this.world.visibilityState.peek() !== VisibilityState.NonImmersive &&
+this.hasHandTrackingInput() &&
+!voicesOffEnabled() &&
+this.economy.takeFirstTime('gameover-mr-gestures')
+) {
+await this.speech.speakAsync('gameoverGestures');
+}
 });
 }
 
 private renderGameOverSummary(): void {
 const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
 if (panel) this.renderWrongHitRows(panel);
+this.syncGameOverGestureHint();
 panel
 ?.getElementById<UIKit.Text>('gameover-summary')
 ?.setProperties({
@@ -4742,20 +5476,67 @@ const have = this.economy.getSavers();
 panel
 ?.getElementById<UIKit.Text>('gameover-saver-status')
 ?.setProperties({ text: `Streak savers: ${have}. Retry the same pattern costs ${need}.` });
-panel
-?.getElementById<UIKit.Text>('gameover-use-saver-label')
-?.setProperties({
-text: have >= need ? `Use ${need} saver${need > 1 ? 's' : ''} - retry same pattern` : `Need ${need} saver${need > 1 ? 's' : ''} to retry`,
-color: have >= need ? 0x1c1d20 : 0x8a8f98,
-});
-const missing = Math.max(0, need - have);
-const plan = saverRetryPlan(have, need, this.economy.getBars(), SAVER_PRICE_BARS);
-panel
-?.getElementById<UIKit.Text>('gameover-buy-saver-label')
-?.setProperties({
-text: `Buy ${missing} saver${missing > 1 ? 's' : ''} & retry - ${plan.costBars}`,
-color: plan.affordable ? 0x1c1d20 : 0xd43a3a,
-});
+}
+
+/** Game Over gesture affordances (owner, Nov 17): MR-only thumbs icons on
+ * the retry/new-run buttons plus a hint line that mirrors the thumbs flow
+ * state. While a one-thumb arm waits, the retry button itself switches to
+ * the confirmation wording with a second thumbs-up icon (owner, Nov 17).
+ * Hidden entirely on flat/desktop. */
+private syncGameOverGestureHint(): void {
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+if (panel == null) {
+return;
+}
+// The affordance stays up for the whole MR popup (owner device test,
+// Nov 17): Quest drops hand sources while controllers are active, and
+// hiding on live tracking hid the icons exactly when the player needed
+// the instruction. Flat/desktop stays hidden.
+const mr =
+this.gameOverOpen &&
+this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
+const armed = mr && this.gameOverThumbs.isArmed;
+panel.getElementById<UIKit.Container>('gameover-use-saver-thumb-icon')?.setProperties({ display: mr ? 'flex' : 'none' });
+panel.getElementById<UIKit.Container>('gameover-use-saver-thumb-icon-confirm')?.setProperties({ display: armed ? 'flex' : 'none' });
+panel.getElementById<UIKit.Container>('gameover-newrun-thumb-icon')?.setProperties({ display: mr ? 'flex' : 'none' });
+// One combined retry button (owner, Nov 17): owned savers when there are
+// enough, otherwise the same press buys the missing savers with Bars.
+const need = saverUnitsForStreak(this.game.streak);
+const pres = gameOverRetryPresentation(this.economy.getSavers(), need, this.economy.getBars());
+panel.getElementById<UIKit.Text>('gameover-use-saver-label')?.setProperties(
+armed
+? { text: 'Thumbs up again to confirm - same or other hand', color: 0x1c1d20 }
+: { text: pres.text, color: pres.affordable ? 0x1c1d20 : 0xd43a3a },
+);
+panel.getElementById('gameover-use-saver-bars-icon')?.setProperties({ display: !armed && pres.buying ? 'flex' : 'none' });
+const hint = panel.getElementById<UIKit.Text>('gameover-gesture-hint');
+if (hint == null) {
+return;
+}
+if (!mr) {
+hint.setProperties({ display: 'none' });
+return;
+}
+const text = !(!pres.buying || pres.affordable)
+? 'Thumb down for a new run - not enough Bars to buy the retry'
+: armed
+? 'Confirm: raise your other thumb, or lower and raise the same one - thumb down for a new run'
+: 'Hold both thumbs up to retry, or hold one and confirm - thumb down for a new run';
+hint.setProperties({ display: 'flex', text });
+}
+
+
+/** Combined Game Over retry (owner, Nov 17): one route for the button and
+ * the thumbs gestures - spend owned savers when there are enough, otherwise
+ * buy the missing savers with Bars and retry in the same press. */
+private onGameOverRetry(): void {
+if (!this.gameOverOpen) return;
+const need = saverUnitsForStreak(this.game.streak);
+if (this.economy.getSavers() >= need) {
+this.onGameOverUseSaver();
+return;
+}
+this.onGameOverBuySaver();
 }
 
 /** One-press purchase (owner request 2026-11-11, no confirm step): buys exactly the savers missing for an immediate retry and applies them in the same press. Cost model unchanged: missing units at 18 Bars each. */
@@ -5031,12 +5812,46 @@ panel
 ?.setProperties({
 text: !autoplayOwned ? 'Auto' : autoplayOn ? 'Auto: on' : 'Auto: off',
 });
+// Speed (backlog 96): unowned stays the greyed Store shortcut; owned shows
+// the selected strength (2x/4x/8x/16x) and cycles on press (his 2026-11-17
+// ask: cycle the bought speeds); the OFF signal is the slash plus the
+// label (same settled pattern as AutoPlay).
+const speedOwned = this.economy.getSpeedLevel() > 0;
+const speedSelected = this.economy.getSpeedSelectedLevel();
+const speedOn = this.economy.isSpeedEnabled();
 panel
 .getElementById('control-speed-button')
-?.setProperties({ opacity: greyed });
+?.setProperties({ opacity: speedOwned ? 1 : greyed });
+panel
+.getElementById('control-speed-slash')
+?.setProperties({ display: speedOwned && !speedOn ? 'flex' : 'none' });
+panel
+.getElementById<UIKit.Text>('control-speed-label')
+?.setProperties({
+text: !speedOwned ? 'Speed' : speedOn ? `Speed ${2 ** speedSelected}x` : 'Speed: off',
+});
+// Multiplier (backlog 97): unowned stays the greyed Store shortcut;
+// owned is always white with the owned factor as the label (X2/X3/X4/X8),
+// the OFF signal is the slash plus ': off' (same settled pattern as
+// AutoPlay).
+const multiplierOwned = this.economy.getMultiplierLevel() > 0;
+const multiplierOn = this.economy.isMultiplierEnabled();
+const multiplierLabel = `X${multiplierFactorForLevel(this.economy.getMultiplierLevel())}`;
 panel
 .getElementById('control-multiplier-button')
-?.setProperties({ opacity: greyed });
+?.setProperties({ opacity: multiplierOwned ? 1 : greyed });
+panel
+.getElementById('control-multiplier-slash')
+?.setProperties({ display: multiplierOwned && !multiplierOn ? 'flex' : 'none' });
+panel
+.getElementById<UIKit.Text>('control-multiplier-label')
+?.setProperties({
+text: !multiplierOwned
+? 'X2'
+: multiplierOn
+? multiplierLabel
+: `${multiplierLabel}: off`,
+});
 }
 
 /** Control-row shortcut (owner rule 2026-11-12): a greyed button opens the
@@ -5092,6 +5907,52 @@ return;
 await this.onPlayTones();
 }
 
+/** Control-row Speed button (backlog 96): unowned -> Store shortcut;
+ * owned -> toggles the speed-up on/off, mirroring the settled AutoPlay
+ * toggle pattern. Caption only: no voice notice was requested, lines can
+ * be recorded later if he wants them. The toggle is proposed UX - he
+ * never specified the owned-button action, confirm on review. */
+private async onSpeedControl(): Promise<void> {
+if (this.economy.getSpeedLevel() < 1) {
+this.openStoreAtTile('speed');
+return;
+}
+// His 2026-11-17 ask: the button cycles the speeds he already bought
+// (2x, 4x, ... up to the owned level), with off at the end of the cycle.
+const selected = this.economy.cycleSpeedSelection();
+this.statusText = selected === 0 ? 'Speed disengaged' : `Speed engaged: ${2 ** selected}x`;
+this.renderPanel();
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+if (panel != null) {
+this.syncControlRow(panel);
+}
+}
+
+/** Control-row Multiplier button (backlog 97): unowned -> Store shortcut;
+ * owned -> toggles the score multiplier on/off, mirroring the settled
+ * AutoPlay toggle pattern. Caption only: no voice notice was requested.
+ * The toggle is proposed UX - he never specified the owned-button action,
+ * confirm on review. */
+private async onMultiplierControl(): Promise<void> {
+if (this.economy.getMultiplierLevel() < 1) {
+this.openStoreAtTile('multiplier');
+return;
+}
+// Branch on the POST-toggle state (the AutoPlay 2026-11-16 lesson:
+// pre-toggle branching reversed the feedback).
+const wasEnabled = this.economy.isMultiplierEnabled();
+this.economy.setMultiplierDisabled(wasEnabled);
+const nowEnabled = !wasEnabled;
+this.statusText = nowEnabled
+? `Multiplier X${this.economy.getMultiplierLevel() + 1} engaged`
+: 'Multiplier disengaged';
+this.renderPanel();
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+if (panel != null) {
+this.syncControlRow(panel);
+}
+}
+
 /**
  * Play modifier (item 66). CONFIRMED by the owner 2026-11-13: it plays the
  * next 5 x level tones starting from the player's current position
@@ -5132,10 +5993,21 @@ this.statusText = `Play: ${playCount} tones`;
 this.playbackKind = 'play';
 this.renderPanel();
 this.playbackQueue = this.playbackQueue.then(async () => {
+// Speed covers the Play modifier's entered notes the same way it covers
+// Listen and AutoPlay (his 2026-11-17 report: AutoPlay applied the speed
+// but Play did not). The covered head is the first N = max(Play,
+// Autoplay) notes; a Play note entered past the head (possible after
+// manual presses) plays at normal speed, mirroring the Listen loop.
+const speedFactor = this.economy.speedNoteTimeFactor();
+const speedNotes =
+speedFactor < 1
+? Math.min(this.game.sequence.length, this.economy.speedCoveredNoteCount())
+: 0;
 for (let i = 0; i < playCount; i += 1) {
 if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
 }
+const quick = this.game.inputStep < speedNotes;
 const padId = this.game.sequence[this.game.inputStep]!;
 if (padId == null) {
 break;
@@ -5146,8 +6018,8 @@ this.setBlinkCuePad(pad);
 flashPad(pad, true);
 this.playbackCursor = this.game.inputStep;
 this.renderPanel();
-await playPadTone(padId);
-await this.wait(NOTE_GAP_S + BLINK_HOLD_S + 0.2);
+await playPadTone(padId, quick ? NOTE_DURATION_S * speedFactor : NOTE_DURATION_S);
+await this.wait((NOTE_GAP_S + BLINK_HOLD_S + 0.2) * (quick ? speedFactor : 1));
 flashPad(pad, false);
 this.setBlinkCuePad(null);
 }
@@ -5170,7 +6042,7 @@ if (completed) {
 this.finishCompletedPattern(padId, previousBest);
 return;
 }
-await this.wait(NOTE_GAP_S);
+await this.wait(NOTE_GAP_S * (quick ? speedFactor : 1));
 }
 if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
@@ -5494,10 +6366,14 @@ state: StoreTileState;
 price: string;
 /** True when the price line leads with the Bars icon (owner ask 2026-11-12). */
 icon: boolean;
+/** Optional glyph label override (Multiplier: the actual owned factor). */
+glyph?: string;
 }
 const hintLevel = eco.getHintLevel();
 const autoplayLevel = eco.getAutoplayLevel();
 const playLevel = eco.getPlayLevel();
+const speedLevel = eco.getSpeedLevel();
+const multiplierLevel = eco.getMultiplierLevel();
 const replaysTotal = eco.getReplaysTotal();
 const savers = eco.getSavers();
 const bars = eco.getBars();
@@ -5584,11 +6460,36 @@ state: eco.ownsTopSecret() ? 'on' : 'off',
 price: eco.ownsTopSecret() ? 'Owned' : `${TOP_SECRET_COST}`,
 icon: !eco.ownsTopSecret(),
 },
-// Room for the modifiers the owner listed (2026-11-11): 5th/6th pads, the
-// story hack, double-score multiplier and the speed modifier. Their
-// phrasing is just "Locked" (owner ask 2026-11-12).
-{ id: 'multiplier', name: 'x2', badge: '?', state: 'off', price: 'Locked', icon: false },
-{ id: 'speed', name: 'Speed', badge: '?', state: 'off', price: 'Locked', icon: false },
+// Speed (backlog 96): live tile on this branch. Ungated, provisional test
+// prices (see economy.ts) - the price/gate are his to settle.
+{
+id: 'speed',
+name: 'Speed',
+badge: speedLevel > 0 ? String(speedLevel) : '',
+state: speedLevel > 0 ? 'on' : 'off',
+price:
+speedLevel >= SPEED_MAX_LEVEL
+? 'Max'
+: `L${speedLevel + 1} - ${eco.speedCost(speedLevel + 1)}`,
+icon: speedLevel < SPEED_MAX_LEVEL,
+},
+// Multiplier (backlog 97/70): live tile on this branch. Ungated, PROPOSED
+// prices X2 1,000 / X3 5,000 / X4 25,000 / X8 125,000 (x5 growth per his
+// "really high exponentially", 2026-11-12; X8 fourth tier added 2026-11-17)
+// - his to approve. The name AND the tile glyph show the actual owned
+// factor (his 2026-11-17 ask: the X4 multiplier gets the X4 logo).
+{
+id: 'multiplier',
+name: multiplierLevel > 0 ? `X${multiplierFactorForLevel(multiplierLevel)}` : 'x2',
+glyph: `X${multiplierFactorForLevel(multiplierLevel)}`,
+badge: multiplierLevel > 0 ? String(multiplierLevel) : '',
+state: multiplierLevel > 0 ? 'on' : 'off',
+price:
+multiplierLevel >= MULTIPLIER_MAX_LEVEL
+? 'Max'
+: `X${multiplierFactorForLevel(multiplierLevel + 1)} - ${eco.multiplierCost(multiplierLevel + 1)}`,
+icon: multiplierLevel < MULTIPLIER_MAX_LEVEL,
+},
 { id: 'pads56', name: 'Pad 5', badge: '?', state: 'off', price: 'Locked', icon: false },
 { id: 'narrator', name: 'Hack', badge: '?', state: 'off', price: 'Locked', icon: false },
 ];
@@ -5617,7 +6518,7 @@ flexShrink: 0,
 });
 tile.add(
 new UIKit.Image({
-src: storeTileSrc(t.id, selected && t.state === 'on' ? 'sel' : t.state, t.badge),
+src: storeTileSrc(t.id, selected && t.state === 'on' ? 'sel' : t.state, t.badge, t.glyph),
 width: TILE_S,
 height: TILE_S,
 }),
@@ -5894,11 +6795,36 @@ buyText = `Top Secret - ${TOP_SECRET_COST}`;
 cost = TOP_SECRET_COST;
 }
 break;
+case 'speed': {
+titleText = `Speed - Level ${speedLevel}`;
+const covered = eco.speedCoveredNoteCount();
+bodyText =
+'Plays the beginning of the pattern faster during Listen and AutoPlay. The panel button cycles the speeds you own, with off at the end. ' +
+(covered === 0
+? 'It covers the higher of your Play/Autoplay note counts, so it needs Play or Autoplay owned to have an effect. '
+: `Covers the first ${covered} notes (the higher of your Play/Autoplay note counts). `) +
+'Each level halves the note time. Test prices - curve and price to balance.';
+if (speedLevel < SPEED_MAX_LEVEL) {
+cost = eco.speedCost(speedLevel + 1);
+buyText = `Speed L${speedLevel + 1} - ${cost}`;
+}
+break;
+}
+case 'multiplier': {
+titleText = `Multiplier - X${multiplierFactorForLevel(multiplierLevel)}`;
+bodyText =
+(multiplierLevel === 0
+? 'Doubles every Bar you earn while it is on. '
+: `Every Bar you earn is multiplied by ${multiplierFactorForLevel(multiplierLevel)} while it is on. `) +
+'Higher levels go X3, X4 then X8 with steep costs. Proposed prices - his to approve.';
+if (multiplierLevel < MULTIPLIER_MAX_LEVEL) {
+cost = eco.multiplierCost(multiplierLevel + 1);
+buyText = `X${multiplierFactorForLevel(multiplierLevel + 1)} - ${cost}`;
+}
+break;
+}
 default:
-titleText =
-sel === 'multiplier' ? 'Multiplier x2'
-: sel === 'speed' ? 'Speed'
-: sel === 'pads56' ? 'Pad 5'
+titleText = sel === 'pads56' ? 'Pad 5'
 : 'Hack';
 bodyText = sel === 'pads56' ? 'Locked. Pad 6 is bought after Pad 5.' : 'Locked.';
 break;
@@ -5935,7 +6861,7 @@ flexWrap: 'wrap',
 gap: 8,
 width: TREE_W,
 });
-for (const id of ['multiplier', 'speed', 'pads56', 'narrator']) {
+for (const id of ['pads56', 'narrator']) {
 bottomRow.add(makeTile(byId.get(id)!));
 }
 // Rows in display order; the detail card overlays the viewport bottom
@@ -5996,7 +6922,11 @@ h: ROW_CONN_H,
 // No standalone 'Locked' caption between Autoplay and the modifiers row:
 // each future tile already says 'Locked' under its name, and a floating
 // label here reads as Autoplay's own state even after purchase.
-{ ids: ['multiplier', 'speed', 'pads56', 'narrator'], node: bottomRow, h: ROW_TILE_H },
+// Speed sits on its own row with level pips (same treatment as Play).
+{ ids: ['speed'], node: chainRow(byId.get('speed')!, speedLevel, 0x38d9c8), h: ROW_CHAIN_H },
+// Multiplier sits on its own row with level pips (same as Play).
+{ ids: ['multiplier'], node: chainRow(byId.get('multiplier')!, multiplierLevel, 0xf59a4a), h: ROW_CHAIN_H },
+{ ids: ['pads56', 'narrator'], node: bottomRow, h: ROW_TILE_H },
 { ids: ['secret'], node: soloRow(byId.get('secret')!), h: ROW_TILE_H },
 ];
 // The detail card itself. popup-card geometry (uikitml px): 12 padding +
@@ -6425,25 +7355,41 @@ bonus: number,
 if (total <= 0) return;
 const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
 if (panel == null) return;
-// User ask (Nov 7): show the bonus part inline - one compact line.
+// User ask (Nov 7): show the bonus part inline - one compact line. His
+// 2026-11-17 asks: the active Multiplier factor shows inline ("the
+// multiplier info should also appear in the 'this round' line... like
+// X4"), next to the total it scaled, and the bonus moves to the smaller
+// unit element so long values stop wrapping over the line below (his
+// same-day layout-bug screenshot: "+44 (+24 bonus)" wrapped).
 const extra = completion + bonus;
+const factor = this.economy.getMultiplierFactor();
+const totalText = factor > 1 ? `+${total} X${factor}` : `+${total}`;
 panel
 .getElementById<UIKit.Text>('wall-tones-round-card-total')
-?.setProperties({ text: extra > 0 ? `+${total} (+${extra} bonus)` : `+${total}` });
+?.setProperties({ text: totalText });
+panel
+.getElementById<UIKit.Text>('wall-tones-round-card-extra')
+?.setProperties({
+text: extra > 0 ? `(+${extra} bonus)` : '',
+display: extra > 0 ? 'flex' : 'none',
+});
 const pads = total - completion - bonus;
 const parts = [`Pads +${pads}`];
 if (completion > 0) parts.push(`Completion +${completion}`);
 if (bonus > 0) parts.push(`Record bonus +${bonus}`);
 const breakdown = parts.join(' - ');
-this.lastRoundCardText = `+${total} (${breakdown})`;
+this.lastRoundCardText = `${totalText} (${breakdown})`;
 }
 
 private hideRoundBarsCard(): void {
 this.lastRoundCardText = '';
-this.world
-.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+panel
 ?.getElementById<UIKit.Text>('wall-tones-round-card-total')
 ?.setProperties({ text: '+0' });
+panel
+?.getElementById<UIKit.Text>('wall-tones-round-card-extra')
+?.setProperties({ text: '', display: 'none' });
 }
 
 /** Test-only wallet funding for the e2e debug bridge. */
@@ -6630,11 +7576,21 @@ if (id === 'play' && this.economy.getPlayLevel() >= PLAY_MAX_LEVEL) {
 deny('Play is at its top level.');
 return;
 }
+if (id === 'speed' && this.economy.getSpeedLevel() >= SPEED_MAX_LEVEL) {
+deny('Speed is at its top level.');
+return;
+}
+if (id === 'multiplier' && this.economy.getMultiplierLevel() >= MULTIPLIER_MAX_LEVEL) {
+deny('Multiplier is at its top level.');
+return;
+}
 const ok =
 id === 'listen' ? this.economy.buyListen()
 : id === 'hint' ? this.economy.buyNextHintLevel()
 : id === 'autoplay' ? this.economy.buyNextAutoplayLevel()
 : id === 'play' ? this.economy.buyNextPlayLevel()
+: id === 'speed' ? this.economy.buyNextSpeedLevel()
+: id === 'multiplier' ? this.economy.buyNextMultiplierLevel()
 : id === 'index' ? this.economy.buyIndex()
 : id === 'replay' ? this.economy.buyReplay()
 : id === 'saver' ? this.economy.buySaver(SAVER_PRICE_BARS)
@@ -7036,146 +7992,146 @@ display: show && !flat && !headCaptionPresent && caption ? 'flex' : 'none', text
 }
 const menuCaption = enabled && flat && !this.experienceActive && Boolean(caption);
 if ((!show && !menuCaption) || !flat) {
-if (this.flatCaptions && this.flatCaptions.style.display !== 'none') this.flatCaptions.style.display = 'none';
-this.flatCaptionsRect = null;
-return;
+  if (this.flatCaptions && this.flatCaptions.style.display !== 'none') this.flatCaptions.style.display = 'none';
+  this.flatCaptionsRect = null;
+  return;
 }
-if (!this.flatCaptions) {
-document.getElementById('wall-tones-flat-subtitles')?.remove();
-this.flatCaptions = document.createElement('div');
-this.flatCaptions.id = 'wall-tones-flat-subtitles';
-this.flatCaptions.setAttribute('aria-live', 'polite');
-Object.assign(this.flatCaptions.style, {
-position: 'fixed', zIndex: '30', color: '#fff', background: '#081019e8',
-padding: '10px 14px', borderRadius: '10px', font: '16px/1.4 sans-serif',
-textAlign: 'center', pointerEvents: 'none', boxSizing: 'border-box',
-transform: 'translateX(-50%)',
-});
-document.body.appendChild(this.flatCaptions);
-this.flatLayoutValues.length = 0;
-}
-if (this.flatCaptions.style.display !== 'block') this.flatCaptions.style.display = 'block';
-document.getElementById('wall-tones-startup-subtitle')?.remove();
-if (this.flatCaptionLayoutChanged()) {
-let minX = Infinity, maxX = -Infinity, bottom = 0;
-for (const pad of this.pads) {
-for (let side = -1; side <= 1; side += 2) {
-const v = this.captionProjection.set(side * pad.sizeM / 2, -pad.sizeM / 2, 0);
-pad.root.localToWorld(v); v.project(this.world.camera);
-const x = (v.x + 1) * window.innerWidth / 2;
-minX = Math.min(minX, x); maxX = Math.max(maxX, x);
-bottom = Math.max(bottom, (1 - v.y) * window.innerHeight / 2);
-}
-}
-const phone = this.isPhoneFlatViewport();
-if (this.pads.length === 0 || !this.experienceActive) { minX = window.innerWidth * 0.2; maxX = window.innerWidth * 0.8; bottom = window.innerHeight - 160; }
-const width = phone ? window.innerWidth - 24 : Math.min(window.innerWidth - 24, Math.max(300, maxX - minX));
-this.flatCaptions.style.fontSize = phone ? '13px' : '16px';
-this.flatCaptions.style.lineHeight = phone ? '1.25' : '1.4';
-this.flatCaptions.style.width = `${width}px`;
-this.flatCaptions.style.left = `${Math.max(width / 2 + 12, Math.min(window.innerWidth - width / 2 - 12, (minX + maxX) / 2))}px`;
-this.flatCaptions.style.top = `${bottom + 14}px`;
-this.flatCaptionsRectDirty = true;
-}
-// Backlog 12a applies here too (codex P2): during Your Turn the subtitle
-// sequence only reveals the owned hint prefix; no hint, no sequence. The
-// Listen-phase strip needs the Listen store item (owner rule 2026-11-11).
-const captionListening = this.statusText === 'Listen:';
-const captionReveal = this.economy.getHintRevealCount();
-const captionYourTurn = this.game.phase === 'input' && !captionListening;
-const seqVisible = this.experienceActive &&
-((captionListening && this.economy.ownsListen()) ||
-(this.game.phase === 'input' && captionReveal > 0));
-// Same owner ask as the panel status: no Listen/Hint title before purchase;
-// the blank line keeps the strip height unchanged. A missed hit blanks the
-// label: the mismatch shows as color squares instead of words (owner 2026-11-15).
-const captionWrong = this.wrongHitVisible() ? this.wrongHit : null;
-const info = captionWrong != null
-? '\u00a0'
-: !this.experienceActive
-? ''
-: this.game.phase === 'input'
-? (captionReveal > 0 ? 'Hint:' : '\u00a0')
-: this.statusText === 'Listen:' && !this.economy.ownsListen()
-? '\u00a0'
-: this.statusText;
-if (!accessibilityChanged && this.flatCaptions.childElementCount > 0) return;
-this.flatCaptions.replaceChildren();
-const line = document.createElement('div');
-Object.assign(line.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexWrap: 'wrap' });
-const label = document.createElement('span'); label.textContent = info; line.append(label);
-if (captionWrong) {
-// Owner 2026-11-15 19:01: two stacked lines that do not grow the panel - the
-// right pattern (Expected) above what was played (Hit), each up to
-// WRONG_HIT_ROW_NOTES notes with the final one differing (e.g. RRRBG vs
-// RRRBY). The pattern (history) row stays hidden after a failure.
-const namesOn = colorNamesEnabled();
-const leadIn = captionWrong.preceding.slice(-(WRONG_HIT_ROW_NOTES - 1));
-// Owner 2026-11-15 23:23: a leading "..." on each row when the captured
-// chain has more notes than the row shows, marking it as a tail.
-const tailHidden = captionWrong.preceding.length > WRONG_HIT_ROW_NOTES - 1;
-const appendSquares = (rowEl: HTMLElement, ids: number[]) => {
-for (const id of ids) {
-const square = document.createElement('span');
-Object.assign(square.style, { width: '16px', height: '16px', borderRadius: '2px', background: `#${WALL_TONE_PADS[id].color.toString(16).padStart(6, '0')}`, display: 'inline-block', flexShrink: '0' });
-square.setAttribute('aria-label', WALL_TONE_PADS[id].name);
-square.setAttribute('data-wronghit', '1');
-rowEl.append(square);
-if (namesOn) {
-const word = document.createElement('span');
-word.textContent = WALL_TONE_PADS[id].name;
-rowEl.append(word);
-}
-}
-};
-const appendGroup = (labelText: string, finalId: number, rowName: string) => {
-const group = document.createElement('div');
-Object.assign(group.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexBasis: '100%' });
-group.setAttribute('data-wronghit-row', rowName);
-const groupLabel = document.createElement('span');
-Object.assign(groupLabel.style, { display: 'inline-block', width: '72px', textAlign: 'left' });
-groupLabel.textContent = labelText;
-group.append(groupLabel);
-if (tailHidden) {
-const dots = document.createElement('span');
-dots.textContent = '...';
-dots.setAttribute('data-wronghit-tail', '1');
-group.append(dots);
-}
-appendSquares(group, [...leadIn, finalId]);
-line.append(group);
-};
-appendGroup('Expected:', captionWrong.expected, 'expected');
-appendGroup('Hit:', captionWrong.hit, 'hit');
-}
-const captionWindowLength = captionYourTurn ? Math.min(this.game.sequence.length, captionReveal + 5) : this.playbackShownCount;
-const captionStart = hintWindowStart(captionWindowLength, captionYourTurn ? this.game.inputStep : this.playbackShownCount - 1);
-if (seqVisible) for (let i = captionStart; i < Math.min(this.game.sequence.length, captionStart + HINT_WINDOW_SIZE); i++) {
-if (captionListening && i >= this.playbackShownCount) break;
-const unknown = captionYourTurn && i >= captionReveal;
-if (unknown && i - captionReveal >= 5) break; // cap the grey "?" tail at 5
-const id = this.game.sequence[i]!;
-const square = document.createElement('span');
-Object.assign(square.style, { width: '16px', height: '16px', borderRadius: '2px', background: unknown ? '#8a8f98' : `#${WALL_TONE_PADS[id].color.toString(16).padStart(6, '0')}`, display: 'inline-block', flexShrink: '0' });
-if (unknown) {
-square.textContent = '?';
-square.setAttribute('data-unknown', '1');
-square.setAttribute('aria-label', 'Unknown note');
-Object.assign(square.style, { color: '#fff', fontSize: '11px', lineHeight: '16px', textAlign: 'center' });
-} else {
-square.setAttribute('aria-label', WALL_TONE_PADS[id].name);
-}
-line.append(square);
-if (!unknown && colorNamesEnabled()) { const word = document.createElement('span'); word.textContent = WALL_TONE_PADS[id].name; line.append(word); }
-}
-this.flatCaptions.append(line);
-if (caption) { const text = document.createElement('div'); text.textContent = caption; text.style.marginTop = '5px'; this.flatCaptions.append(text); }
-this.flatCaptionsRectDirty = true;
+  if (!this.flatCaptions) {
+    document.getElementById('wall-tones-flat-subtitles')?.remove();
+    this.flatCaptions = document.createElement('div');
+    this.flatCaptions.id = 'wall-tones-flat-subtitles';
+    this.flatCaptions.setAttribute('aria-live', 'polite');
+    Object.assign(this.flatCaptions.style, {
+      position: 'fixed', zIndex: '30', color: '#fff', background: '#081019e8',
+      padding: '10px 14px', borderRadius: '10px', font: '16px/1.4 sans-serif',
+      textAlign: 'center', pointerEvents: 'none', boxSizing: 'border-box',
+      transform: 'translateX(-50%)',
+    });
+    document.body.appendChild(this.flatCaptions);
+    this.flatLayoutValues.length = 0;
+  }
+  if (this.flatCaptions.style.display !== 'block') this.flatCaptions.style.display = 'block';
+  document.getElementById('wall-tones-startup-subtitle')?.remove();
+  if (this.flatCaptionLayoutChanged()) {
+    let minX = Infinity, maxX = -Infinity, bottom = 0;
+    for (const pad of this.pads) {
+      for (let side = -1; side <= 1; side += 2) {
+        const v = this.captionProjection.set(side * pad.sizeM / 2, -pad.sizeM / 2, 0);
+        pad.root.localToWorld(v); v.project(this.world.camera);
+        const x = (v.x + 1) * window.innerWidth / 2;
+        minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+        bottom = Math.max(bottom, (1 - v.y) * window.innerHeight / 2);
+      }
+    }
+    const phone = this.isPhoneFlatViewport();
+    if (this.pads.length === 0 || !this.experienceActive) { minX = window.innerWidth * 0.2; maxX = window.innerWidth * 0.8; bottom = window.innerHeight - 160; }
+    const width = phone ? window.innerWidth - 24 : Math.min(window.innerWidth - 24, Math.max(300, maxX - minX));
+    this.flatCaptions.style.fontSize = phone ? '13px' : '16px';
+    this.flatCaptions.style.lineHeight = phone ? '1.25' : '1.4';
+    this.flatCaptions.style.width = `${width}px`;
+    this.flatCaptions.style.left = `${Math.max(width / 2 + 12, Math.min(window.innerWidth - width / 2 - 12, (minX + maxX) / 2))}px`;
+    this.flatCaptions.style.top = `${bottom + 14}px`;
+    this.flatCaptionsRectDirty = true;
+  }
+  // Backlog 12a applies here too (codex P2): during Your Turn the subtitle
+  // sequence only reveals the owned hint prefix; no hint, no sequence. The
+  // Listen-phase strip needs the Listen store item (owner rule 2026-11-11).
+  const captionListening = this.statusText === 'Listen:';
+  const captionReveal = this.economy.getHintRevealCount();
+  const captionYourTurn = this.game.phase === 'input' && !captionListening;
+  const seqVisible = this.experienceActive &&
+    ((captionListening && this.economy.ownsListen()) ||
+     (this.game.phase === 'input' && captionReveal > 0));
+  // Same owner ask as the panel status: no Listen/Hint title before purchase;
+  // the blank line keeps the strip height unchanged. A missed hit blanks the
+  // label: the mismatch shows as color squares instead of words (owner 2026-11-15).
+  const captionWrong = this.wrongHitVisible() ? this.wrongHit : null;
+  const info = captionWrong != null
+  ? '\u00a0'
+    : !this.experienceActive
+  ? ''
+    : this.game.phase === 'input'
+  ? (captionReveal > 0 ? 'Hint:' : '\u00a0')
+    : this.statusText === 'Listen:' && !this.economy.ownsListen()
+  ? '\u00a0'
+    : this.statusText;
+  if (!accessibilityChanged && this.flatCaptions.childElementCount > 0) return;
+  this.flatCaptions.replaceChildren();
+  const line = document.createElement('div');
+  Object.assign(line.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexWrap: 'wrap' });
+  const label = document.createElement('span'); label.textContent = info; line.append(label);
+  if (captionWrong) {
+    // Owner 2026-11-15 19:01: two stacked lines that do not grow the panel - the
+  // right pattern (Expected) above what was played (Hit), each up to
+  // WRONG_HIT_ROW_NOTES notes with the final one differing (e.g. RRRBG vs
+  // RRRBY). The pattern (history) row stays hidden after a failure.
+  const namesOn = colorNamesEnabled();
+    const leadIn = captionWrong.preceding.slice(-(WRONG_HIT_ROW_NOTES - 1));
+    // Owner 2026-11-15 23:23: a leading "..." on each row when the captured
+  // chain has more notes than the row shows, marking it as a tail.
+  const tailHidden = captionWrong.preceding.length > WRONG_HIT_ROW_NOTES - 1;
+    const appendSquares = (rowEl: HTMLElement, ids: number[]) => {
+      for (const id of ids) {
+        const square = document.createElement('span');
+        Object.assign(square.style, { width: '16px', height: '16px', borderRadius: '2px', background: `#${WALL_TONE_PADS[id].color.toString(16).padStart(6, '0')}`, display: 'inline-block', flexShrink: '0' });
+        square.setAttribute('aria-label', WALL_TONE_PADS[id].name);
+        square.setAttribute('data-wronghit', '1');
+        rowEl.append(square);
+        if (namesOn) {
+          const word = document.createElement('span');
+          word.textContent = WALL_TONE_PADS[id].name;
+          rowEl.append(word);
+        }
+      }
+    };
+    const appendGroup = (labelText: string, finalId: number, rowName: string) => {
+      const group = document.createElement('div');
+      Object.assign(group.style, { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flexBasis: '100%' });
+      group.setAttribute('data-wronghit-row', rowName);
+      const groupLabel = document.createElement('span');
+      Object.assign(groupLabel.style, { display: 'inline-block', width: '72px', textAlign: 'left' });
+      groupLabel.textContent = labelText;
+      group.append(groupLabel);
+      if (tailHidden) {
+        const dots = document.createElement('span');
+        dots.textContent = '...';
+        dots.setAttribute('data-wronghit-tail', '1');
+        group.append(dots);
+      }
+      appendSquares(group, [...leadIn, finalId]);
+      line.append(group);
+    };
+    appendGroup('Expected:', captionWrong.expected, 'expected');
+    appendGroup('Hit:', captionWrong.hit, 'hit');
+  }
+  const captionWindowLength = captionYourTurn ? Math.min(this.game.sequence.length, captionReveal + 5) : this.playbackShownCount;
+  const captionStart = hintWindowStart(captionWindowLength, captionYourTurn ? this.game.inputStep : this.playbackShownCount - 1);
+  if (seqVisible) for (let i = captionStart; i < Math.min(this.game.sequence.length, captionStart + HINT_WINDOW_SIZE); i++) {
+    if (captionListening && i >= this.playbackShownCount) break;
+    const unknown = captionYourTurn && i >= captionReveal;
+    if (unknown && i - captionReveal >= 5) break; // cap the grey "?" tail at 5
+  const id = this.game.sequence[i]!;
+    const square = document.createElement('span');
+    Object.assign(square.style, { width: '16px', height: '16px', borderRadius: '2px', background: unknown ? '#8a8f98' : `#${WALL_TONE_PADS[id].color.toString(16).padStart(6, '0')}`, display: 'inline-block', flexShrink: '0' });
+    if (unknown) {
+      square.textContent = '?';
+      square.setAttribute('data-unknown', '1');
+      square.setAttribute('aria-label', 'Unknown note');
+      Object.assign(square.style, { color: '#fff', fontSize: '11px', lineHeight: '16px', textAlign: 'center' });
+    } else {
+      square.setAttribute('aria-label', WALL_TONE_PADS[id].name);
+    }
+    line.append(square);
+    if (!unknown && colorNamesEnabled()) { const word = document.createElement('span'); word.textContent = WALL_TONE_PADS[id].name; line.append(word); }
+  }
+  this.flatCaptions.append(line);
+  if (caption) { const text = document.createElement('div'); text.textContent = caption; text.style.marginTop = '5px'; this.flatCaptions.append(text); }
+  this.flatCaptionsRectDirty = true;
 }
 
 private wait(seconds: number): Promise<void> {
-return new Promise((resolve) => {
-window.setTimeout(resolve, seconds * 1000);
-});
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, seconds * 1000);
+  });
 }
-  }
+}

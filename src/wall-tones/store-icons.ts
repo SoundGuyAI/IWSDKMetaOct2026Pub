@@ -26,7 +26,7 @@ const FILL: Record<string, [string, string]> = {
 };
 
 /** Glyph outlines on the same 64x64 grid the achievement glyphs use. */
-function glyphPath(ctx: CanvasRenderingContext2D, id: string): void {
+function glyphPath(ctx: CanvasRenderingContext2D, id: string, label?: string): void {
   const P = (d: string): void => ctx.stroke(new Path2D(d));
   const F = (d: string): void => ctx.fill(new Path2D(d));
   if (id === 'listen') {
@@ -71,10 +71,12 @@ function glyphPath(ctx: CanvasRenderingContext2D, id: string): void {
     P('M32 8l18 6v14c0 12-8 22-18 28-10-6-18-16-18-28V14z');
     P('M24 32l6 6 12-12');
   } else if (id === 'multiplier') {
-    ctx.font = 'bold 26px sans-serif';
+    // The glyph names the ACTUAL owned factor (his 2026-11-17 ask: "the X4
+    // multiplier is X4 logo also"); unowned shows the first tier, X2.
+    ctx.font = 'bold 24px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('x2', 32, 34);
+    ctx.fillText(label ?? 'X2', 32, 34);
   } else if (id === 'speed') {
     // Fast-forward.
     P('M12 18l18 14-18 14z');
@@ -110,8 +112,8 @@ function glyphPath(ctx: CanvasRenderingContext2D, id: string): void {
  * the level, the held count, or a marker (e.g. a check or "?"). Layout box
  * is 92x92, same as the achievement tiles.
  */
-export function storeTileSrc(id: string, state: TileState, badge: string): string {
-  const key = `store-tile:${id}:${state}:${badge}`;
+export function storeTileSrc(id: string, state: TileState, badge: string, glyphLabel?: string): string {
+  const key = `store-tile:${id}:${state}:${badge}:${glyphLabel ?? ''}`;
   const hit = cache.get(key);
   if (hit !== undefined) return hit;
   const U = 92;
@@ -196,7 +198,7 @@ export function storeTileSrc(id: string, state: TileState, badge: string): strin
     ctx.shadowColor = 'rgba(255,255,255,0.65)';
     ctx.shadowBlur = 5;
   }
-  glyphPath(ctx, id);
+  glyphPath(ctx, id, glyphLabel);
   ctx.restore();
   // Badge: dark centre, category-colour ring, text on top. An empty badge
   // means no badge at all (one-time items show no fake level number).

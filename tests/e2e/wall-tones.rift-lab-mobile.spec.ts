@@ -14,6 +14,7 @@ test.use({
 });
 
 test('portrait touch: Start opens a rift and a corner drag seals it', async ({ page }) => {
+  await page.addInitScript(() => sessionStorage.setItem('iwsdk-rift-lab-test-controls', '1'));
   await page.goto('/');
   await page.locator('#wt-loading').waitFor({ state: 'detached', timeout: 60000 });
   await page.waitForTimeout(1500);
@@ -27,11 +28,16 @@ test('portrait touch: Start opens a rift and a corner drag seals it', async ({ p
     .poll(() => page.evaluate(() => window.__riftLabDebug!.snapshot().openRifts), { timeout: 15000 })
     .toBeGreaterThan(0);
 
-  await page.evaluate(() => {
-    for (let i = 0; i < 12; i++) window.__riftLabDebug!.playNote('green', 'right');
-  });
+  // Isolated full-charge contract: pause the 6 s auto-spawn for THIS test only
+  // (Start resets it). The cross-rift behavior with normal spawning is covered
+  // by wall-tones.rift-lab-cross.spec.ts, so it stays tested elsewhere.
+  await page.evaluate(() => window.__riftLabDebug!.setAutoSpawn!(false));
+  // Lab Start grants one seal of energy, so no playNote charge loop is needed
+  // before the corner drag can seal.
   const snap = await page.evaluate(() => window.__riftLabDebug!.snapshot());
   expect(snap.energy).toBe(120);
+  expect(snap.targets.length).toBe(1);
+  const intendedId = snap.targets[0].id;
   // The resting orb must render inside the bottom-left touch zone it is
   // dragged from (regression: it used to float mid-screen, so pressing the
   // visible dots never started the drag).
@@ -72,9 +78,39 @@ test('portrait touch: Start opens a rift and a corner drag seals it', async ({ p
       touchPoints: at(orbX + ((tx - orbX) * i) / 12, orbY + ((ty - orbY) * i) / 12),
     });
   }
+  // Hold on the live rift NDC (reflow can shift the spawn) past SEAL_HOLD_MS.
   await expect
-    .poll(() => page.evaluate(() => window.__riftLabDebug!.snapshot().status), { timeout: 15000 })
+    .poll(
+      async () => {
+        const live = await page.evaluate(() => {
+          const s = window.__riftLabDebug!.snapshot();
+          const t = s.targets[0];
+          return {
+            n: s.targets.length,
+            status: s.status,
+            energy: s.energy,
+            tx: t == null ? null : ((t.ndc[0] + 1) / 2) * window.innerWidth,
+            ty: t == null ? null : ((1 - t.ndc[1]) / 2) * window.innerHeight,
+          };
+        });
+        if (live.tx != null && live.ty != null) {
+          await cdp.send('Input.dispatchTouchEvent', {
+            type: 'touchMove',
+            touchPoints: at(live.tx, live.ty),
+          });
+        }
+        expect(live.n, 'exactly the intended rift is open during the drag').toBeLessThanOrEqual(1);
+        return live.status;
+      },
+      { timeout: 15000, intervals: [50, 50, 100] },
+    )
     .toBe('Rift sealed.');
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  expect((await page.evaluate(() => window.__riftLabDebug!.snapshot())).energy).toBe(0);
+  const done = await page.evaluate(() => window.__riftLabDebug!.snapshot());
+  expect(done.energy).toBe(0);
+  // The intended rift is the one that sealed: sealed rifts leave the list after the
+  // flight, so it must be gone (or sealed) and no other rift may have been sealed.
+  const intended = done.rifts.find((r) => r.id === intendedId);
+  expect(intended === undefined || intended.state === 'sealed').toBe(true);
+  expect(done.rifts.filter((r) => r.id !== intendedId && r.state === 'sealed')).toEqual([]);
 });

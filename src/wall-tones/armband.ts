@@ -1,3 +1,4 @@
+import { ArmbandRaisedButtons } from './armband-raised-buttons.js';
 import { hintWindowStart, HINT_WINDOW_SIZE } from './hint-window.js';
 /** The armband preference is independent of the player's input/dominant hand. */
 export type ArmbandHand = 'left' | 'right';
@@ -42,6 +43,10 @@ export interface ArmbandReadout {
   sequence: readonly number[]; hintCount: number; listen: boolean;
   playbackShown: number; replays: number; autoplay: number; colorNames: boolean;
   gameOver: boolean; bars: number;
+  /** Narration playing/queued: Skip Voice is relevant only then. */
+  narrationBusy: boolean;
+  /** Play modifier level (item 66): 0 = not owned - Play stays disabled until bought. */
+  playLevel: number;
 }
 /** No free hints: the same ownership/phase rules as the game-board strip. */
 export function armbandCueIds(state: ArmbandReadout): readonly number[] {
@@ -50,8 +55,14 @@ export function armbandCueIds(state: ArmbandReadout): readonly number[] {
   return [];
 }
 
+/** Play modifier (item 66) gate: until it is owned the wrist Play key reads
+ * grayed and stays inert; the store tile remains the purchase path. */
+export const armbandPlayDisabled = (state: { gameOver: boolean; phase: string; playLevel: number }): boolean =>
+  state.gameOver || state.phase !== 'input' || state.playLevel < 1;
+
 /** Shared by hand joints and controller grip poses; never billboarded to the head. */
 export class ArmbandDisplay {
+  readonly raisedButtons = new ArmbandRaisedButtons();
   readonly position = new Vector3();
   readonly orientation = new Quaternion();
   private readonly offset = new Vector3();
@@ -84,7 +95,7 @@ export class ArmbandDisplay {
   render(state: ArmbandReadout): void {
     const cues = armbandCueIds(state);
     const key = [armbandHand(), state.streak, state.best, state.phase, state.inputStep, state.sequence.length,
-      state.hintCount, state.replays, state.autoplay, state.colorNames, state.gameOver, state.bars, cues.join(',')].join(':');
+      state.hintCount, state.replays, state.autoplay, state.colorNames, state.gameOver, state.bars, state.narrationBusy, state.playLevel, cues.join(',')].join(':');
     if (this.key === key) return;
     this.key = key;
     const set = (id: string, text: string) => this.panel.getElementById(id)?.setProperties({ text });
@@ -94,14 +105,17 @@ export class ArmbandDisplay {
     set('armband-bars', String(state.bars));
     set('armband-phase', state.gameOver ? 'Game Over' : state.phase === 'input' ? `Your turn ${state.inputStep + 1}/${state.sequence.length}` : state.phase === 'playback' ? 'Listen' : 'Ready');
     set('armband-repeat-label', `Repeat (${state.replays})`);
-    // Controls read as inert while the Game Over popup owns the retry decision.
-    for (const id of ['armband-modifiers', 'armband-hint-button', 'armband-autoplay']) {
-      this.panel.getElementById(id)?.setProperties({ disabled: state.gameOver } as never);
-    }
+    // Repeat and Play read as inert while the Game Over popup is open; the
+    // wrist's own New Run slot is the retry path there (Nov 16 panel revision).
     this.panel.getElementById('armband-repeat')?.setProperties({
       disabled: state.gameOver || state.phase !== 'input' || state.replays < 1,
     } as never);
-    set('armband-autoplay-label', state.autoplay > 0 ? `Autoplay L${state.autoplay}` : 'Autoplay upgrade');
+    this.panel.getElementById('armband-play')?.setProperties({
+      disabled: armbandPlayDisabled(state),
+    } as never);
+    // Reserved slots, context-only: New Run at Game Over, Skip Voice while narrating.
+    this.panel.getElementById('armband-newrun')?.setProperties({ display: state.gameOver ? 'flex' : 'none' } as never);
+    this.panel.getElementById('armband-skip-voice')?.setProperties({ display: state.narrationBusy ? 'flex' : 'none' } as never);
     set('armband-hint', state.phase === 'playback' && state.listen ? 'Listen: notes played so far' : state.hintCount > 0 ? `Hint: ${state.hintCount} notes owned` : 'Hint not owned');
     const row = this.panel.getElementById<UIKit.Container>('armband-sequence');
     if (!row) return;
