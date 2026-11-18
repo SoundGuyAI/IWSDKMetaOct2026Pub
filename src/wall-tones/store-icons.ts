@@ -16,6 +16,7 @@ const FILL: Record<string, [string, string]> = {
   autoplay: ['#4cc38a', '#2d7552'],
   play: ['#f472b6', '#a03d75'],
   index: ['#eab308', '#8a6d14'],
+  skip: ['#fb7185', '#9b3d4a'],
   replay: ['#4a90e2', '#2c5687'],
   saver: ['#e5534b', '#89312d'],
   secret: ['#a78bfa', '#645396'],
@@ -52,6 +53,11 @@ function glyphPath(ctx: CanvasRenderingContext2D, id: string, label?: string): v
       ctx.arc(x, 54, 3, 0, Math.PI * 2);
       ctx.fill();
     }
+  } else if (id === 'skip') {
+    // Skip-forward: two triangles and a bar (skip the demonstration).
+    P('M14 16l18 16-18 16z');
+    P('M32 16l18 16-18 16z');
+    P('M54 16v32');
   } else if (id === 'play') {
     // Play triangle over a row of tone dots: tones on demand (item 66).
     P('M24 10l24 15-24 15z');
