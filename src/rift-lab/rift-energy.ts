@@ -51,6 +51,8 @@ export const MAX_ENERGY = 240;
 export const BEAM_DRAIN_PER_SECOND = 80;
 /** Beam must stay on one rift this long to seal it. */
 export const SEAL_HOLD_MS = 1500;
+/** Float tolerance when comparing seal progress to the hold time. */
+const SEAL_PROGRESS_EPSILON_MS = 1e-6;
 /**
  * "Enough energy" gate, settled 13:38: sealing needs enough energy on EVERY
  * platform (desktop click, mobile drag, XR palm). Threshold settled 14:46:
@@ -339,9 +341,14 @@ export class RiftLabGame {
     // many frames, float can leave progress a hair under SEAL_HOLD_MS when
     // energy hits 0 — the old abandon path stranded an almost-done mobile
     // seal with status still "Ready…". Exhausting the charge completes it.
-    if (rift.sealProgressMs >= SEAL_HOLD_MS || this.energy <= 0) {
+    // Float tolerance only: progress within a hair of the hold counts as done.
+    // A genuinely short beam (partial pool left over from other rifts) still
+    // dies with the rift open and its progress kept.
+    if (rift.sealProgressMs >= SEAL_HOLD_MS - SEAL_PROGRESS_EPSILON_MS) {
       rift.state = 'sealed';
       this.energy = 0;
+      this.stopBeam();
+    } else if (this.energy <= 0) {
       this.stopBeam();
     }
     return rift;
