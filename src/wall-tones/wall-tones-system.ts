@@ -37,6 +37,12 @@ import {selectionPanelPose, horizontalLookAway, panelOverlapsPad, rectangleInsid
 import { shouldAnnounceRecord } from './record-feedback.js';
 import { BarFloatPool } from './bar-floats.js';
 import { AchievementCelebration } from './achievement-celebration.js';
+import {
+  SYSTEM_ERROR_ACHIEVEMENT_ID,
+  SYSTEM_ERROR_CAUSE,
+  SYSTEM_ERROR_HEADING,
+  SYSTEM_ERROR_TITLE,
+} from './system-error.js';
 import { achievementIconSrc, achievementTileSrc } from './achievement-icons.js';
 import { hearingSubtitlesEnabled, colorNamesEnabled, currentSpokenCaption, voicesOffEnabled, gazePinchMode } from './accessibility.js';
 import { GAZE_SOURCE_EVENT, classifyGazeSource, type GazeSourceStatus } from './gaze-source.js';
@@ -288,6 +294,8 @@ presses: number;
 storeOpen: boolean;
 /** Game Over popup is showing (a wrong note ended the run). */
 gameOverOpen: boolean;
+/** The open Game Over is the timing-fault system error (test-only). */
+systemErrorGameOver: boolean;
 gameOverUseSaver: () => void;
 gameOverBuySaver: () => void;
 gameOverRetry: () => void;
@@ -516,6 +524,8 @@ private storeOpen = false;
 private achievementsOpen = false;
 /** Game Over popup shown after a wrong note; New run starts the next run. */
 private gameOverOpen = false;
+/** The open Game Over is the timing-fault system error, not a wrong note. */
+private systemErrorGameOver = false;
 // No buy-confirm arming: buying a saver is a single press that applies it when enough are held (owner request 2026-11-11).
 /** Run id whose single automatic replay has been used. */
 private idleReplayUsedRunId = -1;
@@ -2452,6 +2462,9 @@ return system.economy.getPresses();
 },
 get storeOpen() {
 return system.storeOpen;
+},
+get systemErrorGameOver() {
+return system.systemErrorGameOver;
 },
 get gameOverOpen() {
 return system.gameOverOpen;
@@ -4906,9 +4919,13 @@ if (narrIntact()) {
 const window = this.cypherProgress.beginWindow(streak);
 if (window) {
 await this.playCypherWindow(window, narrIntact);
-// Timing-fault beat: next pattern starts fresh at one note. Streak, score, owned savers and story progress stay.
-if (window.resetsPattern && narrIntact()) this.game.restartPatternKeepStreak();
-} else {
+// Timing-fault beat: the run ends as a system error (wrong-note flow). A skipped or interrupted narration never gets here.
+if (window.systemError && narrIntact()) {
+void this.onWrongInput(-1, -1, true);
+return;
+}
+}
+else {
 // Skip/interrupt leaves the line unheard (lineCompleted is not reached), so it retries at the next quiet pattern boundary.
 const line = this.backgroundProgress.successfulPattern(this.cypherProgress.finished, !this.speech.isBusy());
 if (line && narrIntact()) {
@@ -5398,7 +5415,8 @@ this.cypherProgress.lineCompleted();
 }
 }
 
-private async onWrongInput(hit: number, expected: number): Promise<void> {
+private async onWrongInput(hit: number, expected: number, systemError = false): Promise<void> {
+this.systemErrorGameOver = systemError;
 this.setCypherSeam(false);
 this.firstRun = false;
 this.roundBarsEarned = 0;
@@ -5417,7 +5435,8 @@ this.inputNeedsClear = true;
 // popup, even without a purchased hint or subtitles (item 75). The status text
 // element stays blank while the rows show.
 const missStep = this.game.inputStep;
-this.wrongHit = {
+// A system error has no wrong note, so no expected-vs-hit squares.
+this.wrongHit = systemError ? null : {
 hit,
 expected,
 preceding: this.game.sequence.slice(Math.max(0, missStep - WRONG_HIT_HISTORY_MAX), missStep),
@@ -5429,6 +5448,20 @@ truncated: missStep > WRONG_HIT_HISTORY_MAX,
 this.statusText = '';
 this.renderPanel();
 this.speech.cancel();
+if (systemError) {
+// Big achievement-style system-error visual first, then the error tone
+// and the Game Over panel. Display only: nothing is awarded or stored.
+this.celebration.show(
+{
+id: SYSTEM_ERROR_ACHIEVEMENT_ID,
+label: SYSTEM_ERROR_CAUSE,
+description: '',
+celebrationTitle: SYSTEM_ERROR_TITLE,
+celebrationError: true,
+},
+null,
+);
+}
 await playErrorTone();
 // Codex P2: a wrong press can cross a Pad presses threshold; announce the
 // unlock on this path too, not only on the reward path.
@@ -5436,7 +5469,15 @@ this.showAchievementToasts();
 this.playbackQueue = this.playbackQueue.then(async () => {
 // A personal best does not turn a missed note into a success (item 60a).
 // Keep the existing failure recordings; the full wording review is separate.
+if (systemError) {
+// Let the system-error visual finish before the panel opens.
+await this.wait(0.3);
+while (this.celebration.isActive() && this.experienceActive && this.flowPhase === 'playing') {
+await this.wait(0.2);
+}
+} else {
 await this.speech.speakAsync(randomWrongClip());
+}
 await this.wait(WRONG_RESET_DELAY_S);
 if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
@@ -5467,6 +5508,15 @@ await this.speech.speakAsync('gameoverGestures');
 
 private renderGameOverSummary(): void {
 const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+panel
+?.getElementById<UIKit.Text>('gameover-heading')
+?.setProperties({ text: this.systemErrorGameOver ? SYSTEM_ERROR_HEADING : 'Game Over' });
+panel
+?.getElementById<UIKit.Container>('gameover-error-banner')
+?.setProperties({ display: this.systemErrorGameOver ? 'flex' : 'none' });
+panel
+?.getElementById<UIKit.Text>('gameover-error-banner-text')
+?.setProperties({ text: SYSTEM_ERROR_CAUSE });
 if (panel) this.renderWrongHitRows(panel);
 this.syncGameOverGestureHint();
 panel
@@ -5581,6 +5631,7 @@ void playErrorTone();
 return;
 }
 this.gameOverOpen = false;
+this.systemErrorGameOver = false;
 this.syncMenuPopupVisibility();
 this.wrongHit = null;
 this.game.inputStep = 0;
@@ -5599,6 +5650,7 @@ if (!this.gameOverOpen || !this.experienceActive || this.flowPhase !== 'playing'
 return;
 }
 this.gameOverOpen = false;
+this.systemErrorGameOver = false;
 this.syncMenuPopupVisibility();
 this.wrongHit = null;
 this.game.onWrongInput();

@@ -77,6 +77,13 @@ function glyphPath(ctx: CanvasRenderingContext2D, id: string): void {
   if (id === 'streak') {
     P('M32 6c4 10 15 15 15 29a15 15 0 0 1-30 0c0-6 3-10 6-13 0 5 3 7 5 7 0-8-1-15 4-23z');
     P('M32 40c3 3 5 5 5 8a5 5 0 0 1-10 0c0-3 2-5 5-8z');
+  } else if (id === 'systemerror') {
+    // Warning triangle with an exclamation mark (celebration-only variant).
+    P('M32 8L58 54H6z');
+    P('M32 24v14');
+    ctx.beginPath();
+    ctx.arc(32, 46, 2.4, 0, Math.PI * 2);
+    ctx.fill();
   } else if (id === 'bars') {
     P('M8 44l9-18h30l9 18z');
     P('M24 35h16');
