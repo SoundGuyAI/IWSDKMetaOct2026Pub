@@ -53,6 +53,17 @@ const commitHash =
   })();
 
 /**
+ * Build date shown with the version and commit in Settings, computed at build
+ * time in the player's home timezone so the day matches what Oded sees.
+ */
+const buildDate = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Jerusalem',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+}).format(new Date());
+
+/**
  * When the app is opened through a public tunnel (*.trycloudflare.com), Vite's
  * HMR client may fall back to a WebSocket on localhost:8081. Chrome/Edge then
  * prompt: "Access other apps and services on this device" (loopback permission).
@@ -72,6 +83,7 @@ export default defineConfig({
   define: {
     __WALL_TONES_VERSION__: JSON.stringify(appVersion),
     __WALL_TONES_COMMIT__: JSON.stringify(commitHash),
+    __WALL_TONES_BUILD_DATE__: JSON.stringify(buildDate),
   },
   server: {
     host: '0.0.0.0',
