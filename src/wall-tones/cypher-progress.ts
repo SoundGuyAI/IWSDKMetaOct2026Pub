@@ -6,6 +6,8 @@ export interface CypherWindow {
   readonly speaker: 'cypher' | 'narrator';
   readonly lines: readonly CypherLineId[];
   readonly fault?: boolean;
+  /** Narrator says "I've found a timing fault": the next pattern restarts at one note, keeping streak, score, story and owned savers. */
+  readonly resetsPattern?: boolean;
   readonly seam?: 'open' | 'closed';
 }
 
@@ -23,7 +25,7 @@ export const CYPHER_WINDOWS: readonly CypherWindow[] = [
   { id: 'your-machine', minStreak: 0, speaker: 'cypher', lines: ['C07', 'C08', 'C09'] },
   { id: 'hidden-channel', minStreak: 0, speaker: 'cypher', lines: ['C10', 'C11', 'C12', 'C13'] },
   { id: 'next-lock', minStreak: 0, speaker: 'cypher', lines: ['C14'] },
-  { id: 'routine-repair', minStreak: 0, speaker: 'narrator', lines: ['N02', 'N03'], fault: true },
+  { id: 'routine-repair', minStreak: 0, speaker: 'narrator', lines: ['N02', 'N03'], fault: true, resetsPattern: true },
   { id: 'seam', minStreak: 15, speaker: 'cypher', lines: ['C15', 'C16'], seam: 'open' },
   { id: 'seam-repaired', minStreak: 0, speaker: 'narrator', lines: ['N04', 'N05'], seam: 'closed' },
   { id: 'longer-window', minStreak: 0, speaker: 'cypher', lines: ['C17', 'C18', 'C19'] },
