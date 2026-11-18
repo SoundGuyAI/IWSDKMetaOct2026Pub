@@ -2,6 +2,12 @@
 
 # Wall Tones 2 - November 6 notes
 
+## Voice lab PR (November 18) - in progress
+- [x] Standalone voice-input workbench at /voice-lab/ (public/voice-lab/), away from the game build: local vendored TensorFlow speech-commands 18w model plus browser speech comparison, reusing the proven VoiceDriver lab rules.
+- [x] Model and libraries served same-origin (vendor/, model/) so the page has no third-party requests at test time; intended for Quest Browser microphone testing.
+- [x] Unit tests for the accept/reject logic and vendored-asset wiring (tests/unit/voice-lab.test.mjs).
+- [ ] Build/typecheck, CI/Codex review, deployed preview and headset test checklist. Do not merge without owner approval.
+
 
 ## Misc PR25 (merge approved November 6, final checks pending)
 - [x] Debug colliders off by default; manual tuning toggle retained.

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b1020">
+<title>Wall Tones Voice Lab</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<main>
+  <header>
+    <span class="brand">WALL TONES / VOICE LAB</span>
+    <span class="tag">QUEST MIC TEST</span>
+  </header>
+
+  <section class="hero">
+    <p class="eyebrow">STANDALONE TEST PAGE</p>
+    <h1>Say it. See it.</h1>
+    <p>A microphone workbench for Wall Tones voice commands. It exists to check
+    word recognition on Quest Browser before anything voice-driven goes into
+    the game itself. Nothing here is wired into Wall Tones gameplay.</p>
+  </section>
+
+  <section class="panel" aria-label="Workbench">
+    <div class="panel-top">
+      <span class="tag">RECEIVER WORKBENCH</span>
+      <span id="state" role="status">Idle</span>
+    </div>
+
+    <label>Recognition method
+      <select id="engine">
+        <option value="local">Local word model (TensorFlow.js)</option>
+        <option value="browser">Browser speech service</option>
+        <option value="device">Browser on-device (experimental)</option>
+      </select>
+    </label>
+    <p id="privacy">Local inference on this device. Initial model download needs internet. No audio upload by this page.</p>
+    <p id="capability" role="status">Checking browser features...</p>
+
+    <div class="actions">
+      <button id="prepare" class="primary">Prepare receiver</button>
+      <button id="listen" disabled>Listen for 12 seconds</button>
+      <button id="stop" disabled>Stop</button>
+    </div>
+
+    <label class="threshold">Acceptance threshold
+      <input id="threshold" type="range" min="0.6" max="0.95" step="0.05" value="0.8">
+      <output id="thresholdValue">0.80</output>
+    </label>
+
+    <p id="result" role="status">No results yet.</p>
+    <div class="actions">
+      <button id="clear">Clear log</button>
+    </div>
+    <ol id="log"></ol>
+  </section>
+
+  <section class="panel" aria-label="Vocabulary">
+    <div class="panel-top"><span class="tag">MODEL VOCABULARY</span></div>
+    <p>The local model recognizes these 18 English words, plus background-noise
+    and unknown classes that are not commands:</p>
+    <ul class="words">
+      <li class="accept">yes</li><li class="accept">no</li>
+      <li class="accept">left</li><li class="accept">right</li>
+      <li>up</li><li>down</li><li>go</li><li>stop</li>
+      <li>zero</li><li>one</li><li>two</li><li>three</li><li>four</li>
+      <li>five</li><li>six</li><li>seven</li><li>eight</li><li>nine</li>
+    </ul>
+    <p>The highlighted four are the words this workbench accepts
+    (<strong>yes / no / left / right</strong>). The model also hears the others,
+    including <strong>stop</strong> and <strong>go</strong>, but they are reported
+    as rejected here. Wiring more words into Wall Tones is app work and needs no
+    model retraining.</p>
+    <p>Scores are model confidence outputs, not measured accuracy. Actual
+    recognition quality on a Quest headset still needs on-device testing, which
+    is what this page is for.</p>
+  </section>
+
+  <section class="panel" aria-label="Quest checklist">
+    <div class="panel-top"><span class="tag">WHAT TO CHECK ON QUEST</span></div>
+    <ol class="checklist">
+      <li>Open this page in Quest Browser and allow the microphone when asked.</li>
+      <li>Prepare the local receiver. It should report the WebGL backend and a loaded model.</li>
+      <li>Listen, then say <strong>yes</strong>, <strong>no</strong>, <strong>left</strong>, <strong>right</strong>. Each word should be accepted with a high score.</li>
+      <li>Try <strong>stop</strong> or a digit: the model should show it as the top class, rejected by the workbench.</li>
+      <li>Optionally compare the other recognition methods from the selector if this
+      browser offers them. On-device speech is feature-detected per browser; whether
+      Quest Browser exposes it is unknown until tested. The browser speech service
+      may send audio to the browser vendor.</li>
+    </ol>
+  </section>
+
+  <footer>
+    <p>Standalone lab page. In local mode, TensorFlow.js 4.22.0 and
+    speech-commands 0.5.4 are vendored under <code>vendor/</code> and the 18-word
+    BROWSER_FFT model is served from this same origin under <code>model/</code>,
+    so local recognition makes no third-party requests at test time. The browser
+    speech-service method is different: it may send audio to the browser vendor,
+    and the on-device method is offered only when feature detection says the
+    browser supports it. Not part of the Wall Tones game build or storyline.
+    Compatibility here is feature detection, not headset proof.
+    <a href="https://github.com/tensorflow/tfjs-models/blob/master/speech-commands/README.md">Local model reference</a>.</p>
+  </footer>
+</main>
+<script src="./vendor/tf.min.js"></script>
+<script src="./vendor/speech-commands.min.js"></script>
+<script type="module" src="./app.js"></script>
+</body>
+</html>
