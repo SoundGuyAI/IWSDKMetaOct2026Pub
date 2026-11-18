@@ -315,3 +315,18 @@ test('hub dressing including studio-floor hides only in Rift Lab', () => {
     false,
   );
 });
+
+test('a beam swept across partly hit rifts cannot seal a rift on leftover energy', () => {
+  const game = new RiftLabGame();
+  game.setStartingEnergy(SEAL_ENERGY_REQUIRED);
+  const a = game.spawnRift();
+  const b = game.spawnRift();
+  game.startBeam({ kind: 'mobile-drag', dx: 0, dy: 0 });
+  for (let i = 0; i < 50; i++) game.applyBeamOnRift(a.id, 20); // 1000 ms on A
+  assert.equal(a.state, 'sealing');
+  for (let i = 0; i < 100 && game.isBeamActive(); i++) game.applyBeamOnRift(b.id, 20);
+  assert.notEqual(b.state, 'sealed', 'B must not seal on 40 leftover energy');
+  assert.equal(b.state, 'open');
+  assert.ok(b.sealProgressMs < SEAL_HOLD_MS);
+  assert.equal(game.isBeamActive(), false);
+});
