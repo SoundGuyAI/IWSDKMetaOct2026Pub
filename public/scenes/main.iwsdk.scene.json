@@ -1,4 +1,4 @@
-main.iwsdk{
+{
   "version": "iwsdk.scene.v1",
   "units": "meters",
   "components": {

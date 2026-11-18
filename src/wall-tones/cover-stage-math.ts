@@ -1,4 +1,4 @@
-cover-stage-math/**
+/**
  * Pure animation math for the menu cover stage (cover-stage.ts). Kept free of
  * three/IWSDK imports so unit tests can exercise it directly.
  */
