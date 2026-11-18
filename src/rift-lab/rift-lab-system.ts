@@ -1004,8 +1004,8 @@ export class RiftLabSystem extends createSystem({
   }
 
   /** Lab panel screen rect in NDC (approximate, from its scale). */
-  private panelNdcRect(out: Vector4): boolean {
-    const obj = this.panel as unknown as import('three').Object3D | null;
+  private panelNdcRect(out: Vector4, target: unknown = this.panel): boolean {
+    const obj = target as import('three').Object3D | null;
     if (obj == null) return false;
     obj.updateWorldMatrix(true, false);
     const sc = obj.getWorldScale(this.panelScale).x;
@@ -1023,8 +1023,25 @@ export class RiftLabSystem extends createSystem({
     return true;
   }
 
-  /** True if a rift of this radius at pos would leave the screen or touch the menu. */
-  private flatSpotBlocked(pos: Vector3, radius: number, hasPanel: boolean): boolean {
+  /** Flat keep-out rects a rift must never slide under. During the
+   * gameplay encounter the live Wall Tones HUD is the panel that can cover
+   * a portal (his Nov 19 playtest note: rifts rendering behind the panel);
+   * the Lab panel's footprint still applies as the desktop pad-grid
+   * keep-out even while the Lab panel itself is hidden. */
+  private flatKeepOutRects(): Vector4[] {
+    const rects: Vector4[] = [];
+    if (this.encounterLive) {
+      const hudRect = new Vector4();
+      if (this.panelNdcRect(hudRect, this.world.getSceneObject('wall-tones-panel'))) {
+        rects.push(hudRect);
+      }
+    }
+    if (this.panelNdcRect(this.panelRect)) rects.push(this.panelRect.clone());
+    return rects;
+  }
+
+  /** True if a rift of this radius at pos would leave the screen or touch a keep-out. */
+  private flatSpotBlocked(pos: Vector3, radius: number, keepOut: Vector4[]): boolean {
     const cam = this.world.camera;
     const a = new Vector3().copy(pos).project(cam);
     if (a.z > 1) return true;
@@ -1032,8 +1049,7 @@ export class RiftLabSystem extends createSystem({
     const rx = Math.abs(b.x - a.x);
     const ry = Math.abs(b.y - a.y);
     if (a.x - rx < -0.95 || a.x + rx > 0.95 || a.y - ry < -0.95 || a.y + ry > 0.95) return true;
-    if (hasPanel) {
-      const r = this.panelRect;
+    for (const r of keepOut) {
       const M = 0.06;
       const dx = Math.max(r.x - M - (a.x + rx), a.x - rx - (r.z + M), 0);
       const dy = Math.max(r.y - M - (a.y + ry), a.y - ry - (r.w + M), 0);
@@ -1052,7 +1068,7 @@ export class RiftLabSystem extends createSystem({
   ): { pos: Vector3; radius: number } | null {
     const depth = RIFT_POSITIONS[0]!.z;
     this.world.camera.updateMatrixWorld();
-    const hasPanel = this.panelNdcRect(this.panelRect);
+    const keepOut = this.flatKeepOutRects();
     const others: { pos: Vector3; radius: number }[] = [];
     for (const [id, v] of this.riftViews) {
       if (id === excludeId) continue;
@@ -1063,7 +1079,7 @@ export class RiftLabSystem extends createSystem({
       for (let x = -3.2; x <= 3.201; x += 0.2) {
         for (let y = radius * 1.15 + 0.05; y <= 3.5; y += 0.1) {
           const pos = new Vector3(x, y, depth);
-          if (this.flatSpotBlocked(pos, radius, hasPanel)) continue;
+          if (this.flatSpotBlocked(pos, radius, keepOut)) continue;
           let near = Infinity;
           let ok = true;
           for (const o of others) {
@@ -1101,10 +1117,10 @@ export class RiftLabSystem extends createSystem({
     if (now - this.flatCheckAt < 400) return;
     this.flatCheckAt = now;
     this.world.camera.updateMatrixWorld();
-    const hasPanel = this.panelNdcRect(this.panelRect);
+    const keepOut = this.flatKeepOutRects();
     for (const [id, v] of this.riftViews) {
       const radius = v.group.scale.x * RIFT_VISIBLE_RADIUS_M;
-      if (!this.flatSpotBlocked(v.position, radius, hasPanel)) continue;
+      if (!this.flatSpotBlocked(v.position, radius, keepOut)) continue;
       const spot = this.pickFlatSpot(id);
       if (spot == null) {
         // Nowhere safe on this viewport: drop the open rift rather than leave
@@ -1571,6 +1587,11 @@ export class RiftLabSystem extends createSystem({
           new PlaneGeometry(NOTE_SIZE_M * 2.4, NOTE_SIZE_M * 2.4),
           noteGlyphMaterial(note.color).clone(),
         );
+        // Draw under UI panels. Transparent sorting puts closer objects
+        // last, so without this the flat charge cloud (parked nearer the
+        // camera than the game HUD) painted over the panel while the rift
+        // itself sat behind it (his Nov 19 playtest note).
+        mesh.renderOrder = -1;
         this.noteMeshes.set(note.id, mesh);
         this.root.add(mesh);
       }
@@ -1703,7 +1724,12 @@ export class RiftLabSystem extends createSystem({
       }
       this.updateXrBeam();
       const now = performance.now();
+      // Lab-only top-up timer. The gameplay encounter owns its schedule in
+      // RiftEncounter (three portals total; a sealed portal never respawns
+      // in this stage, his Nov 19 playtest note), so this timer must not
+      // run alongside it.
       if (
+        !this.encounterLive &&
         !this.autoSpawnPaused &&
         this.riftViews.size < MAX_OPEN_RIFTS &&
         now - this.lastSpawnAt >= RIFT_SPAWN_INTERVAL_MS
