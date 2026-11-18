@@ -6636,6 +6636,9 @@ new UIKit.Text({
 fontSize: 13,
 color: t.state === 'off' ? 0x9aa4b6 : 0xffffff,
 text: t.name,
+// "Skip pattern" is wider than the tile; a wider centered box keeps it
+// on one line so it cannot run into the price caption below.
+...(t.id === 'skip' ? { width: TILE_S + 30, textAlign: 'center' as const } : {}),
 }),
 );
 // Price line (owner ask 2026-11-12): the Bars icon in front of the number
