@@ -135,9 +135,9 @@ test('real mouse press on the row label toggles the setting (1280x720)', async (
 
   // Coordinates measured from a screenshot of this build: Settings button,
   // Accessibility button, then the subtitles row LABEL (not the checkbox).
-  const SETTINGS: [number, number] = [640, 458];
-  const ACCESSIBILITY: [number, number] = [640, 407];
-  const ROW_LABEL: [number, number] = [560, 155];
+  const SETTINGS: [number, number] = [640, 475];
+  const ACCESSIBILITY: [number, number] = [640, 428];
+  const ROW_LABEL: [number, number] = [560, 281];
 
   const MAX_ROUNDS = 3;
   let rounds = 0;
@@ -163,7 +163,7 @@ test('real mouse press on the row label toggles the setting (1280x720)', async (
   expect(value, `row label press must toggle within ${MAX_ROUNDS} rounds`).toBe('true');
 
   // A press on the checkbox itself toggles exactly once (no double-toggle).
-  const CHECKBOX: [number, number] = [405, 155];
+  const CHECKBOX: [number, number] = [470, 281];
   await panelClick(...CHECKBOX);
   await page.waitForTimeout(1_200);
   expect(await readSetting(), 'checkbox press must toggle back exactly once').toBe('false');
