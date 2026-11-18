@@ -265,7 +265,7 @@ test.describe('Wall Tones store scrolling (MR critical fix)', () => {
         });
       };
       (window as unknown as { __tapLog: unknown[] }).__tapLog = [];
-      for (const t of ['pointerover', 'pointerdown', 'pointerup', 'pointercancel', 'touchstart', 'touchend']) {
+      for (const t of ['pointerover', 'pointerdown', 'pointerup', 'pointercancel', 'touchstart', 'touchend', 'click']) {
         window.addEventListener(t, rec, true);
       }
     });
@@ -305,8 +305,37 @@ test.describe('Wall Tones store scrolling (MR critical fix)', () => {
       await page.evaluate(() => {
         (window as unknown as { __tapLog: unknown[] }).__tapLog = [];
       });
+      // Genuine short tap, no wall-clock hold. Chromium processes CDP touch
+      // commands in order and dispatches each event synchronously, and the
+      // pointer-events layer computes the down intersection inside the
+      // pointerover/pointerdown dispatch (over() -> computeIntersection ->
+      // commit), so once the page has seen pointerdown, down processing is
+      // complete and the up can follow immediately - this is also how
+      // Playwright's own touchscreen.tap issues touchStart/touchEnd with no
+      // delay. The previous fixed 120ms sleep stretched under runner load
+      // (measured 231-315ms), and the one observed failure had the only
+      // hold past the 300ms clickThresholdMs in @pmndrs/pointer-events.
+      // Whether that threshold actually suppressed the internal click in
+      // that attempt is unobserved: the tap log records DOM events only,
+      // and a DOM click here is not proof of the internal 3D handler's
+      // click. The event-driven wait below keeps real taps in the tens of
+      // ms regardless of runner load, and the tap log records the actual
+      // event timing either way.
       await touch('touchStart', chevron.x, chevron.y);
-      await page.waitForTimeout(120);
+      await expect
+        .poll(
+          async () =>
+            page
+              .evaluate(
+                () =>
+                  (window as unknown as { __tapLog: { type: string }[] }).__tapLog.map(
+                    (e) => e.type,
+                  ),
+              )
+              .catch(() => [] as string[]),
+          { timeout: 5_000 },
+        )
+        .toContain('pointerdown');
       await touch('touchEnd', chevron.x, chevron.y);
       await expect
         .poll(async () => (await readScroll(page)).y, { timeout: 10_000 })
