@@ -148,3 +148,55 @@ text-only mode.
 - Phone tilt clip probes: a transient fetch failure used to mute that clip
   (voice and static) for the rest of the session; only successful probes
   stay cached, so a failed clip re-probes on its next line.
+
+## iPhone pass (Nov 17, feat/iphone-nod-sensitivity)
+
+Owner request (Nov 16 23:34): "work on the sensitivity in iPhone and
+getting the nods to work on iPhone too", after his Nov 16 01:52 report
+that recognition was no longer 100%, with two questions:
+
+- **Q1: are the thresholds different per platform?** Yes, since Nov 15:
+  the headset uses `DEFAULT_HEAD_GESTURE_CONFIG`, flat mode (pointer AND
+  phone tilt) uses `FLAT_HEAD_GESTURE_CONFIG` (arm 6, reverse 4, peak 10
+  deg, dominance 2.0, return-to-baseline 6 deg). The Nov 16 threshold
+  change (6/4/10 from his Quest capture) moved BOTH configs, so a
+  headset fix can still shift iPhone behavior - this PR's panel now
+  names the active preset in the telemetry so the tested values are
+  always visible on-device.
+- **Q2: does the orientation baseline reset between questions?** Not on
+  each question by design: a mid-motion anchor makes the
+  return-to-baseline requirement unachievable (the Nov 14 failure).
+  Instead the baseline tracks the resting pose whenever the phone reads
+  as still, and the panel's "Reset position" button re-anchors on demand
+  as if the question was just asked.
+
+What this pass changes:
+
+- **Landscape fix.** Tilt axes assumed portrait (beta = nod, gamma =
+  shake). Held in landscape, the same physical nod moves gamma, so it
+  fed the shake axis - the likely mechanism behind "nod is not working
+  and it's detecting it as a no" (Nov 16 00:05). Samples are now
+  rotated into the screen frame (`rotateToScreenFrame`) using
+  `screen.orientation.angle` (iOS `window.orientation` fallback), so
+  forward/back is yes in any orientation. Gestures are symmetric, so
+  only the axis mapping matters, never the sign. Known limit: in the
+  near-vertical gimbal zone (|beta| > 80) gamma is untrusted on iOS, so
+  landscape shakes cannot be read reliably while the phone is nearly
+  upright; nods still read in portrait there. This affects the edge
+  case only - normal holding angles sit outside the zone.
+- **Sensitivity selector.** New panel button toggles the flat tuning
+  between Standard (6/4/10 deg) and Sensitive (5/3.5/8 deg, return 5
+  deg), applied live to both the answering detector and the recording
+  shadow detector and persisted in localStorage. His Nov 15 dataset
+  peaks at 10-22 deg, so the Standard peak floor sat exactly at the
+  gentle end; Sensitive qualifies those. Dominance stays 2.0 in both:
+  the Nov 15 trace showed relaxing it is what let yaw wobble misread a
+  nod as a shake.
+- No changes to the headset config, the dialogue, clips or captions.
+
+Verification: 247 unit tests green (6 new: rotation math, same nod
+detected at 0/90/270, gentle-nod preset behavior, dominance guard
+kept, live config swap, panel wiring), tsc + vite build clean. Real
+iPhone confirmation is Oded's pass: try portrait and landscape, both
+sensitivities, and send a "Record gestures" capture (clipboard paste)
+if anything still misreads.

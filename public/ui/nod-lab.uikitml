@@ -133,6 +133,9 @@
       <ButtonLabel class="nod-lab-button-label">Reset position</ButtonLabel>
     </Button>
   </div>
+  <Button id="nod-lab-sensitivity-button" class="nod-lab-button">
+    <ButtonLabel id="nod-lab-sensitivity-label" class="nod-lab-button-label">Sensitivity: Standard</ButtonLabel>
+  </Button>
   <Button id="nod-lab-back-button" class="nod-lab-button" style="margin-bottom: 24px">
     <ButtonLabel class="nod-lab-button-label">Back to menu</ButtonLabel>
   </Button>
