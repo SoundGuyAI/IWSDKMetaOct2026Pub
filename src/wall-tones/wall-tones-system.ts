@@ -3958,7 +3958,9 @@ return;
 await this.speakReturnWelcome();
 await this.offerReminder('gameplay');
 if (!this.experienceActive || this.flowPhase !== 'playing') return;
-await this.playSimonStartupFanfare();
+// The reinforced one-note retry supplies its own fanfare immediately before
+// the real note. Do not duplicate it when the player chooses New Run.
+if (!this.firstNoteHelp.needsIntroDemo(1)) await this.playSimonStartupFanfare();
 if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
 }
@@ -4010,6 +4012,18 @@ this.playbackCursor = -1;
 this.enteredByModifier.clear();
 this.arrowSeqIndex = -1;
 this.renderPanel();
+// Third first-note miss: contrast the intro with the actual one-note pattern.
+// This is demonstration feedback, never a reset or a heard-memory event.
+if (this.firstNoteHelp.takeIntroDemo(this.game.sequence.length)) {
+await this.speech.speakFirstNoteHelp('intro-demo', helpCast);
+if (!this.experienceActive || this.flowPhase !== 'playing') return;
+await this.playSimonStartupFanfare();
+if (!this.experienceActive || this.flowPhase !== 'playing') return;
+if (helpNarrationMark === this.narrationInterrupt) {
+await this.speech.speakFirstNoteHelp('single-note', helpCast);
+if (!this.experienceActive || this.flowPhase !== 'playing') return;
+}
+}
 // Speed modifier (backlog 96, his 2026-11-14 proposal): the head of the
 // Listen playback plays faster, covering the first N notes where N is the
 // higher of the Play/Autoplay note counts, capped at the pattern length.

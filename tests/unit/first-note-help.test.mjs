@@ -5,11 +5,11 @@ import ts from 'typescript';
 const source=readFileSync(new URL('../../src/wall-tones/first-note-help.ts',import.meta.url),'utf8');
 const js=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
 const {FirstNoteHelp,firstNoteColorClip,firstNoteHelpText,FIRST_NOTE_GUIDANCE}=await import('data:text/javascript;base64,'+Buffer.from(js).toString('base64'));
-test('three first-note misses coach once; fourth arms following demonstrations until first note matched',()=>{
+test('two first-note misses coach once; fourth arms following demonstrations until first note matched',()=>{
  const h=new FirstNoteHelp();assert.equal(h.needsColorCue(),false);
- assert.equal(h.wrong(0),false);assert.equal(h.wrong(0),false);assert.equal(h.wrong(0),true);assert.equal(h.needsColorCue(),false);
- assert.equal(h.wrong(0),false);assert.equal(h.needsColorCue(),true);assert.equal(h.wrong(0),false);assert.equal(h.needsColorCue(),true);
- h.correct(0);assert.equal(h.needsColorCue(),false);assert.equal(h.wrong(0),false);assert.equal(h.wrong(0),false);assert.equal(h.wrong(0),true);
+ assert.equal(h.wrong(0),false);assert.equal(h.wrong(0),true);assert.equal(h.needsColorCue(),false);
+ assert.equal(h.wrong(0),false);assert.equal(h.needsColorCue(),false);assert.equal(h.wrong(0),false);assert.equal(h.needsColorCue(),true);
+ h.correct(0);assert.equal(h.needsColorCue(),false);assert.equal(h.wrong(0),false);assert.equal(h.wrong(0),true);
 });
 test('later-note misses do not count; later-note success cannot clear first-note struggle',()=>{
  const h=new FirstNoteHelp();for(let i=0;i<7;i++)assert.equal(h.wrong(2),false);assert.equal(h.needsColorCue(),false);
@@ -38,4 +38,14 @@ test('runtime counts only input mismatches, clears only human first-note matches
  assert.match(playback,/index === 0 && assistedFirstNote/);assert.match(playback,/helpNarrationMark === this.narrationInterrupt/);
  assert.doesNotMatch(source,/localStorage|sessionStorage/);
  const memory=readFileSync(new URL('../../src/wall-tones/instruction-memory.ts',import.meta.url),'utf8');assert.doesNotMatch(memory,/firstNoteHelp|press-green|guidance/);
+});
+
+test('third-miss intro reinforcement is one-note-only, once per struggle, separate from color',()=>{
+ const h=new FirstNoteHelp();h.wrong(0);assert.equal(h.needsIntroDemo(1),false);
+ h.wrong(0);assert.equal(h.needsIntroDemo(1),false);h.wrong(0);
+ assert.equal(h.needsIntroDemo(2),false);assert.equal(h.takeIntroDemo(2),false);
+ assert.equal(h.needsIntroDemo(1),true);assert.equal(h.needsColorCue(),false);
+ assert.equal(h.takeIntroDemo(1),true);assert.equal(h.takeIntroDemo(1),false);
+ h.wrong(0);assert.equal(h.needsIntroDemo(1),false);assert.equal(h.needsColorCue(),true);
+ h.correct(0);for(let i=0;i<3;i++)h.wrong(0);assert.equal(h.takeIntroDemo(1),true);
 });
