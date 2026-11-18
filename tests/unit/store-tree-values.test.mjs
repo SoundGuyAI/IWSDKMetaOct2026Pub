@@ -95,6 +95,7 @@ const {
   PLAY_UNLOCK_HINT_LEVEL,
   AUTOPLAY_UNLOCK_PLAY_LEVEL,
   INDEX_COST,
+  SKIP_PATTERN_COST,
 } = await import('data:text/javascript;base64,' + Buffer.from(js).toString('base64'));
 
 /** Fresh economy with `bars` test-funded (in-memory; no localStorage in node). */
@@ -290,4 +291,38 @@ test('Play 500/1000/2000/4000 and Index 500 one-off (owner approved test prices 
   const pb = poor.getBars();
   assert.equal(poor.buyIndex(), false);
   assert.equal(poor.getBars(), pb);
+});
+
+test('Skip pattern: one-off 1000 Bars, needs Play owned, never consumed (owner 2026-11-18)', () => {
+  assert.equal(SKIP_PATTERN_COST, 1000);
+  const eco = ecoWith(5000);
+  assert.equal(eco.skipPatternUnlocked(), false, 'locked without Play');
+  assert.equal(eco.buySkipPattern(), false);
+  assert.equal(eco.getBars(), 5000);
+  eco.debugGrantPlayLevel(1);
+  assert.equal(eco.skipPatternUnlocked(), true, 'Play level 1 unlocks it');
+  assert.equal(eco.buySkipPattern(), true);
+  assert.equal(eco.getBars(), 4000);
+  assert.equal(eco.ownsSkipPattern(), true);
+  assert.equal(eco.buySkipPattern(), false, 'one-off');
+  assert.equal(eco.getBars(), 4000);
+  const poor = ecoWith(999);
+  poor.debugGrantPlayLevel(1);
+  assert.equal(poor.buySkipPattern(), false, 'not enough Bars');
+});
+
+test('Skip pattern wiring: button, flat overlay, demo-only skip, store tile left of Play', () => {
+  for (const id of ['id="skip-pattern-button"']) {
+    assert.ok(ui.includes(id), `uikitml missing ${id}`);
+  }
+  for (const snippet of [
+    'onSkipPattern',
+    'skipDemoRequested',
+    'waitDemo',
+    "id: 'skip'",
+    "ids: ['skip', 'play', 'index']",
+    'wall-tones-skip-pattern-flat',
+  ]) {
+    assert.ok(sys.includes(snippet), `system missing ${snippet}`);
+  }
 });
