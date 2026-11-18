@@ -8,16 +8,29 @@ import { CypherProgress, type CypherWindow } from './cypher-progress.js';
 import {
   THUMB_JOINT_NAMES,
   ThumbGestureDetector,
+  classifyThumbPose,
   type ThumbHandJoints,
 } from '../thumbs-lab/thumbs-gesture.js';
+import {
+  GameOverHandGapTracker,
+  GameOverThumbsFlow,
+  type GameOverThumbPose,
+  type GameOverThumbsEvent,
+} from './gameover-thumbs.js';
 import { playLabAnswerCue } from '../thumbs-lab/lab-cues.js';
+import { HeadNodShakeDetector } from '../nod-lab/head-gesture.js';
+import { Euler } from 'three';
 import { CypherLabVoice, cypherLabVoiceSet } from '../thumbs-lab/lab-voice.js';
 import {
   GESTURE_ANSWER_TIMEOUT_S,
   GESTURE_CHECK_END,
   GESTURE_CHECK_INTRO,
+  NOD_CHECK_INTRO,
+  NOD_CHECK_NO,
+  NOD_CHECK_YES,
   gestureRetryLine,
   shouldRunGestureCheck,
+  shouldRunNodCheck,
 } from './gesture-check.js';
 import { captureCypherCast } from './cypher-voice.js';
 import {selectionPanelPose, horizontalLookAway, panelOverlapsPad, rectangleInsidePolygon} from './panel-placement.js';
@@ -197,7 +210,12 @@ import {
   storeTapHandledOnRelease,
 } from './store-drag-guard.js';
 import { STORE_SCROLL_STEP, clampStoreScroll, storeScrollEnabled } from './store-scroll.js';
-import { SAVER_PRICE_BARS, saverRetryPlan, saverUnitsForStreak } from './consumable-values.js';
+import {
+  SAVER_PRICE_BARS,
+  gameOverRetryPresentation,
+  saverRetryPlan,
+  saverUnitsForStreak,
+} from './consumable-values.js';
 import {
 getActiveWorldKind,
 returnToMenuInPlace,
@@ -272,6 +290,13 @@ storeOpen: boolean;
 gameOverOpen: boolean;
 gameOverUseSaver: () => void;
 gameOverBuySaver: () => void;
+gameOverRetry: () => void;
+gameOverThumbsArmed: boolean;
+gameOverRetryLabel: string;
+gameOverRetryLabelColor: number;
+gameOverRetryBarsIconVisible: boolean;
+gameOverRetryConfirmIconVisible: boolean;
+gameOverGestureHint: { text: string; visible: boolean };
 savers: number;
 streakNow: number;
 /** Test-only: the New run button action. */
@@ -439,6 +464,11 @@ narrator: 'storeItemHack',
 const ARM_BAND_BEAM_EMBED = 0.008;
 const Z_AXIS = new Vector3(0, 0, 1);
 
+/** No tracked hand for this long while the Game Over popup is open restarts
+ * the gesture; shorter controller/hand input-switch gaps pause it instead
+ * (Nov 17 device test). */
+const GAMEOVER_NO_HANDS_RESET_SEC = 1.0;
+
 export class WallTonesSystem extends createSystem({
 pads: { required: [WallTonePad] },
 planes: { required: [XRPlane] },
@@ -559,12 +589,26 @@ private flatAwaitingStart = false;
  * waits for a pad press or a thumbs up, matching the MR start narration. */
 private mrAwaitingStart = false;
 private readonly thumbStartDetector = new ThumbGestureDetector();
+/** Game Over thumbs flow (owner, Nov 17): both-up retry / arm+confirm / down new run. */
+private readonly gameOverThumbs = new GameOverThumbsFlow();
+/** Last arm state pushed to the Game Over panel; the tick mirrors changes
+ * (including gap-reset disarms, which emit no event). */
+private gameOverHintSyncedArmed = false;
+/** Game Over no-hand stretch tracker (Nov 17 device test): Quest drops hand
+ * sources while controllers are active, so frames without a tracked hand
+ * pause the gesture flow instead of resetting it. */
+private readonly gameOverHandGap = new GameOverHandGapTracker(GAMEOVER_NO_HANDS_RESET_SEC);
 /** Active story gesture-check listen; resolved by update() hand sampling. */
 private gestureListen: {
-detector: ThumbGestureDetector;
+kind: 'thumbs' | 'nod';
+detector: ThumbGestureDetector | HeadNodShakeDetector;
 deadline: number;
 resolve: (answer: 'yes' | 'no' | null) => void;
 } | null = null;
+private readonly nodBaselineQuat = new Quaternion();
+private readonly nodHeadQuat = new Quaternion();
+private readonly nodRelQuat = new Quaternion();
+private readonly nodRelEuler = new Euler();
 private readonly cypherLabVoice = new CypherLabVoice();
 /** After playback, ignore touches until every pad is clear (avoids stuck finger auto-hitting). */
 private inputNeedsClear = false;
@@ -1394,9 +1438,12 @@ this.readRayAndGazeTouches();
 if (
 !this.useDesktopPath() &&
 this.flowPhase === 'playing' &&
-(this.mrAwaitingStart || this.gestureListen != null)
+(this.mrAwaitingStart || this.gestureListen != null || this.gameOverOpen)
 ) {
 this.tickThumbGestures();
+}
+// TEMP XR diagnostics (Nov 17 device test): live Game Over gesture readout.
+if (this.gameOverOpen) {
 }
 this.tickIdleReplay();
 }
@@ -1513,10 +1560,7 @@ panel
 ?.addEventListener('click', () => this.setAchievementsOpen(false));
 panel
 .getElementById('gameover-use-saver-button')
-?.addEventListener('click', () => this.onGameOverUseSaver());
-panel
-.getElementById('gameover-buy-saver-button')
-?.addEventListener('click', () => this.onGameOverBuySaver());
+?.addEventListener('click', () => this.onGameOverRetry());
 panel
 .getElementById('gameover-newrun-button')
 ?.addEventListener('click', () => this.onGameOverNewRun());
@@ -2415,6 +2459,37 @@ return system.gameOverOpen;
 gameOverNewRun: () => system.onGameOverNewRun(),
 gameOverUseSaver: () => system.onGameOverUseSaver(),
 gameOverBuySaver: () => system.onGameOverBuySaver(),
+// Combined retry route (owner, Nov 17): the single button/gesture path -
+// spends owned savers or buys the missing ones in the same press.
+gameOverRetry: () => system.onGameOverRetry(),
+get gameOverThumbsArmed() {
+return system.gameOverThumbs.isArmed;
+},
+// Live read-backs of the rendered Game Over retry row (same pattern as
+// statusLineText): label text/color, Bars icon and confirm-thumb icon
+// visibility, gesture hint text/visibility.
+get gameOverRetryLabel() {
+return String(system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('gameover-use-saver-label')?.properties.peek().text ?? '');
+},
+get gameOverRetryLabelColor() {
+return Number(system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('gameover-use-saver-label')?.properties.peek().color ?? 0);
+},
+get gameOverRetryBarsIconVisible() {
+return (system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('gameover-use-saver-bars-icon')?.properties.peek().display ?? 'none') !== 'none';
+},
+get gameOverRetryConfirmIconVisible() {
+return (system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('gameover-use-saver-thumb-icon-confirm')?.properties.peek().display ?? 'none') !== 'none';
+},
+get gameOverGestureHint() {
+const el = system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('gameover-gesture-hint');
+const props = el?.properties.peek();
+return { text: String(props?.text ?? ''), visible: (props?.display ?? 'none') !== 'none' };
+},
 get savers() {
 return system.economy.getSavers();
 },
@@ -4856,6 +4931,11 @@ if (this.canRunGestureCheck(window.id)) {
 await this.playGestureCheckWindow(intact);
 return;
 }
+// Immersive: the codename window ends with the nod-answered q3 prompt.
+if (this.canRunNodCheck(window.id)) {
+await this.playNodCheckWindow(window, intact);
+return;
+}
 const cast = captureCypherCast(getVoiceGender());
 if (window.seam === 'closed') this.setCypherSeam(false);
 if (window.fault) {
@@ -4993,11 +5073,65 @@ listen.resolve(null);
 }
 }
 
-/** Per-frame thumbs sampling for the MR start gate and the story gesture check. */
+/** Per-frame thumbs sampling for the MR start gate, the story gesture check
+ * and the Game Over thumbs flow. */
 private tickThumbGestures(): void {
 const now = performance.now() / 1000;
 const left = this.sampleThumbHand('left');
 const right = this.sampleThumbHand('right');
+if (this.gameOverOpen) {
+// Game Over thumbs (owner, Nov 17): both-up hold retries (owned savers, or
+// the same buy-and-retry press as the button when short), one-up arms then
+// a second up confirms, thumb down starts a new run. The listen is alive
+// only while the popup is open in MR; up gestures go inert only when the
+// retry is out of reach (not enough Bars to buy).
+const leftPose: GameOverThumbPose = left != null ? classifyThumbPose(left).pose : 'none';
+const rightPose: GameOverThumbPose = right != null ? classifyThumbPose(right).pose : 'none';
+const canRun = this.canRunGameOverThumbs();
+if (canRun !== this.gameOverThumbs.isEnabled) {
+this.gameOverThumbs.setEnabled(canRun);
+if (canRun) {
+this.gameOverHandGap.reset();
+this.gameOverHintSyncedArmed = false;
+}
+}
+if (canRun) {
+const need = saverUnitsForStreak(this.game.streak);
+const pres = gameOverRetryPresentation(this.economy.getSavers(), need, this.economy.getBars());
+this.gameOverThumbs.setRetryAvailable(!pres.buying || pres.affordable);
+// Feed only frames with a tracked hand: Quest drops the hand sources while
+// controllers are active, and disabling the flow on that would reset a hold
+// or arm mid-gesture (Nov 17 device test: ht 1 -> 0 across the popup).
+// Frames with no tracked hand pause the flow - fed with observed time, so
+// unseen seconds never count toward a deliberate hold - and a sustained gap
+// restarts the gesture so a stale hold cannot fire when tracking returns.
+let event: GameOverThumbsEvent | null = null;
+const gap = this.gameOverHandGap.note(left != null || right != null, now);
+if (gap == null) {
+event = this.gameOverThumbs.feed(leftPose, rightPose, this.gameOverHandGap.observedNow(now));
+} else if (gap === 'reset') {
+this.gameOverThumbs.reset();
+}
+if (event === 'armed') {
+// The game asked for a confirmation: acknowledge with the lab cue (owner,
+// Nov 17: the expected gesture plays the lab sound cue).
+void playLabAnswerCue('yes');
+} else if (event === 'retry') {
+void playLabAnswerCue('yes');
+this.onGameOverRetry();
+} else if (event === 'new-run') {
+void playLabAnswerCue('no');
+this.onGameOverNewRun();
+}
+// A gap reset can disarm without an event: mirror the arm state to the
+// button/hint so the confirmation wording never goes stale.
+if (this.gameOverThumbs.isArmed !== this.gameOverHintSyncedArmed) {
+this.gameOverHintSyncedArmed = this.gameOverThumbs.isArmed;
+this.syncGameOverGestureHint();
+}
+}
+return;
+}
 if (this.mrAwaitingStart) {
 const event = this.thumbStartDetector.feed(left, right, now);
 if (event?.answer === 'yes') {
@@ -5007,7 +5141,15 @@ return;
 }
 const listen = this.gestureListen;
 if (listen != null) {
-const event = listen.detector.feed(left, right, now);
+let event: { answer: 'yes' | 'no' } | null = null;
+if (listen.kind === 'nod') {
+const angles = this.sampleHeadAngles();
+event = angles == null
+? null
+: (listen.detector as HeadNodShakeDetector).feed(angles.pitch, angles.yaw, now);
+} else {
+event = (listen.detector as ThumbGestureDetector).feed(left, right, now);
+}
 if (event != null) {
 this.gestureListen = null;
 listen.resolve(event.answer);
@@ -5019,6 +5161,18 @@ this.gestureListen = null;
 listen.resolve(null);
 }
 }
+}
+
+/** Baseline-relative headset pitch/yaw (radians) for the nod detector. */
+private sampleHeadAngles(): { pitch: number; yaw: number } | null {
+const session = this.xrManager.getSession();
+if (session == null || session.visibilityState !== 'visible') {
+return null;
+}
+this.player.head.getWorldQuaternion(this.nodHeadQuat);
+this.nodRelQuat.copy(this.nodBaselineQuat).invert().multiply(this.nodHeadQuat);
+this.nodRelEuler.setFromQuaternion(this.nodRelQuat, 'YXZ');
+return { pitch: this.nodRelEuler.x, yaw: this.nodRelEuler.y };
 }
 
 /** Read one hand's thumb-classifier joints from the live XR frame. */
@@ -5087,17 +5241,100 @@ return null;
 private canRunGestureCheck(windowId: string): boolean {
 const immersive =
 this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
-let handTracking = false;
+return shouldRunGestureCheck(windowId, immersive, this.hasHandTrackingInput());
+}
+
+/** True when the active XR session has a hand-tracking input source. */
+private hasHandTrackingInput(): boolean {
 const session = this.xrManager.getSession();
-if (session != null) {
+if (session == null) {
+return false;
+}
 for (const source of session.inputSources) {
 if (source.hand != null) {
-handTracking = true;
-break;
+return true;
 }
 }
+return false;
 }
-return shouldRunGestureCheck(windowId, immersive, handTracking);
+
+/** Game Over thumbs gestures (owner, Nov 17): the flow stays enabled while
+ * the popup is open in MR. Hand tracking on Quest drops out whenever
+ * controllers are active (Nov 17 device test: ht 1 -> 0 across the popup),
+ * so live tracking gates the per-frame feed, not the enabled state; gating
+ * the state would reset a hold or arm on every controller/hand switch.
+ * Flat/desktop players keep the buttons only. */
+private canRunGameOverThumbs(): boolean {
+return (
+this.gameOverOpen &&
+this.world.visibilityState.peek() !== VisibilityState.NonImmersive
+);
+}
+
+/** The codename nod prompt needs only the headset pose: immersive play. */
+private canRunNodCheck(windowId: string): boolean {
+const immersive =
+this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
+return shouldRunNodCheck(windowId, immersive);
+}
+
+private awaitNodAnswer(): Promise<'yes' | 'no' | null> {
+return new Promise((resolve) => {
+// Re-anchor the head baseline at the moment the prompt starts listening,
+// so a nod is measured from the resting pose (same rule as the nod lab).
+this.player.head.getWorldQuaternion(this.nodBaselineQuat);
+const detector = new HeadNodShakeDetector();
+detector.setEnabled(true);
+this.gestureListen = {
+kind: 'nod',
+detector,
+deadline: performance.now() / 1000 + GESTURE_ANSWER_TIMEOUT_S,
+resolve,
+};
+});
+}
+
+/**
+ * Immersive codename window: C05-C06 play as recorded, then Cypher asks the
+ * lab's q3 ("Will you keep helping me?") and the player answers with a head
+ * nod for yes / head shake for no. A detected answer plays the lab
+ * recognition chime (owner, Nov 17: the expected gesture plays the lab sound
+ * cue) and Cypher replies with the matching q3 branch line; about six idle
+ * seconds count as a "no" (lab rule). One prompt, no retries, so play is
+ * never wedged; the your-machine window then fulfils q3's "next window"
+ * promise. Interrupts leave unspoken lines uncompleted, as before.
+ */
+private async playNodCheckWindow(window: CypherWindow, intact: () => boolean): Promise<void> {
+const set = cypherLabVoiceSet();
+const cast = captureCypherCast(getVoiceGender());
+// Same entry effect as the recorded codename window.
+await this.speech.speakStoryEffect('open');
+if (!intact()) {
+return;
+}
+for (const id of window.lines) {
+if (!intact()) {
+return;
+}
+await this.speech.speakStoryLine(id, cast);
+if (intact()) this.cypherProgress.lineCompleted();
+}
+await this.cypherLabVoice.speak(set, NOD_CHECK_INTRO);
+if (!intact()) {
+return;
+}
+const answer = await this.awaitNodAnswer();
+this.gestureListen = null;
+if (!intact()) {
+return;
+}
+if (answer != null) {
+await playLabAnswerCue(answer);
+}
+await this.cypherLabVoice.speak(set, answer === 'yes' ? NOD_CHECK_YES : NOD_CHECK_NO);
+if (intact()) {
+await this.speech.speakStoryEffect('close');
+}
 }
 
 private awaitThumbAnswer(): Promise<'yes' | 'no' | null> {
@@ -5105,6 +5342,7 @@ return new Promise((resolve) => {
 const detector = new ThumbGestureDetector();
 detector.setEnabled(true);
 this.gestureListen = {
+kind: 'thumbs',
 detector,
 deadline: performance.now() / 1000 + GESTURE_ANSWER_TIMEOUT_S,
 resolve,
@@ -5209,12 +5447,25 @@ this.gameOverOpen = true;
 this.syncMenuPopupVisibility();
 this.renderGameOverSummary();
 this.renderPanel();
+// First MR Game Over: one-time narrator explainer of the thumbs gesture
+// controls (owner-approved exact line, Nov 17). takeFirstTime is consumed
+// only when the line can actually play, so flat/desktop players and muted
+// sessions keep it for a later MR run.
+if (
+this.world.visibilityState.peek() !== VisibilityState.NonImmersive &&
+this.hasHandTrackingInput() &&
+!voicesOffEnabled() &&
+this.economy.takeFirstTime('gameover-mr-gestures')
+) {
+await this.speech.speakAsync('gameoverGestures');
+}
 });
 }
 
 private renderGameOverSummary(): void {
 const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
 if (panel) this.renderWrongHitRows(panel);
+this.syncGameOverGestureHint();
 panel
 ?.getElementById<UIKit.Text>('gameover-summary')
 ?.setProperties({
@@ -5225,20 +5476,67 @@ const have = this.economy.getSavers();
 panel
 ?.getElementById<UIKit.Text>('gameover-saver-status')
 ?.setProperties({ text: `Streak savers: ${have}. Retry the same pattern costs ${need}.` });
-panel
-?.getElementById<UIKit.Text>('gameover-use-saver-label')
-?.setProperties({
-text: have >= need ? `Use ${need} saver${need > 1 ? 's' : ''} - retry same pattern` : `Need ${need} saver${need > 1 ? 's' : ''} to retry`,
-color: have >= need ? 0x1c1d20 : 0x8a8f98,
-});
-const missing = Math.max(0, need - have);
-const plan = saverRetryPlan(have, need, this.economy.getBars(), SAVER_PRICE_BARS);
-panel
-?.getElementById<UIKit.Text>('gameover-buy-saver-label')
-?.setProperties({
-text: `Buy ${missing} saver${missing > 1 ? 's' : ''} & retry - ${plan.costBars}`,
-color: plan.affordable ? 0x1c1d20 : 0xd43a3a,
-});
+}
+
+/** Game Over gesture affordances (owner, Nov 17): MR-only thumbs icons on
+ * the retry/new-run buttons plus a hint line that mirrors the thumbs flow
+ * state. While a one-thumb arm waits, the retry button itself switches to
+ * the confirmation wording with a second thumbs-up icon (owner, Nov 17).
+ * Hidden entirely on flat/desktop. */
+private syncGameOverGestureHint(): void {
+const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+if (panel == null) {
+return;
+}
+// The affordance stays up for the whole MR popup (owner device test,
+// Nov 17): Quest drops hand sources while controllers are active, and
+// hiding on live tracking hid the icons exactly when the player needed
+// the instruction. Flat/desktop stays hidden.
+const mr =
+this.gameOverOpen &&
+this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
+const armed = mr && this.gameOverThumbs.isArmed;
+panel.getElementById<UIKit.Container>('gameover-use-saver-thumb-icon')?.setProperties({ display: mr ? 'flex' : 'none' });
+panel.getElementById<UIKit.Container>('gameover-use-saver-thumb-icon-confirm')?.setProperties({ display: armed ? 'flex' : 'none' });
+panel.getElementById<UIKit.Container>('gameover-newrun-thumb-icon')?.setProperties({ display: mr ? 'flex' : 'none' });
+// One combined retry button (owner, Nov 17): owned savers when there are
+// enough, otherwise the same press buys the missing savers with Bars.
+const need = saverUnitsForStreak(this.game.streak);
+const pres = gameOverRetryPresentation(this.economy.getSavers(), need, this.economy.getBars());
+panel.getElementById<UIKit.Text>('gameover-use-saver-label')?.setProperties(
+armed
+? { text: 'Thumbs up again to confirm - same or other hand', color: 0x1c1d20 }
+: { text: pres.text, color: pres.affordable ? 0x1c1d20 : 0xd43a3a },
+);
+panel.getElementById('gameover-use-saver-bars-icon')?.setProperties({ display: !armed && pres.buying ? 'flex' : 'none' });
+const hint = panel.getElementById<UIKit.Text>('gameover-gesture-hint');
+if (hint == null) {
+return;
+}
+if (!mr) {
+hint.setProperties({ display: 'none' });
+return;
+}
+const text = !(!pres.buying || pres.affordable)
+? 'Thumb down for a new run - not enough Bars to buy the retry'
+: armed
+? 'Confirm: raise your other thumb, or lower and raise the same one - thumb down for a new run'
+: 'Hold both thumbs up to retry, or hold one and confirm - thumb down for a new run';
+hint.setProperties({ display: 'flex', text });
+}
+
+
+/** Combined Game Over retry (owner, Nov 17): one route for the button and
+ * the thumbs gestures - spend owned savers when there are enough, otherwise
+ * buy the missing savers with Bars and retry in the same press. */
+private onGameOverRetry(): void {
+if (!this.gameOverOpen) return;
+const need = saverUnitsForStreak(this.game.streak);
+if (this.economy.getSavers() >= need) {
+this.onGameOverUseSaver();
+return;
+}
+this.onGameOverBuySaver();
 }
 
 /** One-press purchase (owner request 2026-11-11, no confirm step): buys exactly the savers missing for an immediate retry and applies them in the same press. Cost model unchanged: missing units at 18 Bars each. */

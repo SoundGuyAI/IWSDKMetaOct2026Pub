@@ -17,6 +17,8 @@ export const CLIP_TRANSCRIPTS: Record<WallTonesClipId, string> = {
   newBest1: 'New best streak!', newBest2: 'You beat your best again!', newBest3: 'Another new best!',
   barsFirstEarn: 'Your first pattern complete, and your first gold Bars earned! Take a look in the store to see what you can unlock.',
   palmProjector: 'Open your hand flat, palm up. Your projector shows your progress and controls, right above your hand.',
+  // Owner-approved exact wording, Nov 17 (first MR Game Over gesture explainer).
+  gameoverGestures: 'Game over. To use savers and retry this pattern, hold both thumbs up. Or hold one thumb up, then confirm with your other hand or lower and raise the same thumb again. Thumb down starts a new run without savers. You can also use the panel buttons.',
   storeWelcome: 'Welcome to the store! Spend your gold Bars on upgrades.',
   storeHints: 'Each hint upgrade unlocks five more colors in your Your Turn hint. Buy it once, and keep it.',
   storeIntro: "Welcome to the store! Spend your gold Bars on upgrades. Select any item and I'll tell you what it does.",
