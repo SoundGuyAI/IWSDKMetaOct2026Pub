@@ -6613,8 +6613,11 @@ icon: multiplierLevel < MULTIPLIER_MAX_LEVEL,
 // own centered bottom row below the future placeholders.
 const TREE_W = 308;
 const TILE_S = 70;
-// Tile + name + price lines.
-const TILE_H = TILE_S + 34;
+// Tile + two-line name + price lines: the "(Notes: N)" names wrap to
+// two lines at the tile width, so the column must hold both lines plus
+// the price caption; a shorter box lets the caption overflow onto the
+// level pips below.
+const TILE_H = TILE_S + 50;
 const LINE_COLOR = 0x9aa4b6;
 const LINE_OK = 0x4cc38a;
 const byId = new Map(tiles.map((t) => [t.id, t]));
@@ -6640,9 +6643,12 @@ new UIKit.Text({
 fontSize: 13,
 color: t.state === 'off' ? 0x9aa4b6 : 0xffffff,
 text: t.name,
-// "Skip pattern" is wider than the tile; a wider centered box keeps it
-// on one line so it cannot run into the price caption below.
-...(t.id === 'skip' ? { width: TILE_S + 30, textAlign: 'center' as const } : {}),
+// Center the name under the tile: an unsized text wraps at the tile
+// width but keeps its lines left-aligned, which pushed the name and
+// the price caption off-centre. "Skip pattern" is wider than the
+// tile; a wider centered box keeps it on one line.
+width: t.id === 'skip' ? TILE_S + 30 : TILE_S,
+textAlign: 'center' as const,
 }),
 );
 // Price line (owner ask 2026-11-12): the Bars icon in front of the number
