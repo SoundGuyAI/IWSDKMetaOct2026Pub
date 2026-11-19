@@ -318,6 +318,9 @@ BACKGROUND_PROGRESS_KEY,
 // Owned by autoplay-cue.ts (AUTOPLAY_PHRASES_HEARD_KEY); duplicated as a
 // literal because the unit tests import this module standalone.
 'wall-tones-autoplay-phrases-heard-v1',
+'wall-tones-instructions-v1',
+'wall-tones-return-visit-v1',
+'wall-tones-achievements-intro-played',
 ]) {
 try { globalThis.localStorage?.removeItem(key); } catch { /* private mode */ }
 }

@@ -24,7 +24,10 @@ test('approved wording per platform is the transcript', () => {
 
 test('intro plays once, first board open, voices-off respected', () => {
   const s = read('wall-tones-system.ts');
-  assert.ok(s.includes("'wall-tones-achievements-intro-played'"));
+  assert.ok(s.includes("this.speech.hasHeardInstruction(id)"), 'natural completion memory owns one-shot suppression');
+  const body=s.slice(s.indexOf('private playAchievementsIntroOnce()'),s.indexOf('private syncMenuPopupVisibility()'));
+  assert.equal(body.includes('localStorage?.setItem'),false,'never consume the one-shot before playback ends');
+  assert.ok(body.includes("this.offerReminder('achievements')"),'returning completed context can offer binary reminder');
   assert.ok(s.includes('if (open) this.playAchievementsIntroOnce();'));
   assert.ok(s.includes('if (voicesOffEnabled()) return;'));
   assert.ok(s.includes("'achvIntroMr' : phone ? 'achvIntroIphone' : 'achvIntroPc'"));
