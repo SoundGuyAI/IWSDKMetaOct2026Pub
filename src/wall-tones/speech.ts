@@ -26,7 +26,7 @@ import { ACHV_INTRO_FEMALE_MR } from './achv-intro-female-mr.js';
  * Quest gesture rules stay identical to the pad tones.
  */
 
-import { ensureAudioRunning, primeWallTonesAudioFromGesture, needsExplicitMobileSoundUnlock } from './audio.js';
+import { ensureAudioRunning, primeWallTonesAudioFromGesture, needsExplicitMobileSoundUnlock, autoplayCuesActive, waitForAutoplayCuesToFinish } from './audio.js';
 
 export type WallTonesClipId =
   | 'openingPattern'
@@ -602,10 +602,23 @@ export class WallTonesSpeech {
       if (gen !== this.generation || (typeof id === 'string' && this.instructionMemory.hasHeard(id))) {
         return; // superseded or a queued duplicate of a now-completed tutorial
       }
-      // Race the line against cancel(): a superseded line stuck awaiting a
-      // stalled decode/fetch still resolves its run, so callers awaiting
-      // speakAsync (round intro, milestone chains) resume immediately.
-      return Promise.race([this.playClip(id, gen, startupEntry), cancelled]);
+      const start = () => {
+        if (gen !== this.generation) {
+          return; // superseded by cancel() while waiting on the robot
+        }
+        // Race the line against cancel(): a superseded line stuck awaiting a
+        // stalled decode/fetch still resolves its run, so callers awaiting
+        // speakAsync (round intro, milestone chains) resume immediately.
+        return Promise.race([this.playClip(id, gen, startupEntry), cancelled]);
+      };
+      // The AutoPlay robot's voice cues play outside this narration chain:
+      // wait out any cue still sounding so this line never talks over the
+      // robot's pattern line (owner 2026-11-19). The common no-cue path keeps
+      // its exact old microtask shape.
+      if (!autoplayCuesActive()) {
+        return start();
+      }
+      return Promise.race([waitForAutoplayCuesToFinish(), cancelled]).then(start);
     });
     this.chain = run.then(
       () => undefined,

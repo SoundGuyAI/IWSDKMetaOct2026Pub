@@ -40,6 +40,8 @@ async function loadSpeech({ rejectFirst = false, subtitles = false } = {}) {
   Object.defineProperty(globalThis, 'navigator', { value: { userAgent: 'iPhone', maxTouchPoints: 5 }, configurable: true });
   globalThis.__audioStub = {
     ensureAudioRunning: () => { decodeCalls++; return new Promise(() => {}); },
+    autoplayCuesActive: () => globalThis.__autoplayWait != null,
+    waitForAutoplayCuesToFinish: () => globalThis.__autoplayWait ?? Promise.resolve(),
     primeWallTonesAudioFromGesture: () => { primeCalls++; },
     needsExplicitMobileSoundUnlock: () => true,
   };
@@ -55,7 +57,7 @@ async function loadSpeech({ rejectFirst = false, subtitles = false } = {}) {
     source = dependency + '\n' + source;
   }
   source = source.replace(/^import .* from '.\/audio.js';/m,
-    'const {ensureAudioRunning, primeWallTonesAudioFromGesture, needsExplicitMobileSoundUnlock} = globalThis.__audioStub;');
+    'const {ensureAudioRunning, primeWallTonesAudioFromGesture, needsExplicitMobileSoundUnlock, autoplayCuesActive, waitForAutoplayCuesToFinish} = globalThis.__audioStub;');
   // Only non-routing dependencies are replaced. The production mobile element
   // and gesture/queue/cancellation implementation below remains under test.
   source = source.replace(/^import .* from '.\/clip-transcripts.js';/m,
@@ -278,6 +280,46 @@ test('Web Audio start consumes a story line; failed source start does not', asyn
   source.start = () => { throw new Error('failed start'); };
   await voice.playBuffer(context, { duration: 1 }, clip);
   assert.equal(started, 1);
+});
+
+// The AutoPlay robot's pattern line plays outside the narration queue (user,
+// November 19): a narration line dequeued while the robot is still talking
+// must wait it out, not play on top of it.
+test('narration waits out an in-flight autoplay robot cue before starting', async () => {
+  const flush = async () => { for (let i = 0; i < 12; i += 1) await Promise.resolve(); };
+  const h = await loadSpeech();
+  await h.gesture(() => h.speech.startMobileWelcomeFromGesture());
+  h.speech.unlockSpeechFromGesture();
+  h.instances[0].end();
+  let releaseRobot;
+  globalThis.__autoplayWait = new Promise(resolve => { releaseRobot = resolve; });
+  try {
+    const voice = new h.speech.WallTonesSpeech();
+    const line = voice.speakAsync('pointAndPress');
+    await flush();
+    assert.equal(h.instances[0].played.length, 1, 'no narration starts while the robot cue is still playing');
+    releaseRobot();
+    await flush();
+    assert.equal(h.instances[0].played.length, 2, 'the queued line starts once the robot finishes');
+    assert.match(h.instances[0].played[1], /point-and-press.mp3$/);
+    h.instances[0].end();
+    await line;
+  } finally {
+    globalThis.__autoplayWait = undefined;
+  }
+});
+
+test('a line enqueued after the robot cue finished starts immediately', async () => {
+  const h = await loadSpeech();
+  await h.gesture(() => h.speech.startMobileWelcomeFromGesture());
+  h.speech.unlockSpeechFromGesture();
+  h.instances[0].end();
+  const voice = new h.speech.WallTonesSpeech();
+  const line = voice.speakAsync('pointAndPress');
+  await Promise.resolve();
+  assert.match(h.instances[0].played[1], /point-and-press.mp3$/, 'no robot cue: old immediate start');
+  h.instances[0].end();
+  await line;
 });
 
 test('Lab lines keep captured opposite cast, exact captions and mobile cancellation', async () => {
