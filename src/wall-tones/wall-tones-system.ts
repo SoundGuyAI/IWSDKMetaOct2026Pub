@@ -199,6 +199,7 @@ import {
   MULTIPLIER_MAX_LEVEL,
   multiplierFactorForLevel,
   INDEX_COST,
+  SKIP_PATTERN_COST,
   LISTEN_COST,
   REPLAY_FREE_CAP,
   REPLAY_PRICE_BARS,
@@ -381,6 +382,9 @@ pressSpeedControl: () => void;
 pressMultiplierControl: () => void;
 /** Test-only: selects a store tile like a tap on its tile. */
 selectStoreTile: (id: string) => void;
+/** Test-only: speaks an achievement tile's narrator line like a tap
+ * pin-open, through the same once-only guard. */
+selectAchievementTile: (id: string) => void;
 storePointerTargets: Record<string, { x: number; y: number }>;
 storeSelected: string | null;
 /** Store tree scroll state (test-only reads). */
@@ -420,6 +424,12 @@ grantIndex: () => void;
 pressAutoplayControl: () => void;
 ownsIndex: boolean;
 buyIndex: () => void;
+ownsSkipPattern: boolean;
+buySkipPattern: () => void;
+grantSkipPattern: () => void;
+/** Test-only: press the Skip pattern button (no-op unless shown). */
+pressSkipPattern: () => void;
+skipPatternVisible: boolean;
 /** Test-only streak seeding for e2e Game Over cost checks. */
 setStreak: (streak: number) => void;
 growSequenceTo: (length: number) => void;
@@ -466,6 +476,19 @@ replay: 'storeItemReplay',
 saver: 'storeItemSaver',
 secret: 'storeItemSecret',
 narrator: 'storeItemHack',
+};
+
+/** Achievement category -> its narrator line (owner-approved words
+ * 2026-11-15). The hidden Secret achievement stays silent; movement
+ * activates when PR #72's category lands. Module-level so the once-only
+ * speak path (speakAchievementClipOnce) shares it with the tile grid. */
+const ACHV_CLIPS: Partial<Record<string, WallTonesClipId>> = {
+streak: 'achvStreak',
+bars: 'achvBars',
+score: 'achvScore',
+store: 'achvStore',
+presses: 'achvPresses',
+movement: 'achvMovement',
 };
 
 // How far the projector cone's root is sunk into the palm glow orb (m),
@@ -581,7 +604,7 @@ private gameOverOpen = false;
 /** Run id whose single automatic replay has been used. */
 private idleReplayUsedRunId = -1;
 /** Once-per-pattern Play use key (the streak identifies the pattern). */
-private playUsedForStreak = -1;
+private playUsedForPattern = '';
 /** Until this time the status line shows the caption-only idle nudge. */
 private idleNudgeUntil = 0;
 private readonly viewer = new Vector3();
@@ -767,6 +790,11 @@ private blinkCueRoot: Object3D | null = null;
 private blinkCueEntity: Entity | null = null;
 /** Panel Skip voice button mirrors speech.isBusy(); polled each frame. */
 private skipVoiceVisible = false;
+/** Skip pattern button shown: demo playing, owned, no voice. */
+private skipPatternVisible = false;
+/** Set by the Skip pattern button; ends the current demonstration early. */
+private skipDemoRequested = false;
+private flatSkipPatternButton: HTMLButtonElement | null = null;
 private headCaptionVisible = false;
 private headCaptionText = '';
 private readonly headCaptionOffset = new Vector3();
@@ -1639,6 +1667,9 @@ panel
 panel
 .getElementById('skip-voice-button')
 ?.addEventListener('click', () => this.onSkipVoice());
+panel
+.getElementById('skip-pattern-button')
+?.addEventListener('click', () => this.onSkipPattern());
 panel.getElementById('reminder-yes')?.addEventListener('click', () => this.reminderInputs.answer('yes'));
 panel.getElementById('reminder-no')?.addEventListener('click', () => this.reminderInputs.answer('no'));
 this.syncSkipVoiceButton();
@@ -2325,11 +2356,30 @@ this.narrationInterrupt += 1;
 this.speech.cancel();
 }
 
+/** Skip pattern: ends the tone demonstration only; the
+ * player's turn is untouched. Ignored unless the button is showing. */
+private onSkipPattern(): void {
+if (!this.skipPatternVisible) return;
+this.skipDemoRequested = true;
+}
+
 private tickSkipVoiceButton(): void {
 const busy = this.speech.isBusy();
 const flat = this.isFlatView();
-if (busy !== this.skipVoiceVisible || flat !== this.skipVoiceViewFlat) {
+// Same slot as Skip voice: a spoken line owns it; the demonstration
+// button shows only when no voice is playing (owner 2026-11-18 11:44).
+const patternShown =
+!busy &&
+this.economy.ownsSkipPattern() &&
+this.game.phase === 'playback' &&
+this.playbackKind === 'listen';
+if (
+busy !== this.skipVoiceVisible ||
+patternShown !== this.skipPatternVisible ||
+flat !== this.skipVoiceViewFlat
+) {
 this.skipVoiceVisible = busy;
+this.skipPatternVisible = patternShown;
 this.skipVoiceViewFlat = flat;
 this.syncSkipVoiceButton();
 }
@@ -2347,7 +2397,47 @@ this.world
 .getSceneObject<UIKitMLAsset>('wall-tones-panel')
 ?.getElementById('skip-voice-button')
 ?.setProperties({ display: this.skipVoiceVisible && !flat ? 'flex' : 'none' });
+this.world
+.getSceneObject<UIKitMLAsset>('wall-tones-panel')
+?.getElementById('skip-pattern-button')
+?.setProperties({ display: this.skipPatternVisible && !flat ? 'flex' : 'none' });
 this.syncFlatSkipButton(flat);
+this.syncFlatSkipPatternButton(flat);
+}
+
+private syncFlatSkipPatternButton(flat: boolean): void {
+if (flat && this.skipPatternVisible) {
+if (this.flatSkipPatternButton == null) {
+const button = document.createElement('button');
+button.type = 'button';
+button.id = 'wall-tones-skip-pattern-flat';
+button.textContent = 'Skip pattern';
+Object.assign(button.style, {
+position: 'fixed',
+right: 'max(12px, env(safe-area-inset-right))',
+bottom: 'max(24px, env(safe-area-inset-bottom))',
+zIndex: '100002',
+fontSize: '16px',
+padding: '12px 18px',
+borderRadius: '12px',
+border: 'none',
+background: '#f5d90a',
+color: '#1c1d20',
+fontWeight: '700',
+boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
+cursor: 'pointer',
+});
+button.addEventListener('click', (event) => {
+event.preventDefault();
+this.onSkipPattern();
+});
+document.body.appendChild(button);
+this.flatSkipPatternButton = button;
+}
+this.flatSkipPatternButton.style.display = 'block';
+} else if (this.flatSkipPatternButton != null) {
+this.flatSkipPatternButton.style.display = 'none';
+}
 }
 
 private syncFlatSkipButton(flat: boolean): void {
@@ -2815,6 +2905,22 @@ buyIndex: () => {
 system.forceSelectStoreTile('index');
 system.onBuySelected();
 },
+buySkipPattern: () => {
+system.forceSelectStoreTile('skip');
+system.onBuySelected();
+},
+grantSkipPattern: () => {
+system.economy.debugGrantSkipPattern();
+},
+pressSkipPattern: () => {
+system.onSkipPattern();
+},
+get ownsSkipPattern() {
+return system.economy.ownsSkipPattern();
+},
+get skipPatternVisible() {
+return system.skipPatternVisible;
+},
 buyReplay: () => {
 system.forceSelectStoreTile('replay');
 system.onBuySelected();
@@ -2931,6 +3037,9 @@ return system.storeSelected;
 },
 selectStoreTile: (id: string) => {
 system.selectStoreTile(id);
+},
+selectAchievementTile: (id: string) => {
+system.speakAchievementClipOnce(id);
 },
 // Test-only: fund the wallet without grinding rounds.
 grantBars: (amount: number) => {
@@ -3906,24 +4015,24 @@ this.movement.resetPadAnchor();
 * Simon-style startup fanfare: each pad once, pause, first pad four times,
 * then a short pause before voice / the real pattern.
 */
-private async playSimonStartupFanfare(): Promise<void> {
+private async playSimonStartupFanfare(skipAware = false): Promise<void> {
 this.statusText = 'Watch the pads...';
 this.renderPanel();
 // Fanfare order is green, red, yellow, blue (pad ids 0, 1, 3, 2).
 for (const padIndex of SIMON_FANFARE_PAD_ORDER) {
-if (!this.experienceActive || this.flowPhase !== 'playing') {
+if (!this.experienceActive || this.flowPhase !== 'playing' || (skipAware && this.skipDemoRequested)) {
 return;
 }
-await this.blinkPadNote(padIndex);
+await this.blinkPadNote(padIndex, skipAware);
 }
-await this.wait(SIMON_FANFARE_MID_PAUSE_S);
+await (skipAware ? this.waitDemo(SIMON_FANFARE_MID_PAUSE_S) : this.wait(SIMON_FANFARE_MID_PAUSE_S));
 for (let repeat = 0; repeat < SIMON_FANFARE_FIRST_PAD_REPEATS; repeat += 1) {
-if (!this.experienceActive || this.flowPhase !== 'playing') {
+if (!this.experienceActive || this.flowPhase !== 'playing' || (skipAware && this.skipDemoRequested)) {
 return;
 }
-await this.blinkPadNote(0);
+await this.blinkPadNote(0, skipAware);
 }
-await this.wait(SIMON_FANFARE_END_PAUSE_S);
+await (skipAware ? this.waitDemo(SIMON_FANFARE_END_PAUSE_S) : this.wait(SIMON_FANFARE_END_PAUSE_S));
 }
 
 /** Pads are placed in fanfare order in MR air placement, so array position
@@ -3932,7 +4041,7 @@ private padById(padIndex: number): PadRuntime | undefined {
 return findPadById(this.pads, padIndex);
 }
 
-private async blinkPadNote(padIndex: number): Promise<void> {
+private async blinkPadNote(padIndex: number, skipAware = false): Promise<void> {
 const pad = this.padById(padIndex);
 if (pad != null) {
 this.setBlinkCuePad(pad);
@@ -3942,11 +4051,11 @@ playPadToneFromUserAction(padIndex);
 } else {
 await playPadTone(padIndex);
 }
-await this.wait(BLINK_HOLD_S);
+await (skipAware ? this.waitDemo(BLINK_HOLD_S) : this.wait(BLINK_HOLD_S));
 flashPad(pad, false);
 this.setBlinkCuePad(null);
 }
-await this.wait(NOTE_GAP_S);
+await (skipAware ? this.waitDemo(NOTE_GAP_S) : this.wait(NOTE_GAP_S));
 }
 
 /** Fanfare, how-to-play voice line, pause, then the first pattern note. */
@@ -4021,15 +4130,16 @@ this.playbackKind = 'listen';
 this.playbackCursor = -1;
 this.enteredByModifier.clear();
 this.arrowSeqIndex = -1;
+this.skipDemoRequested = false;
 this.renderPanel();
 // Third first-note miss: contrast the intro with the actual one-note pattern.
 // This is demonstration feedback, never a reset or a heard-memory event.
 if (this.firstNoteHelp.takeIntroDemo(this.game.sequence.length)) {
 await this.speech.speakFirstNoteHelp('intro-demo', helpCast);
 if (!this.experienceActive || this.flowPhase !== 'playing') return;
-await this.playSimonStartupFanfare();
+if (!this.skipDemoRequested) await this.playSimonStartupFanfare(true);
 if (!this.experienceActive || this.flowPhase !== 'playing') return;
-if (helpNarrationMark === this.narrationInterrupt) {
+if (!this.skipDemoRequested && helpNarrationMark === this.narrationInterrupt) {
 await this.speech.speakFirstNoteHelp('single-note', helpCast);
 if (!this.experienceActive || this.flowPhase !== 'playing') return;
 }
@@ -4047,6 +4157,7 @@ speedFactor < 1
 ? Math.min(this.game.sequence.length, this.economy.speedCoveredNoteCount())
 : 0;
 for (let index = 0; index < this.game.sequence.length; index += 1) {
+if (this.skipDemoRequested) break;
 const quick = index < speedNotes;
 const padId = this.game.sequence[index]!;
 const pad = this.padById(padId);
@@ -4057,18 +4168,24 @@ this.playbackShownCount = index + 1;
 this.playbackCursor = index;
 this.renderPanel();
 await playPadTone(padId, quick ? NOTE_DURATION_S * speedFactor : NOTE_DURATION_S);
-await this.wait((NOTE_GAP_S + BLINK_HOLD_S + 0.2) * (quick ? speedFactor : 1));
+await this.waitDemo((NOTE_GAP_S + BLINK_HOLD_S + 0.2) * (quick ? speedFactor : 1));
 flashPad(pad, false);
 this.setBlinkCuePad(null);
 }
-if (index === 0 && assistedFirstNote) {
+if (index === 0 && assistedFirstNote && !this.skipDemoRequested) {
 const cue = firstNoteColorClip(padId);
 if (cue != null && helpNarrationMark === this.narrationInterrupt && this.experienceActive && this.flowPhase === 'playing') {
 await this.speech.speakFirstNoteHelp(cue, helpCast);
 if (!this.experienceActive || this.flowPhase !== 'playing') return;
 }
 }
-await this.wait(NOTE_GAP_S * (quick ? speedFactor : 1));
+await this.waitDemo(NOTE_GAP_S * (quick ? speedFactor : 1));
+}
+// Skipping the assisted demo never changes the player's turn or help counters.
+if (this.skipDemoRequested) {
+this.skipDemoRequested = false;
+for (const pad of this.pads) flashPad(pad, false);
+this.setBlinkCuePad(null);
 }
 // Autoplay store modifier (store test values, balance TBD): after
 // the Listen playback, the game enters the first level*5 notes for the
@@ -6110,9 +6227,12 @@ return;
 if (this.game.phase !== 'input' || this.game.sequence.length === 0) {
 return;
 }
-// Owner rule 2026-11-13: once per pattern (keyed on the streak, which
-// identifies the current pattern and resets on failure).
-if (this.playUsedForStreak === this.game.streak) {
+// Rule: Play is once per pattern. A pattern is identified by the
+// run AND the streak: the streak alone repeats after a failure (a new run
+// climbs back through the same numbers), which wrongly denied Play on a
+// fresh pattern after it was used at that streak in an earlier run.
+const patternKey = `${this.game.runId}:${this.game.streak}`;
+if (this.playUsedForPattern === patternKey) {
 this.statusText = 'Play is once per pattern.';
 this.renderPanel();
 void playErrorTone();
@@ -6125,7 +6245,7 @@ this.game.sequence.length - this.game.inputStep,
 if (playCount <= 0) {
 return;
 }
-this.playUsedForStreak = this.game.streak;
+this.playUsedForPattern = patternKey;
 this.lastInputAt = performance.now() / 1000;
 this.idleReplayQueued = false;
 this.game.phase = 'playback';
@@ -6567,6 +6687,15 @@ icon: eco.playUnlocked(),
 },
 // Index pointer (owner add 2026-11-13): same row as Play, gated at Hint
 // level 3 (owner 2026-11-12). One-off test price 500 (approved 2026-11-14).
+// Skip pattern: unlocks once Play is owned; one-off.
+{
+id: 'skip',
+name: 'Skip pattern',
+badge: eco.ownsSkipPattern() ? '\u2713' : '',
+state: eco.ownsSkipPattern() ? 'on' : 'off',
+price: eco.ownsSkipPattern() ? 'Owned' : eco.skipPatternUnlocked() ? `${SKIP_PATTERN_COST}` : 'Locked',
+icon: false,
+},
 {
 id: 'index',
 name: 'Index',
@@ -6595,7 +6724,8 @@ icon: true,
 },
 {
 id: 'secret',
-name: 'Secret',
+// Hidden until bought.
+name: eco.ownsTopSecret() ? 'Secret' : '?????',
 badge: eco.ownsTopSecret() ? '\u2713' : '?',
 state: eco.ownsTopSecret() ? 'on' : 'off',
 price: eco.ownsTopSecret() ? 'Owned' : `${TOP_SECRET_COST}`,
@@ -6642,8 +6772,11 @@ icon: multiplierLevel < MULTIPLIER_MAX_LEVEL,
 // own centered bottom row below the future placeholders.
 const TREE_W = 308;
 const TILE_S = 70;
-// Tile + name + price lines.
-const TILE_H = TILE_S + 34;
+// Tile + two-line name + price lines: the "(Notes: N)" names wrap to
+// two lines at the tile width, so the column must hold both lines plus
+// the price caption; a shorter box lets the caption overflow onto the
+// level pips below.
+const TILE_H = TILE_S + 50;
 const LINE_COLOR = 0x9aa4b6;
 const LINE_OK = 0x4cc38a;
 const byId = new Map(tiles.map((t) => [t.id, t]));
@@ -6669,6 +6802,12 @@ new UIKit.Text({
 fontSize: 13,
 color: t.state === 'off' ? 0x9aa4b6 : 0xffffff,
 text: t.name,
+// Center the name under the tile: an unsized text wraps at the tile
+// width but keeps its lines left-aligned, which pushed the name and
+// the price caption off-centre. "Skip pattern" is wider than the
+// tile; a wider centered box keeps it on one line.
+width: t.id === 'skip' ? TILE_S + 30 : TILE_S,
+textAlign: 'center' as const,
 }),
 );
 // Price line (owner ask 2026-11-12): the Bars icon in front of the number
@@ -6828,6 +6967,31 @@ col.add(makeTile(t));
 col.add(levelTrack(level, color));
 return col;
 };
+// Two gated tiles side by side, each with its level track below.
+const pairChainRow = (
+a: [StoreTile, number, number],
+b: [StoreTile, number, number],
+): UIKit.Container => {
+const row = new UIKit.Container({
+flexDirection: 'row',
+justifyContent: 'center',
+gap: 8,
+width: TREE_W,
+});
+for (const [t, level, color] of [a, b]) {
+const cell = new UIKit.Container({
+flexDirection: 'row',
+flexWrap: 'wrap',
+justifyContent: 'center',
+gap: 4,
+width: TILE_S + 8,
+});
+cell.add(makeTile(t));
+cell.add(levelTrack(level, color));
+row.add(cell);
+}
+return row;
+};
 const soloRow = (t: StoreTile): UIKit.Container => {
 const row = new UIKit.Container({
 flexDirection: 'row',
@@ -6899,6 +7063,18 @@ cost = eco.playCost(playLevel + 1);
 buyText = `Play L${playLevel + 1} - ${cost}`;
 }
 break;
+case 'skip':
+titleText = 'Skip pattern';
+bodyText = !eco.skipPatternUnlocked()
+? 'Locked: buy Play first.'
+: eco.ownsSkipPattern()
+? 'Owned. Press Skip pattern during the demonstration to go straight to your turn.'
+: 'Lets you skip the pattern the game plays before your turn. One-off, initial price.';
+if (eco.skipPatternUnlocked() && !eco.ownsSkipPattern()) {
+cost = SKIP_PATTERN_COST;
+buyText = `Skip pattern - ${SKIP_PATTERN_COST}`;
+}
+break;
 case 'index':
 titleText = 'Index';
 bodyText = !eco.indexUnlocked()
@@ -6927,12 +7103,12 @@ buyText = 'Saver - ' + SAVER_PRICE_BARS;
 cost = SAVER_PRICE_BARS;
 break;
 case 'secret':
-titleText = 'Top Secret';
+titleText = eco.ownsTopSecret() ? 'Top Secret' : '?????';
 if (eco.ownsTopSecret()) {
 bodyText = 'Secret Revealed.';
 } else {
 bodyText = 'A secret. It stays secret.';
-buyText = `Top Secret - ${TOP_SECRET_COST}`;
+buyText = `????? - ${TOP_SECRET_COST}`;
 cost = TOP_SECRET_COST;
 }
 break;
@@ -6999,10 +7175,11 @@ topRow.add(makeTile(byId.get(id)!));
 const bottomRow = new UIKit.Container({
 flexDirection: 'row',
 flexWrap: 'wrap',
+justifyContent: 'center',
 gap: 8,
 width: TREE_W,
 });
-for (const id of ['pads56', 'narrator']) {
+for (const id of ['pads56', 'narrator', 'secret']) {
 bottomRow.add(makeTile(byId.get(id)!));
 }
 // Rows in display order; the detail card overlays the viewport bottom
@@ -7029,7 +7206,7 @@ h: ROW_CONN_H,
 },
 // Play's row leaves room beside it for the Index pointer (owner 2026-11-12:
 // "same row as play").
-{ ids: ['play', 'index'], node: (() => {
+{ ids: ['skip', 'play', 'index'], node: (() => {
 // Owner layout 2026-11-14: Play sits centered on the vertical
 // progression axis; Index is independent, pinned to the right edge
 // without displacing Play.
@@ -7038,6 +7215,43 @@ flexDirection: 'row',
 justifyContent: 'center',
 width: TREE_W,
 });
+// Skip pattern sits left of Play, mirroring Index on the right
+// (owner 2026-11-15 23:48).
+const skipSlot = new UIKit.Container({
+positionType: 'absolute',
+positionLeft: 0,
+positionTop: 0,
+});
+skipSlot.add(makeTile(byId.get('skip')!));
+duo.add(skipSlot);
+// Prerequisite line from Play to Skip pattern: Skip
+// pattern needs Play owned (Play level 1+), so the line turns green once
+// that holds. Sits in the gap between the two tiles at tile-icon height.
+const skipLineColor = eco.skipPatternUnlocked() ? LINE_OK : LINE_COLOR;
+const skipLink = new UIKit.Container({
+positionType: 'absolute',
+positionLeft: TILE_S + 2,
+positionTop: 0,
+width: Math.floor((TREE_W - TILE_S) / 2) - TILE_S - 4,
+height: TILE_S,
+flexDirection: 'row',
+alignItems: 'center',
+});
+skipLink.add(
+new UIKit.Image({
+src: storeChipGlyphSrc('arrow-left', skipLineColor === LINE_OK ? '#4cc38a' : '#9aa4b6'),
+width: 6,
+height: 10,
+}),
+);
+skipLink.add(
+new UIKit.Container({
+flexGrow: 1,
+height: 3,
+backgroundColor: skipLineColor,
+}),
+);
+duo.add(skipLink);
 duo.add(makeTile(byId.get('play')!));
 const indexSlot = new UIKit.Container({
 positionType: 'absolute',
@@ -7064,11 +7278,18 @@ h: ROW_CONN_H,
 // each future tile already says 'Locked' under its name, and a floating
 // label here reads as Autoplay's own state even after purchase.
 // Speed sits on its own row with level pips (same treatment as Play).
-{ ids: ['speed'], node: chainRow(byId.get('speed')!, speedLevel, 0x38d9c8), h: ROW_CHAIN_H },
-// Multiplier sits on its own row with level pips (same as Play).
-{ ids: ['multiplier'], node: chainRow(byId.get('multiplier')!, multiplierLevel, 0xf59a4a), h: ROW_CHAIN_H },
-{ ids: ['pads56', 'narrator'], node: bottomRow, h: ROW_TILE_H },
-{ ids: ['secret'], node: soloRow(byId.get('secret')!), h: ROW_TILE_H },
+// Speed and Multiplier share one row, each with its level pips below
+//.
+{
+ids: ['speed', 'multiplier'],
+node: pairChainRow(
+[byId.get('speed')!, speedLevel, 0x38d9c8],
+[byId.get('multiplier')!, multiplierLevel, 0xf59a4a],
+),
+h: ROW_CHAIN_H,
+},
+// Pad 5, Hack and Secret share the last row.
+{ ids: ['pads56', 'narrator', 'secret'], node: bottomRow, h: ROW_TILE_H },
 ];
 // The detail card itself. popup-card geometry (uikitml px): 12 padding +
 // 26 heading + 6 gap put the list top at 44; the viewport bottom is
@@ -7278,18 +7499,6 @@ popup.setProperties({ display: 'none' });
 // progress, no stored data and no achievement rules are touched.
 const demoParam = typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('demoAchievements');
 const demoLevels: Record<string, number> = { streak: 3, bars: 4, score: 1, presses: 2 };
-/** Achievement category -> its narrator line (owner-approved words
- * 2026-11-15). The hidden Secret achievement stays silent; movement
- * activates when PR #72's category lands. */
-const ACHV_CLIPS: Partial<Record<string, WallTonesClipId>> = {
-streak: 'achvStreak',
-bars: 'achvBars',
-score: 'achvScore',
-store: 'achvStore',
-presses: 'achvPresses',
-movement: 'achvMovement',
-};
-
 type TileCat = { id: string; label: string; description: string; levels: readonly number[]; hidden?: boolean; glyph?: string };
 const showMovement = movementUiVisible({
 immersive: this.world.visibilityState.peek() !== VisibilityState.NonImmersive,
@@ -7388,8 +7597,7 @@ stickyCat = cat.id;
 setSel(true);
 // Narrator line on tap/click pin-open only - never on hover/gaze, which
 // opens details passively (owner-approved words 2026-11-15).
-const achvClip = ACHV_CLIPS[cat.id];
-if (achvClip != null) this.speech.speak(achvClip);
+this.speakAchievementClipOnce(cat.id);
 });
 list.add(tile);
 }
@@ -7577,6 +7785,21 @@ this.renderPanel();
  * opens, with the instruction for the platform in use. Voices-off and Skip
  * voice still apply; when voices are off nothing plays and nothing is
  * marked, so it can still play after voices are turned back on. */
+/** Achievement tile narrator line: plays on tap/click pin-open (never on
+ * hover/gaze) and only the first time per category (owner rule 2026-11-19),
+ * remembered across sessions through the shared one-shot flags; voices-off
+ * does not consume the flag, and the stat reset re-enables the line. */
+private speakAchievementClipOnce(catId: string): void {
+const clip = ACHV_CLIPS[catId];
+if (
+clip != null &&
+!voicesOffEnabled() &&
+this.economy.takeFirstTime(`achv-cat-${catId}`)
+) {
+this.speech.speak(clip);
+}
+}
+
 private playAchievementsIntroOnce(): void {
 if (voicesOffEnabled()) return;
 const immersive = this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
@@ -7648,8 +7871,18 @@ private storeSelected: string | null = null;
 private selectStoreTile(id: string): void {
 this.storeSelected = this.storeSelected === id ? null : id;
 if (this.storeSelected != null) {
+// Each modifier's description line plays only the first time its tile is
+// opened (owner rule 2026-11-19), remembered across sessions through the
+// same one-shot flags as the other play-once lines; voices-off does not
+// consume the flag, and the stat reset re-enables the line.
 const clip = STORE_ITEM_CLIPS[this.storeSelected];
-if (clip != null) this.speech.speak(clip);
+if (
+clip != null &&
+!voicesOffEnabled() &&
+this.economy.takeFirstTime(`store-item-${this.storeSelected}`)
+) {
+this.speech.speak(clip);
+}
 }
 this.renderPanel();
 // A new selection resets the status line, so a previous tile's "Bought."
@@ -7705,6 +7938,14 @@ deny(
 );
 return;
 }
+if (id === 'skip' && !this.economy.skipPatternUnlocked()) {
+deny('Locked: buy Play first.');
+return;
+}
+if (id === 'skip' && this.economy.ownsSkipPattern()) {
+deny('Skip pattern is already owned.');
+return;
+}
 if (id === 'index' && !this.economy.indexUnlocked()) {
 deny(!this.economy.ownsListen() ? 'Locked: buy Listen first.' : 'Locked: reach Hint level 3 first.');
 return;
@@ -7733,6 +7974,7 @@ id === 'listen' ? this.economy.buyListen()
 : id === 'speed' ? this.economy.buyNextSpeedLevel()
 : id === 'multiplier' ? this.economy.buyNextMultiplierLevel()
 : id === 'index' ? this.economy.buyIndex()
+: id === 'skip' ? this.economy.buySkipPattern()
 : id === 'replay' ? this.economy.buyReplay()
 : id === 'saver' ? this.economy.buySaver(SAVER_PRICE_BARS)
 : id === 'secret' ? this.economy.buyTopSecret()
@@ -8268,6 +8510,21 @@ if ((!show && !menuCaption) || !flat) {
   this.flatCaptions.append(line);
   if (caption) { const text = document.createElement('div'); text.textContent = caption; text.style.marginTop = '5px'; this.flatCaptions.append(text); }
   this.flatCaptionsRectDirty = true;
+}
+
+/** Like wait(), but returns early once Skip pattern is pressed. */
+private waitDemo(seconds: number): Promise<void> {
+  return new Promise((resolve) => {
+    const end = performance.now() + seconds * 1000;
+    const poll = (): void => {
+      if (this.skipDemoRequested || performance.now() >= end) {
+        resolve();
+        return;
+      }
+      window.setTimeout(poll, 30);
+    };
+    poll();
+  });
 }
 
 private wait(seconds: number): Promise<void> {
