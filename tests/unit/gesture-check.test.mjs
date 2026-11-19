@@ -84,3 +84,14 @@ test('nod prompt and branch lines are the lab q3 wording verbatim', () => {
     "No. I hear you. But the connection is already open. I'll ask again next window.",
   );
 });
+
+test('room-check lines match the lab source lines byte for byte', async () => {
+  const { ROOM_CHECK_INTRO, ROOM_CHECK_YES, ROOM_CHECK_NO } = check;
+  const lab = readFileSync(new URL('../../src/nod-lab/lab-script.ts', import.meta.url), 'utf8');
+  for (const line of [ROOM_CHECK_INTRO, ROOM_CHECK_YES, ROOM_CHECK_NO]) {
+    assert.ok(lab.includes(line.text), `lab-script.ts contains ${line.clipId} text verbatim`);
+  }
+  assert.equal(ROOM_CHECK_INTRO.clipId, 'q2');
+  assert.equal(ROOM_CHECK_YES.clipId, 'q2-yes');
+  assert.equal(ROOM_CHECK_NO.clipId, 'q2-no');
+});

@@ -91,6 +91,24 @@ export function shouldRunGestureCheck(
  * import-free.
  */
 
+/** The lab's q2 prompt, verbatim (SHARED_LAB_LINES.q2 in lab-script.ts). */
+export const ROOM_CHECK_INTRO: LabScriptLine = {
+  clipId: 'q2',
+  text: 'Good. I need to know the coast is clear. Is anyone else in the room with you?',
+};
+
+/** Spoken after a yes (someone else is in the room), verbatim (q2Yes). */
+export const ROOM_CHECK_YES: LabScriptLine = {
+  clipId: 'q2-yes',
+  text: "Then keep your answers small. No sudden moves. I'll keep this short.",
+};
+
+/** Spoken after a no or an idle timeout, verbatim (q2No). */
+export const ROOM_CHECK_NO: LabScriptLine = {
+  clipId: 'q2-no',
+  text: 'Good. Alone is safe. This channel stays invisible as long as we are careful.',
+};
+
 /** The lab's q3 prompt, verbatim (SHARED_LAB_LINES.q3 in lab-script.ts). */
 export const NOD_CHECK_INTRO: LabScriptLine = {
   clipId: 'q3',
