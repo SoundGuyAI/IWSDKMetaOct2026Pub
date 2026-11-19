@@ -177,3 +177,76 @@ test('Rift Lab Back returns to the Lab menu', async ({ page }) => {
   await page.mouse.click(640, 357);
   await expect.poll(() => mode(page)).toBe('lab');
 });
+
+test('isolation toggles hide and restore the charge cloud (item 118)', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#wt-loading').waitFor({ state: 'detached', timeout: 60000 });
+  await page.mouse.click(1100, 320);
+  await expect.poll(() => mode(page)).toBe('lab');
+  await page.waitForFunction(() => window.__riftLabDebug != null);
+  await page.waitForTimeout(2000);
+  await page.mouse.move(640, 457);
+  await page.mouse.click(640, 457);
+  await expect.poll(() => mode(page)).toBe('riftlab');
+
+  await page.evaluate(() => window.__riftLabDebug!.start());
+  // Start grants one full seal: the flat-mode cloud draws all 72 notes.
+  await expect
+    .poll(async () => (await snapshot(page)).chargeCloud.visibleNotes)
+    .toBe(72);
+  let snap = await snapshot(page);
+  // Every isolation layer defaults to shown.
+  expect(snap.layers).toEqual({
+    chargeNotes: true,
+    handAura: true,
+    handOccluders: true,
+    sealBeam: true,
+    sparks: true,
+  });
+
+  // Hiding the charge-notes layer drops the whole cloud.
+  await page.evaluate(() => window.__riftLabDebug!.setLayer('chargeNotes', false));
+  await expect
+    .poll(async () => (await snapshot(page)).chargeCloud.visibleNotes)
+    .toBe(0);
+  snap = await snapshot(page);
+  expect(snap.layers.chargeNotes).toBe(false);
+  expect(snap.noteCount).toBe(72); // logic model unchanged, only drawing
+
+  // Restoring the layer brings the same cloud back.
+  await page.evaluate(() => window.__riftLabDebug!.setLayer('chargeNotes', true));
+  await expect
+    .poll(async () => (await snapshot(page)).chargeCloud.visibleNotes)
+    .toBe(72);
+  expect((await snapshot(page)).layers.chargeNotes).toBe(true);
+
+  // The other four toggles round-trip without disturbing the cloud.
+  for (const layer of ['handAura', 'handOccluders', 'sealBeam', 'sparks'] as const) {
+    await page.evaluate((name) => window.__riftLabDebug!.setLayer(name, false), layer);
+    expect((await snapshot(page)).layers[layer]).toBe(false);
+    await page.evaluate((name) => window.__riftLabDebug!.setLayer(name, true), layer);
+    expect((await snapshot(page)).layers[layer]).toBe(true);
+  }
+  expect((await snapshot(page)).chargeCloud.visibleNotes).toBe(72);
+});
+
+test('opt-in diagnostic buttons toggle all five layers through real pointer clicks', async ({ page }) => {
+  await page.goto('/?riftDiag=1');
+  await page.locator('#wt-loading').waitFor({ state: 'detached', timeout: 60000 });
+  await page.mouse.click(1100, 320);
+  await expect.poll(() => mode(page)).toBe('lab');
+  await page.waitForTimeout(2000);
+  await page.mouse.click(640, 457);
+  await expect.poll(() => mode(page)).toBe('riftlab');
+  await page.waitForTimeout(2000);
+  // Diagnostic panel projection at the configured 1280x800 viewport.
+  for (const [layer, y] of [
+    ['chargeNotes', 267], ['handAura', 291], ['handOccluders', 315],
+    ['sealBeam', 340], ['sparks', 364],
+  ] as const) {
+    await page.mouse.click(640, y);
+    await expect.poll(async () => (await snapshot(page)).layers[layer]).toBe(false);
+    await page.mouse.click(640, y);
+    await expect.poll(async () => (await snapshot(page)).layers[layer]).toBe(true);
+  }
+});
