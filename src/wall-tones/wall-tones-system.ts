@@ -1,3 +1,8 @@
+import { FirstNoteHelp, firstNoteColorClip } from './first-note-help.js';
+import { ReminderInputs } from './reminder-inputs.js';
+import { returnReminderSession, returnCypherLine, reminderTutorial, REMINDER_QUESTION } from './return-reminders.js';
+import { RETURN_DIALOGUE } from './return-dialogue.js';
+import type { InstructionSection } from './instruction-memory.js';
 import { hintWindowStart, HINT_WINDOW_SIZE } from './hint-window.js';
 import { armbandHand, armbandDisplayMode, ArmbandDisplay, ARMBAND_SCALE } from './armband.js';
 import { BAND_JOINT_ROTATION, BEAM_BOTTOM_RADIUS, BEAM_TOP_RADIUS, BEAM_CLIP_SOFT, PALM_PANEL_HEAD_AWAY, PALM_PANEL_LIFT, PalmJointsSmoother, palmOpenState, palmPanelPose, palmProjectorPromptDue, type PalmJoints, type PalmVec } from './palm-projector.js';
@@ -262,6 +267,10 @@ const FLAT_BACKDROP_NODE_IDS = [
 ] as const;
 
 type WallTonesDebugBridge = {
+readonly reminderListening: boolean;
+readonly reminderBusy: boolean;
+readonly reminderQuestion: string;
+
 cypherWindowsStarted: number;
 backgroundLinesCompleted: number;
 cypherSeamVisible: boolean;
@@ -502,6 +511,56 @@ slotHovered: { required: [WallSlotCandidate, Hovered] },
 slotPressed: { required: [WallSlotCandidate, Pressed] },
 }) {
 private readonly speech = new WallTonesSpeech();
+private readonly firstNoteHelp = new FirstNoteHelp();
+private readonly reminderInputs = new ReminderInputs();
+private reminderBusy = false;
+private reminderPromptVisible = false;
+
+private reminderPlatform(): 'flat' | 'phone' | 'mr' {
+  return !this.isFlatView() ? 'mr' : /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 'phone' : 'flat';
+}
+private async speakReturnWelcome(): Promise<void> {
+  if (!this.speech.canSpeakNow() || (needsExplicitMobileSoundUnlock() && !isHtmlAudioPoolUnlocked())) return;
+  if (!returnReminderSession().takeWelcome()) return;
+  const mark = this.narrationInterrupt;
+  await this.speech.speakReturnLine('N-R01');
+  if (!this.experienceActive || mark !== this.narrationInterrupt) return;
+  const cypherLine = returnCypherLine({completedWindowIds: this.cypherProgress.completedWindowIds, storyFinished: this.cypherProgress.finished});
+  if (cypherLine) await this.speech.speakReturnLine(cypherLine);
+}
+private showReminderPrompt(section: InstructionSection, visible: boolean): void {
+  this.reminderPromptVisible = visible;
+  const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+  if (visible) {
+    for (const id of ['menu-view','store-popup','achievements-popup','gameover-popup']) panel?.getElementById(id)?.setProperties({display:'none'});
+  } else this.syncMenuPopupVisibility();
+  panel?.getElementById('reminder-popup')?.setProperties({display: visible ? 'flex' : 'none'});
+  panel?.getElementById('reminder-question')?.setProperties({text: RETURN_DIALOGUE[REMINDER_QUESTION[section]].text});
+}
+private async offerReminder(section: InstructionSection): Promise<void> {
+  const clip = reminderTutorial(section, this.reminderPlatform()) as WallTonesClipId;
+  const heard = this.speech.hasHeardInstruction(clip) || (section === 'gameplay' && this.speech.hasHeardInstruction('howToPlayRest'));
+  const safe = this.experienceActive && !this.reminderBusy && !this.speech.isBusy() && this.gestureListen == null && (this.game.phase === 'input' || this.flatAwaitingStart || this.mrAwaitingStart || this.game.phase === 'idle');
+  if (!returnReminderSession().takeOffer(section, heard, safe)) return;
+  this.reminderBusy = true;
+  const mark = this.narrationInterrupt;
+  try {
+    await this.speech.speakReturnLine(REMINDER_QUESTION[section]);
+    if (!this.experienceActive || mark !== this.narrationInterrupt || (section === 'store' && !this.storeOpen) || (section === 'achievements' && !this.achievementsOpen)) return;
+    this.player.head.getWorldQuaternion(this.nodBaselineQuat);
+    this.showReminderPrompt(section, true);
+    const answer = await this.reminderInputs.ask(window, !this.isFlatView());
+    this.showReminderPrompt(section, false);
+    if (!this.experienceActive || mark !== this.narrationInterrupt) return;
+    if (answer != null) await playLabAnswerCue(answer);
+    if (answer === 'yes') await this.speech.replayInstruction(clip);
+    else if (answer === 'no') await this.speech.speakReturnLine('N-R04');
+  } finally {
+    this.reminderInputs.cancel();this.showReminderPrompt(section, false);this.reminderBusy = false;
+    this.lastInputAt = performance.now() / 1000;
+  }
+}
+
 /** Welcome clip plays once per Wall Tones visit, before the mode picker line. */
 private welcomeSpoken = false;
 /** Mode-picker line plays once per Wall Tones visit (item 42: both the enter
@@ -515,7 +574,8 @@ private startPromptSpoken = false;
 private speakEntryLines(): void {
 if (!this.welcomeSpoken) {
 this.welcomeSpoken = true;
-this.speech.speak('welcome');
+if (returnReminderSession().returning) void this.speakReturnWelcome();
+else this.speech.speak('welcome');
 }
 if (!this.chooseModeSpoken) {
 this.chooseModeSpoken = true;
@@ -1299,6 +1359,7 @@ window.addEventListener('experience-mode-changed', onModeChange);
 // Voices-off toggle silences active and queued narration immediately.
 const onAccessibilityChange = () => {
 if (voicesOffEnabled()) {
+this.reminderInputs.cancel();
 this.speech.cancel();
 }
 this.applyGazePinchMode();
@@ -1330,6 +1391,7 @@ const awaitingMode = sessionStorage.getItem('wall-tones-awaiting-mode');
 if (awaitingMode === '1' && getActiveWorldKind() === 'walltones-ar') {
 sessionStorage.removeItem('wall-tones-awaiting-mode');
 this.experienceActive = true;
+returnReminderSession();
 this.game.resetAllScores();
 // Backlog 18: restore the saved best streak on the AR boot path too,
 // or stored records re-grant the record bonus on every XR visit.
@@ -1366,6 +1428,7 @@ pendingSetup === 'combined'
 sessionStorage.removeItem('wall-tones-setup-mode');
 this.setupMode = pendingSetup;
 this.experienceActive = true;
+returnReminderSession();
 this.game.resetAllScores();
 // Backlog 18: same best-streak restore for the pending-setup boot path.
 this.game.bestStreak = this.economy.getBestStreak();
@@ -1407,7 +1470,7 @@ this.celebration.update(delta, this.world.camera, this.world.scene, this.isFlatV
 if (this.pads.length > 0) {
 const glowTime = performance.now() / 1000;
 for (const pad of this.pads) {
-const pressable = this.flowPhase === 'playing' &&
+const pressable = !this.reminderBusy && this.flowPhase === 'playing' &&
 (this.flatAwaitingStart || this.game.phase === 'input');
 // The demonstrated note still lights during playback; all other
 // disabled pads look switched off until the player's turn.
@@ -1451,6 +1514,13 @@ this.tickWallPicking();
 }
 if (this.flowPhase === 'air-placement') {
 this.tickAirPlacement(delta);
+}
+if (this.reminderBusy) {
+  if (this.reminderInputs.listening && !this.isFlatView()) {
+    const angles = this.sampleHeadAngles();
+    this.reminderInputs.feedImmersive(angles?.pitch ?? null, angles?.yaw ?? null, this.sampleThumbHand('left'), this.sampleThumbHand('right'), performance.now()/1000);
+  }
+  return;
 }
 if (this.useDesktopInput()) {
 if (this.flatAwaitingStart || this.game.phase === 'input') {
@@ -1599,6 +1669,8 @@ panel
 panel
 .getElementById('skip-pattern-button')
 ?.addEventListener('click', () => this.onSkipPattern());
+panel.getElementById('reminder-yes')?.addEventListener('click', () => this.reminderInputs.answer('yes'));
+panel.getElementById('reminder-no')?.addEventListener('click', () => this.reminderInputs.answer('no'));
 this.syncSkipVoiceButton();
 this.syncDebugCollidersButton();
 this.applyTouchDebugVisibility();
@@ -1617,6 +1689,7 @@ if (this.experienceActive) {
 return;
 }
 this.experienceActive = true;
+returnReminderSession();
 this.game.resetAllScores();
 // Backlog 18: the best streak survives reloads and re-entries.
 this.game.bestStreak = this.economy.getBestStreak();
@@ -1674,6 +1747,7 @@ return;
 }
 this.experienceActive = false;
 this.flowPhase = 'inactive';
+this.reminderInputs.cancel();
 this.setCypherSeam(false);
 this.barFloats.clear();
 this.celebration.clear(this.world.scene);
@@ -1769,7 +1843,8 @@ this.speech.canSpeakNow() &&
 !(needsExplicitMobileSoundUnlock() && !isHtmlAudioPoolUnlocked());
 if (speechWillPlay) {
 this.welcomeSpoken = true;
-this.speech.speak('welcome', true);
+if (returnReminderSession().returning) void this.speakReturnWelcome();
+else this.speech.speak('welcome', true);
 // Same sentence the how-to-play clip opens with, so say it up front.
 this.speech.speak('pointAndPress');
 this.startPromptSpoken = true;
@@ -1797,6 +1872,7 @@ this.mediaUnlockApplied = true;
 primeWallTonesAudioFromGesture();
 unlockSpeechFromGesture();
 this.hideMobileSoundOverlay();
+if (returnReminderSession().returning) void this.speakReturnWelcome();
 if (speakLine) {
 this.speech.speak('soundReady');
 }
@@ -2274,6 +2350,7 @@ this.world
 private narrationInterrupt = 0;
 
 private onSkipVoice(): void {
+this.reminderInputs.cancel();
 this.narrationInterrupt += 1;
 this.speech.cancel();
 }
@@ -2481,6 +2558,9 @@ button.style.bottom = `max(${rounded}px, env(safe-area-inset-bottom))`;
 private publishDebugBridge(): void {
 const system = this;
 window.__wallTonesDebug = {
+get reminderListening() { return system.reminderInputs.listening; },
+get reminderBusy() { return system.reminderBusy; },
+get reminderQuestion() { return String(system.world.getSceneObject<UIKitMLAsset>('wall-tones-panel')?.getElementById('reminder-question')?.properties.peek().text ?? ''); },
 get backgroundLinesCompleted() { return system.backgroundProgress.completedLines; },
 get cypherWindowsStarted() { return system.cypherProgress.completedWindows; },
 get cypherSeamVisible() { return system.cypherSeam != null; },
@@ -3024,6 +3104,7 @@ system.selectWallSlot(slot);
 private debugStartFakeWallPick(): void {
 if (!this.experienceActive) {
 this.experienceActive = true;
+returnReminderSession();
 }
 this.setupMode = 'room-scale';
 this.player.head.getWorldPosition(this.viewer);
@@ -3929,24 +4010,24 @@ this.movement.resetPadAnchor();
 * Simon-style startup fanfare: each pad once, pause, first pad four times,
 * then a short pause before voice / the real pattern.
 */
-private async playSimonStartupFanfare(): Promise<void> {
+private async playSimonStartupFanfare(skipAware = false): Promise<void> {
 this.statusText = 'Watch the pads...';
 this.renderPanel();
 // Fanfare order is green, red, yellow, blue (pad ids 0, 1, 3, 2).
 for (const padIndex of SIMON_FANFARE_PAD_ORDER) {
-if (!this.experienceActive || this.flowPhase !== 'playing') {
+if (!this.experienceActive || this.flowPhase !== 'playing' || (skipAware && this.skipDemoRequested)) {
 return;
 }
-await this.blinkPadNote(padIndex);
+await this.blinkPadNote(padIndex, skipAware);
 }
-await this.wait(SIMON_FANFARE_MID_PAUSE_S);
+await (skipAware ? this.waitDemo(SIMON_FANFARE_MID_PAUSE_S) : this.wait(SIMON_FANFARE_MID_PAUSE_S));
 for (let repeat = 0; repeat < SIMON_FANFARE_FIRST_PAD_REPEATS; repeat += 1) {
-if (!this.experienceActive || this.flowPhase !== 'playing') {
+if (!this.experienceActive || this.flowPhase !== 'playing' || (skipAware && this.skipDemoRequested)) {
 return;
 }
-await this.blinkPadNote(0);
+await this.blinkPadNote(0, skipAware);
 }
-await this.wait(SIMON_FANFARE_END_PAUSE_S);
+await (skipAware ? this.waitDemo(SIMON_FANFARE_END_PAUSE_S) : this.wait(SIMON_FANFARE_END_PAUSE_S));
 }
 
 /** Pads are placed in fanfare order in MR air placement, so array position
@@ -3955,7 +4036,7 @@ private padById(padIndex: number): PadRuntime | undefined {
 return findPadById(this.pads, padIndex);
 }
 
-private async blinkPadNote(padIndex: number): Promise<void> {
+private async blinkPadNote(padIndex: number, skipAware = false): Promise<void> {
 const pad = this.padById(padIndex);
 if (pad != null) {
 this.setBlinkCuePad(pad);
@@ -3965,11 +4046,11 @@ playPadToneFromUserAction(padIndex);
 } else {
 await playPadTone(padIndex);
 }
-await this.wait(BLINK_HOLD_S);
+await (skipAware ? this.waitDemo(BLINK_HOLD_S) : this.wait(BLINK_HOLD_S));
 flashPad(pad, false);
 this.setBlinkCuePad(null);
 }
-await this.wait(NOTE_GAP_S);
+await (skipAware ? this.waitDemo(NOTE_GAP_S) : this.wait(NOTE_GAP_S));
 }
 
 /** Fanfare, how-to-play voice line, pause, then the first pattern note. */
@@ -3988,7 +4069,12 @@ await this.wait(0.35);
 if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
 }
-await this.playSimonStartupFanfare();
+await this.speakReturnWelcome();
+await this.offerReminder('gameplay');
+if (!this.experienceActive || this.flowPhase !== 'playing') return;
+// The reinforced one-note retry supplies its own fanfare immediately before
+// the real note. Do not duplicate it when the player chooses New Run.
+if (!this.firstNoteHelp.needsIntroDemo(1)) await this.playSimonStartupFanfare();
 if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
 }
@@ -3996,13 +4082,20 @@ return;
 // A user skip during the intro also swallows this remaining line, without
 // aborting the round flow that follows.
 if (narrMark === this.narrationInterrupt) {
+// Keep the platform-specific start direction in its existing position, but
+// split the tutorial so the transition sits immediately before Listen/repeat.
+if (!this.startPromptSpoken) {
 await this.speech.speakAsync(
-this.startPromptSpoken
-? 'howToPlayRest'
-: this.world.visibilityState.peek() !== VisibilityState.NonImmersive
-? 'howToPlayMr'
-: 'howToPlay',
+this.world.visibilityState.peek() !== VisibilityState.NonImmersive
+? 'pointAndPressMr' : 'pointAndPress',
 );
+}
+if (narrMark === this.narrationInterrupt && this.experienceActive && this.flowPhase === 'playing') {
+await this.speech.speakAsync('openingPattern');
+}
+if (narrMark === this.narrationInterrupt && this.experienceActive && this.flowPhase === 'playing') {
+await this.speech.speakAsync('howToPlayRest');
+}
 }
 this.startPromptSpoken = false;
 await this.wait(POST_INTRO_DELAY_S);
@@ -4023,6 +4116,9 @@ this.game.phase = 'playback';
 this.inputNeedsClear = true;
 this.armAllPads();
 this.statusText = 'Listen:';
+const helpCast = getVoiceGender();
+const assistedFirstNote = this.firstNoteHelp.needsColorCue();
+const helpNarrationMark = this.narrationInterrupt;
 // User ask (Nov 7): Listen squares appear one by one as each note plays.
 this.playbackShownCount = 0;
 this.playbackKind = 'listen';
@@ -4031,6 +4127,18 @@ this.enteredByModifier.clear();
 this.arrowSeqIndex = -1;
 this.skipDemoRequested = false;
 this.renderPanel();
+// Third first-note miss: contrast the intro with the actual one-note pattern.
+// This is demonstration feedback, never a reset or a heard-memory event.
+if (this.firstNoteHelp.takeIntroDemo(this.game.sequence.length)) {
+await this.speech.speakFirstNoteHelp('intro-demo', helpCast);
+if (!this.experienceActive || this.flowPhase !== 'playing') return;
+if (!this.skipDemoRequested) await this.playSimonStartupFanfare(true);
+if (!this.experienceActive || this.flowPhase !== 'playing') return;
+if (!this.skipDemoRequested && helpNarrationMark === this.narrationInterrupt) {
+await this.speech.speakFirstNoteHelp('single-note', helpCast);
+if (!this.experienceActive || this.flowPhase !== 'playing') return;
+}
+}
 // Speed modifier (backlog 96, his 2026-11-14 proposal): the head of the
 // Listen playback plays faster, covering the first N notes where N is the
 // higher of the Play/Autoplay note counts, capped at the pattern length.
@@ -4059,10 +4167,16 @@ await this.waitDemo((NOTE_GAP_S + BLINK_HOLD_S + 0.2) * (quick ? speedFactor : 1
 flashPad(pad, false);
 this.setBlinkCuePad(null);
 }
+if (index === 0 && assistedFirstNote && !this.skipDemoRequested) {
+const cue = firstNoteColorClip(padId);
+if (cue != null && helpNarrationMark === this.narrationInterrupt && this.experienceActive && this.flowPhase === 'playing') {
+await this.speech.speakFirstNoteHelp(cue, helpCast);
+if (!this.experienceActive || this.flowPhase !== 'playing') return;
+}
+}
 await this.waitDemo(NOTE_GAP_S * (quick ? speedFactor : 1));
 }
-// Skip pattern pressed: drop any note still lit and go on to the same
-// tail (Play/Autoplay entry, then the player's turn).
+// Skipping the assisted demo never changes the player's turn or help counters.
 if (this.skipDemoRequested) {
 this.skipDemoRequested = false;
 for (const pad of this.pads) flashPad(pad, false);
@@ -4873,6 +4987,7 @@ if (padIndex !== expected) {
 void this.onWrongInput(padIndex, expected);
 return;
 }
+this.firstNoteHelp.correct(this.game.inputStep);
 // Any instruction still finishing is obsolete once a correct pad is hit.
 this.speech.cancel();
 // Backlog 30 research: pad-reach estimate between correct presses (MR only;
@@ -4897,7 +5012,7 @@ const pressAward = this.economy.awardForPress(this.game.streak);
 this.roundBarsEarned += pressAward;
 if (pressAward > 0) {
 this.spawnBarFloat(padIndex, pressAward);
-if (this.economy.takeFirstTime('bars-earned')) {
+if (!this.speech.hasHeardInstruction('barsFirstEarn')) {
 this.barsFirstEarnedPending = true;
 }
 }
@@ -4979,14 +5094,19 @@ const explainBars = this.barsFirstEarnedPending;
 this.barsFirstEarnedPending = false;
 this.showAchievementToasts();
 this.renderPanel();
+// A skipped praise segment must not cancel the independent story opportunity.
+// Run identity still invalidates this callback on exit/re-entry or a new run.
+const completedRunId = this.game.runId;
 this.playbackQueue = this.playbackQueue.then(async () => {
+const runIntact = () => this.experienceActive && this.flowPhase === 'playing' &&
+this.game.runId === completedRunId && this.game.phase !== 'resetting';
+if (!runIntact()) return;
 const narrMark = this.narrationInterrupt;
 const narrIntact = () =>
-this.experienceActive && this.flowPhase === 'playing' &&
-narrMark === this.narrationInterrupt;
+runIntact() && narrMark === this.narrationInterrupt;
 if (increasedRecord) {
 await this.speech.speakAsync(randomNewBestClip(previousBest === 0));
-if (!this.experienceActive || this.flowPhase !== 'playing') return;
+if (!runIntact()) return;
 }
 if (streak > 0 && streak % 5 === 0) {
 if (narrIntact()) await this.speech.speakAsync(milestoneClipFor(streak));
@@ -4998,13 +5118,13 @@ await this.wait(0.35);
 if (increasedRecord && narrIntact()) await this.speech.speakAsync(randomCheerClip());
 await this.wait(BETWEEN_ROUNDS_DELAY_S);
 }
-if (explainBars && this.experienceActive && this.flowPhase === 'playing') {
+if (explainBars && runIntact()) {
 await this.speech.speakAsync('barsFirstEarn');
 }
 // Backlog item 109 (wording approved by the owner 2026-11-17): one-time
 // palm-projector prompt after the third completed pattern, in MR with the
-// projector display mode. takeFirstTime is consumed only when the line can
-// actually play, so flat-mode and wristband players keep it for a later MR
+// projector display mode. Completion memory is saved only after natural playback
+// ends, so flat-mode and wristband players keep it for a later MR
 // projector run.
 if (
 palmProjectorPromptDue(
@@ -5013,29 +5133,33 @@ this.world.visibilityState.peek() !== VisibilityState.NonImmersive,
 armbandDisplayMode(),
 ) &&
 narrIntact() &&
-this.economy.takeFirstTime('palm-projector-prompt')
+!this.speech.hasHeardInstruction('palmProjector')
 ) {
 await this.speech.speakAsync('palmProjector');
 }
-if (!this.experienceActive || this.flowPhase !== 'playing') {
+if (!runIntact()) {
 return;
 }
-if (narrIntact()) {
+// Skip only cancels the segment in which it happened. Capture a fresh
+// marker so praise Skip cannot swallow a story line that has not started.
+const storyMark = this.narrationInterrupt;
+const storyIntact = () => runIntact() && storyMark === this.narrationInterrupt;
+if (storyIntact()) {
 const window = this.cypherProgress.beginWindow(streak);
-if (window) await this.playCypherWindow(window, narrIntact);
+if (window) await this.playCypherWindow(window, storyIntact);
 else {
-// Skip/interrupt leaves the line unheard (lineCompleted is not reached), so it retries at the next quiet pattern boundary.
+// Count each story line when playback starts. Skipping the radio effect
+// before a line starts must still leave that line unheard.
 const line = this.backgroundProgress.successfulPattern(this.cypherProgress.finished, !this.speech.isBusy());
-if (line && narrIntact()) {
+if (line && storyIntact()) {
 const cast = captureCypherCast(getVoiceGender());
 await this.speech.speakBackgroundEffect(this.backgroundProgress.completedLines % 3 === 2 ? 'squawk' : 'open');
-if (narrIntact()) await this.speech.speakBackgroundLine(line.id, cast);
-if (narrIntact()) this.backgroundProgress.lineCompleted();
-if (narrIntact()) await this.speech.speakBackgroundEffect('close');
+if (storyIntact()) await this.speech.speakBackgroundLine(line.id, cast, () => this.backgroundProgress.lineCompleted());
+if (storyIntact()) await this.speech.speakBackgroundEffect('close');
 }
 }
 }
-if (!this.experienceActive || this.flowPhase !== 'playing') return;
+if (!runIntact()) return;
 await this.playSequence();
 });
 }
@@ -5068,8 +5192,7 @@ await this.speech.speakStoryEffect(['next-window', 'your-machine', 'next-lock', 
 if (window.seam === 'open' && intact()) this.setCypherSeam(true);
 for (const id of window.lines) {
 if (!intact()) break;
-await this.speech.speakStoryLine(id, cast);
-if (intact()) this.cypherProgress.lineCompleted();
+await this.speech.speakStoryLine(id, cast, () => this.cypherProgress.lineCompleted());
 }
 if (window.speaker === 'cypher' && intact()) await this.speech.speakStoryEffect('close');
 if (!intact()) this.setCypherSeam(false);
@@ -5113,6 +5236,7 @@ this.cypherSeam = root;
 }
 
 private async startFlatPlayFromPad(padIndex: number): Promise<void> {
+this.reminderInputs.requestTilt();
 if (!this.flatAwaitingStart || !this.experienceActive) {
 return;
 }
@@ -5134,7 +5258,7 @@ this.statusText = 'Get ready...';
 this.renderPanel();
 // If the welcome was still speech-locked at entry (mobile before the
 // "Sound on" tap), lead with it now that this tap unlocked audio.
-const leadIn = this.welcomeSpoken ? undefined : 'welcome';
+const leadIn = this.welcomeSpoken || returnReminderSession().returning ? undefined : 'welcome';
 this.welcomeSpoken = true;
 this.beginRoundWithIntro(leadIn);
 }
@@ -5532,6 +5656,9 @@ this.inputNeedsClear = true;
 // popup, even without a purchased hint or subtitles (item 75). The status text
 // element stays blank while the rows show.
 const missStep = this.game.inputStep;
+const firstNoteGuidanceDue = this.firstNoteHelp.wrong(missStep);
+const helpNarrationMark = this.narrationInterrupt;
+const helpCast = getVoiceGender();
 this.wrongHit = {
 hit,
 expected,
@@ -5551,7 +5678,14 @@ this.showAchievementToasts();
 this.playbackQueue = this.playbackQueue.then(async () => {
 // A personal best does not turn a missed note into a success (item 60a).
 // Keep the existing failure recordings; the full wording review is separate.
+if (!this.experienceActive || this.flowPhase !== 'playing') return;
+if (firstNoteGuidanceDue) {
+if (helpNarrationMark === this.narrationInterrupt) {
+await this.speech.speakFirstNoteHelp('guidance', helpCast);
+}
+} else {
 await this.speech.speakAsync(randomWrongClip());
+}
 await this.wait(WRONG_RESET_DELAY_S);
 if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
@@ -5566,14 +5700,13 @@ this.syncMenuPopupVisibility();
 this.renderGameOverSummary();
 this.renderPanel();
 // First MR Game Over: one-time narrator explainer of the thumbs gesture
-// controls (owner-approved exact line, Nov 17). takeFirstTime is consumed
-// only when the line can actually play, so flat/desktop players and muted
+// controls. Completion memory is saved only after natural playback ends, so flat/desktop players and muted
 // sessions keep it for a later MR run.
 if (
 this.world.visibilityState.peek() !== VisibilityState.NonImmersive &&
 this.hasHandTrackingInput() &&
 !voicesOffEnabled() &&
-this.economy.takeFirstTime('gameover-mr-gestures')
+!this.speech.hasHeardInstruction('gameoverGestures')
 ) {
 await this.speech.speakAsync('gameoverGestures');
 }
@@ -5862,6 +5995,7 @@ this.renderPanel();
 }
 
 private async onRepeatPattern(): Promise<void> {
+if (this.reminderBusy) return;
 if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
 }
@@ -6018,6 +6152,7 @@ await playAutoplayDisengagedCue();
 /** Control-row Play button: greyed while unowned -> Store shortcut; owned
  * -> Play behavior below. */
 private async onPlayControl(): Promise<void> {
+if (this.reminderBusy) return;
 if (this.economy.getPlayLevel() < 1) {
 this.openStoreAtTile('play');
 return;
@@ -7629,8 +7764,10 @@ this.renderPanel();
 }
 
 private setAchievementsOpen(open: boolean): void {
+if (open) this.reminderInputs.requestTilt();
 if (this.achievementsOpen === open) return;
 this.achievementsOpen = open;
+if (!open) this.reminderInputs.cancel();
 if (open) this.storeOpen = false;
 this.syncMenuPopupVisibility();
 const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
@@ -7659,26 +7796,19 @@ this.speech.speak(clip);
 }
 
 private playAchievementsIntroOnce(): void {
-const key = 'wall-tones-achievements-intro-played';
-try {
-if (globalThis.localStorage?.getItem(key) === '1') return;
-} catch {
-/* private mode: fall through, session-only */
-}
 if (voicesOffEnabled()) return;
 const immersive = this.world.visibilityState.peek() !== VisibilityState.NonImmersive;
 const phone = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
 const id = immersive ? 'achvIntroMr' : phone ? 'achvIntroIphone' : 'achvIntroPc';
-try {
-globalThis.localStorage?.setItem(key, '1');
-} catch {
-/* private mode */
-}
+if (this.speech.hasHeardInstruction(id)) { void this.offerReminder('achievements'); return; }
+
+returnReminderSession().takeOffer('achievements', false, false);
 this.speech.speak(id);
 }
 
 private syncMenuPopupVisibility(): void {
 const panel = this.world.getSceneObject<UIKitMLAsset>('wall-tones-panel');
+if (this.reminderPromptVisible) return;
 const popupOpen = this.storeOpen || this.achievementsOpen || this.gameOverOpen;
 panel
 ?.getElementById<UIKit.Container>('menu-view')
@@ -7695,13 +7825,18 @@ panel
 }
 
 private onToggleStore(): void {
+this.reminderInputs.requestTilt();
 this.storeOpen = !this.storeOpen;
 if (this.storeOpen) this.achievementsOpen = false;
 this.syncMenuPopupVisibility();
-if (this.storeOpen && !voicesOffEnabled() && this.economy.takeFirstTime('store-intro-v2')) {
+if (!this.storeOpen) this.reminderInputs.cancel();
+if (this.storeOpen && !voicesOffEnabled()) {
+if (this.speech.hasHeardInstruction('storeIntro')) { void this.offerReminder('store'); } else {
 // General store intro (owner-approved words 2026-11-15, WhatsApp review):
 // once ever on any platform, replacing the old hint-only open pair.
+returnReminderSession().takeOffer('store', false, false);
 this.speech.speak('storeIntro');
+}
 }
 this.renderPanel();
 }
