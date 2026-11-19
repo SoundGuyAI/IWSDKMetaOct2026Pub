@@ -405,12 +405,12 @@ export function suspendAudioContext(): void {
   autoplayCueCache.clear();
 }
 
-// Auto Play cues (owner picks 2026-11-15): the robot chirp (audition
-// option 5) plus the gravelly android voice rotating five round phrases,
-// and the engaged/disengaged notices for the AutoPlay toggle. Ship as
-// embedded base64 - the exact clips reviewed - decoded in memory, so no
-// network fetch and no CSP connect-src path. The cues are decorative: any
-// failure stays silent and never blocks playback.
+// Auto Play cues: the robot chirp plus the gravelly android voice rotating
+// fifteen round phrases (four weary Marvin lines join after every regular
+// phrase played once), and the engaged/disengaged notices for the AutoPlay
+// toggle. Ship as embedded base64 - the exact clips reviewed - decoded in
+// memory, so no network fetch and no CSP connect-src path. The cues are
+// decorative: any failure stays silent and never blocks playback.
 const autoplayCueCache = new Map<string, Promise<AudioBuffer | null>>();
 
 function loadAutoplayCue(context: AudioContext, base64: string): Promise<AudioBuffer | null> {

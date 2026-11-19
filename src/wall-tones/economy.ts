@@ -282,7 +282,8 @@ function writeStringArray(key: string, value: string[]): void {
 }
 
 /** Debug stat reset (Settings > Accessibility): clears every persisted stat
- * the economy and progression own, plus the Cypher storyline. Settings/accessibility prefs survive.
+ * the economy and progression own, plus the Cypher storyline and the heard AutoPlay
+ * phrases. Settings/accessibility prefs survive.
  * Callers reload the page afterwards so in-memory state re-reads cleanly. */
 export function resetWallTonesStats(): void {
 for (const key of [
@@ -314,6 +315,9 @@ MULTIPLIER_DISABLED_KEY,
 ...MOVEMENT_STORAGE_KEYS,
 CYPHER_PROGRESS_KEY,
 BACKGROUND_PROGRESS_KEY,
+// Owned by autoplay-cue.ts (AUTOPLAY_PHRASES_HEARD_KEY); duplicated as a
+// literal because the unit tests import this module standalone.
+'wall-tones-autoplay-phrases-heard-v1',
 ]) {
 try { globalThis.localStorage?.removeItem(key); } catch { /* private mode */ }
 }
