@@ -68,10 +68,18 @@ const MAIN_MENU_MOBILE = {
 
 /**
  * Phone flat viewports only. Width-led so a short desktop/headless window
- * (e.g. 780×493) keeps the desktop hub placement.
+ * (e.g. 780×493) keeps the desktop hub placement. The Quest flat browser is
+ * desktop-class, not a phone: its window can be small enough to trip the
+ * width/height rules, but it must keep the cover row and Enter XR.
  */
 function isCompactFlatViewport(): boolean {
   if (typeof window === 'undefined') {
+    return false;
+  }
+  if (
+    typeof navigator !== 'undefined' &&
+    /Quest|Oculus/i.test(navigator.userAgent)
+  ) {
     return false;
   }
   const width = window.innerWidth;
