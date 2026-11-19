@@ -210,28 +210,6 @@ test('background lines use captured opposite cast and shared caption/Skip routin
   assert.equal(h.instances.length,1);
 });
 
-test('Lab lines keep captured opposite cast, exact captions and mobile cancellation', async () => {
-  const h = await loadSpeech({subtitles: true});
-  await h.gesture(() => h.speech.startMobileWelcomeFromGesture());
-  h.speech.unlockSpeechFromGesture(); h.instances[0].end();
-  const speech = new h.speech.WallTonesSpeech();
-  const cast = {narrator: 'female', cypher: 'male'};
-  const narrator = speech.speakLabLine('narrator', cast);
-  const cypher = speech.speakLabLine('cypher', cast);
-  await Promise.resolve(); await Promise.resolve();
-  assert.match(h.instances[0].src, /^data:audio\/mpeg;base64,/);
-  h.instances[0].onplaying();
-  assert.equal(globalThis.__captions.at(-1), 'Narrator: Welcome to the Lab. These are features that will be added to the game. For now, you can try them here as demos.');
-  h.instances[0].end(); await narrator;
-  await Promise.resolve(); await Promise.resolve();
-  h.instances[0].onplaying();
-  assert.equal(globalThis.__captions.at(-1), "Cypher: Hands. Heads. Voices. Funny how many ways a machine can learn to listen. Keep trying them. I'll be listening too.");
-  speech.cancel(); await cypher;
-  assert.equal(speech.isBusy(), false);
-  assert.equal(h.instances.length, 1);
-});
-
-
 test('story progress fires at actual element playback start once, not enqueue or completion', async () => {
   const h = await loadSpeech();
   await h.gesture(() => h.speech.startMobileWelcomeFromGesture());
@@ -298,4 +276,25 @@ test('Web Audio start consumes a story line; failed source start does not', asyn
   source.start = () => { throw new Error('failed start'); };
   await voice.playBuffer(context, { duration: 1 }, clip);
   assert.equal(started, 1);
+});
+
+test('Lab lines keep captured opposite cast, exact captions and mobile cancellation', async () => {
+  const h = await loadSpeech({subtitles: true});
+  await h.gesture(() => h.speech.startMobileWelcomeFromGesture());
+  h.speech.unlockSpeechFromGesture(); h.instances[0].end();
+  const speech = new h.speech.WallTonesSpeech();
+  const cast = {narrator: 'female', cypher: 'male'};
+  const narrator = speech.speakLabLine('narrator', cast);
+  const cypher = speech.speakLabLine('cypher', cast);
+  await Promise.resolve(); await Promise.resolve();
+  assert.match(h.instances[0].src, /^data:audio\/mpeg;base64,/);
+  h.instances[0].onplaying();
+  assert.equal(globalThis.__captions.at(-1), 'Narrator: Welcome to the Lab. These are features that will be added to the game. For now, you can try them here as demos.');
+  h.instances[0].end(); await narrator;
+  await Promise.resolve(); await Promise.resolve();
+  h.instances[0].onplaying();
+  assert.equal(globalThis.__captions.at(-1), "Cypher: Hands. Heads. Voices. Funny how many ways a machine can learn to listen. Keep trying them. I'll be listening too.");
+  speech.cancel(); await cypher;
+  assert.equal(speech.isBusy(), false);
+  assert.equal(h.instances.length, 1);
 });
