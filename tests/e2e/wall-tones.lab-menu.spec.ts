@@ -73,3 +73,22 @@ test('leaving Lab during narration cancels the pending Cypher window', async ({ 
   await page.waitForTimeout(11000);
   expect(await page.evaluate(() => (window as any).__labSources.length)).toBe(1);
 });
+
+
+test('phone Settings Back keeps Enter XR hidden and Lab reachable', async ({browser},testInfo)=>{
+ const context=await browser.newContext({viewport:{width:390,height:664},isMobile:true,hasTouch:true,ignoreHTTPSErrors:true,userAgent:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1'});
+ const page=await context.newPage();
+ await page.goto(testInfo.project.use.baseURL as string);
+ await page.locator('#audio-start-button').tap();
+ await page.locator('#wt-loading').waitFor({state:'detached',timeout:60000});
+ await page.touchscreen.tap(195,360);
+ await page.waitForTimeout(2000);
+ await page.touchscreen.tap(195,443);
+ await page.waitForTimeout(1500);
+ await testInfo.attach('phone-after-settings-back',{body:await page.screenshot(),contentType:'image/png'});
+ // The Lab remains the second row. A restored XR row would intercept this
+ // exact touch and try XR instead of entering the Lab.
+ await page.touchscreen.tap(195,312);
+ await expect.poll(()=>mode(page)).toBe('lab');
+ await context.close();
+});
