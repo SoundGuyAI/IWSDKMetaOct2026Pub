@@ -475,3 +475,542 @@ export async function playAutoplayEngagedCue(): Promise<void> {
 export async function playAutoplayDisengagedCue(): Promise<void> {
   await startAutoplayClip(AUTOPLAY_DISENGAGED_MP3_BASE64);
 }
+import { WALL_TONE_PADS, NOTE_DURATION_S } from './constants.js';
+import {
+  AUTOPLAY_CHIRP_MP3_BASE64,
+  AUTOPLAY_DISENGAGED_MP3_BASE64,
+  AUTOPLAY_ENGAGED_MP3_BASE64,
+  nextAutoplayPhraseBase64,
+} from './autoplay-cue.js';
+
+let sharedContext: AudioContext | null = null;
+const htmlToneCache = new Map<number, string>();
+const htmlAudioPool: HTMLAudioElement[] = [];
+let htmlPoolUnlocked = false;
+let htmlErrorAudio: HTMLAudioElement | null = null;
+let webAudioPrimed = false;
+
+function createContext(): AudioContext {
+  const Ctx =
+    globalThis.AudioContext ??
+    (globalThis as unknown as { webkitAudioContext?: typeof AudioContext })
+      .webkitAudioContext;
+  if (Ctx == null) {
+    throw new Error('[wall-tones] Web Audio not available');
+  }
+  sharedContext = new Ctx();
+  return sharedContext;
+}
+
+function getContext(): AudioContext {
+  if (sharedContext == null || sharedContext.state === 'closed') {
+    return createContext();
+  }
+  return sharedContext;
+}
+
+/** iPhone / iPad Safari needs HTML audio unlocked from a real tap before tones or TTS work reliably. */
+export function needsExplicitMobileSoundUnlock(): boolean {
+  if (typeof navigator === 'undefined') {
+    return false;
+  }
+  const ua = navigator.userAgent;
+  const ios =
+    /iPhone|iPad|iPod/i.test(ua) ||
+    (navigator.maxTouchPoints > 0 && /MacIntel/i.test(navigator.platform));
+  const android = /Android/i.test(ua);
+  return ios || android;
+}
+
+export function isHtmlAudioPoolUnlocked(): boolean {
+  return htmlPoolUnlocked;
+}
+
+function playSilentBlip(context: AudioContext): void {
+  const start = context.currentTime;
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.linearRampToValueAtTime(0.03, start + 0.008);
+  gain.gain.linearRampToValueAtTime(0.0001, start + 0.035);
+  oscillator.connect(gain).connect(context.destination);
+  oscillator.start(start);
+  oscillator.stop(start + 0.04);
+}
+
+function schedulePadToneWebAudio(
+  context: AudioContext,
+  padId: number,
+  durationS = NOTE_DURATION_S,
+): void {
+  const pad = WALL_TONE_PADS[padId];
+  if (pad == null) {
+    return;
+  }
+  const start = context.currentTime;
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+  oscillator.type = 'sine';
+  oscillator.frequency.setValueAtTime(pad.frequencyHz, start);
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.exponentialRampToValueAtTime(0.45, start + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + durationS);
+  oscillator.connect(gain).connect(context.destination);
+  oscillator.start(start);
+  oscillator.stop(start + durationS + 0.05);
+}
+
+function wavDataUrlForTone(frequencyHz: number, durationS: number, buzzer = false): string {
+  const sampleRate = 22050;
+  const numSamples = Math.floor(sampleRate * durationS);
+  const dataSize = numSamples * 2;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+  const writeStr = (offset: number, str: string) => {
+    for (let i = 0; i < str.length; i += 1) {
+      view.setUint8(offset + i, str.charCodeAt(i));
+    }
+  };
+  writeStr(0, 'RIFF');
+  view.setUint32(4, 36 + dataSize, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, 'data');
+  view.setUint32(40, dataSize, true);
+  for (let i = 0; i < numSamples; i += 1) {
+    const t = i / sampleRate;
+    const envelope = Math.min(1, t * 40) * Math.max(0, 1 - (t - 0.05) * 8);
+    // A soft triangle sweep for failure, distinct from all four musical pads.
+    const ratio = 110 / frequencyHz;
+    const phase = buzzer
+      ? 2 * Math.PI * frequencyHz * durationS / Math.log(ratio) *
+        (Math.pow(ratio, t / durationS) - 1)
+      : 2 * Math.PI * frequencyHz * t;
+    const wave = buzzer ? 2 / Math.PI * Math.asin(Math.sin(phase)) : Math.sin(phase);
+    const level = buzzer ? 0.24 : 0.55;
+    const shape = buzzer
+      ? Math.min(1, t / 0.018) * Math.max(0, (durationS - t) / 0.12)
+      : envelope;
+    const sample = wave * Math.min(1, shape) * level * 32767;
+    view.setInt16(44 + i * 2, sample, true);
+  }
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i]!);
+  }
+  return `data:audio/wav;base64,${btoa(binary)}`;
+}
+
+function htmlToneUrl(padId: number): string {
+  let url = htmlToneCache.get(padId);
+  if (url == null) {
+    const pad = WALL_TONE_PADS[padId];
+    url = wavDataUrlForTone(pad?.frequencyHz ?? 440, NOTE_DURATION_S);
+    htmlToneCache.set(padId, url);
+  }
+  return url;
+}
+
+function ensureHtmlAudioPool(): void {
+  if (htmlAudioPool.length >= 4) {
+    return;
+  }
+  for (let padId = 0; padId < 4; padId += 1) {
+    const audio = new Audio(htmlToneUrl(padId));
+    audio.preload = 'auto';
+    htmlAudioPool[padId] = audio;
+  }
+  htmlErrorAudio = new Audio(wavDataUrlForTone(160, 0.32, true));
+  htmlErrorAudio.preload = 'auto';
+}
+
+/**
+ * Unlock HTMLAudio on a user gesture. Must stay inaudible — an earlier version
+ * played pad 0 at audible volume on every pointerdown ("tone anywhere" + doubles).
+ */
+export function unlockHtmlAudioPoolFromGesture(): boolean {
+  ensureHtmlAudioPool();
+  if (htmlPoolUnlocked) {
+    return true;
+  }
+  let started = false;
+  for (const audio of [...htmlAudioPool, htmlErrorAudio]) {
+    if (audio == null) {
+      continue;
+    }
+    audio.volume = 0.0001;
+    audio.currentTime = 0;
+    try {
+      const pending = audio.play();
+      started = true;
+      if (pending != null) {
+        void pending
+          .then(() => {
+            htmlPoolUnlocked = true;
+            audio.pause();
+            audio.currentTime = 0;
+          })
+          .catch(() => {
+            /* retry on next gesture */
+          });
+      }
+    } catch {
+      /* ignored */
+    }
+  }
+  if (started) {
+    htmlPoolUnlocked = true;
+  }
+  return started;
+}
+
+function playPooledPadTone(padId: number): void {
+  ensureHtmlAudioPool();
+  const audio = htmlAudioPool[padId];
+  if (audio == null || !htmlPoolUnlocked) {
+    playHtmlPadTone(padId);
+    return;
+  }
+  audio.volume = 0.95;
+  audio.currentTime = 0;
+  void audio.play().catch(() => {
+    playHtmlPadTone(padId);
+  });
+}
+
+function playHtmlPadTone(padId: number): void {
+  try {
+    const audio = new Audio(htmlToneUrl(padId));
+    audio.volume = 0.95;
+    void audio.play().catch(() => {
+      /* ignored */
+    });
+  } catch {
+    /* ignored */
+  }
+}
+
+function playPadToneInternal(padId: number, durationS = NOTE_DURATION_S): void {
+  if (needsExplicitMobileSoundUnlock() || htmlPoolUnlocked) {
+    if (htmlPoolUnlocked) {
+      playPooledPadTone(padId);
+      return;
+    }
+  }
+  const context = getContext();
+  if (context.state === 'running') {
+    schedulePadToneWebAudio(context, padId, durationS);
+    return;
+  }
+  void context.resume().then(() => {
+    if (context.state === 'running') {
+      schedulePadToneWebAudio(context, padId, durationS);
+    } else {
+      playHtmlPadTone(padId);
+    }
+  });
+}
+
+/** Call synchronously inside touchstart / click — resume only, no audible blip. */
+export function primeWallTonesAudioFromGesture(): void {
+  unlockHtmlAudioPoolFromGesture();
+  const context = getContext();
+  if (context.state === 'suspended') {
+    void context.resume().then(() => {
+      // One near-silent tick only on the first successful resume.
+      if (context.state === 'running' && !webAudioPrimed) {
+        webAudioPrimed = true;
+        playSilentBlip(context);
+      }
+    });
+  }
+}
+
+export async function ensureAudioRunning(): Promise<AudioContext | null> {
+  const context = getContext();
+  if (context.state === 'suspended') {
+    try {
+      await context.resume();
+    } catch (error) {
+      console.warn('[wall-tones] AudioContext resume failed', error);
+    }
+  }
+  return context.state === 'running' ? context : null;
+}
+
+export function playPadToneFromUserAction(padId: number): void {
+  playPadToneInternal(padId);
+}
+
+export async function unlockWallTonesAudio(): Promise<boolean> {
+  primeWallTonesAudioFromGesture();
+  const context = await ensureAudioRunning();
+  return context != null || htmlPoolUnlocked;
+}
+
+export async function playPadTone(
+  padId: number,
+  durationS = NOTE_DURATION_S,
+): Promise<void> {
+  if (htmlPoolUnlocked) {
+    playPooledPadTone(padId);
+    return;
+  }
+  const context = await ensureAudioRunning();
+  if (context != null) {
+    schedulePadToneWebAudio(context, padId, durationS);
+    return;
+  }
+  playHtmlPadTone(padId);
+}
+
+export async function playErrorTone(): Promise<void> {
+  ensureHtmlAudioPool();
+  if (htmlPoolUnlocked && htmlErrorAudio != null) {
+    const audio = htmlErrorAudio;
+    audio.volume = 0.95;
+    audio.currentTime = 0;
+    try {
+      await audio.play();
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 320));
+      return;
+    } catch {
+      // Use the same gentle buzzer through Web Audio if HTML playback fails.
+    }
+  }
+  const context = await ensureAudioRunning();
+  if (context == null) {
+    // A suspended Web Audio context does not imply HTML playback is blocked.
+    // Try the failure sound itself, never a normal musical pad as fallback.
+    try {
+      const audio = htmlErrorAudio ?? new Audio(wavDataUrlForTone(160, 0.32, true));
+      audio.volume = 0.95;
+      audio.currentTime = 0;
+      await audio.play();
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 320));
+    } catch {
+      // A later trusted gesture can retry media activation.
+    }
+    return;
+  }
+  const start = context.currentTime;
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+  oscillator.type = 'triangle';
+  oscillator.frequency.setValueAtTime(160, start);
+  oscillator.frequency.exponentialRampToValueAtTime(110, start + 0.32);
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.linearRampToValueAtTime(0.24, start + 0.018);
+  gain.gain.setValueAtTime(0.24, start + 0.20);
+  gain.gain.linearRampToValueAtTime(0.0001, start + 0.32);
+  oscillator.connect(gain).connect(context.destination);
+  oscillator.start(start);
+  oscillator.stop(start + 0.32);
+  await new Promise<void>((resolve) => window.setTimeout(resolve, 320));
+}
+
+/**
+ * Achievement celebration sound effects (user ask, November 14: "There
+ * should also be some audio for the achievement, some sound effects
+ * associated with it."). Synthesized, no assets, no spoken words - voice
+ * stays milestone-only. Beats follow the approved show clock: a burst
+ * sparkle at 0s, a ping as the letters cascade in (~0.45s), a soft falling
+ * whoosh as the badge flies to the Achievements button (~2.2s) and a warm
+ * landing ding with the gold pulse (~2.55s). Returns true when scheduled.
+ */
+export async function playAchievementCelebrationSfx(): Promise<boolean> {
+  const context = await ensureAudioRunning();
+  if (context == null) return false;
+  const t0 = context.currentTime + 0.03;
+  const chime = (
+    frequencyHz: number,
+    at: number,
+    durationS: number,
+    peak: number,
+    type: OscillatorType = 'sine',
+  ): void => {
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = type;
+    oscillator.frequency.setValueAtTime(frequencyHz, at);
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.exponentialRampToValueAtTime(peak, at + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + durationS);
+    oscillator.connect(gain).connect(context.destination);
+    oscillator.start(at);
+    oscillator.stop(at + durationS + 0.05);
+  };
+  // Burst: bright two-note sparkle (A5, E6).
+  chime(880, t0, 0.16, 0.2, 'triangle');
+  chime(1318.51, t0 + 0.07, 0.2, 0.18, 'triangle');
+  // Letter cascade ping (A6).
+  chime(1760, t0 + 0.45, 0.22, 0.12);
+  // Fly: gentle falling whoosh.
+  const whoosh = context.createOscillator();
+  const whooshGain = context.createGain();
+  whoosh.type = 'triangle';
+  whoosh.frequency.setValueAtTime(1150, t0 + 2.2);
+  whoosh.frequency.exponentialRampToValueAtTime(520, t0 + 2.2 + 0.42);
+  whooshGain.gain.setValueAtTime(0.0001, t0 + 2.2);
+  whooshGain.gain.exponentialRampToValueAtTime(0.07, t0 + 2.2 + 0.05);
+  whooshGain.gain.exponentialRampToValueAtTime(0.0001, t0 + 2.2 + 0.42);
+  whoosh.connect(whooshGain).connect(context.destination);
+  whoosh.start(t0 + 2.2);
+  whoosh.stop(t0 + 2.2 + 0.47);
+  // Landing with the gold pulse: warm ding (G6 + C7).
+  chime(1567.98, t0 + 2.55, 0.5, 0.16);
+  chime(2093, t0 + 2.55, 0.35, 0.08);
+  return true;
+}
+
+export function suspendAudioContext(): void {
+  void sharedContext?.close();
+  sharedContext = null;
+  htmlToneCache.clear();
+  htmlAudioPool.length = 0;
+  htmlErrorAudio = null;
+  htmlPoolUnlocked = false;
+  webAudioPrimed = false;
+  autoplayCueCache.clear();
+}
+
+// Auto Play cues: the robot chirp plus the gravelly android voice rotating
+// fifteen round phrases (six weary Marvin lines join after every regular
+// phrase played once), and the engaged/disengaged notices for the AutoPlay
+// toggle. Ship as embedded base64 - the exact clips reviewed - decoded in
+// memory, so no network fetch and no CSP connect-src path. The cues are
+// decorative: any failure stays silent and never blocks playback.
+const autoplayCueCache = new Map<string, Promise<AudioBuffer | null>>();
+
+/** In-flight AutoPlay cue clips, counted from start until playback ends (or
+ * fails silently). The narration queue awaits the drain so the narrator and
+ * Cypher never talk over the robot's pattern line (owner 2026-11-19). */
+let activeAutoplayCueCount = 0;
+const autoplayCueDrainedWaiters = new Set<() => void>();
+
+function notifyAutoplayCuesDrained(): void {
+  if (activeAutoplayCueCount !== 0) {
+    return;
+  }
+  for (const notify of [...autoplayCueDrainedWaiters]) {
+    autoplayCueDrainedWaiters.delete(notify);
+    notify();
+  }
+}
+
+/** Register one cue clip starting; the returned function marks it finished. */
+function autoplayCueStarted(): () => void {
+  activeAutoplayCueCount += 1;
+  let settled = false;
+  return () => {
+    if (settled) {
+      return;
+    }
+    settled = true;
+    activeAutoplayCueCount -= 1;
+    notifyAutoplayCuesDrained();
+  };
+}
+
+/** True while any AutoPlay cue clip is still sounding. */
+export function autoplayCuesActive(): boolean {
+  return activeAutoplayCueCount > 0;
+}
+
+/** Resolves once every AutoPlay cue clip started so far has finished. */
+export function waitForAutoplayCuesToFinish(): Promise<void> {
+  if (activeAutoplayCueCount === 0) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    autoplayCueDrainedWaiters.add(resolve);
+  });
+}
+
+/** Test hook: treat every in-flight AutoPlay cue as finished. */
+export function clearAutoplayCuesForTests(): void {
+  activeAutoplayCueCount = 0;
+  notifyAutoplayCuesDrained();
+}
+
+function loadAutoplayCue(context: AudioContext, base64: string): Promise<AudioBuffer | null> {
+  let cached = autoplayCueCache.get(base64);
+  if (cached == null) {
+    // Manual base64 decode: no network fetch, so no CSP connect-src path.
+    cached = Promise.resolve()
+      .then(() => {
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        return bytes.buffer;
+      })
+      .then((buffer) => context.decodeAudioData(buffer))
+      .catch(() => null);
+    autoplayCueCache.set(base64, cached);
+  }
+  return cached;
+}
+
+/** Start one decoded cue clip. Resolves once playback has started; the clip's
+ * completion is tracked separately (see waitForAutoplayCuesToFinish). Never
+ * rejects. */
+async function startAutoplayClip(base64: string): Promise<void> {
+  let settle: () => void = () => undefined;
+  try {
+    settle = autoplayCueStarted();
+    const context = await ensureAudioRunning();
+    if (context == null) {
+      settle();
+      return;
+    }
+    const buffer = await loadAutoplayCue(context, base64);
+    if (buffer == null) {
+      settle();
+      return;
+    }
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    gain.gain.value = 0.7;
+    source.buffer = buffer;
+    source.connect(gain).connect(context.destination);
+    source.onended = settle;
+    // Safety net: onended may not fire if the context is suspended or closed
+    // mid-clip; narration must never wait on a robot cue forever.
+    globalThis.setTimeout?.(settle, buffer.duration * 1000 + 800);
+    source.start();
+  } catch {
+    // A silent cue must never interrupt the pattern.
+    settle();
+  }
+}
+
+/** AutoPlay round cue (owner 2026-11-15): the robot chirp plus the next
+ * rotating gravelly-voice phrase, started together. Resolves when the cues
+ * have started (or after a silent fallback); never rejects. */
+export async function playAutoplayRoundCue(): Promise<void> {
+  const phrase = nextAutoplayPhraseBase64();
+  await Promise.all([
+    startAutoplayClip(AUTOPLAY_CHIRP_MP3_BASE64),
+    startAutoplayClip(phrase),
+  ]);
+}
+
+/** Played once when the player switches AutoPlay on (owner 2026-11-15). */
+export async function playAutoplayEngagedCue(): Promise<void> {
+  await startAutoplayClip(AUTOPLAY_ENGAGED_MP3_BASE64);
+}
+
+/** Played once when the player switches AutoPlay off (owner 2026-11-15). */
+export async function playAutoplayDisengagedCue(): Promise<void> {
+  await startAutoplayClip(AUTOPLAY_DISENGAGED_MP3_BASE64);
+}
