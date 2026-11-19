@@ -13,6 +13,8 @@ Game backlog for what still needs work. Current open items come first; completed
 
 ## Not started
 
+- [ ] 135. Game Over saver purchases must not count as store purchases (Oded, 2026-11-20 01:06, voice): buying a saver through the Game Over menu must NOT count as a store purchase, neither for the "buy something at the store" achievement nor for any other purpose (stats, unlock chains, etc.). Only buying from the Store/Modifiers window counts. Backlog only; no implementation approved.
+- [ ] 136. First-store nudge at 30 Gold Bars (Oded, 2026-11-20 01:06, voice): if the player has never opened the Store and reaches 30 Gold Bars, the game reminds them ("you have 30 gold bars, you can buy your first item, go to the store"). One-time nudge. Exact wording needs his review first - spoken lines go to him as text before any recording. Backlog only; no implementation approved.
 - [ ] 134. Resume-last-pattern modifier (Oded, 2026-11-20 01:01, voice): the game saves the last pattern played; with this modifier, on restart or reload he can resume that last pattern (save/load style). Matters for longer patterns. Save schema, resume entry point, price/unlock and placement are all undesigned. Backlog only; no implementation approved.
 - [ ] First-note assistance visual follow-up: consider an arrow pointing to the correct pad during an assisted attempt. Backlog only for a later separate PR. No arrow behavior or implementation is included in the audio-help change.
 
