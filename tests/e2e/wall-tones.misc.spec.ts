@@ -286,23 +286,98 @@ for (const gender of ['male','female'] as const) {
  });
 }
 
-for (const stage of ['fresh','unfinished','introduced'] as const) {
- test(`first reload greets before Start and gates Cypher on completed introduction (${stage})`,async({page})=>{
-  await page.route('**/audio/**',route=>route.abort());
-  const requests:string[]=[];
-  page.on('request',r=>{if(r.resourceType()==='fetch'&&r.url().includes('/audio/return-reminders/'))requests.push(r.url());});
-  await page.addInitScript(()=>sessionStorage.setItem('iwsdk-experience-mode','walltones'));
+for (const gender of ['male','female'] as const) {
+ test(`first-note coaching after two misses, reinforced intro after three, color after four (${gender})`,async({page})=>{
+  // Fixture: returning profile with paid retry inventory. Game flow and counters
+  // are production behavior; assistance audio is never aborted or mocked.
+  await page.addInitScript(gender=>{sessionStorage.setItem('iwsdk-experience-mode','walltones');localStorage.setItem('wall-tones-voice-gender',gender);localStorage.setItem('wall-tones-instructions-v1',JSON.stringify({version:1,heard:['howToPlay','howToPlayMr','howToPlayRest','openingPattern']}));},gender);
+  const help:string[]=[];page.on('request',r=>{if(r.url().includes('/audio/first-note-help/'))help.push(r.url());});
   await page.goto('/');await page.waitForFunction(()=>Boolean(window.__wallTonesDebug?.flatAwaitingStart));
-  await page.evaluate(stage=>{
-   localStorage.setItem('wall-tones-cypher-act1-progress-v1',JSON.stringify(stage==='fresh'?{version:1,next:0}:stage==='unfinished'?{version:1,next:1,active:{index:0,offset:0}}:{version:1,next:1}));
-  },stage);
-  requests.length=0;await page.reload();await page.waitForFunction(()=>Boolean(window.__wallTonesDebug?.flatAwaitingStart));
-  await expect.poll(()=>requests.some(x=>x.endsWith('/n-r01.mp3'))).toBe(true);
-  await page.waitForFunction(()=>!window.__wallTonesDebug!.speechBusy);
-  expect(await page.evaluate(()=>window.__wallTonesDebug!.flatAwaitingStart)).toBe(true);
-  expect(requests.filter(x=>x.endsWith('/n-r01.mp3'))).toHaveLength(1);
-  const cypher=requests.filter(x=>x.includes('/cypher/'));
-  if(stage==='introduced')expect(cypher.some(x=>x.endsWith('/c-r02.mp3'))).toBe(true);
-  else expect(cypher).toHaveLength(0);
+  await page.evaluate(()=>{window.__wallTonesDebug!.grantSavers(8);window.__wallTonesDebug!.submitPad(0);});
+  await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');
+  const wrong=async()=>{await page.evaluate(()=>{const d=window.__wallTonesDebug!;d.submitPad((d.sequence[0]!+1)%4);});await page.waitForFunction(()=>window.__wallTonesDebug!.gameOverOpen);};
+  const retry=async()=>{await page.evaluate(()=>window.__wallTonesDebug!.gameOverUseSaver());await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');};
+  for(let miss=1;miss<=4;miss++){
+   await wrong();expect(help.filter(x=>x.endsWith('/guidance.mp3'))).toHaveLength(miss>=2?1:0);
+   if(miss<4){await retry();expect(help.some(x=>/press-/.test(x))).toBe(false);
+    expect(help.filter(x=>x.endsWith('/intro-demo.mp3'))).toHaveLength(miss===3?1:0);
+    expect(help.filter(x=>x.endsWith('/single-note.mp3'))).toHaveLength(miss===3?1:0);
+   }
+  }
+  const first=await page.evaluate(()=>window.__wallTonesDebug!.sequence[0]);const colors=['green','red','blue','yellow'];
+  await page.evaluate(()=>window.__wallTonesDebug!.gameOverUseSaver());
+  await page.waitForRequest(r=>r.url().endsWith(`/first-note-help/${gender}/press-${colors[first!]}.mp3`));
+  expect(await page.evaluate(()=>window.__wallTonesDebug!.phase)).toBe('playback');
+  await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');
+  expect(help.filter(x=>/press-/.test(x))).toEqual([expect.stringContaining(`/${gender}/press-${colors[first!]}.mp3`)]);
+  // A correct first note clears assistance. Subsequent round receives no cue.
+  await page.evaluate(()=>{const d=window.__wallTonesDebug!;d.submitPad(d.sequence[0]!);});
+  await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input'&&window.__wallTonesDebug!.sequence.length===2);
+  expect(help.filter(x=>/press-/.test(x))).toHaveLength(1);
+  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('wall-tones-instructions-v1')!).heard)).not.toContain('guidance');
+ });
+}
+
+test('all fourteen first-note assistance clips fetch and decode with real audio bytes',async({page})=>{
+ await page.goto('/');
+ const result=await page.evaluate(async()=>{const ctx=new AudioContext();const out=[];for(const cast of ['male','female'])for(const clip of ['guidance','intro-demo','single-note','press-green','press-red','press-blue','press-yellow']){const r=await fetch(new URL(`audio/first-note-help/${cast}/${clip}.mp3`,document.baseURI));const b=await r.arrayBuffer();const bytes=b.byteLength;const decoded=await ctx.decodeAudioData(b);out.push({ok:r.ok,bytes,duration:decoded.duration});}await ctx.close();return out;});
+ expect(result).toHaveLength(14);for(const x of result){expect(x.ok).toBe(true);expect(x.bytes).toBeGreaterThan(1000);expect(x.duration).toBeGreaterThan(0.4);}
+});
+
+test('first-note help applies to a longer pattern and Skip releases assisted playback without clearing the struggle',async({page},testInfo)=>{
+ await page.addInitScript(()=>{sessionStorage.setItem('iwsdk-experience-mode','walltones');localStorage.setItem('wall-tones-hearing-subtitles','true');localStorage.setItem('wall-tones-instructions-v1',JSON.stringify({version:1,heard:['howToPlay','howToPlayMr','howToPlayRest','openingPattern','barsFirstEarn']}));});
+ const cues:string[]=[];page.on('request',r=>{if(r.url().includes('/audio/first-note-help/'))cues.push(r.url());});
+ await page.goto('/');await page.waitForFunction(()=>Boolean(window.__wallTonesDebug?.flatAwaitingStart));
+ await page.evaluate(()=>{const d=window.__wallTonesDebug!;d.grantSavers(8);d.submitPad(0);});await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');
+ await page.evaluate(()=>{const d=window.__wallTonesDebug!;d.submitPad(d.sequence[0]!);});await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input'&&window.__wallTonesDebug!.sequence.length===2);
+ const sequence=await page.evaluate(()=>[...window.__wallTonesDebug!.sequence]);
+ for(let miss=1;miss<=4;miss++){
+  await page.evaluate(()=>{const d=window.__wallTonesDebug!;d.submitPad((d.sequence[0]!+1)%4);});await page.waitForFunction(()=>window.__wallTonesDebug!.gameOverOpen);
+  if(miss<4){await page.evaluate(()=>window.__wallTonesDebug!.gameOverUseSaver());await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');}
+ }
+ const color=['green','red','blue','yellow'][sequence[0]!];
+ await page.evaluate(()=>window.__wallTonesDebug!.gameOverUseSaver());await page.waitForRequest(r=>r.url().endsWith(`/press-${color}.mp3`));
+ await page.waitForFunction(()=>window.__wallTonesDebug!.speechBusy);
+ expect(await page.evaluate(()=>window.__wallTonesDebug!.phase)).toBe('playback');
+ await page.screenshot({path:testInfo.outputPath('first-note-assisted-longer.png')});
+ await page.locator('#wall-tones-skip-voice-flat').click();await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');
+ expect(await page.evaluate(()=>window.__wallTonesDebug!.sequence)).toEqual(sequence);
+ // Skip does not fake a correct answer. The following retry remains assisted.
+ await page.evaluate(()=>{const d=window.__wallTonesDebug!;d.submitPad((d.sequence[0]!+1)%4);});await page.waitForFunction(()=>window.__wallTonesDebug!.gameOverOpen);
+ // Cached audio need not issue another request, so observe the spoken caption.
+ await page.evaluate(()=>window.__wallTonesDebug!.gameOverUseSaver());
+ await expect(page.locator('#wall-tones-flat-subtitles')).toContainText(`Press ${color}.`);
+ await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');
+ expect(cues.filter(x=>x.endsWith('/guidance.mp3'))).toHaveLength(1);
+ expect(cues.some(x=>x.endsWith('/intro-demo.mp3')||x.endsWith('/single-note.mp3'))).toBe(false);
+});
+
+for (const skipIntro of [false, true]) {
+ test(`reinforced one-note New Run demonstrates intro before actual note, Skip=${skipIntro}`,async({page},testInfo)=>{
+  await page.addInitScript(()=>{sessionStorage.setItem('iwsdk-experience-mode','walltones');localStorage.setItem('wall-tones-hearing-subtitles','true');localStorage.setItem('wall-tones-instructions-v1',JSON.stringify({version:1,heard:['howToPlay','howToPlayMr','howToPlayRest','openingPattern']}));});
+  const clips:string[]=[];page.on('request',r=>{if(r.url().includes('/audio/first-note-help/'))clips.push(r.url());});
+  await page.goto('/');await page.waitForFunction(()=>Boolean(window.__wallTonesDebug?.flatAwaitingStart));
+  await page.evaluate(()=>{const d=window.__wallTonesDebug!;d.grantSavers(8);d.submitPad(0);});await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');
+  for(let miss=1;miss<=3;miss++){
+   await page.evaluate(()=>{const d=window.__wallTonesDebug!;d.submitPad((d.sequence[0]!+1)%4);});await page.waitForFunction(()=>window.__wallTonesDebug!.gameOverOpen);
+   if(miss<3){await page.evaluate(()=>window.__wallTonesDebug!.gameOverUseSaver());await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');}
+  }
+  await page.evaluate(()=>window.__wallTonesDebug!.gameOverNewRun());
+  await expect(page.locator('#wall-tones-flat-subtitles')).toContainText('This opening pattern is just the intro.');
+  expect(await page.evaluate(()=>window.__wallTonesDebug!.phase)).toBe('playback');
+  if(skipIntro){await page.locator('#wall-tones-skip-voice-flat').click();}else{
+   await page.screenshot({path:testInfo.outputPath('reinforced-intro.png')});
+   await expect(page.locator('#wall-tones-flat-subtitles')).toContainText('And now comes the single note');
+   expect(await page.evaluate(()=>window.__wallTonesDebug!.phase)).toBe('playback');
+   await page.screenshot({path:testInfo.outputPath('reinforced-single-note.png')});
+  }
+  await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');
+  expect(clips.filter(x=>x.endsWith('/intro-demo.mp3'))).toHaveLength(1);
+  expect(clips.filter(x=>x.endsWith('/single-note.mp3'))).toHaveLength(skipIntro?0:1);
+  expect(clips.some(x=>/press-/.test(x))).toBe(false);
+  await page.evaluate(()=>{const d=window.__wallTonesDebug!;d.submitPad((d.sequence[0]!+1)%4);});await page.waitForFunction(()=>window.__wallTonesDebug!.gameOverOpen);
+  await page.evaluate(()=>window.__wallTonesDebug!.gameOverUseSaver());
+  await expect(page.locator('#wall-tones-flat-subtitles')).toContainText('Press ');
+  await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');
  });
 }

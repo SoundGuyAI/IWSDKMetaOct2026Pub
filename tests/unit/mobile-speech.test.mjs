@@ -49,7 +49,7 @@ async function loadSpeech({ rejectFirst = false, subtitles = false } = {}) {
   let source = readFileSync(new URL('../../src/wall-tones/speech.ts', import.meta.url), 'utf8');
   source = source.replace("import { LAB_INTRO_AUDIO } from '../lab-menu/intro-audio.js';", readFileSync(new URL('../../src/lab-menu/intro-audio.ts', import.meta.url), 'utf8'));
   // Inline real, dependency-free story modules in this data-URL test harness.
-  for (const name of ['cypher-voice', 'cypher-script', 'cypher-background', 'instruction-memory', 'return-dialogue']) {
+  for (const name of ['cypher-voice', 'cypher-script', 'cypher-background', 'instruction-memory', 'return-dialogue', 'first-note-help']) {
     const dependency = readFileSync(new URL(`../../src/wall-tones/${name}.ts`, import.meta.url), 'utf8');
     source = source.replace(new RegExp(`^import .* from './${name}\\.js';`, 'm'), '');
     source = dependency + '\n' + source;
@@ -344,4 +344,14 @@ test('opening transition remains eligible after Skip, completes once, and keeps 
  run=voice.speakAsync('openingPattern');await Promise.resolve();h.instances[0].end();await run;
  assert.equal(voice.hasHeardInstruction('openingPattern'),true);assert.equal(voice.hasHeardInstruction('howToPlayRest'),false);
  const count=h.instances[0].played.length;voice=new h.speech.WallTonesSpeech();await voice.speakAsync('openingPattern');assert.equal(h.instances[0].played.length,count);
+});
+
+test('first-note feedback captures narrator, remains repeatable, captions exact words and cancels with the ordinary queue',async()=>{
+ const h=await loadSpeech({subtitles:true});await h.gesture(()=>h.speech.startMobileWelcomeFromGesture());h.speech.unlockSpeechFromGesture();h.instances[0].end();
+ const voice=new h.speech.WallTonesSpeech();h.speech.setVoiceGender('female');
+ const cue=voice.speakFirstNoteHelp('press-blue','male');await Promise.resolve();await Promise.resolve();
+ assert.match(h.instances[0].src,/first-note-help\/male\/press-blue.mp3$/);h.instances[0].onplaying();assert.ok(globalThis.__captions.includes('Press blue.'));h.instances[0].end();await cue;
+ const again=voice.speakFirstNoteHelp('press-blue','male');await Promise.resolve();await Promise.resolve();assert.equal(voice.isBusy(),true);voice.cancel();await again;assert.equal(voice.isBusy(),false);
+ assert.equal(voice.hasHeardInstruction('howToPlayRest'),false);
+ globalThis.__voicesOff=true;globalThis.__subtitles=false;await voice.speakFirstNoteHelp('guidance','female');assert.equal(voice.isBusy(),false);
 });

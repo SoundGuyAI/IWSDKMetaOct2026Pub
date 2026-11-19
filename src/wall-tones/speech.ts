@@ -1,3 +1,4 @@
+import { firstNoteHelpText, type FirstNoteHelpClip } from './first-note-help.js';
 import { RETURN_DIALOGUE, type ReturnLineId } from './return-dialogue.js';
 import { InstructionMemory } from './instruction-memory.js';
 import { LAB_INTRO_AUDIO } from '../lab-menu/intro-audio.js';
@@ -533,6 +534,14 @@ export class WallTonesSpeech {
       url: new URL(`audio/return-reminders/${line.speaker}/${cast[line.speaker]}/${id.toLowerCase()}.mp3`, document.baseURI).href,
       text: `${line.speaker === 'cypher' ? 'Cypher' : 'Narrator'}: ${line.text}`,
     }, id === 'N-R01');
+  }
+
+  /** Contextual coaching is repeatable feedback, not heard-once tutorial memory. */
+  speakFirstNoteHelp(clip: FirstNoteHelpClip, gender = getVoiceGender()): Promise<void> {
+    return this.enqueueClip({
+      url: new URL(`audio/first-note-help/${gender}/${clip}.mp3`, document.baseURI).href,
+      text: firstNoteHelpText(clip),
+    });
   }
 
   /** Device-neutral Lab welcome, using the same captured cast and speech queue. */
