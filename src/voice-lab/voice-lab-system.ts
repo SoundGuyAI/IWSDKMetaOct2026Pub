@@ -444,9 +444,9 @@ export class VoiceLabSystem extends createSystem({}) {
       return;
     }
     // Only a yes/no attempt counts: a faint yes or no feeds the noise
-    // count and keeps the listen window open. Any other word - a "go"
-    // heard for a "no", a command, unknown speech - is ignored at her
-    // end (owner, Nov 19): not an answer, not an attempt, and it does
+    // count and keeps the listen window open. Any other word - a command,
+    // a faint partial alias, unknown speech - is ignored at her end
+    // (owner, Nov 19): not an answer, not an attempt, and it does
     // not extend the window. The Heard line still shows it.
     if (heard.word === 'yes' || heard.word === 'no') {
       this.noiseCount += 1;
