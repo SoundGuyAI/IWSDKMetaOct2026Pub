@@ -39,6 +39,29 @@ export const DEFAULT_ACCEPT_THRESHOLD = 0.8;
 export const CLEAR_WIN_FLOOR = 0.5;
 export const CLEAR_WIN_RATIO = 2;
 
+/**
+ * The model's background-noise class. A real room keeps it scoring while a
+ * word is being spoken (phone mic, AGC still ramping), so it must not veto
+ * a clear winner: it is the channel floor, not a rival word. `_unknown_`
+ * (real speech the model does not know) still vetoes.
+ */
+export const BACKGROUND_NOISE_WORD = '_background_noise_';
+
+/**
+ * Persistence vote for words split across analysis windows (owner's Nov 19
+ * iPhone retest: yes/no register but take 2-3 attempts). The model window
+ * overlaps 50%, so a word caught across a window boundary shows a moderate
+ * score in two adjacent frames instead of a strong score in one. When the
+ * same answer word clears these relaxed bars in PERSIST_MIN_HITS of the
+ * last PERSIST_FRAMES frames, it answers with its best score. Relaxed bars
+ * stay strict enough that ordinary noise (which varies frame to frame)
+ * cannot vote twice.
+ */
+export const PERSIST_FLOOR = 0.35;
+export const PERSIST_RATIO = 1.5;
+export const PERSIST_FRAMES = 3;
+export const PERSIST_MIN_HITS = 2;
+
 /** The lab listens this long for one clear word before calling it noise. */
 export const VOICE_LISTEN_SEC = 12;
 
@@ -100,11 +123,160 @@ function clearWinningAnswer(
     return null;
   }
   for (let i = 0; i < scores.length; i += 1) {
+    if (labels[i] === BACKGROUND_NOISE_WORD) {
+      continue;
+    }
     if (i !== answerIndex && scores[i] * CLEAR_WIN_RATIO > answerScore) {
       return null;
     }
   }
   return { kind: 'answer', answer, score: answerScore };
+}
+
+/** One raw model callback: the class labels and their scores. */
+export interface ScoreFrame {
+  labels: readonly string[];
+  scores: readonly number[];
+}
+
+/**
+ * clearWinningAnswer with the relaxed persistence bars; null otherwise.
+ * Only used inside interpretFrames, never on its own.
+ */
+function persistentAnswer(
+  labels: readonly string[],
+  scores: readonly number[],
+): YesNoAnswer | null {
+  if (labels.length === 0 || labels.length !== scores.length) {
+    return null;
+  }
+  let answer: YesNoAnswer | null = null;
+  let answerIndex = -1;
+  let answerScore = 0;
+  for (const word of ANSWER_WORDS) {
+    const i = labels.indexOf(word);
+    if (i >= 0 && scores[i] > answerScore) {
+      answer = word as YesNoAnswer;
+      answerIndex = i;
+      answerScore = scores[i];
+    }
+  }
+  if (answer == null || answerScore < PERSIST_FLOOR) {
+    return null;
+  }
+  for (let i = 0; i < scores.length; i += 1) {
+    if (labels[i] === BACKGROUND_NOISE_WORD) {
+      continue;
+    }
+    if (i !== answerIndex && scores[i] * PERSIST_RATIO > answerScore) {
+      return null;
+    }
+  }
+  return answer;
+}
+
+/**
+ * Interpret the recent frame window. The latest frame decides first,
+ * exactly as interpretScores; only when it is faint does the persistence
+ * vote run over the last PERSIST_FRAMES frames.
+ */
+export function interpretFrames(
+  frames: readonly ScoreFrame[],
+  threshold: number = DEFAULT_ACCEPT_THRESHOLD,
+): HeardWord {
+  const latest = frames[frames.length - 1];
+  if (latest == null) {
+    return { kind: 'faint', word: 'invalid', score: 0 };
+  }
+  const heard = interpretScores(latest.labels, latest.scores, threshold);
+  if (heard.kind !== 'faint') {
+    return heard;
+  }
+  const votes = new Map<YesNoAnswer, { count: number; best: number }>();
+  for (const frame of frames) {
+    const vote = persistentAnswer(frame.labels, frame.scores);
+    if (vote == null) {
+      continue;
+    }
+    const i = frame.labels.indexOf(vote);
+    const entry = votes.get(vote) ?? { count: 0, best: 0 };
+    entry.count += 1;
+    entry.best = Math.max(entry.best, frame.scores[i]);
+    votes.set(vote, entry);
+  }
+  let winner: YesNoAnswer | null = null;
+  let winnerCount = 0;
+  let winnerBest = 0;
+  let tied = false;
+  for (const [answer, entry] of votes) {
+    if (entry.count > winnerCount) {
+      winner = answer;
+      winnerCount = entry.count;
+      winnerBest = entry.best;
+      tied = false;
+    } else if (entry.count === winnerCount) {
+      tied = true;
+    }
+  }
+  if (winner != null && !tied && winnerCount >= PERSIST_MIN_HITS) {
+    return { kind: 'answer', answer: winner, score: winnerBest };
+  }
+  return heard;
+}
+
+/**
+ * Ring buffer of the last PERSIST_FRAMES model frames. The receiver feeds
+ * every callback through it; the debug bridge uses its own instance so the
+ * e2e feed() path exercises the same windowed decision as the mic.
+ */
+export class FrameWindow {
+  private frames: ScoreFrame[] = [];
+
+  push(labels: readonly string[], scores: readonly number[]): HeardWord {
+    this.frames.push({ labels, scores });
+    if (this.frames.length > PERSIST_FRAMES) {
+      this.frames.shift();
+    }
+    return interpretFrames(this.frames);
+  }
+
+  reset(): void {
+    this.frames = [];
+  }
+}
+
+/** The live top two classes of one raw frame, for the panel's Heard line. */
+export interface LiveHeard {
+  word: string;
+  score: number;
+  rivalWord: string;
+  rivalScore: number;
+}
+
+/** Top two classes of one frame, for display only - never for decisions. */
+export function topTwo(
+  labels: readonly string[],
+  scores: readonly number[],
+): LiveHeard {
+  let first = -1;
+  let second = -1;
+  for (let i = 0; i < scores.length; i += 1) {
+    if (first < 0 || scores[i] > scores[first]) {
+      second = first;
+      first = i;
+    } else if (second < 0 || scores[i] > scores[second]) {
+      second = i;
+    }
+  }
+  if (first < 0) {
+    return { word: 'invalid', score: 0, rivalWord: '-', rivalScore: 0 };
+  }
+  return {
+    word: labels[first],
+    score: scores[first],
+    rivalWord: second < 0 ? '-' : labels[second],
+    rivalScore: second < 0 ? 0 : scores[second],
+  };
 }
 
 /** Single-word natural variants that still mean yes/no (owner, Nov 19). */
@@ -230,6 +402,7 @@ export type VoiceReceiverState =
 export class VoiceReceiver {
   private recognizer: SpeechCommandsRecognizer | null = null;
   private loadPromise: Promise<void> | null = null;
+  private readonly frames = new FrameWindow();
   state: VoiceReceiverState = 'cold';
   detail = '';
   backend: string | null = null;
@@ -286,16 +459,19 @@ export class VoiceReceiver {
    * 'mic-unavailable' and resolves false - the caller keeps its button and
    * keyboard fallbacks live.
    */
-  async startListening(onHeard: (heard: HeardWord) => void): Promise<boolean> {
+  async startListening(
+    onHeard: (heard: HeardWord, live: LiveHeard) => void,
+  ): Promise<boolean> {
     if (this.recognizer == null || this.state !== 'ready') {
       return false;
     }
     const labels = this.recognizer.wordLabels() as readonly string[];
+    this.frames.reset();
     try {
       await this.recognizer.listen(
         (result) => {
           const scores = Array.from(result.scores as ArrayLike<number>);
-          onHeard(interpretScores(labels, scores));
+          onHeard(this.frames.push(labels, scores), topTwo(labels, scores));
         },
         {
           // The model's own probability gate stays low; the lab's 0.8

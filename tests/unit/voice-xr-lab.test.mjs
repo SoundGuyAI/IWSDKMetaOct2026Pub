@@ -14,15 +14,24 @@ const load = async (rel) => {
 const receiver = await load('../../src/voice-lab/voice-receiver.ts');
 const {
   interpretScores,
+  interpretFrames,
+  FrameWindow,
+  topTwo,
   parseAnswerWord,
   DEFAULT_ACCEPT_THRESHOLD,
   CLEAR_WIN_FLOOR,
   CLEAR_WIN_RATIO,
+  PERSIST_FLOOR,
+  PERSIST_RATIO,
+  PERSIST_FRAMES,
+  PERSIST_MIN_HITS,
+  BACKGROUND_NOISE_WORD,
   VOICE_LISTEN_SEC,
   ANSWER_WORDS,
 } = receiver;
 
 const LABELS = ['yes', 'no', 'up', 'down', 'left', 'right'];
+const MIC_LABELS = [...LABELS, BACKGROUND_NOISE_WORD, '_unknown_'];
 
 test('a clear yes or no above the threshold answers the prompt', () => {
   const yes = interpretScores(LABELS, [0.93, 0.02, 0.01, 0.01, 0.01, 0.02]);
@@ -65,6 +74,71 @@ test('the clear-winner fallback rejects close rivals and weak winners', () => {
     { kind: 'noise', word: 'up', score: 0.85 },
   );
   assert.ok(CLEAR_WIN_RATIO >= 2);
+});
+
+test('background noise never vetoes a clear winner (iPhone room floor)', () => {
+  // Owner's Nov 19 iPhone retest: yes/no register but take 2-3 attempts.
+  // In a real room the noise class keeps scoring through the word, and
+  // needing 2x against it blocked legit answers. It is the floor, not a
+  // rival word.
+  const no = interpretScores(MIC_LABELS, [0.05, 0.56, 0.1, 0.05, 0.05, 0.04, 0.4, 0.05]);
+  assert.deepEqual(no, { kind: 'answer', answer: 'no', score: 0.56 });
+  // _unknown_ (real speech the model does not know) still vetoes.
+  const speech = interpretScores(MIC_LABELS, [0.05, 0.56, 0.1, 0.05, 0.05, 0.04, 0.1, 0.4]);
+  assert.equal(speech.kind, 'faint');
+});
+
+test('persistence vote: a word split across windows answers on repeat moderate scores', () => {
+  const window = new FrameWindow();
+  const frame = (noScore) => ({
+    labels: MIC_LABELS,
+    scores: [0.05, noScore, 0.1, 0.05, 0.05, 0.05, 0.3, 0.05],
+  });
+  // One moderate frame alone is still faint.
+  assert.equal(window.push(MIC_LABELS, frame(0.42).scores).kind, 'faint');
+  // The same word clearing the relaxed bars twice in the window answers.
+  const heard = window.push(MIC_LABELS, frame(0.4).scores);
+  assert.deepEqual(heard, { kind: 'answer', answer: 'no', score: 0.42 });
+});
+
+test('persistence vote rejects one-off noise and contested words', () => {
+  // A single moderate frame followed by silence never answers.
+  const quiet = new FrameWindow();
+  const silence = [0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.85, 0.03];
+  assert.equal(quiet.push(MIC_LABELS, [0.05, 0.42, 0.1, 0.05, 0.05, 0.05, 0.2, 0.05]).kind, 'faint');
+  // Pure background above the threshold is noise, and it never votes.
+  assert.equal(quiet.push(MIC_LABELS, silence).kind, 'noise');
+  assert.equal(quiet.push(MIC_LABELS, silence).kind, 'noise');
+  assert.equal(quiet.push(MIC_LABELS, silence).kind, 'noise');
+  // yes and no tied inside the same window: no winner.
+  const contested = new FrameWindow();
+  contested.push(MIC_LABELS, [0.42, 0.05, 0.1, 0.05, 0.05, 0.05, 0.2, 0.05]);
+  const heard = contested.push(MIC_LABELS, [0.05, 0.42, 0.1, 0.05, 0.05, 0.05, 0.2, 0.05]);
+  assert.equal(heard.kind, 'faint');
+  // Under the relaxed floor, even twice, is not a word.
+  const weak = new FrameWindow();
+  const weakFrame = [0.05, PERSIST_FLOOR - 0.01, 0.1, 0.1, 0.1, 0.1, 0.2, 0.05];
+  assert.equal(weak.push(MIC_LABELS, weakFrame).kind, 'faint');
+  assert.equal(weak.push(MIC_LABELS, weakFrame).kind, 'faint');
+  assert.ok(PERSIST_MIN_HITS >= 2 && PERSIST_MIN_HITS <= PERSIST_FRAMES);
+  assert.ok(PERSIST_FLOOR < CLEAR_WIN_FLOOR && PERSIST_RATIO < CLEAR_WIN_RATIO);
+});
+
+test('interpretFrames lets a decisive latest frame win over stale window votes', () => {
+  const frames = [
+    { labels: MIC_LABELS, scores: [0.42, 0.05, 0.1, 0.05, 0.05, 0.05, 0.2, 0.05] },
+    { labels: MIC_LABELS, scores: [0.4, 0.05, 0.1, 0.05, 0.05, 0.05, 0.2, 0.05] },
+    { labels: MIC_LABELS, scores: [0.02, 0.9, 0.01, 0.01, 0.01, 0.01, 0.02, 0.02] },
+  ];
+  // Latest frame clears the full threshold outright: answer immediately.
+  assert.deepEqual(interpretFrames(frames), { kind: 'answer', answer: 'no', score: 0.9 });
+  assert.equal(interpretFrames([]).kind, 'faint');
+});
+
+test('topTwo reports the live top classes for the Heard line', () => {
+  const live = topTwo(MIC_LABELS, [0.05, 0.46, 0.1, 0.05, 0.05, 0.05, 0.4, 0.05]);
+  assert.deepEqual(live, { word: 'no', score: 0.46, rivalWord: BACKGROUND_NOISE_WORD, rivalScore: 0.4 });
+  assert.deepEqual(topTwo([], []), { word: 'invalid', score: 0, rivalWord: '-', rivalScore: 0 });
 });
 
 test('malformed model output is faint, never throws', () => {
@@ -186,11 +260,12 @@ test('wiring: registry entry, menu row, mode, panel asset, scene nodes and regis
   // Both register call sites (hub and AR) register the voice lab.
   assert.equal(host.split('world.registerSystem(VoiceLabSystem)').length - 1, 2);
   for (const id of ['voice-lab-status', 'voice-lab-line', 'voice-lab-telemetry', 'voice-lab-voice',
-    'voice-lab-start-button', 'voice-lab-yes-button', 'voice-lab-no-button',
+    'voice-lab-heard', 'voice-lab-start-button', 'voice-lab-yes-button', 'voice-lab-no-button',
     'voice-lab-repeat-button', 'voice-lab-back-button']) {
     assert.ok(panel.includes(`id="${id}"`), id);
   }
-  for (const id of ['voice-lab-status', 'voice-lab-line', 'voice-lab-telemetry', 'voice-lab-voice', 'voice-lab-start-label']) {
+  for (const id of ['voice-lab-status', 'voice-lab-line', 'voice-lab-telemetry', 'voice-lab-voice',
+    'voice-lab-heard', 'voice-lab-start-label']) {
     assert.ok(panel.match(new RegExp(`id="${id}"[^>]*>[^<]`)), `seeded ${id}`);
   }
 });

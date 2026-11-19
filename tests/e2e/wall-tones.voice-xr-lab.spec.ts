@@ -17,6 +17,10 @@ type Snapshot = {
   lastAnswer: string | null;
   lastWord: string | null;
   lastScore: number | null;
+  liveWord: string | null;
+  liveScore: number | null;
+  bestWord: string | null;
+  bestScore: number | null;
   noiseCount: number;
   receiverState: string;
   threshold: number;
@@ -31,7 +35,7 @@ type DebugBridge = {
   snapshot: () => Snapshot;
   start: () => void;
   answer: (a: 'yes' | 'no') => void;
-  feed: (word: string, score: number) => void;
+  feed: (word: string, score: number, rivalWord?: string, rivalScore?: number) => void;
 };
 
 const debugOf = (page: import('@playwright/test').Page) =>
@@ -46,12 +50,23 @@ async function answer(page: import('@playwright/test').Page, value: 'yes' | 'no'
   }, value);
 }
 
-async function feed(page: import('@playwright/test').Page, word: string, score: number) {
+async function feed(
+  page: import('@playwright/test').Page,
+  word: string,
+  score: number,
+  rivalWord?: string,
+  rivalScore?: number,
+) {
   await page.evaluate(
-    ([w, s]) => {
-      (window as unknown as { __voiceLabDebug?: DebugBridge }).__voiceLabDebug?.feed(w, s);
+    ([w, s, rw, rs]) => {
+      (window as unknown as { __voiceLabDebug?: DebugBridge }).__voiceLabDebug?.feed(
+        w,
+        s,
+        rw as string | undefined,
+        rs as number | undefined,
+      );
     },
-    [word, score],
+    [word, score, rivalWord ?? null, rivalScore ?? null],
   );
 }
 
@@ -215,6 +230,43 @@ test('fed model results: clear yes answers, clear-winner no answers, other words
   expect(snapshot?.answerCount).toBe(1);
   // Clear yes answers.
   await feed(page, 'yes', 0.95);
+  await waitPhase(page, 'listening', 'q2');
+  snapshot = await debugOf(page);
+  expect(snapshot?.lastAnswer).toBe('yes');
+  expect(snapshot?.answerCount).toBe(2);
+});
+
+test('iPhone misses: background noise does not veto, split-window words vote, Heard line tracks', async ({
+  page,
+}) => {
+  await enterVoiceLab(page);
+  await waitPhase(page, 'idle');
+  await page.evaluate(() =>
+    (window as unknown as { __voiceLabDebug: DebugBridge }).__voiceLabDebug.start(),
+  );
+  await waitPhase(page, 'listening', 'intro');
+  // Owner's Nov 19 iPhone retest: attempts needed 2-3 tries. In a real room
+  // the background-noise class keeps scoring through the word; it must not
+  // veto a clear winner.
+  await feed(page, 'no', 0.56, '_background_noise_', 0.4);
+  await waitPhase(page, 'listening', 'retry');
+  let snapshot = await debugOf(page);
+  expect(snapshot?.lastAnswer).toBe('no');
+  expect(snapshot?.answerCount).toBe(1);
+  // The Heard line keeps the last frame visible across the prompt change,
+  // so a miss still shows what the model heard.
+  expect(snapshot?.liveWord).toBe('no');
+  expect(snapshot?.liveScore).toBe(0.56);
+  // A word split across analysis windows: moderate in two frames, faint in
+  // each alone; the persistence vote answers on the second.
+  await feed(page, 'yes', 0.4);
+  snapshot = await debugOf(page);
+  expect(snapshot?.phase).toBe('listening');
+  expect(snapshot?.answerCount).toBe(1);
+  // A single moderate frame shows as the best try of this attempt.
+  expect(snapshot?.bestWord).toBe('yes');
+  expect(snapshot?.bestScore).toBe(0.4);
+  await feed(page, 'yes', 0.42);
   await waitPhase(page, 'listening', 'q2');
   snapshot = await debugOf(page);
   expect(snapshot?.lastAnswer).toBe('yes');

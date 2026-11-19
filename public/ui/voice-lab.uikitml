@@ -60,6 +60,17 @@
     color: #fafaf7;
   }
 
+  .voice-lab-heard {
+    color: #1c1d20;
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 22px;
+  }
+
+  .voice-lab-heard:dark {
+    color: #fafaf7;
+  }
+
   .voice-lab-telemetry {
     color: #6a6c72;
     font-size: 13px;
@@ -110,6 +121,7 @@
     <div id="voice-lab-status" class="voice-lab-body">...</div>
     <div id="voice-lab-line" class="voice-lab-line">...</div>
     <div id="voice-lab-voice" class="voice-lab-telemetry">Cypher voice: checking...</div>
+    <div id="voice-lab-heard" class="voice-lab-heard">Heard: -</div>
     <div id="voice-lab-telemetry" class="voice-lab-telemetry">telemetry starts with the link</div>
   </div>
   <Button id="voice-lab-start-button" class="voice-lab-button">

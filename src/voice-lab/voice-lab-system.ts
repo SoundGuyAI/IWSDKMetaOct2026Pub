@@ -28,12 +28,14 @@ import {
 } from '@iwsdk/core';
 import { unlockSpeechFromGesture } from '../wall-tones/speech.js';
 import {
+  BACKGROUND_NOISE_WORD,
   DEFAULT_ACCEPT_THRESHOLD,
-  interpretScores,
+  FrameWindow,
   parseAnswerWord,
   VOICE_LISTEN_SEC,
   VoiceReceiver,
   type HeardWord,
+  type LiveHeard,
   type YesNoAnswer,
 } from './voice-receiver.js';
 import { playLabAnswerCue } from './lab-cues.js';
@@ -102,6 +104,10 @@ export interface VoiceLabDebugSnapshot {
   lastAnswer: YesNoAnswer | null;
   lastWord: string | null;
   lastScore: number | null;
+  liveWord: string | null;
+  liveScore: number | null;
+  bestWord: string | null;
+  bestScore: number | null;
   noiseCount: number;
   receiverState: string;
   threshold: number;
@@ -119,8 +125,17 @@ declare global {
       enter: () => void;
       start: () => void;
       answer: (answer: YesNoAnswer) => void;
-      /** Simulate one model result, e.g. feed('yes', 0.95). */
-      feed: (word: string, score: number) => void;
+      /**
+       * Simulate one model frame, e.g. feed('yes', 0.95). Optional rival
+       * class + score simulates background noise, e.g.
+       * feed('no', 0.55, '_background_noise_', 0.4).
+       */
+      feed: (
+        word: string,
+        score: number,
+        rivalWord?: string,
+        rivalScore?: number,
+      ) => void;
     };
   }
 }
@@ -138,6 +153,10 @@ export class VoiceLabSystem extends createSystem({}) {
   private lastAnswer: YesNoAnswer | null = null;
   private lastWord: string | null = null;
   private lastScore: number | null = null;
+  private live: LiveHeard | null = null;
+  private bestWord: string | null = null;
+  private bestScore = 0;
+  private readonly debugFrames = new FrameWindow();
   private noiseCount = 0;
   private answerCount = 0;
   private voiceStatus: LabVoiceStatus | null = null;
@@ -149,6 +168,7 @@ export class VoiceLabSystem extends createSystem({}) {
   private statusText: UIKit.Text | null = null;
   private lineText: UIKit.Text | null = null;
   private telemetryText: UIKit.Text | null = null;
+  private heardText: UIKit.Text | null = null;
   private voiceText: UIKit.Text | null = null;
   private startLabel: UIKit.Text | null = null;
   private active = false;
@@ -164,6 +184,7 @@ export class VoiceLabSystem extends createSystem({}) {
     this.statusText = panel.getElementById<UIKit.Text>('voice-lab-status');
     this.lineText = panel.getElementById<UIKit.Text>('voice-lab-line');
     this.telemetryText = panel.getElementById<UIKit.Text>('voice-lab-telemetry');
+    this.heardText = panel.getElementById<UIKit.Text>('voice-lab-heard');
     this.voiceText = panel.getElementById<UIKit.Text>('voice-lab-voice');
     this.startLabel = panel.getElementById<UIKit.Text>('voice-lab-start-label');
 
@@ -217,21 +238,43 @@ export class VoiceLabSystem extends createSystem({}) {
       enter: () => this.setActive(true),
       start: () => void this.startRun(),
       answer: (answer) => this.submitAnswer(answer),
-      feed: (word, score) => this.handleHeard(this.interpretFeed(word, score)),
+      feed: (word, score, rivalWord, rivalScore) =>
+        this.handleFeed(word, score, rivalWord, rivalScore),
     };
     this.renderPanel('Open the link when you are ready.');
   }
 
-  private interpretFeed(word: string, score: number): HeardWord {
+  /**
+   * Debug feed: build one frame like the model would produce and run it
+   * through the same FrameWindow as live mic frames, so the e2e path
+   * exercises the windowed decision (persistence vote included).
+   */
+  private handleFeed(
+    word: string,
+    score: number,
+    rivalWord?: string,
+    rivalScore?: number,
+  ): void {
     const labels = ['yes', 'no', word];
-    const yes = parseAnswerWord(word);
+    const answer = parseAnswerWord(word);
     const scores =
-      yes === 'yes'
+      answer === 'yes'
         ? [score, 0, 0]
-        : yes === 'no'
+        : answer === 'no'
           ? [0, score, 0]
           : [0, 0, score];
-    return interpretScores(labels, scores, DEFAULT_ACCEPT_THRESHOLD);
+    if (rivalWord != null && rivalScore != null) {
+      labels.push(rivalWord);
+      scores.push(rivalScore);
+    }
+    const heard = this.debugFrames.push(labels, scores);
+    const live: LiveHeard = {
+      word,
+      score,
+      rivalWord: rivalWord ?? '-',
+      rivalScore: rivalScore ?? 0,
+    };
+    this.handleHeard(heard, live);
   }
 
   private setActive(active: boolean): void {
@@ -248,6 +291,10 @@ export class VoiceLabSystem extends createSystem({}) {
       this.lastAnswer = null;
       this.lastWord = null;
       this.lastScore = null;
+      this.live = null;
+      this.bestWord = null;
+      this.bestScore = 0;
+      this.debugFrames.reset();
       this.noiseCount = 0;
       this.answerCount = 0;
       this.voiceStatus = null;
@@ -291,6 +338,10 @@ export class VoiceLabSystem extends createSystem({}) {
     this.lastAnswer = null;
     this.lastWord = null;
     this.lastScore = null;
+    this.live = null;
+    this.bestWord = null;
+    this.bestScore = 0;
+    this.debugFrames.reset();
     this.noiseCount = 0;
     this.cueCount = 0;
     this.retryLoopCount = 0;
@@ -321,6 +372,12 @@ export class VoiceLabSystem extends createSystem({}) {
     }
     this.currentPrompt = prompt;
     this.currentLine = line;
+    // The live Heard line deliberately survives a prompt change: after a
+    // miss the player must still see what the model heard. The per-attempt
+    // best yes/no and the frame window reset for the new attempt.
+    this.bestWord = null;
+    this.bestScore = 0;
+    this.debugFrames.reset();
     await this.receiver.stopListening();
     this.phase = 'speaking';
     this.renderPanel();
@@ -348,15 +405,27 @@ export class VoiceLabSystem extends createSystem({}) {
       if (seq !== this.sequence || !this.active || this.phase !== 'listening') {
         return;
       }
-      await this.receiver.startListening((heard) => this.handleHeard(heard));
+      await this.receiver.startListening((heard, live) =>
+        this.handleHeard(heard, live),
+      );
       this.renderPanel();
     })();
     this.renderPanel();
   }
 
-  private handleHeard(heard: HeardWord): void {
+  private handleHeard(heard: HeardWord, live: LiveHeard): void {
     if (!this.active || this.phase !== 'listening' || this.currentPrompt == null) {
       return;
+    }
+    // Every frame updates the Heard line, miss or not, so a failed attempt
+    // shows exactly what the model heard and how close it was.
+    this.live = live;
+    if (
+      (live.word === 'yes' || live.word === 'no') &&
+      live.score > this.bestScore
+    ) {
+      this.bestWord = live.word;
+      this.bestScore = live.score;
     }
     this.lastWord =
       heard.kind === 'answer' ? heard.answer : heard.word;
@@ -498,6 +567,7 @@ export class VoiceLabSystem extends createSystem({}) {
       this.lastWord == null
         ? '-'
         : `${this.lastWord} (${this.lastScore?.toFixed(2) ?? '-'})`;
+    this.heardText?.setProperties({ text: this.heardLine() });
     this.telemetryText?.setProperties({
       text:
         `receiver ${this.receiver.describe()} | last heard ${last} | ` +
@@ -508,6 +578,42 @@ export class VoiceLabSystem extends createSystem({}) {
     this.startLabel?.setProperties({
       text: this.phase === 'done' ? 'Run link check again' : 'Open the link',
     });
+  }
+
+  /** Friendly label: the model's internal classes read as plain words. */
+  private friendlyWord(word: string): string {
+    if (word === BACKGROUND_NOISE_WORD) {
+      return 'background noise';
+    }
+    if (word === '_unknown_') {
+      return 'unknown speech';
+    }
+    return word;
+  }
+
+  /**
+   * The prominent Heard line: the live frame's top class and its rival,
+   * plus the best yes/no the model has caught this attempt, so a miss
+   * shows what almost made it.
+   */
+  private heardLine(): string {
+    if (this.live == null) {
+      return 'Heard: -';
+    }
+    const parts = [
+      `Heard: ${this.friendlyWord(this.live.word)} (${this.live.score.toFixed(2)})`,
+    ];
+    if (this.live.rivalWord !== '-') {
+      parts.push(
+        `vs ${this.friendlyWord(this.live.rivalWord)} (${this.live.rivalScore.toFixed(2)})`,
+      );
+    }
+    if (this.bestWord != null) {
+      parts.push(
+        `best this attempt: ${this.bestWord} (${this.bestScore.toFixed(2)})`,
+      );
+    }
+    return parts.join(' | ');
   }
 
   private speakLine(line: LabScriptLine): Promise<void> {
@@ -522,6 +628,10 @@ export class VoiceLabSystem extends createSystem({}) {
       lastAnswer: this.lastAnswer,
       lastWord: this.lastWord,
       lastScore: this.lastScore,
+      liveWord: this.live?.word ?? null,
+      liveScore: this.live?.score ?? null,
+      bestWord: this.bestWord,
+      bestScore: this.bestWord == null ? null : this.bestScore,
       noiseCount: this.noiseCount,
       receiverState: this.receiver.state,
       threshold: DEFAULT_ACCEPT_THRESHOLD,
