@@ -13,6 +13,7 @@ Game backlog for what still needs work. Current open items come first; completed
 
 ## Not started
 
+- [ ] 134. Resume-last-pattern modifier (Oded, 2026-11-20 01:01, voice): the game saves the last pattern played; with this modifier, on restart or reload he can resume that last pattern (save/load style). Matters for longer patterns. Save schema, resume entry point, price/unlock and placement are all undesigned. Backlog only; no implementation approved.
 - [ ] First-note assistance visual follow-up: consider an arrow pointing to the correct pad during an assisted attempt. Backlog only for a later separate PR. No arrow behavior or implementation is included in the audio-help change.
 
 - [ ] 128. Consider streak-saver gifts at streak milestones, with an award celebration (Oded, 2026-11-18 12:37). Decide which milestones qualify, how many savers to give and how often; none selected. Planning only, no economy or reward implementation approved. Numbers 125-127 are reserved for the platform explorations recorded on PR165's branch, not yet merged into main.
