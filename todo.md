@@ -173,3 +173,10 @@ PR82's backlog58 status/caveat is preserved above. The authoritative game backlo
 - [x] Layering: charge-note cloud renders under the game HUD (renderOrder), and flat rift placement now avoids the live Wall Tones HUD rect (was avoiding only the hidden Lab panel footprint, so portals could sit behind the HUD).
 - [x] Verified locally: typecheck, 337 unit tests, rift-lab e2e (3), desktop boot smoke (2), headed visual QA script (spawn times ~12.3 s / ~32.1 s, no top-up after a seal, HUD paints over the note cloud, portals clear of the HUD).
 - [ ] His retest on the Cloudflare preview; merge waits for his go-ahead.
+## Skip Voice story progress and real-mouse journey - November 17
+
+1. [x] Confirm both story queues previously saved only after uninterrupted playback, reproducing repeated lines on Skip.
+2. [x] Save each Cypher/background/narrator-story line when its audio or caption starts. Do not consume queued or unstarted lines.
+3. [x] Add desktop real-mouse Skip checks for all three story paths with reload persistence.
+4. [x] Keep ten rounds, every pad press, deliberate wrong pad, reset and best-score assertions in the long pointer journey; click the visible Skip Voice control while waiting.
+5. [ ] Finish full local and GitHub validation, publish separate PR and verify its preview. No merge or production approval.

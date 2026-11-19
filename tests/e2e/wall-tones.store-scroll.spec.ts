@@ -326,47 +326,14 @@ test.describe('Wall Tones store scrolling (MR critical fix)', () => {
       // for the chevron to stop moving before tapping its rendered position.
       // A miss here is a setup failure, not a product assertion.
       const chevron = await waitForStableTarget(page, 'store-scroll-down');
-      const cdp = await context.newCDPSession(page);
-      const touch = async (type: string, x: number, y: number) =>
-        cdp.send('Input.dispatchTouchEvent', {
-          type,
-          touchPoints: type === 'touchEnd' ? [] : [{ x, y, id: 1 }],
-        });
       await page.evaluate(() => {
         (window as unknown as { __tapLog: unknown[] }).__tapLog = [];
       });
-      // Genuine short tap, no wall-clock hold. Chromium processes CDP touch
-      // commands in order and dispatches each event synchronously, and the
-      // pointer-events layer computes the down intersection inside the
-      // pointerover/pointerdown dispatch (over() -> computeIntersection ->
-      // commit), so once the page has seen pointerdown, down processing is
-      // complete and the up can follow immediately - this is also how
-      // Playwright's own touchscreen.tap issues touchStart/touchEnd with no
-      // delay. The previous fixed 120ms sleep stretched under runner load
-      // (measured 231-315ms), and the one observed failure had the only
-      // hold past the 300ms clickThresholdMs in @pmndrs/pointer-events.
-      // Whether that threshold actually suppressed the internal click in
-      // that attempt is unobserved: the tap log records DOM events only,
-      // and a DOM click here is not proof of the internal 3D handler's
-      // click. The event-driven wait below keeps real taps in the tens of
-      // ms regardless of runner load, and the tap log records the actual
-      // event timing either way.
-      await touch('touchStart', chevron.x, chevron.y);
-      await expect
-        .poll(
-          async () =>
-            page
-              .evaluate(
-                () =>
-                  (window as unknown as { __tapLog: { type: string }[] }).__tapLog.map(
-                    (e) => e.type,
-                  ),
-              )
-              .catch(() => [] as string[]),
-          { timeout: 5_000 },
-        )
-        .toContain('pointerdown');
-      await touch('touchEnd', chevron.x, chevron.y);
+      // Keep the genuine touchStart/touchEnd in one native tap transaction.
+      // A page polling round-trip between them can exceed the 3D pointer
+      // library's 300ms click threshold under runner load. The scroll outcome
+      // below still proves that the actual chevron handler ran.
+      await page.touchscreen.tap(chevron.x, chevron.y);
       await expect
         .poll(async () => (await readScroll(page)).y, { timeout: 10_000 })
         .toBeGreaterThan(0);

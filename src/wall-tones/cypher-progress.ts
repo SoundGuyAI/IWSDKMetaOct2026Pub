@@ -49,8 +49,8 @@ function browserStorage(): StoryStorage | undefined {
 }
 
 /** Remember the next window across runs and page visits, independently of streak.
- * Completed lines are saved individually. An interrupted line can replay, but
- * finished lines do not. Skip pauses the window until the next safe boundary.
+ * Started lines are saved individually, including when the player skips them.
+ * Unstarted lines resume at the next safe boundary.
  * Restricted storage falls back to in-memory progress without blocking play.
  */
 export class CypherProgress {
@@ -96,6 +96,7 @@ export class CypherProgress {
     if (window) { this.active = { index: this.next - 1, offset: 0 }; this.save(); }
     return window;
   }
+  /** Called at playback/caption start, not at its end. Kept for save/API compatibility. */
   lineCompleted(): void {
     if (!this.active) return;
     this.active.offset += 1;
@@ -105,5 +106,10 @@ export class CypherProgress {
   /** Explicit story reset only. Starting a run or leaving the game never calls it. */
   reset(): void { this.next = 0; this.active = undefined; this.save(); }
   get finished(): boolean { return this.next >= CYPHER_WINDOWS.length && !this.active; }
+  /** Actual fully spoken/consumed windows, excluding an in-flight window. */
+  get completedWindowIds(): readonly string[] {
+    const end = this.active?.index ?? this.next;
+    return CYPHER_WINDOWS.slice(0, end).map(window => window.id);
+  }
   get completedWindows(): number { return this.next; }
 }
