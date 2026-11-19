@@ -4945,14 +4945,19 @@ const explainBars = this.barsFirstEarnedPending;
 this.barsFirstEarnedPending = false;
 this.showAchievementToasts();
 this.renderPanel();
+// A skipped praise segment must not cancel the independent story opportunity.
+// Run identity still invalidates this callback on exit/re-entry or a new run.
+const completedRunId = this.game.runId;
 this.playbackQueue = this.playbackQueue.then(async () => {
+const runIntact = () => this.experienceActive && this.flowPhase === 'playing' &&
+this.game.runId === completedRunId && this.game.phase !== 'resetting';
+if (!runIntact()) return;
 const narrMark = this.narrationInterrupt;
 const narrIntact = () =>
-this.experienceActive && this.flowPhase === 'playing' &&
-narrMark === this.narrationInterrupt;
+runIntact() && narrMark === this.narrationInterrupt;
 if (increasedRecord) {
 await this.speech.speakAsync(randomNewBestClip(previousBest === 0));
-if (!this.experienceActive || this.flowPhase !== 'playing') return;
+if (!runIntact()) return;
 }
 if (streak > 0 && streak % 5 === 0) {
 if (narrIntact()) await this.speech.speakAsync(milestoneClipFor(streak));
@@ -4964,7 +4969,7 @@ await this.wait(0.35);
 if (increasedRecord && narrIntact()) await this.speech.speakAsync(randomCheerClip());
 await this.wait(BETWEEN_ROUNDS_DELAY_S);
 }
-if (explainBars && this.experienceActive && this.flowPhase === 'playing') {
+if (explainBars && runIntact()) {
 await this.speech.speakAsync('barsFirstEarn');
 }
 // Backlog item 109 (wording approved by the owner 2026-11-17): one-time
@@ -4983,25 +4988,29 @@ narrIntact() &&
 ) {
 await this.speech.speakAsync('palmProjector');
 }
-if (!this.experienceActive || this.flowPhase !== 'playing') {
+if (!runIntact()) {
 return;
 }
-if (narrIntact()) {
+// Skip only cancels the segment in which it happened. Capture a fresh
+// marker so praise Skip cannot swallow a story line that has not started.
+const storyMark = this.narrationInterrupt;
+const storyIntact = () => runIntact() && storyMark === this.narrationInterrupt;
+if (storyIntact()) {
 const window = this.cypherProgress.beginWindow(streak);
-if (window) await this.playCypherWindow(window, narrIntact);
+if (window) await this.playCypherWindow(window, storyIntact);
 else {
-// Skip/interrupt leaves the line unheard (lineCompleted is not reached), so it retries at the next quiet pattern boundary.
+// Count each story line when playback starts. Skipping the radio effect
+// before a line starts must still leave that line unheard.
 const line = this.backgroundProgress.successfulPattern(this.cypherProgress.finished, !this.speech.isBusy());
-if (line && narrIntact()) {
+if (line && storyIntact()) {
 const cast = captureCypherCast(getVoiceGender());
 await this.speech.speakBackgroundEffect(this.backgroundProgress.completedLines % 3 === 2 ? 'squawk' : 'open');
-if (narrIntact()) await this.speech.speakBackgroundLine(line.id, cast);
-if (narrIntact()) this.backgroundProgress.lineCompleted();
-if (narrIntact()) await this.speech.speakBackgroundEffect('close');
+if (storyIntact()) await this.speech.speakBackgroundLine(line.id, cast, () => this.backgroundProgress.lineCompleted());
+if (storyIntact()) await this.speech.speakBackgroundEffect('close');
 }
 }
 }
-if (!this.experienceActive || this.flowPhase !== 'playing') return;
+if (!runIntact()) return;
 await this.playSequence();
 });
 }
@@ -5034,8 +5043,7 @@ await this.speech.speakStoryEffect(['next-window', 'your-machine', 'next-lock', 
 if (window.seam === 'open' && intact()) this.setCypherSeam(true);
 for (const id of window.lines) {
 if (!intact()) break;
-await this.speech.speakStoryLine(id, cast);
-if (intact()) this.cypherProgress.lineCompleted();
+await this.speech.speakStoryLine(id, cast, () => this.cypherProgress.lineCompleted());
 }
 if (window.speaker === 'cypher' && intact()) await this.speech.speakStoryEffect('close');
 if (!intact()) this.setCypherSeam(false);

@@ -172,7 +172,9 @@ test('background review proposal: afterAct1, every second completed pattern, cap
   }
   await expect.poll(()=>requests.some(url=>url.endsWith('/female/r01.mp3'))).toBe(true);
   await expect.poll(()=>page.evaluate(()=> (window as any).__wallTonesDebug.backgroundLinesCompleted)).toBe(1);
-  expect(requests.some(url=>url.endsWith('/effects/close.mp3'))).toBe(true);
+  // Progress is now saved at line start, before its closing effect.
+  // Keep checking the close cue, but wait for playback to reach it.
+  await expect.poll(()=>requests.some(url=>url.endsWith('/effects/close.mp3'))).toBe(true);
   expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('wall-tones-cypher-background-progress-v1')!).next)).toBe(1);
   await page.screenshot({path:test.info().outputPath('background-female-gameplay.png')});
 });
