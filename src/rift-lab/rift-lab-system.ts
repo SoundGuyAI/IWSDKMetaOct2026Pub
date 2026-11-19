@@ -1023,6 +1023,14 @@ export class RiftLabSystem extends createSystem({
     return true;
   }
 
+  /** Same predicate as WallTonesSystem.isPhoneFlatViewport. */
+  private isPhoneFlatViewport(): boolean {
+    if (typeof window === 'undefined') return false;
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    return width <= 480 || (height <= 480 && width <= 950);
+  }
+
   /** Flat keep-out rects a rift must never slide under. During the
    * gameplay encounter the live Wall Tones HUD is the panel that can cover
    * a portal (his Nov 19 playtest note: rifts rendering behind the panel);
@@ -1030,7 +1038,13 @@ export class RiftLabSystem extends createSystem({
    * keep-out even while the Lab panel itself is hidden. */
   private flatKeepOutRects(): Vector4[] {
     const rects: Vector4[] = [];
-    if (this.encounterLive) {
+    // Phone flat portrait: the HUD rides close and high (PHONE_PANEL_FLAT),
+    // so its projected rect spans the whole portrait screen and keeping
+    // rifts out of it leaves NO legal spawn spot (his Nov 20 report: seam
+    // line played, no portals on iPhone). The portrait right-half rule and
+    // the bottom-left orb bias already keep rifts visually clear of the
+    // phone HUD, so the HUD keep-out is desktop-only.
+    if (this.encounterLive && !this.isPhoneFlatViewport()) {
       const hudRect = new Vector4();
       if (this.panelNdcRect(hudRect, this.world.getSceneObject('wall-tones-panel'))) {
         rects.push(hudRect);
