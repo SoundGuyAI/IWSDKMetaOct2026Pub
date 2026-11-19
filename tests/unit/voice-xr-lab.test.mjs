@@ -16,6 +16,8 @@ const {
   interpretScores,
   parseAnswerWord,
   DEFAULT_ACCEPT_THRESHOLD,
+  CLEAR_WIN_FLOOR,
+  CLEAR_WIN_RATIO,
   VOICE_LISTEN_SEC,
   ANSWER_WORDS,
 } = receiver;
@@ -34,12 +36,35 @@ test('any other accepted word is noise, not an answer', () => {
   assert.deepEqual(heard, { kind: 'noise', word: 'up', score: 0.9 });
 });
 
-test('a top word below the threshold is faint, never an answer', () => {
-  const heard = interpretScores(LABELS, [0.5, 0.2, 0.1, 0.1, 0.05, 0.05]);
+test('a top word below the threshold without a clear win is faint, never an answer', () => {
+  const heard = interpretScores(LABELS, [0.5, 0.3, 0.1, 0.05, 0.03, 0.02]);
   assert.equal(heard.kind, 'faint');
   assert.equal(heard.word, 'yes');
   assert.equal(heard.score, 0.5);
   assert.ok(heard.score < DEFAULT_ACCEPT_THRESHOLD);
+});
+
+test('an accented yes/no below the threshold answers when it is the clear winner', () => {
+  // Owner's Nov 19 live test: his "no" reacted but never answered.
+  const no = interpretScores(LABELS, [0.05, 0.62, 0.18, 0.05, 0.05, 0.05]);
+  assert.deepEqual(no, { kind: 'answer', answer: 'no', score: 0.62 });
+  const yes = interpretScores(LABELS, [0.55, 0.02, 0.2, 0.1, 0.08, 0.05]);
+  assert.deepEqual(yes, { kind: 'answer', answer: 'yes', score: 0.55 });
+});
+
+test('the clear-winner fallback rejects close rivals and weak winners', () => {
+  // Rival word too close: 0.55 vs 0.4 is under the 2x ratio.
+  assert.equal(interpretScores(LABELS, [0.0, 0.55, 0.4, 0.02, 0.02, 0.01]).kind, 'faint');
+  // The other answer word is a rival too.
+  assert.equal(interpretScores(LABELS, [0.4, 0.6, 0.0, 0.0, 0.0, 0.0]).kind, 'faint');
+  // Under the floor, even with no rival.
+  assert.equal(interpretScores(LABELS, [0.0, CLEAR_WIN_FLOOR - 0.01, 0.1, 0.1, 0.1, 0.1]).kind, 'faint');
+  // An above-threshold non-answer word still wins as noise, never overridden.
+  assert.deepEqual(
+    interpretScores(LABELS, [0.05, 0.6, 0.85, 0.0, 0.0, 0.0]),
+    { kind: 'noise', word: 'up', score: 0.85 },
+  );
+  assert.ok(CLEAR_WIN_RATIO >= 2);
 });
 
 test('malformed model output is faint, never throws', () => {
@@ -55,6 +80,15 @@ test('parseAnswerWord normalizes case and punctuation, rejects other words', () 
   assert.equal(parseAnswerWord('maybe'), null);
   assert.equal(parseAnswerWord('yes no'), null);
   assert.equal(parseAnswerWord(''), null);
+});
+
+test('parseAnswerWord accepts natural single-word yes/no variants', () => {
+  assert.equal(parseAnswerWord('nope'), 'no');
+  assert.equal(parseAnswerWord('Nah.'), 'no');
+  assert.equal(parseAnswerWord('yeah'), 'yes');
+  assert.equal(parseAnswerWord('yep!'), 'yes');
+  assert.equal(parseAnswerWord('YUP'), 'yes');
+  assert.equal(parseAnswerWord('nope no'), null);
 });
 
 test('the listen window matches the requested 12 seconds', () => {

@@ -4,7 +4,9 @@ Isolated test scene for spoken yes/no input (requested 2026-11-18). Entry:
 main menu > "Voice Yes/No Lab". Same branching Cypher dialogue as the nod
 and thumbs labs, but the answer channel is the player's voice: an on-device
 speech-commands model classifies what it hears, and a clear "yes" or "no"
-above the accept threshold (0.8) answers the prompt.
+answers the prompt - outright at score >= 0.8, or as the clear winner at
+>= 0.5 when it beats every other class by at least 2x (accent/headset
+fallback, added Nov 19 after Oded's live "no" went unheard).
 
 This is a research scene. It exists to find out how well spoken single-word
 answers work as input on the real headset, not to claim a finished input
@@ -27,9 +29,11 @@ first.
   model URLs, sequential vendored script injection). Everything runs
   on-device; no audio leaves the headset.
 - While a prompt awaits an answer, the receiver streams scores. A "yes" or
-  "no" at score >= 0.8 submits that answer. Any other recognized word above
-  the threshold, or a below-threshold yes/no, counts as noise and is shown
-  in the panel telemetry without answering.
+  "no" at score >= 0.8 submits that answer. Under 0.8 a yes/no still
+  submits when it is the clear winner: >= 0.5 and at least 2x every other
+  class, including the other answer word. Any other recognized word above
+  the threshold, or a yes/no without a clear win, counts as noise and is
+  shown in the panel telemetry without answering.
 - Listening runs in 12-second windows, the same shape as the nod lab's
   timed listen. When a window ends with no clear yes/no, Cypher speaks one
   of four rotating "only noise came through" lines and re-arms. The window
@@ -55,8 +59,9 @@ off (accessibility) forces text-only mode as in the other labs.
 - TypeScript, production build, unit tests, e2e suite (flat Chromium):
   menu row wiring, full dialogue tree across both branches and the intro
   retry loop, answer echo order, classifier unit behavior (yes/no above
-  threshold answers, other accepted words count as noise, below-threshold
-  words count as faint), receiver state transitions with no microphone
+  threshold answers, a clear-winner yes/no under the threshold answers,
+  other accepted words count as noise, weak or contested words count as
+  faint), receiver state transitions with no microphone
   (model loads, listen reports mic-unavailable, buttons/keys still drive
   the dialogue), noise-line rotation on expired listen windows.
 

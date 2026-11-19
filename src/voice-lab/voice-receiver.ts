@@ -28,12 +28,25 @@ export type HeardWord =
 
 export const DEFAULT_ACCEPT_THRESHOLD = 0.8;
 
+/**
+ * Accent/headset fallback (owner, Nov 19 live test: his spoken "no" did
+ * something but was never accepted - the model heard it under the full
+ * threshold). A yes/no below DEFAULT_ACCEPT_THRESHOLD still answers when
+ * it is the unambiguous winner: at least this floor and at least
+ * CLEAR_WIN_RATIO times every other class, including the other answer
+ * word. The lab fiction asks for one clear word, not one loud word.
+ */
+export const CLEAR_WIN_FLOOR = 0.5;
+export const CLEAR_WIN_RATIO = 2;
+
 /** The lab listens this long for one clear word before calling it noise. */
 export const VOICE_LISTEN_SEC = 12;
 
 /**
- * Interpret one model result. Only a top class at or above the threshold
- * counts; yes/no answer the prompt, any other accepted word is noise.
+ * Interpret one model result. A top class at or above the threshold
+ * counts outright; yes/no answer the prompt, any other accepted word is
+ * noise. Below the threshold a yes/no still answers when it clearly beats
+ * every other class; anything weaker is faint.
  */
 export function interpretScores(
   labels: readonly string[],
@@ -50,19 +63,64 @@ export function interpretScores(
   const index = scores.indexOf(Math.max(...scores));
   const word = labels[index];
   const score = scores[index];
-  if (score < threshold) {
-    return { kind: 'faint', word, score };
+  if (score >= threshold) {
+    if (word === 'yes' || word === 'no') {
+      return { kind: 'answer', answer: word, score };
+    }
+    return { kind: 'noise', word, score };
   }
-  if (word === 'yes' || word === 'no') {
-    return { kind: 'answer', answer: word, score };
+  const clearWin = clearWinningAnswer(labels, scores);
+  if (clearWin != null) {
+    return clearWin;
   }
-  return { kind: 'noise', word, score };
+  return { kind: 'faint', word, score };
 }
+
+/**
+ * The stronger of the two answer words when it clears CLEAR_WIN_FLOOR and
+ * beats every other class by CLEAR_WIN_RATIO; null otherwise. Only runs
+ * on below-threshold results, so it can never override an accepted word.
+ */
+function clearWinningAnswer(
+  labels: readonly string[],
+  scores: readonly number[],
+): HeardWord | null {
+  let answer: YesNoAnswer | null = null;
+  let answerIndex = -1;
+  let answerScore = 0;
+  for (const word of ANSWER_WORDS) {
+    const i = labels.indexOf(word);
+    if (i >= 0 && scores[i] > answerScore) {
+      answer = word as YesNoAnswer;
+      answerIndex = i;
+      answerScore = scores[i];
+    }
+  }
+  if (answer == null || answerScore < CLEAR_WIN_FLOOR) {
+    return null;
+  }
+  for (let i = 0; i < scores.length; i += 1) {
+    if (i !== answerIndex && scores[i] * CLEAR_WIN_RATIO > answerScore) {
+      return null;
+    }
+  }
+  return { kind: 'answer', answer, score: answerScore };
+}
+
+/** Single-word natural variants that still mean yes/no (owner, Nov 19). */
+const YES_VARIANTS: readonly string[] = ['yes', 'yeah', 'yep', 'yup'];
+const NO_VARIANTS: readonly string[] = ['no', 'nope', 'nah'];
 
 /** Normalize a free-text word (browser-speech path or test feeds). */
 export function parseAnswerWord(text: string): YesNoAnswer | null {
   const word = String(text).toLowerCase().trim().replace(/[.!?,]+$/u, '');
-  return word === 'yes' || word === 'no' ? word : null;
+  if (YES_VARIANTS.includes(word)) {
+    return 'yes';
+  }
+  if (NO_VARIANTS.includes(word)) {
+    return 'no';
+  }
+  return null;
 }
 
 /** Minimal vendored-global surface loaded from public/voice-lab/vendor/. */

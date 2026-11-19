@@ -187,7 +187,7 @@ test('intro no loops through the retry line until a yes', async ({ page }) => {
   await waitPhase(page, 'listening', 'q2');
 });
 
-test('fed model results: clear yes answers, other words count as noise', async ({ page }) => {
+test('fed model results: clear yes answers, clear-winner no answers, other words count as noise', async ({ page }) => {
   await enterVoiceLab(page);
   await waitPhase(page, 'idle');
   await page.evaluate(() =>
@@ -201,17 +201,24 @@ test('fed model results: clear yes answers, other words count as noise', async (
   expect(snapshot?.lastWord).toBe('left');
   expect(snapshot?.noiseCount).toBe(1);
   expect(snapshot?.answerCount).toBe(0);
-  // Faint: a yes below the threshold does not answer either.
-  await feed(page, 'yes', 0.5);
+  // Faint: a yes under the clear-winner floor does not answer either.
+  await feed(page, 'yes', 0.45);
   snapshot = await debugOf(page);
   expect(snapshot?.phase).toBe('listening');
   expect(snapshot?.answerCount).toBe(0);
+  // Clear winner under the threshold: an accented no still answers
+  // (owner's Nov 19 live-test miss).
+  await feed(page, 'no', 0.65);
+  await waitPhase(page, 'listening', 'retry');
+  snapshot = await debugOf(page);
+  expect(snapshot?.lastAnswer).toBe('no');
+  expect(snapshot?.answerCount).toBe(1);
   // Clear yes answers.
   await feed(page, 'yes', 0.95);
   await waitPhase(page, 'listening', 'q2');
   snapshot = await debugOf(page);
   expect(snapshot?.lastAnswer).toBe('yes');
-  expect(snapshot?.answerCount).toBe(1);
+  expect(snapshot?.answerCount).toBe(2);
 });
 
 test('keyboard fallback answers work in flat mode (Y/N keys)', async ({ page }) => {
