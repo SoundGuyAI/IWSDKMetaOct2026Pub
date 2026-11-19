@@ -48,7 +48,7 @@ const PAD_XY: Array<[number, number]> = [
 ];
 const MENU = {
   start: [640, 339],
-  settings: [640, 475],
+  settings: [860, 434],
   female: [640, 371],
   back: [640, 500],
 } as const;

@@ -135,7 +135,7 @@ test('real mouse press on the row label toggles the setting (1280x720)', async (
 
   // Coordinates measured from a screenshot of this build: Settings button,
   // Accessibility button, then the subtitles row LABEL (not the checkbox).
-  const SETTINGS: [number, number] = [640, 475];
+  const SETTINGS: [number, number] = [860, 434];
   const ACCESSIBILITY: [number, number] = [640, 428];
   const ROW_LABEL: [number, number] = [560, 281];
 
