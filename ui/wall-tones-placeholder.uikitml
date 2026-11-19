@@ -353,6 +353,10 @@
     <ButtonIcon><SkipForward></SkipForward></ButtonIcon>
     <ButtonLabel>Skip voice</ButtonLabel>
   </Button>
+  <Button id="skip-pattern-button" class="button" style="display: none">
+    <ButtonIcon><SkipForward></SkipForward></ButtonIcon>
+    <ButtonLabel>Skip pattern</ButtonLabel>
+  </Button>
   <Button id="back-to-menu-button" class="button button-last">
     <ButtonIcon><ArrowLeft></ArrowLeft></ButtonIcon>
     <ButtonLabel>Back to main menu</ButtonLabel>
