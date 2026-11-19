@@ -116,6 +116,7 @@ export interface VoiceLabDebugSnapshot {
   answerCount: number;
   cueCount: number;
   clipPlays: Record<string, number>;
+  skipVisible: boolean;
 }
 
 declare global {
@@ -125,6 +126,8 @@ declare global {
       enter: () => void;
       start: () => void;
       answer: (answer: YesNoAnswer) => void;
+      /** Cut the spoken line short, as the panel's Skip Voice button. */
+      skip: () => void;
       /**
        * Simulate one model frame, e.g. feed('yes', 0.95). Optional rival
        * class + score simulates background noise, e.g.
@@ -171,6 +174,7 @@ export class VoiceLabSystem extends createSystem({}) {
   private heardText: UIKit.Text | null = null;
   private voiceText: UIKit.Text | null = null;
   private startLabel: UIKit.Text | null = null;
+  private skipButton: UIKit.Container | null = null;
   private active = false;
   private sequence = 0;
 
@@ -187,6 +191,8 @@ export class VoiceLabSystem extends createSystem({}) {
     this.heardText = panel.getElementById<UIKit.Text>('voice-lab-heard');
     this.voiceText = panel.getElementById<UIKit.Text>('voice-lab-voice');
     this.startLabel = panel.getElementById<UIKit.Text>('voice-lab-start-label');
+    this.skipButton =
+      panel.getElementById<UIKit.Container>('voice-lab-skip-button');
 
     panel.getElementById('voice-lab-start-button')?.addEventListener('click', () => {
       unlockSpeechFromGesture();
@@ -201,6 +207,9 @@ export class VoiceLabSystem extends createSystem({}) {
     panel
       .getElementById('voice-lab-repeat-button')
       ?.addEventListener('click', () => void this.repeatLine());
+    panel
+      .getElementById('voice-lab-skip-button')
+      ?.addEventListener('click', () => this.skipVoice());
     // The Back button is bound by AppModeSystem, which owns the mode flip
     // back to 'lab'; the resulting mode event deactivates this lab.
 
@@ -238,6 +247,7 @@ export class VoiceLabSystem extends createSystem({}) {
       enter: () => this.setActive(true),
       start: () => void this.startRun(),
       answer: (answer) => this.submitAnswer(answer),
+      skip: () => this.skipVoice(),
       feed: (word, score, rivalWord, rivalScore) =>
         this.handleFeed(word, score, rivalWord, rivalScore),
     };
@@ -427,19 +437,22 @@ export class VoiceLabSystem extends createSystem({}) {
       this.bestWord = live.word;
       this.bestScore = live.score;
     }
-    this.lastWord =
-      heard.kind === 'answer' ? heard.answer : heard.word;
+    this.lastWord = heard.kind === 'answer' ? heard.answer : heard.word;
     this.lastScore = heard.score;
     if (heard.kind === 'answer') {
       this.submitAnswer(heard.answer);
       return;
     }
-    // A clear word that is not yes/no, or a faint match: noise at her end.
-    // It shows on the telemetry and feeds the noise count; the listen
-    // window keeps running.
-    this.noiseCount += 1;
-    this.listeningIdleMs = 0;
-    this.lastIdleTickAt = performance.now();
+    // Only a yes/no attempt counts: a faint yes or no feeds the noise
+    // count and keeps the listen window open. Any other word - a "go"
+    // heard for a "no", a command, unknown speech - is ignored at her
+    // end (owner, Nov 19): not an answer, not an attempt, and it does
+    // not extend the window. The Heard line still shows it.
+    if (heard.word === 'yes' || heard.word === 'no') {
+      this.noiseCount += 1;
+      this.listeningIdleMs = 0;
+      this.lastIdleTickAt = performance.now();
+    }
     this.renderPanel();
   }
 
@@ -451,6 +464,21 @@ export class VoiceLabSystem extends createSystem({}) {
       return;
     }
     await this.playPrompt(this.currentPrompt.id, false);
+  }
+
+  /**
+   * Skip Voice (owner, Nov 19): while Cypher is talking, cut the current
+   * line short and move on - the dialogue continues exactly as if the
+   * line had finished.
+   */
+  private skipVoice(): void {
+    if (
+      !this.active ||
+      (this.phase !== 'speaking' && this.phase !== 'responding')
+    ) {
+      return;
+    }
+    this.voice.skip();
   }
 
   private submitAnswer(answer: YesNoAnswer): void {
@@ -578,6 +606,12 @@ export class VoiceLabSystem extends createSystem({}) {
     this.startLabel?.setProperties({
       text: this.phase === 'done' ? 'Run link check again' : 'Open the link',
     });
+    this.skipButton?.setProperties({
+      display:
+        this.phase === 'speaking' || this.phase === 'responding'
+          ? 'flex'
+          : 'none',
+    } as never);
   }
 
   /** Friendly label: the model's internal classes read as plain words. */
@@ -640,6 +674,7 @@ export class VoiceLabSystem extends createSystem({}) {
       answerCount: this.answerCount,
       cueCount: this.cueCount,
       clipPlays: { ...this.clipPlays },
+      skipVisible: this.phase === 'speaking' || this.phase === 'responding',
     };
   }
 }

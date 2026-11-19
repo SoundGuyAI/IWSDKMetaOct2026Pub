@@ -61,10 +61,14 @@ test('an accented yes/no below the threshold answers when it is the clear winner
   assert.deepEqual(yes, { kind: 'answer', answer: 'yes', score: 0.55 });
 });
 
-test('the clear-winner fallback rejects close rivals and weak winners', () => {
-  // Rival word too close: 0.55 vs 0.4 is under the 2x ratio.
-  assert.equal(interpretScores(LABELS, [0.0, 0.55, 0.4, 0.02, 0.02, 0.01]).kind, 'faint');
-  // The other answer word is a rival too.
+test('the clear-winner fallback weighs only the other answer word', () => {
+  // Non-answer words neither win nor veto (owner, Nov 19: a "go" must
+  // never be mistaken for a "no"): no 0.55 answers even with up at 0.4.
+  assert.deepEqual(
+    interpretScores(LABELS, [0.0, 0.55, 0.4, 0.02, 0.02, 0.01]),
+    { kind: 'answer', answer: 'no', score: 0.55 },
+  );
+  // The other answer word is a rival: yes 0.4 vs no 0.6 is under the 2x ratio.
   assert.equal(interpretScores(LABELS, [0.4, 0.6, 0.0, 0.0, 0.0, 0.0]).kind, 'faint');
   // Under the floor, even with no rival.
   assert.equal(interpretScores(LABELS, [0.0, CLEAR_WIN_FLOOR - 0.01, 0.1, 0.1, 0.1, 0.1]).kind, 'faint');
@@ -83,9 +87,34 @@ test('background noise never vetoes a clear winner (iPhone room floor)', () => {
   // rival word.
   const no = interpretScores(MIC_LABELS, [0.05, 0.56, 0.1, 0.05, 0.05, 0.04, 0.4, 0.05]);
   assert.deepEqual(no, { kind: 'answer', answer: 'no', score: 0.56 });
-  // _unknown_ (real speech the model does not know) still vetoes.
+  // _unknown_ no longer vetoes either: only the other answer word counts.
   const speech = interpretScores(MIC_LABELS, [0.05, 0.56, 0.1, 0.05, 0.05, 0.04, 0.1, 0.4]);
-  assert.equal(speech.kind, 'faint');
+  assert.deepEqual(speech, { kind: 'answer', answer: 'no', score: 0.56 });
+});
+
+test("only yes/no can answer: 'go' never counts and never blocks a real no", () => {
+  // Owner's Nov 19 iPhone frame: Heard "go (0.47) vs no (0.29)". A yes/no
+  // question accepts yes and no only, so this frame answers nothing...
+  const GO_LABELS = ['yes', 'no', 'go', 'up', 'down', 'left', 'right', BACKGROUND_NOISE_WORD, '_unknown_'];
+  const heard = interpretScores(GO_LABELS, [0.05, 0.29, 0.47, 0.02, 0.02, 0.02, 0.02, 0.1, 0.05]);
+  assert.equal(heard.kind, 'faint');
+  assert.equal(heard.word, 'go');
+  // ...a loud "go" is noise, not an answer...
+  assert.deepEqual(
+    interpretScores(GO_LABELS, [0.02, 0.05, 0.9, 0.01, 0.01, 0.01, 0.01, 0.05, 0.02]),
+    { kind: 'noise', word: 'go', score: 0.9 },
+  );
+  // ...and "go" scoring through the window does not veto the real "no"
+  // the model caught at moderate strength across two frames.
+  const window = new FrameWindow();
+  assert.equal(
+    window.push(GO_LABELS, [0.05, 0.42, 0.3, 0.02, 0.02, 0.02, 0.02, 0.1, 0.05]).kind,
+    'faint',
+  );
+  assert.deepEqual(
+    window.push(GO_LABELS, [0.05, 0.4, 0.35, 0.02, 0.02, 0.02, 0.02, 0.1, 0.05]),
+    { kind: 'answer', answer: 'no', score: 0.42 },
+  );
 });
 
 test('persistence vote: a word split across windows answers on repeat moderate scores', () => {
@@ -261,7 +290,7 @@ test('wiring: registry entry, menu row, mode, panel asset, scene nodes and regis
   assert.equal(host.split('world.registerSystem(VoiceLabSystem)').length - 1, 2);
   for (const id of ['voice-lab-status', 'voice-lab-line', 'voice-lab-telemetry', 'voice-lab-voice',
     'voice-lab-heard', 'voice-lab-start-button', 'voice-lab-yes-button', 'voice-lab-no-button',
-    'voice-lab-repeat-button', 'voice-lab-back-button']) {
+    'voice-lab-skip-button', 'voice-lab-repeat-button', 'voice-lab-back-button']) {
     assert.ok(panel.includes(`id="${id}"`), id);
   }
   for (const id of ['voice-lab-status', 'voice-lab-line', 'voice-lab-telemetry', 'voice-lab-voice',

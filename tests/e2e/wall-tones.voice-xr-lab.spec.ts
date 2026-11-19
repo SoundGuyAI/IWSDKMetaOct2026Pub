@@ -29,12 +29,14 @@ type Snapshot = {
   answerCount: number;
   cueCount: number;
   clipPlays: Record<string, number>;
+  skipVisible: boolean;
 };
 
 type DebugBridge = {
   snapshot: () => Snapshot;
   start: () => void;
   answer: (a: 'yes' | 'no') => void;
+  skip: () => void;
   feed: (word: string, score: number, rivalWord?: string, rivalScore?: number) => void;
 };
 
@@ -202,24 +204,32 @@ test('intro no loops through the retry line until a yes', async ({ page }) => {
   await waitPhase(page, 'listening', 'q2');
 });
 
-test('fed model results: clear yes answers, clear-winner no answers, other words count as noise', async ({ page }) => {
+test('fed model results: clear yes answers, clear-winner no answers, other words are ignored', async ({ page }) => {
   await enterVoiceLab(page);
   await waitPhase(page, 'idle');
   await page.evaluate(() =>
     (window as unknown as { __voiceLabDebug: DebugBridge }).__voiceLabDebug.start(),
   );
   await waitPhase(page, 'listening', 'intro');
-  // Noise: an accepted non-answer word shows in telemetry but does not answer.
+  // Ignored: a non-answer word shows on the Heard line but is not an
+  // attempt (owner, Nov 19: a "go" heard for a "no" must not count).
   await feed(page, 'left', 0.92);
   let snapshot = await debugOf(page);
   expect(snapshot?.phase).toBe('listening');
   expect(snapshot?.lastWord).toBe('left');
-  expect(snapshot?.noiseCount).toBe(1);
+  expect(snapshot?.noiseCount).toBe(0);
   expect(snapshot?.answerCount).toBe(0);
-  // Faint: a yes under the clear-winner floor does not answer either.
+  await feed(page, 'go', 0.47);
+  snapshot = await debugOf(page);
+  expect(snapshot?.lastWord).toBe('go');
+  expect(snapshot?.noiseCount).toBe(0);
+  expect(snapshot?.answerCount).toBe(0);
+  // Faint: a yes under the clear-winner floor does not answer, but it is a
+  // yes/no attempt, so it feeds the noise count.
   await feed(page, 'yes', 0.45);
   snapshot = await debugOf(page);
   expect(snapshot?.phase).toBe('listening');
+  expect(snapshot?.noiseCount).toBe(1);
   expect(snapshot?.answerCount).toBe(0);
   // Clear winner under the threshold: an accented no still answers
   // (owner's Nov 19 live-test miss).
@@ -271,6 +281,29 @@ test('iPhone misses: background noise does not veto, split-window words vote, He
   snapshot = await debugOf(page);
   expect(snapshot?.lastAnswer).toBe('yes');
   expect(snapshot?.answerCount).toBe(2);
+});
+
+test('Skip Voice cuts the current line short and the dialogue moves on', async ({ page }) => {
+  await enterVoiceLab(page);
+  await waitPhase(page, 'idle');
+  await page.evaluate(() =>
+    (window as unknown as { __voiceLabDebug: DebugBridge }).__voiceLabDebug.start(),
+  );
+  // Clip mode: the intro line is real audio, long enough to skip mid-line.
+  await waitPhase(page, 'speaking', 'intro');
+  let snapshot = await debugOf(page);
+  expect(snapshot?.skipVisible).toBe(true);
+  await page.evaluate(() =>
+    (window as unknown as { __voiceLabDebug: DebugBridge }).__voiceLabDebug.skip(),
+  );
+  await waitPhase(page, 'listening', 'intro');
+  snapshot = await debugOf(page);
+  expect(snapshot?.skipVisible).toBe(false);
+  // The dialogue still answers normally after a skip.
+  await answer(page, 'yes');
+  await waitPhase(page, 'listening', 'q2');
+  snapshot = await debugOf(page);
+  expect(snapshot?.lastAnswer).toBe('yes');
 });
 
 test('keyboard fallback answers work in flat mode (Y/N keys)', async ({ page }) => {

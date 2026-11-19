@@ -58,6 +58,7 @@ export class CypherLabVoice {
   private audio: HTMLAudioElement | null = null;
   private activeCaption: number | null = null;
   private playToken = 0;
+  private skipResolve: (() => void) | null = null;
 
   /** Probed once per lab open; drives the panel voice status line. */
   async status(): Promise<LabVoiceStatus> {
@@ -71,11 +72,23 @@ export class CypherLabVoice {
 
   cancel(): void {
     this.playToken += 1;
+    this.skipResolve = null;
     this.audio?.pause();
     if (this.activeCaption != null) {
       endSpokenCaption(this.activeCaption);
       this.activeCaption = null;
     }
+  }
+
+  /**
+   * Cut the in-flight line short: the pending speak() resolves now instead
+   * of at the clip's end or the caption's reading time, so the dialogue
+   * moves on exactly as if the line had finished. No-op between lines.
+   */
+  skip(): void {
+    const resolve = this.skipResolve;
+    this.skipResolve = null;
+    resolve?.();
   }
 
   /**
@@ -109,7 +122,15 @@ export class CypherLabVoice {
       ).__labLineReadingMs;
       const waitMs = override ?? labLineReadingMs(line.text);
       await new Promise<void>((resolve) => {
-        window.setTimeout(resolve, waitMs);
+        const timer = window.setTimeout(() => {
+          this.skipResolve = null;
+          resolve();
+        }, waitMs);
+        this.skipResolve = () => {
+          window.clearTimeout(timer);
+          this.skipResolve = null;
+          resolve();
+        };
       });
       if (token === this.playToken) {
         finish();
@@ -127,6 +148,7 @@ export class CypherLabVoice {
       const done = () => {
         audio.removeEventListener('ended', done);
         audio.removeEventListener('error', done);
+        this.skipResolve = null;
         if (token === this.playToken) {
           finish();
         }
@@ -136,6 +158,11 @@ export class CypherLabVoice {
       audio.addEventListener('error', done);
       // Never wedge the dialogue on a decode hiccup.
       window.setTimeout(done, 20000);
+      // Skip Voice resolves the line early, as if it had finished.
+      this.skipResolve = () => {
+        audio.pause();
+        done();
+      };
       void audio.play().catch(done);
     });
   }

@@ -33,17 +33,17 @@ export const DEFAULT_ACCEPT_THRESHOLD = 0.8;
  * something but was never accepted - the model heard it under the full
  * threshold). A yes/no below DEFAULT_ACCEPT_THRESHOLD still answers when
  * it is the unambiguous winner: at least this floor and at least
- * CLEAR_WIN_RATIO times every other class, including the other answer
- * word. The lab fiction asks for one clear word, not one loud word.
+ * CLEAR_WIN_RATIO times the other answer word. The lab fiction asks for
+ * one clear word, not one loud word.
  */
 export const CLEAR_WIN_FLOOR = 0.5;
 export const CLEAR_WIN_RATIO = 2;
 
 /**
  * The model's background-noise class. A real room keeps it scoring while a
- * word is being spoken (phone mic, AGC still ramping), so it must not veto
- * a clear winner: it is the channel floor, not a rival word. `_unknown_`
- * (real speech the model does not know) still vetoes.
+ * word is being spoken (phone mic, AGC still ramping). Like every other
+ * non-answer class it never answers and never vetoes; it is the channel
+ * floor, kept as a named constant for display names and tests.
  */
 export const BACKGROUND_NOISE_WORD = '_background_noise_';
 
@@ -52,10 +52,11 @@ export const BACKGROUND_NOISE_WORD = '_background_noise_';
  * iPhone retest: yes/no register but take 2-3 attempts). The model window
  * overlaps 50%, so a word caught across a window boundary shows a moderate
  * score in two adjacent frames instead of a strong score in one. When the
- * same answer word clears these relaxed bars in PERSIST_MIN_HITS of the
- * last PERSIST_FRAMES frames, it answers with its best score. Relaxed bars
- * stay strict enough that ordinary noise (which varies frame to frame)
- * cannot vote twice.
+ * same answer word clears these relaxed bars (the floor, and PERSIST_RATIO
+ * times the other answer word) in PERSIST_MIN_HITS of the last
+ * PERSIST_FRAMES frames, it answers with its best score. Relaxed bars stay
+ * strict enough that ordinary noise (which varies frame to frame) cannot
+ * vote twice.
  */
 export const PERSIST_FLOOR = 0.35;
 export const PERSIST_RATIO = 1.5;
@@ -69,7 +70,13 @@ export const VOICE_LISTEN_SEC = 12;
  * Interpret one model result. A top class at or above the threshold
  * counts outright; yes/no answer the prompt, any other accepted word is
  * noise. Below the threshold a yes/no still answers when it clearly beats
- * every other class; anything weaker is faint.
+ * the other answer word; anything weaker is faint.
+ *
+ * A yes/no question accepts yes and no only (owner, Nov 19 iPhone test:
+ * the model heard his "no" as "go (0.47) vs no (0.29)"). Non-answer
+ * classes - go, up, _unknown_, background noise - can never answer and
+ * never veto; they are noise at her end, not rivals. A frame won by
+ * another word decides nothing: it is not an attempt and casts no vote.
  */
 export function interpretScores(
   labels: readonly string[],
@@ -101,36 +108,44 @@ export function interpretScores(
 
 /**
  * The stronger of the two answer words when it clears CLEAR_WIN_FLOOR and
- * beats every other class by CLEAR_WIN_RATIO; null otherwise. Only runs
- * on below-threshold results, so it can never override an accepted word.
+ * beats the other answer word by CLEAR_WIN_RATIO; null otherwise. Only
+ * runs on below-threshold results, so it can never override an accepted
+ * word. Restricted to the yes/no pair on purpose (owner, Nov 19): other
+ * classes neither win nor veto, so a "go" can never be mistaken for a
+ * "no" and a real "no" heard partly as "go" still gets through.
  */
 function clearWinningAnswer(
   labels: readonly string[],
   scores: readonly number[],
 ): HeardWord | null {
-  let answer: YesNoAnswer | null = null;
-  let answerIndex = -1;
-  let answerScore = 0;
-  for (const word of ANSWER_WORDS) {
-    const i = labels.indexOf(word);
-    if (i >= 0 && scores[i] > answerScore) {
-      answer = word as YesNoAnswer;
-      answerIndex = i;
-      answerScore = scores[i];
-    }
-  }
-  if (answer == null || answerScore < CLEAR_WIN_FLOOR) {
+  const answer = strongestAnswer(labels, scores);
+  if (answer == null || answer.score < CLEAR_WIN_FLOOR) {
     return null;
   }
-  for (let i = 0; i < scores.length; i += 1) {
-    if (labels[i] === BACKGROUND_NOISE_WORD) {
-      continue;
-    }
-    if (i !== answerIndex && scores[i] * CLEAR_WIN_RATIO > answerScore) {
-      return null;
-    }
+  if (answer.rival * CLEAR_WIN_RATIO > answer.score) {
+    return null;
   }
-  return { kind: 'answer', answer, score: answerScore };
+  return { kind: 'answer', answer: answer.answer, score: answer.score };
+}
+
+/** The stronger answer word, its score and the other answer word's score. */
+function strongestAnswer(
+  labels: readonly string[],
+  scores: readonly number[],
+): { answer: YesNoAnswer; score: number; rival: number } | null {
+  if (labels.length === 0 || labels.length !== scores.length) {
+    return null;
+  }
+  const yes = labels.indexOf('yes');
+  const no = labels.indexOf('no');
+  const yesScore = yes >= 0 ? scores[yes] : 0;
+  const noScore = no >= 0 ? scores[no] : 0;
+  if (!Number.isFinite(yesScore) || !Number.isFinite(noScore)) {
+    return null;
+  }
+  return yesScore >= noScore
+    ? { answer: 'yes', score: yesScore, rival: noScore }
+    : { answer: 'no', score: noScore, rival: yesScore };
 }
 
 /** One raw model callback: the class labels and their scores. */
@@ -147,32 +162,14 @@ function persistentAnswer(
   labels: readonly string[],
   scores: readonly number[],
 ): YesNoAnswer | null {
-  if (labels.length === 0 || labels.length !== scores.length) {
+  const answer = strongestAnswer(labels, scores);
+  if (answer == null || answer.score < PERSIST_FLOOR) {
     return null;
   }
-  let answer: YesNoAnswer | null = null;
-  let answerIndex = -1;
-  let answerScore = 0;
-  for (const word of ANSWER_WORDS) {
-    const i = labels.indexOf(word);
-    if (i >= 0 && scores[i] > answerScore) {
-      answer = word as YesNoAnswer;
-      answerIndex = i;
-      answerScore = scores[i];
-    }
-  }
-  if (answer == null || answerScore < PERSIST_FLOOR) {
+  if (answer.rival * PERSIST_RATIO > answer.score) {
     return null;
   }
-  for (let i = 0; i < scores.length; i += 1) {
-    if (labels[i] === BACKGROUND_NOISE_WORD) {
-      continue;
-    }
-    if (i !== answerIndex && scores[i] * PERSIST_RATIO > answerScore) {
-      return null;
-    }
-  }
-  return answer;
+  return answer.answer;
 }
 
 /**
