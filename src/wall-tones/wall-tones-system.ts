@@ -497,11 +497,13 @@ private reminderPlatform(): 'flat' | 'phone' | 'mr' {
   return !this.isFlatView() ? 'mr' : /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 'phone' : 'flat';
 }
 private async speakReturnWelcome(): Promise<void> {
+  if (!this.speech.canSpeakNow() || (needsExplicitMobileSoundUnlock() && !isHtmlAudioPoolUnlocked())) return;
   if (!returnReminderSession().takeWelcome()) return;
   const mark = this.narrationInterrupt;
   await this.speech.speakReturnLine('N-R01');
   if (!this.experienceActive || mark !== this.narrationInterrupt) return;
-  await this.speech.speakReturnLine(returnCypherLine({completedWindowIds: this.cypherProgress.completedWindowIds, storyFinished: this.cypherProgress.finished}));
+  const cypherLine = returnCypherLine({completedWindowIds: this.cypherProgress.completedWindowIds, storyFinished: this.cypherProgress.finished});
+  if (cypherLine) await this.speech.speakReturnLine(cypherLine);
 }
 private showReminderPrompt(section: InstructionSection, visible: boolean): void {
   this.reminderPromptVisible = visible;
@@ -549,7 +551,8 @@ private startPromptSpoken = false;
 private speakEntryLines(): void {
 if (!this.welcomeSpoken) {
 this.welcomeSpoken = true;
-if (!returnReminderSession().returning) this.speech.speak('welcome');
+if (returnReminderSession().returning) void this.speakReturnWelcome();
+else this.speech.speak('welcome');
 }
 if (!this.chooseModeSpoken) {
 this.chooseModeSpoken = true;
@@ -1809,7 +1812,8 @@ this.speech.canSpeakNow() &&
 !(needsExplicitMobileSoundUnlock() && !isHtmlAudioPoolUnlocked());
 if (speechWillPlay) {
 this.welcomeSpoken = true;
-if (!returnReminderSession().returning) this.speech.speak('welcome', true);
+if (returnReminderSession().returning) void this.speakReturnWelcome();
+else this.speech.speak('welcome', true);
 // Same sentence the how-to-play clip opens with, so say it up front.
 this.speech.speak('pointAndPress');
 this.startPromptSpoken = true;
@@ -1837,6 +1841,7 @@ this.mediaUnlockApplied = true;
 primeWallTonesAudioFromGesture();
 unlockSpeechFromGesture();
 this.hideMobileSoundOverlay();
+if (returnReminderSession().returning) void this.speakReturnWelcome();
 if (speakLine) {
 this.speech.speak('soundReady');
 }

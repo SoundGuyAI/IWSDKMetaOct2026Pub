@@ -19,7 +19,7 @@ test('blocked storage never invents a return and does not block the game',()=>{
  const r=new ReturnReminderSession({getItem(){throw Error();},setItem(){throw Error();}});assert.equal(r.returning,false);assert.equal(new ReturnReminderSession(undefined).returning,false);
 });
 test('stage lines use completed windows and actual encounter state, never current streak',()=>{
- const base={completedWindowIds:[],storyFinished:false};assert.equal(returnCypherLine(base),'C-R01');assert.equal(returnCypherLine({...base,completedWindowIds:['connection']}),'C-R02');assert.equal(returnCypherLine({...base,completedWindowIds:['connection','codename']}),'C-R03');assert.equal(returnCypherLine({...base,rifts:'active'}),'C-R04');assert.equal(returnCypherLine({...base,rifts:'sealed'}),'C-R05');assert.equal(returnCypherLine({...base,storyFinished:true}),'C-R06');assert.equal(returnCypherLine({...base,storyFinished:true,rifts:'active'}),'C-R04');
+ const fresh={completedWindowIds:[],storyFinished:false};assert.equal(returnCypherLine(fresh),undefined);const base={...fresh,completedWindowIds:['connection']};assert.equal(returnCypherLine(base),'C-R02');assert.equal(returnCypherLine({...base,completedWindowIds:['connection']}),'C-R02');assert.equal(returnCypherLine({...base,completedWindowIds:['connection','codename']}),'C-R03');assert.equal(returnCypherLine({...base,rifts:'active'}),'C-R04');assert.equal(returnCypherLine({...base,rifts:'sealed'}),'C-R05');assert.equal(returnCypherLine({...base,storyFinished:true}),'C-R06');assert.equal(returnCypherLine({...base,storyFinished:true,rifts:'active'}),'C-R04');
 });
 test('context picks its own instructions with no section chooser',()=>{
  assert.equal(reminderTutorial('gameplay','mr'),'howToPlayMr');assert.equal(reminderTutorial('store','phone'),'storeIntro');assert.equal(reminderTutorial('achievements','phone'),'achvIntroIphone');assert.equal(reminderTutorial('achievements','flat'),'achvIntroPc');
@@ -27,4 +27,10 @@ test('context picks its own instructions with no section chooser',()=>{
 
 test('learning a context for the first time after reopening does not immediately add a reminder on the next same-session visit',()=>{
  const s=store();new ReturnReminderSession(s);const r=new ReturnReminderSession(s);assert.equal(r.takeOffer('store',false,true),false);assert.equal(r.takeOffer('store',true,true),false);assert.equal(new ReturnReminderSession(s).takeOffer('store',true,true),true);
+});
+
+test('all Cypher return stages stay silent before the actual introduction completes',()=>{
+ for(const extra of [{},{rifts:'active'},{rifts:'sealed'},{storyFinished:true},{completedWindowIds:['codename']}]){
+  assert.equal(returnCypherLine({completedWindowIds:[],storyFinished:false,...extra}),undefined);
+ }
 });

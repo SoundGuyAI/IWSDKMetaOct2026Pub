@@ -12,7 +12,10 @@ export interface ReturnStage {
 }
 
 /** One reminder matching saved state. Never infer encounter state from streak. */
-export function returnCypherLine(stage: ReturnStage): ReturnCypherLine {
+export function returnCypherLine(stage: ReturnStage): ReturnCypherLine | undefined {
+  // Returning is not an introduction. Only actual completed streak-5 story
+  // progress can unlock Cypher, including every later-stage reminder.
+  if (!stage.completedWindowIds.includes('connection')) return undefined;
   if (stage.rifts === 'active') return 'C-R04';
   if (stage.rifts === 'sealed') return stage.storyFinished ? 'C-R06' : 'C-R05';
   if (stage.storyFinished) return 'C-R06';
