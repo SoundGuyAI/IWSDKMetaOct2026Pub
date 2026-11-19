@@ -142,7 +142,7 @@ test('MR placement path hides scoring, Store and Achievements, then shows them d
   expect(Object.values(intro.displays)).toEqual(['flex', 'flex', 'flex', 'flex', 'flex']);
 });
 
-test('background review proposal: afterAct1, every second completed pattern, captured cast and saved completion', async ({page}) => {
+test('background story: from streak 8, every second completed pattern below 10, captured cast and saved completion', async ({page}) => {
   test.setTimeout(180_000);
   await page.addInitScript(() => {
     sessionStorage.setItem('iwsdk-experience-mode','walltones');
@@ -158,7 +158,9 @@ test('background review proposal: afterAct1, every second completed pattern, cap
   await page.waitForFunction(()=> (window as any).__wallTonesDebug?.flatAwaitingStart);
   await page.evaluate(()=> (window as any).__wallTonesDebug.skipSpeech());
   await page.evaluate(()=> (window as any).__wallTonesDebug.submitPad(0));
-  for(let round=0;round<2;round++) {
+  await page.waitForFunction(()=> (window as any).__wallTonesDebug?.phase==='input');
+  await page.evaluate(()=> (window as any).__wallTonesDebug.growSequenceTo(8)); // next completed pattern is streak 8
+  for(let round=0;round<2;round++) { // streak 8 is the first counted success, the line plays after streak 9
     await page.waitForFunction(()=> (window as any).__wallTonesDebug?.phase==='input');
     const sequence=await page.evaluate(()=> [...(window as any).__wallTonesDebug.sequence]);
     for(const index of sequence) {

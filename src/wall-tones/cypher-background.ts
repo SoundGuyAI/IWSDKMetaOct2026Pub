@@ -146,9 +146,15 @@ export const BACKGROUND_PROGRESS_KEY = 'wall-tones-cypher-background-progress-v1
 interface Storage { getItem(key: string): string | null; setItem(key: string, value: string): void; }
 function browserStorage(): Storage | undefined { try { return globalThis.localStorage; } catch { return undefined; } }
 
-/** Proposed: starts after Act1, every two successful patterns; failures do not
- * rewind the counter. Unstarted lines resume at the next safe boundary.
+/** Background story pacing, independent of the Act 1 gate windows (a pattern
+ * boundary that plays a gate window never reaches this class). Starts once the
+ * run streak reaches BACKGROUND_START_STREAK; below BACKGROUND_EVERY_PATTERN_STREAK
+ * a line plays every two successful patterns, from that streak on every pattern.
+ * Failures do not rewind the counter. Unstarted lines resume at the next safe boundary.
  * Position is browser-local and cleared with Settings stat reset. */
+export const BACKGROUND_START_STREAK = 8;
+export const BACKGROUND_EVERY_PATTERN_STREAK = 10;
+
 export class BackgroundProgress {
   private next = 0;
   private completed = 0;
@@ -167,15 +173,16 @@ export class BackgroundProgress {
     try { this.storage?.setItem(BACKGROUND_PROGRESS_KEY, JSON.stringify({version: 1, next: this.next, completed: this.completed, pending: this.pending})); } catch { /* in-memory fallback */ }
   }
   /**
-   * Called at each quiet completed-pattern boundary after Act 1. Before playback starts:
+   * Called at each completed-pattern boundary that did not play a gate window. Lines count at playback start:
    * `next` only moves in lineCompleted() at playback start, so while `pending` the same unheard line is returned at the
    * very next eligible boundary (every pattern, not every two patterns).
    * Voices off with no subtitles can still resolve the clips immediately and advance progress, same as Act 1.
    */
-  successfulPattern(act1Finished: boolean, narratorQuiet: boolean): typeof CYPHER_BACKGROUND[number] | undefined {
-    if (!act1Finished || this.next >= CYPHER_BACKGROUND.length) return undefined;
+  successfulPattern(streak: number, narratorQuiet: boolean): typeof CYPHER_BACKGROUND[number] | undefined {
+    if (streak < BACKGROUND_START_STREAK || this.next >= CYPHER_BACKGROUND.length) return undefined;
     this.completed = Math.min(2, this.completed + 1);
-    if (narratorQuiet && (this.pending || this.completed >= 2)) this.pending = true;
+    const needed = streak >= BACKGROUND_EVERY_PATTERN_STREAK ? 1 : 2;
+    if (narratorQuiet && (this.pending || this.completed >= needed)) this.pending = true;
     this.save();
     return narratorQuiet && this.pending ? CYPHER_BACKGROUND[this.next] : undefined;
   }
