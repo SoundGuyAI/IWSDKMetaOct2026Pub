@@ -10,12 +10,13 @@ const transpile = s => ts.transpileModule(s, { compilerOptions: { target: ts.Scr
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 const roundStart = source.indexOf('const completedRunId =', source.indexOf('private finishCompletedPattern'));
 const roundEnd = source.indexOf('\n});', roundStart) + 4;
-const round = new Function('streak', 'increasedRecord', 'previousBest', 'explainBars', 'randomNewBestClip', 'milestoneClipFor', 'randomCheerClip', 'BETWEEN_ROUNDS_DELAY_S', 'palmProjectorPromptDue', 'VisibilityState', 'armbandDisplayMode', 'captureCypherCast', 'getVoiceGender', transpile(source.slice(roundStart, roundEnd)));
+const round = new Function('streak', 'increasedRecord', 'previousBest', 'explainBars', 'randomNewBestClip', 'milestoneClipFor', 'randomCheerClip', 'BETWEEN_ROUNDS_DELAY_S', 'palmProjectorPromptDue', 'VisibilityState', 'armbandDisplayMode', 'captureCypherCast', 'getVoiceGender', 'riftEncounter', transpile(source.slice(roundStart, roundEnd)));
 const windowStart = source.indexOf('const cast = captureCypherCast(getVoiceGender());', source.indexOf('private async playCypherWindow'));
 const windowEnd = source.indexOf('\n}\n\n/** A small fictional', windowStart);
 const playWindow = new AsyncFunction('window', 'intact', 'captureCypherCast', 'getVoiceGender', transpile(source.slice(windowStart, windowEnd)));
 const progressSource = readFileSync(new URL('../../src/wall-tones/cypher-progress.ts', import.meta.url), 'utf8');
 const { CypherProgress } = await import('data:text/javascript;base64,' + Buffer.from(transpile(progressSource)).toString('base64'));
+const RIFT_STUB = { takePendingAck: () => null, storyGateActive: () => false };
 function harness({ next = 1, active = { index: 0, offset: 0 }, hook = () => {} } = {}) {
   const storage = new Map([['wall-tones-cypher-act1-progress-v1', JSON.stringify({ version: 1, next, active })]]);
   const events = [];
@@ -32,7 +33,7 @@ function harness({ next = 1, active = { index: 0, offset: 0 }, hook = () => {} }
     speakStoryLine: async (id, cast, started) => { started?.(); events.push(id); await hook(id, c); },
   };
   c.playCypherWindow = (w, intact) => playWindow.call(c, w, intact, () => ({}), () => 'female');
-  c.round = async (streak = 6, praise = true) => { round.call(c, streak, praise, 0, false, () => 'record', () => 'milestone', () => 'cheer', 0, () => false, { NonImmersive: 0 }, () => '', () => ({}), () => 'female'); await c.playbackQueue; };
+  c.round = async (streak = 6, praise = true) => { round.call(c, streak, praise, 0, false, () => 'record', () => 'milestone', () => 'cheer', 0, () => false, { NonImmersive: 0 }, () => '', () => ({}), () => 'female', RIFT_STUB); await c.playbackQueue; };
   return { c, events, saved: () => JSON.parse(storage.get('wall-tones-cypher-act1-progress-v1')) };
 }
 test('praise Skip cancels remaining praise but starts story at the same boundary', async () => {
