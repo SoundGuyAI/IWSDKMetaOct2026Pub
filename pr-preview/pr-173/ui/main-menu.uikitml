@@ -127,15 +127,15 @@
     <ButtonLabel id="mode-walltones-label" class="button-label" style="color: #141414">Start Wall Tones</ButtonLabel>
   </Button>
   <Button id="xr-button" class="xr-button" style="height: 70px; background-color: rgba(8, 16, 34, 0.85); border-width: 2px; border-color: rgba(140, 175, 255, 0.7); border-radius: 35px">
-    <ButtonIcon><RectangleGoggles></RectangleGoggles></ButtonIcon>
+    <ButtonIcon style="color: #eaf0ff"><RectangleGoggles></RectangleGoggles></ButtonIcon>
     <ButtonLabel id="xr-button-label" class="xr-button-label" style="color: #eaf0ff">Enter XR</ButtonLabel>
   </Button>
   <Button id="lab-entry-button" class="button" style="height: 64px; background-color: rgba(8, 16, 34, 0.85); border-width: 2px; border-color: rgba(140, 175, 255, 0.7); border-radius: 32px">
-    <ButtonIcon><FlaskConical></FlaskConical></ButtonIcon>
+    <ButtonIcon style="color: #eaf0ff"><FlaskConical></FlaskConical></ButtonIcon>
     <ButtonLabel id="lab-entry-label" class="button-label" style="color: #eaf0ff">Lab</ButtonLabel>
   </Button>
   <Button id="settings-button" class="button" style="height: 64px; margin-bottom: 10px; background-color: rgba(8, 16, 34, 0.85); border-width: 2px; border-color: rgba(140, 175, 255, 0.7); border-radius: 32px">
-    <ButtonIcon><Settings></Settings></ButtonIcon>
+    <ButtonIcon style="color: #eaf0ff"><Settings></Settings></ButtonIcon>
     <ButtonLabel id="settings-button-label" class="button-label" style="color: #eaf0ff">Settings</ButtonLabel>
   </Button>
   </div>

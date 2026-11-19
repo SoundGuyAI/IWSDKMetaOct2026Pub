@@ -417,4 +417,13 @@
       <div id="gameover-gesture-hint" class="status" style="display: none">Hold both thumbs up to retry - thumb down for a new run</div>
     </div>
   </div>
+  <div id="reminder-popup" class="popup-overlay" style="display: none">
+    <div class="popup-card" style="gap: 12px; padding: 16px">
+      <div id="reminder-question" class="body">Would you like a reminder of how to play?</div>
+      <div style="flex-direction: row; gap: 12px">
+        <Button id="reminder-yes" class="button"><ButtonLabel>Yes</ButtonLabel></Button>
+        <Button id="reminder-no" class="button"><ButtonLabel>No</ButtonLabel></Button>
+      </div>
+    </div>
+  </div>
 </Panel>
