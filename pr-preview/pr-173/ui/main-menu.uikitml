@@ -5,6 +5,10 @@
   .panel-root {
     flex-direction: column;
     width: 520px;
+    background-color: rgba(6, 12, 24, 0.55);
+    border-radius: 36px;
+    border-width: 2px;
+    border-color: rgba(120, 160, 255, 0.45);
   }
 
   .panel-content {
@@ -113,22 +117,28 @@
 </style>
 <Panel id="main-menu-root" class="panel-root">
   <div id="main-menu-content" class="panel-content">
-    <div id="main-menu-heading" class="heading">Wall Tones 2</div>
-    <div id="main-menu-eyebrow" class="eyebrow">TOO FAST TO WALL</div>
-    <div id="main-menu-body" class="body">Start on desktop, or Enter XR to jump straight into Wall Tones in your room.</div>
+    <div id="main-menu-heading" class="heading" style="display: none">Wall Tones 2</div>
+    <div id="main-menu-eyebrow" class="eyebrow" style="display: none">TOO FAST TO WALL</div>
+    <div id="main-menu-body" class="body" style="display: none">Start on desktop, or Enter XR to jump straight into Wall Tones in your room.</div>
   </div>
-  <Button id="mode-walltones-button" class="button" style="height: 64px">
+  <div id="main-menu-buttons" style="flex-direction: column">
+  <Button id="mode-walltones-button" class="button start-button" style="height: 64px; background-color: #ffd60a; border-radius: 32px">
     <ButtonIcon><LayoutGrid></LayoutGrid></ButtonIcon>
-    <ButtonLabel id="mode-walltones-label" class="button-label">Start Wall Tones</ButtonLabel>
+    <ButtonLabel id="mode-walltones-label" class="button-label" style="color: #141414">Start Wall Tones</ButtonLabel>
   </Button>
-  <Button id="xr-button" class="xr-button" style="height: 78px">
+  <Button id="xr-button" class="xr-button" style="height: 70px; background-color: rgba(8, 16, 34, 0.85); border-width: 2px; border-color: rgba(140, 175, 255, 0.7); border-radius: 35px">
     <ButtonIcon><RectangleGoggles></RectangleGoggles></ButtonIcon>
-    <ButtonLabel id="xr-button-label" class="xr-button-label">Enter XR</ButtonLabel>
+    <ButtonLabel id="xr-button-label" class="xr-button-label" style="color: #eaf0ff">Enter XR</ButtonLabel>
   </Button>
-  <Button id="settings-button" class="button" style="height: 64px; margin-bottom: 10px">
+  <Button id="lab-entry-button" class="button" style="height: 64px; background-color: rgba(8, 16, 34, 0.85); border-width: 2px; border-color: rgba(140, 175, 255, 0.7); border-radius: 32px">
+    <ButtonIcon><FlaskConical></FlaskConical></ButtonIcon>
+    <ButtonLabel id="lab-entry-label" class="button-label" style="color: #eaf0ff">Lab</ButtonLabel>
+  </Button>
+  <Button id="settings-button" class="button" style="height: 64px; margin-bottom: 10px; background-color: rgba(8, 16, 34, 0.85); border-width: 2px; border-color: rgba(140, 175, 255, 0.7); border-radius: 32px">
     <ButtonIcon><Settings></Settings></ButtonIcon>
-    <ButtonLabel id="settings-button-label" class="button-label">Settings</ButtonLabel>
+    <ButtonLabel id="settings-button-label" class="button-label" style="color: #eaf0ff">Settings</ButtonLabel>
   </Button>
+  </div>
   <div id="main-menu-credit" class="credit-label">A game by Oded Sharon,  Corbomite Games.</div>
   <div id="settings-dialog" class="settings-dialog" style="display: none">
     <div id="settings-eyebrow" class="eyebrow">SETTINGS</div>
