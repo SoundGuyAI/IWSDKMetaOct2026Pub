@@ -291,7 +291,9 @@ test.describe('Wall Tones polish: fade + skip voice', () => {
   }) => {
     test.slow();
     // Stall only the streak-5 milestone clip; every other clip plays normally.
+    let milestoneRequestedAt = 0;
     await page.route('**/audio/speech/**/milestone-5.mp3', async (route) => {
+      if (!milestoneRequestedAt) milestoneRequestedAt = Date.now();
       await new Promise((resolve) => setTimeout(resolve, 12_000));
       await route.continue();
     });
@@ -313,11 +315,29 @@ test.describe('Wall Tones polish: fade + skip voice', () => {
 
     // The milestone line starts; its fetch is now stalled for 12s. Skip it.
     await expect.poll(() => speechBusy(page), { timeout: 60_000 }).toBe(true);
-    await skipSpeech(page);
+    // Praise Skip now preserves the independent story segment. Prove the
+    // stalled promise released by observing that segment before skipping it
+    // too, so story duration cannot obscure the input-resume assertion.
+    // Both Skips are real mouse presses on the visible Skip Voice control,
+    // never the debug bridge.
+    const realSkip = async () => {
+      const button = page.locator('#wall-tones-skip-voice-flat');
+      await expect(button).toBeVisible({ timeout: 10_000 });
+      const box = (await button.boundingBox())!;
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.down();
+      await page.mouse.up();
+    };
+    const storyStarted = page.waitForRequest('**/audio/story/cypher/**/c01.mp3', { timeout: 5_000 });
+    await realSkip();
     expect(await speechBusy(page)).toBe(false);
+    await storyStarted;
+    await expect.poll(() => speechBusy(page)).toBe(true);
+    await realSkip();
 
-    // The round flow must not wait on the stalled fetch: the next pattern
-    // plays and input opens well before the 12s stall would elapse.
+    // Both segments skipped: input must resume promptly - the original strict
+    // 10s budget measured from the final Skip - and still land before the
+    // stalled 12s fetch would have released the milestone clip.
     await expect
       .poll(
         async () => {
@@ -327,5 +347,7 @@ test.describe('Wall Tones polish: fade + skip voice', () => {
         { timeout: 10_000 },
       )
       .toBe(true);
+    expect(milestoneRequestedAt).toBeGreaterThan(0);
+    expect(Date.now() - milestoneRequestedAt).toBeLessThan(12_000);
   });
 });

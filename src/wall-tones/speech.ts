@@ -383,7 +383,8 @@ export function resetSpeechUnlock(): void {
   speechUnlocked = !needsSpeechUnlock();
 }
 
-interface StorySpeechClip { readonly url: string; readonly text: string; }
+interface StorySpeechClip { readonly url: string; readonly text: string; readonly onStarted?: () => void; }
+function speechStarted(clip: SpeechClip): void { if (typeof clip !== 'string') clip.onStarted?.(); }
 type SpeechClip = WallTonesClipId | StorySpeechClip;
 function speechUrl(clip: SpeechClip): string { return typeof clip === 'string' ? clipUrl(clip) : clip.url; }
 function speechText(clip: SpeechClip): string { return typeof clip === 'string' ? CLIP_TRANSCRIPTS[clip] : clip.text; }
@@ -518,12 +519,12 @@ export class WallTonesSpeech {
   }
 
   /** Uses the existing speech queue, unlock, mute, captions and Skip lifecycle. */
-  speakStoryLine(id: CypherLineId, cast: Readonly<CypherCast> = captureCypherCast(getVoiceGender())): Promise<void> {
+  speakStoryLine(id: CypherLineId, cast: Readonly<CypherCast> = captureCypherCast(getVoiceGender()), onStarted?: () => void): Promise<void> {
     const line = findCypherLine(id);
     if (!line) return Promise.resolve();
     const gender = line.speaker === 'cypher' ? cast.cypher : cast.narrator;
     const url = new URL(`audio/story/${line.speaker}/${gender}/${id.toLowerCase()}.mp3`, document.baseURI).href;
-    return this.enqueueClip({ url, text: `${line.speaker === 'cypher' ? 'Cypher' : 'Narrator'}: ${line.text}` });
+    return this.enqueueClip({ url, onStarted, text: `${line.speaker === 'cypher' ? 'Cypher' : 'Narrator'}: ${line.text}` });
   }
 
   /** Approved return dialogue uses captured casting and the ordinary Skip/mute queue. */
@@ -554,10 +555,10 @@ export class WallTonesSpeech {
     });
   }
 
-  speakBackgroundLine(id: BackgroundLineId, cast: Readonly<CypherCast>): Promise<void> {
+  speakBackgroundLine(id: BackgroundLineId, cast: Readonly<CypherCast>, onStarted?: () => void): Promise<void> {
     const line = CYPHER_BACKGROUND.find(line => line.id === id);
     if (!line) return Promise.resolve();
-    return this.enqueueClip({ url: new URL(`audio/story/background/${cast.cypher}/${id.toLowerCase()}.mp3`, document.baseURI).href, text: `Cypher: ${line.text}` });
+    return this.enqueueClip({ onStarted, url: new URL(`audio/story/background/${cast.cypher}/${id.toLowerCase()}.mp3`, document.baseURI).href, text: `Cypher: ${line.text}` });
   }
 
   speakBackgroundEffect(id: 'open' | 'squawk' | 'close'): Promise<void> {
@@ -575,6 +576,8 @@ export class WallTonesSpeech {
       // Voices off silences the audio, not the words: with hearing subtitles
       // on, the narration line still shows as a caption for a reading beat.
       if (!hearingSubtitlesEnabled()) {
+        // Silent play keeps the existing story-advance policy.
+        speechStarted(id);
         return Promise.resolve();
       }
       return this.captionOnly(id);
@@ -635,6 +638,7 @@ export class WallTonesSpeech {
       }
       const text = speechText(id);
       const token = startSpokenCaption(text);
+      speechStarted(id);
       const words = text.split(/\s+/).filter(Boolean).length;
       const readingMs = Math.min(9000, 1200 + words * 350);
       const timed = new Promise<void>((resolve) => {
@@ -731,6 +735,7 @@ export class WallTonesSpeech {
       window.setTimeout(finish, buffer.duration * 1000 + 800);
       try {
         source.start();
+        speechStarted(id);
         caption = startSpokenCaption(speechText(id));
       } catch {
         finish();
@@ -767,7 +772,13 @@ export class WallTonesSpeech {
         audio.onerror = finish;
         // Long setup clips must not be cut by a short media watchdog.
         window.setTimeout(finish, 60000);
-        audio.onplaying = () => { caption = startSpokenCaption(speechText(id)); };
+        let started = false;
+        audio.onplaying = () => {
+          if (settled || started) return;
+          started = true;
+          speechStarted(id);
+          caption = startSpokenCaption(speechText(id));
+        };
         void audio.play().catch(finish);
       } catch {
         finish();

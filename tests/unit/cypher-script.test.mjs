@@ -120,7 +120,7 @@ test('unavailable storage does not block session play, and explicit story reset 
 });
 
 
-test('reload and skipped playback resume the first unfinished line losslessly', () => {
+test('reload resumes the first unstarted line after started lines are saved', () => {
   const storage = storyStorage();
   const first = new CypherProgress(storage);
   for (let i = 0; i < 5; i++) first.takeWindow(10);
