@@ -3,7 +3,7 @@ import { armbandHand, setArmbandHand } from './wall-tones/armband.js';
 import { captureCypherCast } from './wall-tones/cypher-voice.js';
 import { hearingSubtitlesEnabled, colorNamesEnabled, setHearingSubtitles, setColorNames, voicesOffEnabled, setVoicesOff, headGazePinchEnabled, setHeadGazePinch, nativeGazePinchEnabled, setNativeGazePinch } from './wall-tones/accessibility.js';
 import { GAZE_SOURCE_EVENT, gazeSourceStatusText, type GazeSourceStatus } from './wall-tones/gaze-source.js';
-import { gazePinchSettingsVisible } from './enter-xr-visibility.js';
+import { enterXrButtonVisible, gazePinchSettingsVisible } from './enter-xr-visibility.js';
 /**
  * Switches between the main menu and experience modes by toggling authored
  * scene node visibility. Mode selection lives on spatial UIKitML panels.
@@ -452,7 +452,10 @@ export class AppModeSystem extends createSystem({}) {
       setDisplay('main-menu-credit', 'flex');
       applyMainMenuShape(panel, currentMainMenuShape());
       // Same rule PanelSystem uses: Enter XR on flat, Exit while immersive.
-      setDisplay('xr-button', flat && this.world.xrEnabled ? 'flex' : 'none');
+      setDisplay('xr-button', enterXrButtonVisible(
+        flat, this.world.xrEnabled, currentMainMenuShape() === 'stack',
+        typeof navigator === 'undefined' ? '' : navigator.userAgent,
+      ) ? 'flex' : 'none');
       setDisplay('exit-button', !flat && this.world.xrEnabled ? 'flex' : 'none');
     };
     const choose = (gender: WallTonesVoiceGender) => {

@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { AppModeSystem } from '../../src/app-mode.js';
+import { VisibilityState } from '@iwsdk/core';
+import { applyMainMenuShape } from '../../src/main-menu-layout.js';
 import {
   hearingSubtitlesEnabled,
   colorNamesEnabled,
@@ -220,3 +222,34 @@ test('armband buttons are standalone rows, not nested in the gaze row', () => {
   const appMode = readFileSync('src/app-mode.ts', 'utf8');
   expect(appMode).toContain("setDisplay('armband-settings-row', gazeRowsDisplay)");
 });
+
+for (const scenario of [
+  {name:'iPhone portrait',ua:'Mozilla iPhone Safari',shape:'stack',flat:true,xr:true,want:'none'},
+  {name:'iPhone landscape',ua:'Mozilla iPhone Safari',shape:'row',flat:true,xr:true,want:'none'},
+  {name:'desktop',ua:'Chrome Windows',shape:'row',flat:true,xr:true,want:'flex'},
+  {name:'Quest browser',ua:'OculusBrowser Quest',shape:'stack',flat:true,xr:true,want:'flex'},
+  {name:'immersive Quest',ua:'OculusBrowser Quest',shape:'stack',flat:false,xr:true,want:'none'},
+  {name:'XR unavailable',ua:'Chrome Windows',shape:'row',flat:true,xr:false,want:'none'},
+] as const) {
+ test(`Settings Back preserves Enter XR visibility: ${scenario.name}`,()=>{
+  const oldWindow=globalThis.window;
+  const oldNavigator=Object.getOwnPropertyDescriptor(globalThis,'navigator');
+  Object.assign(globalThis,{window:new EventTarget()});
+  Object.defineProperty(globalThis,'navigator',{value:{userAgent:scenario.ua},configurable:true});
+  const {panel,elements}=mockPanel();
+  try {
+   applyMainMenuShape(panel as never,scenario.shape);
+   const context={voicePreview:{cancel(){}},cleanupFuncs:[],world:{xrEnabled:scenario.xr,visibilityState:{peek:()=>scenario.flat?VisibilityState.NonImmersive:VisibilityState.Visible}}};
+   (AppModeSystem.prototype as any).bindSettingsMenu.call(context,panel);
+   for(let repeat=0;repeat<2;repeat++){
+    elements.get('settings-button')!.click();
+    expect(elements.get('xr-button')!.props.display).toBe('none');
+    elements.get('settings-back-button')!.click();
+    expect(elements.get('xr-button')!.props.display).toBe(scenario.want);
+   }
+  } finally {
+   Object.assign(globalThis,{window:oldWindow});
+   if(oldNavigator)Object.defineProperty(globalThis,'navigator',oldNavigator);else delete (globalThis as any).navigator;
+  }
+ });
+}

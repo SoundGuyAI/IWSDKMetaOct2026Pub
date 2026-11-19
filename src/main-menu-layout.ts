@@ -58,6 +58,16 @@ export function applyMainMenuShape(panel: MenuPanel, shape: MainMenuShape): void
   }
   const set = (id: string, props: Props) =>
     panel.getElementById(id)?.setProperties(props as never);
+  // Own all states together: the kit's pale hover fill must not combine with
+  // fixed pale labels, and icons must inherit the same readable foreground.
+  for (const id of ['xr-button', 'lab-entry-button', 'settings-button']) {
+    set(id, {
+      color: '#eaf0ff',
+      backgroundColor: '#243650',
+      hover: { color: '#eaf0ff', backgroundColor: '#354f73' },
+      active: { color: '#eaf0ff', backgroundColor: '#405e86' },
+    });
+  }
   const row = shape === 'row';
   set('main-menu-root', {
     width: row ? 1180 : 520,
