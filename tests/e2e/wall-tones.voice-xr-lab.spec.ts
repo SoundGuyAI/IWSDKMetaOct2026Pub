@@ -238,8 +238,11 @@ test('silent text-preview mode: with clips unreachable the dialogue still advanc
   await page.route('**/audio/speech/cypher-lab/**', (route) => route.abort());
   await enterVoiceLab(page);
   await waitPhase(page, 'idle');
-  const idle = await debugOf(page);
-  expect(idle?.voiceStatus).toContain('pending');
+  // The availability probe settles after the idle phase starts; poll instead
+  // of snapshotting so a slow runner does not catch the 'checking...' state.
+  await expect
+    .poll(async () => (await debugOf(page))?.voiceStatus, { timeout: 15_000 })
+    .toContain('pending');
   await page.evaluate(() =>
     (window as unknown as { __voiceLabDebug: DebugBridge }).__voiceLabDebug.start(),
   );
