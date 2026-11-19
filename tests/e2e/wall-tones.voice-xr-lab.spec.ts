@@ -4,9 +4,11 @@ import { expect, test } from '@playwright/test';
  * Voice yes/no lab. Flat-mode e2e: real canvas click on the lab-menu Voice
  * row, then the dialogue is driven through the window.__voiceLabDebug
  * bridge (buttons/keys stand in for the microphone and feed() stands in for
- * model results). Clips for the voice-lab-only lines are not produced yet,
- * so lines advance on caption reading time - that exercises the same flow
- * the headset uses once the Cypher voice lands.
+ * model results). The six voice-lab-only clips (intro-voice, retry-voice,
+ * noise-1..4, Kore/Algenib) ship with the lab, so most tests run in clip
+ * mode with real audio pacing; the last test blocks the clip requests to
+ * keep the silent text-preview mode covered (lines advance on caption
+ * reading time, exactly as on a build without the clips).
  */
 
 type Snapshot = {
@@ -225,4 +227,26 @@ test('keyboard fallback answers work in flat mode (Y/N keys)', async ({ page }) 
   expect(after?.lastAnswer).toBe('no');
   await page.keyboard.press('y');
   await waitPhase(page, 'listening', 'q2');
+});
+
+test('silent text-preview mode: with clips unreachable the dialogue still advances on captions', async ({
+  page,
+}) => {
+  // Block every clip request so the lab takes its honest text-preview path
+  // (panel says the Cypher voice is pending, lines pace on reading time
+  // via the __labLineReadingMs override from beforeEach).
+  await page.route('**/audio/speech/cypher-lab/**', (route) => route.abort());
+  await enterVoiceLab(page);
+  await waitPhase(page, 'idle');
+  const idle = await debugOf(page);
+  expect(idle?.voiceStatus).toContain('pending');
+  await page.evaluate(() =>
+    (window as unknown as { __voiceLabDebug: DebugBridge }).__voiceLabDebug.start(),
+  );
+  await waitPhase(page, 'listening', 'intro');
+  await answer(page, 'yes');
+  await waitPhase(page, 'listening', 'q2');
+  const snapshot = await debugOf(page);
+  expect(snapshot?.lastAnswer).toBe('yes');
+  expect(snapshot?.answerCount).toBe(1);
 });

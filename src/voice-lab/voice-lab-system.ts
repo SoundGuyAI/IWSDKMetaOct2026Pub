@@ -6,9 +6,9 @@
  * thumbs labs, but answers arrive by VOICE: the player says "yes" or "no"
  * into the mic. Recognition runs fully on-device with the vendored
  * TensorFlow.js speech-commands model (public/voice-lab/, same origin, no
- * audio upload). Owner, Nov 18: in this lab the channel is almost deaf -
- * only single clear words like yes or no come through, anything else is
- * noise at her end.
+ * audio upload). Owner, Nov 18 (intro wording approved Nov 19): in this
+ * lab the channel is weak - only single clear words like yes or no come
+ * through, anything else is noise at her end.
  *
  * Listen window (owner, Nov 18, "like the nod one, the listen 12 seconds
  * one"): after each prompt the receiver listens up to VOICE_LISTEN_SEC
@@ -55,7 +55,7 @@ import {
 const VOICE_LAB_SCRIPT: GestureLabScript = buildGestureLabScript(
   {
     clipId: 'intro-voice',
-    text: 'Connection check. This channel is almost deaf. I can barely hear you through the static. Only single clear words make it across. Say yes or no, nothing else, or all I get is noise. First question. Can you hear me?',
+    text: 'Connection check. This channel is weak. I can barely hear you through the static. Only single clear words make it across. Say yes or no, nothing else, or all I get is noise. First question. Can you hear me?',
   },
   {
     clipId: 'retry-voice',
@@ -65,8 +65,9 @@ const VOICE_LAB_SCRIPT: GestureLabScript = buildGestureLabScript(
 
 /**
  * No clear yes/no for a whole listen window counts as noise (owner's
- * fiction, Nov 18). Rotating lines, drafts pending owner review; they run
- * in silent text-preview mode until clips land.
+ * fiction, Nov 18). Rotating lines, approved verbatim by the owner
+ * Nov 19; clips ship via the chunk + decode-voice-clips workflow, and a
+ * build without them still runs the silent text-preview mode.
  */
 const NOISE_LINES: readonly LabScriptLine[] = [
   {

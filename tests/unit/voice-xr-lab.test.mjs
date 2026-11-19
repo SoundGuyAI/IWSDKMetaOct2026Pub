@@ -108,21 +108,27 @@ test('canon guard: voice lab fiction is barely-hearing, never game surveillance'
   assert.ok(/lab-only|lab only/i.test(doc));
 });
 
-test('voice-lab-only lines are drafts pending owner review and match the clip spec', () => {
+test('voice-lab-only lines are owner-approved and match the clip spec word for word', () => {
   const system = readFileSync(new URL('../../src/voice-lab/voice-lab-system.ts', import.meta.url), 'utf8');
   const spec = readFileSync(new URL('../../docs/CYPHER_LAB_CLIPS.md', import.meta.url), 'utf8');
-  assert.ok(/DRAFT/i.test(spec));
-  assert.ok(/pending Oded's review/i.test(spec));
+  // Approved 2026-11-19 (intro-voice reworded to "This channel is weak");
+  // the spec section must no longer mark the six lines as drafts.
+  const start = spec.indexOf('### Voice yes/no lab lines');
+  const section = spec.slice(start, spec.indexOf('## Canon constraints', start));
+  assert.ok(!/DRAFT|pending Oded's review/i.test(section));
+  // The approved intro wording is what the system speaks and captions.
+  assert.ok(system.includes('This channel is weak.'));
   // Every voice-lab-only clip id used by the system is specced, word for word.
   for (const m of system.matchAll(/clipId: '(intro-voice|retry-voice|noise-[1-4])',\s*\n?\s*text: '([^']+)'/g)) {
     assert.ok(spec.includes(`\`${m[1]}\``), `spec lists ${m[1]}`);
     assert.ok(spec.includes(`| ${m[2]} |`), `spec text matches ${m[1]}`);
   }
-  // The six draft ids exist exactly once each in the spec table.
+  // The six approved ids exist exactly once each in the spec table.
   for (const id of ['intro-voice', 'retry-voice', 'noise-1', 'noise-2', 'noise-3', 'noise-4']) {
     assert.equal(spec.split(`\`${id}\``).length - 1, 1, id);
   }
 });
+
 
 test('wiring: registry entry, menu row, mode, panel asset, scene nodes and registration', () => {
   const registry = readFileSync(new URL('../../src/lab-menu/lab-registry.ts', import.meta.url), 'utf8');

@@ -8,8 +8,10 @@
  * Fiction note (owner, Nov 18): in THIS lab the channel is not fully deaf.
  * Cypher can barely hear the player, and only single clear words like yes
  * or no make it through - anything else arrives as noise at her end, so the
- * player must answer with one clear word. Lines are drafts pending owner
- * review; they run in the lab's silent text-preview mode until clips land.
+ * player must answer with one clear word. The six voice-lab-only lines
+ * (intro-voice, retry-voice, noise-1..4) are owner-approved (Nov 19, one
+ * intro-voice wording change); a build without the clips runs them in the
+ * lab's silent text-preview mode.
  */
 
 import type { YesNoAnswer } from './voice-receiver.js';
