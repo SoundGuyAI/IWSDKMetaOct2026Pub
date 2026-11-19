@@ -211,14 +211,17 @@ test('fed model results: clear yes answers, clear-winner no answers, other words
     (window as unknown as { __voiceLabDebug: DebugBridge }).__voiceLabDebug.start(),
   );
   await waitPhase(page, 'listening', 'intro');
-  // Ignored: a non-answer word shows on the Heard line but is not an
-  // attempt (owner, Nov 19: a "go" heard for a "no" must not count).
-  await feed(page, 'left', 0.92);
+  // Ignored: a non-alias word shows on the Heard line but is not an
+  // attempt ("go"/"left" are Nov 20 accent aliases, so a true command
+  // word carries this check now).
+  await feed(page, 'up', 0.92);
   let snapshot = await debugOf(page);
   expect(snapshot?.phase).toBe('listening');
-  expect(snapshot?.lastWord).toBe('left');
+  expect(snapshot?.lastWord).toBe('up');
   expect(snapshot?.noiseCount).toBe(0);
   expect(snapshot?.answerCount).toBe(0);
+  // A faint "go" below the folded clear-win floor is still ignored (not
+  // an answer, not an attempt); the Heard line shows the raw word.
   await feed(page, 'go', 0.47);
   snapshot = await debugOf(page);
   expect(snapshot?.lastWord).toBe('go');
@@ -238,12 +241,18 @@ test('fed model results: clear yes answers, clear-winner no answers, other words
   snapshot = await debugOf(page);
   expect(snapshot?.lastAnswer).toBe('no');
   expect(snapshot?.answerCount).toBe(1);
+  // Alias (owner, Nov 20): a clear "go" answers "no".
+  await feed(page, 'go', 0.9);
+  await waitPhase(page, 'listening', 'retry');
+  snapshot = await debugOf(page);
+  expect(snapshot?.lastAnswer).toBe('no');
+  expect(snapshot?.answerCount).toBe(2);
   // Clear yes answers.
   await feed(page, 'yes', 0.95);
   await waitPhase(page, 'listening', 'q2');
   snapshot = await debugOf(page);
   expect(snapshot?.lastAnswer).toBe('yes');
-  expect(snapshot?.answerCount).toBe(2);
+  expect(snapshot?.answerCount).toBe(3);
 });
 
 test('iPhone misses: background noise does not veto, split-window words vote, Heard line tracks', async ({
