@@ -602,33 +602,14 @@ test('store empty space clears selection without buying or closing; tiles and Bu
   await dbg(page, 'toggleStore');
   const selected = () => page.evaluate(() => (window as any).__wallTonesDebug.storeSelected);
   const targets = () => page.evaluate(() => (window as any).__wallTonesDebug.storePointerTargets);
-  // No fixed wall-clock hold: @pmndrs/pointer-events emits the internal
-  // click only when down/up land within clickThresholdMs = 300ms
-  // (pointer.js:216-218, 323-331), and a fixed hold can stretch past that
-  // under runner load (CI run 44259947366: this case's empty-space click
-  // never cleared the selection on a loaded shard; the store-popup clear
-  // rides the internal click while tile selection rides pointerdown).
-  // Release as soon as the page processed the pointerdown instead; the DOM
-  // tap log records window-level events only and is not proof the internal
-  // handler ran, so outcome assertions below remain the real check.
+  // One native click sends down/up together. A browser round-trip between
+  // them can exceed the pointer library's 300ms click threshold on loaded
+  // CI runners, dropping the popup click even though tile pointerdown works.
+  // Outcome assertions below still verify the actual UIKit handler ran.
   const click = async (x: number, y: number) => {
     await page.mouse.move(x, y, { steps: 8 });
     await page.waitForTimeout(800);
-    const logged = await page.evaluate(
-      () => (window as unknown as { __tapLog: unknown[] }).__tapLog.length,
-    );
-    await page.mouse.down();
-    await page
-      .waitForFunction(
-        (n) =>
-          (window as unknown as { __tapLog: { type: string }[] }).__tapLog
-            .slice(n)
-            .some((e) => e.type === 'pointerdown'),
-        logged,
-        { timeout: 5_000 },
-      )
-      .catch(() => {});
-    await page.mouse.up();
+    await page.mouse.click(x, y);
     await page.waitForTimeout(600); // allow rebuilt UIKit layout/world matrices to settle
   };
   // The store grid mounts tiles incrementally on slow runners and re-centers

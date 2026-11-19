@@ -1,3 +1,6 @@
+import { firstNoteHelpText, type FirstNoteHelpClip } from './first-note-help.js';
+import { RETURN_DIALOGUE, type ReturnLineId } from './return-dialogue.js';
+import { InstructionMemory } from './instruction-memory.js';
 import { LAB_INTRO_AUDIO } from '../lab-menu/intro-audio.js';
 import { CYPHER_BACKGROUND, type BackgroundLineId } from './cypher-background.js';
 import { captureCypherCast, type CypherCast } from './cypher-voice.js';
@@ -26,6 +29,7 @@ import { ACHV_INTRO_FEMALE_MR } from './achv-intro-female-mr.js';
 import { ensureAudioRunning, primeWallTonesAudioFromGesture, needsExplicitMobileSoundUnlock } from './audio.js';
 
 export type WallTonesClipId =
+  | 'openingPattern'
   | 'welcome'
   | 'chooseMode'
   | 'howToPlay'
@@ -104,6 +108,7 @@ export type WallTonesClipId =
 
 /** Clip files under public/audio/speech/. */
 export const WALL_TONES_CLIP_FILES: Record<WallTonesClipId, string> = {
+  openingPattern: 'opening-pattern.mp3',
   welcome: 'welcome.mp3',
   chooseMode: 'choose-mode.mp3',
   howToPlay: 'how-to-play.mp3',
@@ -279,11 +284,14 @@ export function prepareMobileWelcome(): void {
 
 /** Must be invoked directly in the native Start click, before any await. */
 export function startMobileWelcomeFromGesture(): Promise<void> {
+  let returning = false;
+  try { returning = globalThis.localStorage?.getItem('wall-tones-return-visit-v1') === '1'; } catch { /* fresh */ }
+  const startupText = returning ? RETURN_DIALOGUE['N-R01'].text : CLIP_TRANSCRIPTS.welcome;
   // This direct trusted-tap path bypasses speakAsync, so honor its mute gate.
   // Subtitles still show the welcome line without audio (user, November 8).
   if (voicesOffEnabled()) {
     if (!hearingSubtitlesEnabled()) return Promise.resolve();
-    const text = CLIP_TRANSCRIPTS.welcome;
+    const text = startupText;
     const token = startSpokenCaption(text);
     const words = text.split(/\s+/).filter(Boolean).length;
     const readingMs = Math.min(9000, 1200 + words * 350);
@@ -305,21 +313,22 @@ export function startMobileWelcomeFromGesture(): Promise<void> {
       }, readingMs);
     });
   }
+  const startupUrl = returning ? new URL(`audio/return-reminders/narrator/${currentGender}/n-r01.mp3`, document.baseURI).href : clipUrl('welcome');
   prepareMobileWelcome();
   if (mobileVoice == null) return Promise.resolve();
   const audio = mobileVoice;
-  audio.src = clipUrl('welcome');
+  audio.src = startupUrl;
   audio.currentTime = 0;
   // play() itself, not a Promise callback, must run during trusted activation.
   let caption: number | undefined;
   let earlyCaption: HTMLDivElement | undefined;
   audio.onplaying = () => {
-    caption = startSpokenCaption(CLIP_TRANSCRIPTS.welcome);
+    caption = startSpokenCaption(startupText);
     if (hearingSubtitlesEnabled()) {
       earlyCaption = document.createElement('div');
       earlyCaption.id = 'wall-tones-startup-subtitle';
       earlyCaption.setAttribute('aria-live', 'polite');
-      earlyCaption.textContent = CLIP_TRANSCRIPTS.welcome;
+      earlyCaption.textContent = startupText;
       Object.assign(earlyCaption.style, {
         position: 'fixed', bottom: '24px', left: '12px', right: '12px',
         padding: '12px', background: '#081019', color: '#fff', borderRadius: '10px',
@@ -374,7 +383,8 @@ export function resetSpeechUnlock(): void {
   speechUnlocked = !needsSpeechUnlock();
 }
 
-interface StorySpeechClip { readonly url: string; readonly text: string; }
+interface StorySpeechClip { readonly url: string; readonly text: string; readonly onStarted?: () => void; }
+function speechStarted(clip: SpeechClip): void { if (typeof clip !== 'string') clip.onStarted?.(); }
 type SpeechClip = WallTonesClipId | StorySpeechClip;
 function speechUrl(clip: SpeechClip): string { return typeof clip === 'string' ? clipUrl(clip) : clip.url; }
 function speechText(clip: SpeechClip): string { return typeof clip === 'string' ? CLIP_TRANSCRIPTS[clip] : clip.text; }
@@ -457,6 +467,7 @@ export function milestoneClipFor(streak: number): WallTonesClipId {
 }
 
 export class WallTonesSpeech {
+  private readonly instructionMemory = new InstructionMemory();
   /** Serialize lines so consecutive speak() calls do not overlap. */
   private chain: Promise<void> = Promise.resolve();
 
@@ -482,6 +493,17 @@ export class WallTonesSpeech {
     return !(needsSpeechUnlock() && !speechUnlocked);
   }
 
+  hasHeardInstruction(id: WallTonesClipId): boolean { return this.instructionMemory.hasHeard(id); }
+
+  /** Explicit approved reminder: replay without clearing persistent heard state.
+   * An object clip bypasses normal tutorial suppression but retains queue/mute/Skip. */
+  replayInstruction(id: WallTonesClipId): Promise<void> {
+    return this.enqueueClip({url: speechUrl(id), text: speechText(id)});
+  }
+
+  /** Internal reset seam; approved reminders use replayInstruction instead. */
+  resetInstructionSection(section: 'gameplay' | 'store' | 'achievements'): void { this.instructionMemory.resetSection(section); }
+
   speak(id: WallTonesClipId, startupEntry = false): void {
     void this.speakAsync(id, startupEntry);
   }
@@ -497,12 +519,29 @@ export class WallTonesSpeech {
   }
 
   /** Uses the existing speech queue, unlock, mute, captions and Skip lifecycle. */
-  speakStoryLine(id: CypherLineId, cast: Readonly<CypherCast> = captureCypherCast(getVoiceGender())): Promise<void> {
+  speakStoryLine(id: CypherLineId, cast: Readonly<CypherCast> = captureCypherCast(getVoiceGender()), onStarted?: () => void): Promise<void> {
     const line = findCypherLine(id);
     if (!line) return Promise.resolve();
     const gender = line.speaker === 'cypher' ? cast.cypher : cast.narrator;
     const url = new URL(`audio/story/${line.speaker}/${gender}/${id.toLowerCase()}.mp3`, document.baseURI).href;
-    return this.enqueueClip({ url, text: `${line.speaker === 'cypher' ? 'Cypher' : 'Narrator'}: ${line.text}` });
+    return this.enqueueClip({ url, onStarted, text: `${line.speaker === 'cypher' ? 'Cypher' : 'Narrator'}: ${line.text}` });
+  }
+
+  /** Approved return dialogue uses captured casting and the ordinary Skip/mute queue. */
+  speakReturnLine(id: ReturnLineId, cast: Readonly<CypherCast> = captureCypherCast(getVoiceGender())): Promise<void> {
+    const line = RETURN_DIALOGUE[id];
+    return this.enqueueClip({
+      url: new URL(`audio/return-reminders/${line.speaker}/${cast[line.speaker]}/${id.toLowerCase()}.mp3`, document.baseURI).href,
+      text: `${line.speaker === 'cypher' ? 'Cypher' : 'Narrator'}: ${line.text}`,
+    }, id === 'N-R01');
+  }
+
+  /** Contextual coaching is repeatable feedback, not heard-once tutorial memory. */
+  speakFirstNoteHelp(clip: FirstNoteHelpClip, gender = getVoiceGender()): Promise<void> {
+    return this.enqueueClip({
+      url: new URL(`audio/first-note-help/${gender}/${clip}.mp3`, document.baseURI).href,
+      text: firstNoteHelpText(clip),
+    });
   }
 
   /** Device-neutral Lab welcome, using the same captured cast and speech queue. */
@@ -516,10 +555,10 @@ export class WallTonesSpeech {
     });
   }
 
-  speakBackgroundLine(id: BackgroundLineId, cast: Readonly<CypherCast>): Promise<void> {
+  speakBackgroundLine(id: BackgroundLineId, cast: Readonly<CypherCast>, onStarted?: () => void): Promise<void> {
     const line = CYPHER_BACKGROUND.find(line => line.id === id);
     if (!line) return Promise.resolve();
-    return this.enqueueClip({ url: new URL(`audio/story/background/${cast.cypher}/${id.toLowerCase()}.mp3`, document.baseURI).href, text: `Cypher: ${line.text}` });
+    return this.enqueueClip({ onStarted, url: new URL(`audio/story/background/${cast.cypher}/${id.toLowerCase()}.mp3`, document.baseURI).href, text: `Cypher: ${line.text}` });
   }
 
   speakBackgroundEffect(id: 'open' | 'squawk' | 'close'): Promise<void> {
@@ -532,10 +571,13 @@ export class WallTonesSpeech {
   }
 
   private enqueueClip(id: SpeechClip, startupEntry = false): Promise<void> {
+    if (typeof id === 'string' && this.instructionMemory.hasHeard(id)) return Promise.resolve();
     if (voicesOffEnabled()) {
       // Voices off silences the audio, not the words: with hearing subtitles
       // on, the narration line still shows as a caption for a reading beat.
       if (!hearingSubtitlesEnabled()) {
+        // Silent play keeps the existing story-advance policy.
+        speechStarted(id);
         return Promise.resolve();
       }
       return this.captionOnly(id);
@@ -557,8 +599,8 @@ export class WallTonesSpeech {
     });
     this.runSettlers.add(settleRun);
     const run = this.chain.then(() => {
-      if (gen !== this.generation) {
-        return; // superseded by cancel() while queued
+      if (gen !== this.generation || (typeof id === 'string' && this.instructionMemory.hasHeard(id))) {
+        return; // superseded or a queued duplicate of a now-completed tutorial
       }
       // Race the line against cancel(): a superseded line stuck awaiting a
       // stalled decode/fetch still resolves its run, so callers awaiting
@@ -591,11 +633,12 @@ export class WallTonesSpeech {
     });
     this.runSettlers.add(settleRun);
     const run = this.chain.then(() => {
-      if (gen !== this.generation) {
-        return; // superseded by cancel() while queued
+      if (gen !== this.generation || (typeof id === 'string' && this.instructionMemory.hasHeard(id))) {
+        return; // superseded or a queued duplicate of a now-completed tutorial
       }
       const text = speechText(id);
       const token = startSpokenCaption(text);
+      speechStarted(id);
       const words = text.split(/\s+/).filter(Boolean).length;
       const readingMs = Math.min(9000, 1200 + words * 350);
       const timed = new Promise<void>((resolve) => {
@@ -621,7 +664,7 @@ export class WallTonesSpeech {
 
   private async playClip(id: SpeechClip, gen: number, startupEntry: boolean): Promise<void> {
     if (needsExplicitMobileSoundUnlock() && mobileVoice != null) {
-      if (id === 'welcome' && startupEntry && startupWelcome != null) {
+      if ((id === 'welcome' || (typeof id !== 'string' && id.url.endsWith('/n-r01.mp3'))) && startupEntry && startupWelcome != null) {
         const welcome = startupWelcome;
         startupWelcome = null;
         this.currentElement = mobileVoice;
@@ -684,11 +727,15 @@ export class WallTonesSpeech {
         }
         resolve();
       };
-      source.onended = finish;
+      source.onended = () => {
+        if (!settled && this.currentSource === source && typeof id === 'string') this.instructionMemory.completed(id);
+        finish();
+      };
       // Safety net: onended does not fire when cancel() stops the source.
       window.setTimeout(finish, buffer.duration * 1000 + 800);
       try {
         source.start();
+        speechStarted(id);
         caption = startSpokenCaption(speechText(id));
       } catch {
         finish();
@@ -718,11 +765,20 @@ export class WallTonesSpeech {
         audio.currentTime = 0;
         this.currentElement = audio;
         this.activeElementFinish = finish;
-        audio.onended = finish;
+        audio.onended = () => {
+          if (!settled && this.currentElement === audio && typeof id === 'string') this.instructionMemory.completed(id);
+          finish();
+        };
         audio.onerror = finish;
         // Long setup clips must not be cut by a short media watchdog.
         window.setTimeout(finish, 60000);
-        audio.onplaying = () => { caption = startSpokenCaption(speechText(id)); };
+        let started = false;
+        audio.onplaying = () => {
+          if (settled || started) return;
+          started = true;
+          speechStarted(id);
+          caption = startSpokenCaption(speechText(id));
+        };
         void audio.play().catch(finish);
       } catch {
         finish();
@@ -734,7 +790,9 @@ export class WallTonesSpeech {
     endSpokenCaption();
     this.generation += 1;
     try {
-      this.currentSource?.stop();
+      const cancelledSource = this.currentSource;
+      this.currentSource = null;
+      cancelledSource?.stop();
     } catch {
       /* already stopped */
     }
