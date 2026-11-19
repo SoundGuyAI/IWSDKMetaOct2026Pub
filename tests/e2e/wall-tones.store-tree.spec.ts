@@ -653,28 +653,40 @@ test('store empty space clears selection without buying or closing; tiles and Bu
       }
     }
   };
-  const settledTargets = await settleTargets();
-  const replay = settledTargets['store-tile-replay'];
   await clickTile('store-tile-replay', 'replay');
   await testInfo.attach('selected', { body: await page.screenshot(), contentType: 'image/png' });
   const before = await readState(page);
   // Empty margin beside the centered top row, inside the fixed Store popup.
-  await click(replay.x - 90, replay.y);
-  await expect.poll(selected).toBe(null);
+  // clickTile can re-settle while retrying, and the grid re-centers as tiles
+  // mount, so margin coordinates from an earlier settle can be stale by click
+  // time on loaded CI runners; the click then lands on a non-interactive gap
+  // and selection never clears (CI run 44490190866 shard 10 attempt 0).
+  // Re-settle and retry until the margin click actually clears selection.
+  const clickMarginClear = async () => {
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      const replay = (await settleTargets())['store-tile-replay'];
+      await click(replay.x - 90, replay.y);
+      try {
+        await expect.poll(selected, { timeout: 5_000 }).toBe(null);
+        return;
+      } catch {
+        if (attempt === 4) throw new Error('store empty margin click never cleared selection after 4 attempts');
+      }
+    }
+  };
+  await clickMarginClear();
   expect((await readState(page)).storeOpen).toBe(true);
   expect((await readState(page)).bars).toBe(before.bars);
   expect((await readState(page)).replaysTotal).toBe(before.replaysTotal);
   await testInfo.attach('deselected', { body: await page.screenshot(), contentType: 'image/png' });
-  await click(replay.x, replay.y);
-  await expect.poll(selected).toBe('replay');
+  await clickTile('store-tile-replay', 'replay');
   const buy = (await targets())['store-buy'];
   await click(buy.x, buy.y);
   await expect.poll(async () => (await readState(page)).replaysPaid).toBe(1);
   expect(await selected()).toBe('replay');
   expect((await readState(page)).bars).toBe(before.bars - 20);
   // Existing tap-the-selected-tile toggle remains intact.
-  await click(replay.x, replay.y);
-  await expect.poll(selected).toBe(null);
+  await clickTile('store-tile-replay', null);
 });
 
   test('Skip pattern: locked without Play, 1000 Bars once Play is owned, button ends the demo and leaves the turn', async ({
