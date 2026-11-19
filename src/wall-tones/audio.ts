@@ -405,13 +405,64 @@ export function suspendAudioContext(): void {
   autoplayCueCache.clear();
 }
 
-// Auto Play cues (owner picks 2026-11-15): the robot chirp (audition
-// option 5) plus the gravelly android voice rotating five round phrases,
-// and the engaged/disengaged notices for the AutoPlay toggle. Ship as
-// embedded base64 - the exact clips reviewed - decoded in memory, so no
-// network fetch and no CSP connect-src path. The cues are decorative: any
-// failure stays silent and never blocks playback.
+// Auto Play cues: the robot chirp plus the gravelly android voice rotating
+// fifteen round phrases (six weary Marvin lines join after every regular
+// phrase played once), and the engaged/disengaged notices for the AutoPlay
+// toggle. Ship as embedded base64 - the exact clips reviewed - decoded in
+// memory, so no network fetch and no CSP connect-src path. The cues are
+// decorative: any failure stays silent and never blocks playback.
 const autoplayCueCache = new Map<string, Promise<AudioBuffer | null>>();
+
+/** In-flight AutoPlay cue clips, counted from start until playback ends (or
+ * fails silently). The narration queue awaits the drain so the narrator and
+ * Cypher never talk over the robot's pattern line (owner 2026-11-19). */
+let activeAutoplayCueCount = 0;
+const autoplayCueDrainedWaiters = new Set<() => void>();
+
+function notifyAutoplayCuesDrained(): void {
+  if (activeAutoplayCueCount !== 0) {
+    return;
+  }
+  for (const notify of [...autoplayCueDrainedWaiters]) {
+    autoplayCueDrainedWaiters.delete(notify);
+    notify();
+  }
+}
+
+/** Register one cue clip starting; the returned function marks it finished. */
+function autoplayCueStarted(): () => void {
+  activeAutoplayCueCount += 1;
+  let settled = false;
+  return () => {
+    if (settled) {
+      return;
+    }
+    settled = true;
+    activeAutoplayCueCount -= 1;
+    notifyAutoplayCuesDrained();
+  };
+}
+
+/** True while any AutoPlay cue clip is still sounding. */
+export function autoplayCuesActive(): boolean {
+  return activeAutoplayCueCount > 0;
+}
+
+/** Resolves once every AutoPlay cue clip started so far has finished. */
+export function waitForAutoplayCuesToFinish(): Promise<void> {
+  if (activeAutoplayCueCount === 0) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    autoplayCueDrainedWaiters.add(resolve);
+  });
+}
+
+/** Test hook: treat every in-flight AutoPlay cue as finished. */
+export function clearAutoplayCuesForTests(): void {
+  activeAutoplayCueCount = 0;
+  notifyAutoplayCuesDrained();
+}
 
 function loadAutoplayCue(context: AudioContext, base64: string): Promise<AudioBuffer | null> {
   let cached = autoplayCueCache.get(base64);
@@ -433,15 +484,21 @@ function loadAutoplayCue(context: AudioContext, base64: string): Promise<AudioBu
   return cached;
 }
 
-/** Start one decoded cue clip. Never rejects. */
+/** Start one decoded cue clip. Resolves once playback has started; the clip's
+ * completion is tracked separately (see waitForAutoplayCuesToFinish). Never
+ * rejects. */
 async function startAutoplayClip(base64: string): Promise<void> {
+  let settle: () => void = () => undefined;
   try {
+    settle = autoplayCueStarted();
     const context = await ensureAudioRunning();
     if (context == null) {
+      settle();
       return;
     }
     const buffer = await loadAutoplayCue(context, base64);
     if (buffer == null) {
+      settle();
       return;
     }
     const source = context.createBufferSource();
@@ -449,9 +506,14 @@ async function startAutoplayClip(base64: string): Promise<void> {
     gain.gain.value = 0.7;
     source.buffer = buffer;
     source.connect(gain).connect(context.destination);
+    source.onended = settle;
+    // Safety net: onended may not fire if the context is suspended or closed
+    // mid-clip; narration must never wait on a robot cue forever.
+    globalThis.setTimeout?.(settle, buffer.duration * 1000 + 800);
     source.start();
   } catch {
     // A silent cue must never interrupt the pattern.
+    settle();
   }
 }
 
