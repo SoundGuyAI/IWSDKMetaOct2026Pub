@@ -173,3 +173,10 @@ PR82's backlog58 status/caveat is preserved above. The authoritative game backlo
 - [x] 12-second listen windows mirroring the nod lab; rotating noise lines on an expired window; the window clock only runs while the receiver is truly streaming (no-mic desktop never spins the loop).
 - [x] Unit tests (receiver decision helpers, dialogue tree, canon guard, wiring, clip-spec coverage) and e2e spec added to the CI roster.
 - [ ] Full local gates, Codex review, his preview test on Quest (microphone + window feel in XR). No merge without his go-ahead.
+## Skip Voice story progress and real-mouse journey - November 17
+
+1. [x] Confirm both story queues previously saved only after uninterrupted playback, reproducing repeated lines on Skip.
+2. [x] Save each Cypher/background/narrator-story line when its audio or caption starts. Do not consume queued or unstarted lines.
+3. [x] Add desktop real-mouse Skip checks for all three story paths with reload persistence.
+4. [x] Keep ten rounds, every pad press, deliberate wrong pad, reset and best-score assertions in the long pointer journey; click the visible Skip Voice control while waiting.
+5. [ ] Finish full local and GitHub validation, publish separate PR and verify its preview. No merge or production approval.

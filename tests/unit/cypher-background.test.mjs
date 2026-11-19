@@ -23,7 +23,7 @@ test('proposed start afterAct1 cannot count early patterns or interrupt narrator
  assert.equal(p.successfulPattern(true,true),undefined);
  assert.equal(p.successfulPattern(true,true).id,'R02');
 });
-test('skip/reload retains unheard line; completion persists, exhausted story stops', () => {
+test('unstarted/reloaded line remains pending; started progress persists, exhausted story stops', () => {
  const s=store();let p=new BackgroundProgress(s);
  p.successfulPattern(true,true);p.successfulPattern(true,true);
  p=new BackgroundProgress(s);assert.equal(p.successfulPattern(true,true).id,'R01');
@@ -40,7 +40,7 @@ test('invalid/restricted saves fall back safely', () => {
  assert.doesNotThrow(()=>p.successfulPattern(true,true));
  assert.equal(p.successfulPattern(true,true).id,'R01');
 });
-test('skip is not heard: next stays and same line replays at the next eligible boundary', () => {
+test('before playback starts, next stays and the unheard line remains pending', () => {
  const s=store();const p=new BackgroundProgress(s);
  p.successfulPattern(true,true);
  assert.equal(p.successfulPattern(true,true).id,'R01');
