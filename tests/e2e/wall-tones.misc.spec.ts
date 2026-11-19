@@ -402,3 +402,35 @@ for (const stage of ['fresh','unfinished','introduced'] as const) {
   else expect(cypher).toHaveLength(0);
  });
 }
+
+for (const misses of [3, 4]) {
+ test(`Skip pattern during first-note assistance (${misses} misses) preserves the turn and struggle`,async({page},testInfo)=>{
+  await page.addInitScript(()=>{sessionStorage.setItem('iwsdk-experience-mode','walltones');localStorage.setItem('wall-tones-hearing-subtitles','true');localStorage.setItem('wall-tones-instructions-v1',JSON.stringify({version:1,heard:['howToPlay','howToPlayMr','howToPlayRest','openingPattern','barsFirstEarn']}));});
+  const clips:string[]=[];page.on('request',r=>{if(r.url().includes('/audio/first-note-help/'))clips.push(r.url());});
+  await page.goto('/');await page.waitForFunction(()=>Boolean(window.__wallTonesDebug?.flatAwaitingStart));
+  await page.evaluate(()=>{const d=window.__wallTonesDebug!;d.grantSavers(8);d.grantSkipPattern();d.submitPad(0);});
+  await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');
+  for(let miss=1;miss<=misses;miss++){
+   await page.evaluate(()=>{const d=window.__wallTonesDebug!;d.submitPad((d.sequence[0]!+1)%4);});await page.waitForFunction(()=>window.__wallTonesDebug!.gameOverOpen);
+   if(miss<misses){await page.evaluate(()=>window.__wallTonesDebug!.gameOverUseSaver());await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');}
+  }
+  const sequence=await page.evaluate(()=>[...window.__wallTonesDebug!.sequence]);
+  clips.length=0;
+  await page.evaluate(()=>window.__wallTonesDebug!.gameOverUseSaver());
+  if(misses===3){await expect(page.locator('#wall-tones-flat-subtitles')).toContainText('This opening pattern is just the intro.');}
+  await page.waitForFunction(()=>window.__wallTonesDebug!.skipPatternVisible);
+  const started=Date.now();
+  await page.locator('#wall-tones-skip-pattern-flat').click();
+  await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input',undefined,{timeout:5000});
+  expect(Date.now()-started).toBeLessThan(2500);
+  expect(await page.evaluate(()=>window.__wallTonesDebug!.sequence)).toEqual(sequence);
+  expect(await page.evaluate(()=>window.__wallTonesDebug!.inputStep)).toBe(0);
+  expect(clips.some(x=>/single-note|press-/.test(x))).toBe(false);
+  await page.screenshot({path:testInfo.outputPath(`skip-assisted-${misses}.png`)});
+  // The next miss still advances struggle: skipping never fakes a correct note.
+  await page.evaluate(()=>{const d=window.__wallTonesDebug!;d.submitPad((d.sequence[0]!+1)%4);});await page.waitForFunction(()=>window.__wallTonesDebug!.gameOverOpen);
+  await page.evaluate(()=>window.__wallTonesDebug!.gameOverUseSaver());
+  await expect(page.locator('#wall-tones-flat-subtitles')).toContainText('Press ');
+  await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');
+ });
+}
