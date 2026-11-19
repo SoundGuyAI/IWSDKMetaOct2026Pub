@@ -53,6 +53,7 @@ import { XRHandVisualAdapter } from '@iwsdk/xr-input';
 import {
   HAND_SEGMENTS,
   pointOnHandShape,
+  HandPoseFreshness,
   readPalmPose,
   type PalmPose,
 } from './rift-hands.js';
@@ -100,8 +101,24 @@ import {
 } from './rift-geometry-particles.js';
 import { RiftHandAura } from './rift-hand-aura.js';
 import { noteFrontVisibility, RiftHandOccluders } from './rift-hand-occluders.js';
+import {
+  formatChargeCloudDiag,
+  summarizeChargeCloud,
+  type ChargeCloudDiag,
+} from './rift-charge-diag.js';
+import {
+  RIFT_VISUAL_LAYER_LABELS,
+  RIFT_VISUAL_LAYERS,
+  riftVisualFlagsSnapshot,
+  riftVisualLayerShown,
+  setRiftVisualLayer,
+  toggleRiftVisualLayer,
+  type RiftVisualFlags,
+  type RiftVisualLayer,
+} from './rift-visual-flags.js';
 import { noteGlyphMaterial } from './rift-note-visuals.js';
 import {
+  applyPortalLayering,
   createGeoSparkDraw,
   createPortalBurst,
   disposePortalBurst,
@@ -109,6 +126,7 @@ import {
   updatePortalBurst,
   type PortalBurst,
 } from './rift-portal-burst.js';
+import { portalLayerOrders } from './rift-portal-layering.js';
 import { RiftSealBeam } from './rift-seal-beam.js';
 
 /** Virtual hand anchors in flat mode (meters, hub scene space). */
@@ -209,6 +227,10 @@ export interface RiftLabDebugSnapshot {
   };
   targets: { id: number; position: number[]; ndc: number[] }[];
   noteOriginNdc: number[];
+  /** Read-only: where the visible charge-orbit notes are (item 118 diagnosis). */
+  chargeCloud: ChargeCloudDiag;
+  /** Read-only: per-layer isolation toggles (item 118 follow-up). */
+  layers: RiftVisualFlags;
   /** On-screen radius (CSS px) the dragged note cloud is sized to. */
   noteCloudRadiusPx: number;
   /** Viewer pose, for QA placement of synthetic hands. */
@@ -242,6 +264,8 @@ declare global {
       ) => void;
       /** Experimental palm PointLight while sealing; toggle for MR washout. */
       setPalmLight: (on: boolean) => void;
+      /** Item 118 isolation: show/hide one visual layer (panel toggles). */
+      setLayer: (layer: RiftVisualLayer, shown: boolean) => void;
       /** Visual QA: hold a mid-seal pose with the layered beam visible. */
       previewSeal: (progress?: number) => void;
     };
@@ -254,6 +278,8 @@ interface RiftView {
   position: Vector3;
   born: number;
   fracture: ShaderMaterial;
+  /** Fracture quad mesh, kept for mode-dependent layer ordering. */
+  quad: Mesh;
   /** Thick neon notes + sharp sparks + luminous shards (replaces glow dots). */
   burst: PortalBurst;
   /** Fractional spark accumulator for the sealing spray (item 93). */
@@ -430,6 +456,7 @@ export class RiftLabSystem extends createSystem({
   private energyText: UIKit.Text | null = null;
   private telemetryText: UIKit.Text | null = null;
   private active = false;
+  private readonly poseFreshness = new HandPoseFreshness();
   private running = false;
   private lastSpawnAt = 0;
   /** Debug-bridge opt-in only; always false in normal play. */
@@ -484,6 +511,8 @@ export class RiftLabSystem extends createSystem({
   private readonly geoPool: GeometryParticlePool =
     createGeometryParticlePool(GEO_POOL_MAX);
   private geoSparkDraw: ReturnType<typeof createGeoSparkDraw> | null = null;
+  /** Last XR-presenting state the portal layer orders were applied for. */
+  private portalLayerXr: boolean | null = null;
   private readonly beamCaster = new Raycaster();
   private readonly beamTargets: Object3D[] = [];
   private readonly meshWalk: Object3D[] = [];
@@ -519,6 +548,7 @@ export class RiftLabSystem extends createSystem({
   private readonly palmAnchorLeft = new Vector3();
   private readonly palmAnchorRight = new Vector3();
   private readonly headPos = new Vector3();
+  private readonly diagNotePos = new Vector3();
   private debugSealP: number | null = null;
   private readonly debugHands: Record<'left' | 'right', PalmPose | null> = {
     left: null,
@@ -534,6 +564,11 @@ export class RiftLabSystem extends createSystem({
   private roomCaptureAttempted = false;
   private awaitingWalls = false;
   private mrButton: unknown = null;
+  /** Diagnostics row: isolation toggle container + per-layer labels. */
+  private diagContainer: unknown = null;
+  private readonly toggleLabels: Partial<
+    Record<RiftVisualLayer, UIKit.Text | null>
+  > = {};
 
   init(): void {
     this.root.visible = false;
@@ -545,6 +580,9 @@ export class RiftLabSystem extends createSystem({
       this.root.add(this.handAura.root);
       this.root.add(this.handOccluders.root);
       this.geoSparkDraw = createGeoSparkDraw(GEO_POOL_MAX);
+      this.geoSparkDraw.mesh.renderOrder = portalLayerOrders(
+        this.world.renderer.xr.isPresenting === true,
+      ).spark;
       this.root.add(this.geoSparkDraw.mesh);
       for (let i = 0; i < TORRENT_COUNT; i++) {
         const color = PAD_COLOR_NAMES[i % PAD_COLOR_NAMES.length];
@@ -594,6 +632,22 @@ export class RiftLabSystem extends createSystem({
     panel
       .getElementById('rift-lab-mr-button')
       ?.addEventListener('click', () => this.enterMixedReality());
+
+    // Item 118 isolation toggles: one button per suspect visual layer. The
+    // row only renders under the ?riftDiag=1 opt-in (renderPanel owns its
+    // display), so the default panel is unchanged.
+    this.diagContainer = panel.getElementById('rift-lab-diag');
+    for (const layer of RIFT_VISUAL_LAYERS) {
+      this.toggleLabels[layer] = panel.getElementById<UIKit.Text>(
+        `rift-lab-toggle-${layer}-label`,
+      );
+      panel
+        .getElementById(`rift-lab-toggle-${layer}-button`)
+        ?.addEventListener('click', () => {
+          toggleRiftVisualLayer(layer);
+          this.renderPanel();
+        });
+    }
 
     const canvas = this.world.renderer.domElement;
     const onPointerDown = (event: PointerEvent) => {
@@ -725,6 +779,37 @@ export class RiftLabSystem extends createSystem({
     }
   }
 
+  /** Opt-in on-panel diagnostics for the item 118 headset check: add
+   * ?riftDiag=1 to the page URL. Off by default; changes no gameplay. */
+  private chargeDiagOptedIn(): boolean {
+    try {
+      return new URLSearchParams(window.location.search).get('riftDiag') === '1';
+    } catch {
+      return false;
+    }
+  }
+
+  /** Where the charge notes that are actually drawn sit, versus head and palms. */
+  private chargeCloudDiag(): ChargeCloudDiag {
+    const visible: [number, number, number][] = [];
+    for (const mesh of this.noteMeshes.values()) {
+      if (!this.isObjectWorldVisible(mesh)) continue;
+      const wp = mesh.getWorldPosition(this.diagNotePos);
+      visible.push([wp.x, wp.y, wp.z]);
+    }
+    this.player.head.getWorldPosition(this.headPos);
+    const l = this.palms.left;
+    const r = this.palms.right;
+    return summarizeChargeCloud({
+      immersive: this.isImmersive(),
+      leftPalm: l != null ? [l.center[0], l.center[1], l.center[2]] : null,
+      rightPalm: r != null ? [r.center[0], r.center[1], r.center[2]] : null,
+      head: [this.headPos.x, this.headPos.y, this.headPos.z],
+      totalNotes: this.game.getNotes().length,
+      visibleNotePositions: visible,
+    });
+  }
+
   private installDebugBridge(): void {
     window.__riftLabDebug = {
       snapshot: () => this.debugSnapshot(),
@@ -751,6 +836,10 @@ export class RiftLabSystem extends createSystem({
       },
       setPalmLight: (on: boolean) => {
         this.experimentPalmLight = on;
+      },
+      setLayer: (layer, shown) => {
+        setRiftVisualLayer(layer, shown);
+        this.renderPanel();
       },
       previewSeal: (progress) => this.debugPreviewSeal(progress ?? 0.55),
     };
@@ -1080,6 +1169,24 @@ export class RiftLabSystem extends createSystem({
 
   /** Flat mode: if a resize or menu move put an open rift over the menu or off
    * screen, move or shrink it; if nothing fits it is discarded (never left clipped). */
+  /**
+   * Re-apply portal/menu layer orders when the XR session state changes.
+   * XR: the portal and its elements draw under the lab menu panel (the panel
+   * is transparent and writes no depth, so render order decides); flat: the
+   * portal draws over the menu.
+   */
+  private syncPortalLayering(): void {
+    const xr = this.world.renderer.xr.isPresenting === true;
+    if (xr === this.portalLayerXr) return;
+    this.portalLayerXr = xr;
+    const orders = portalLayerOrders(xr);
+    for (const view of this.riftViews.values()) {
+      view.quad.renderOrder = orders.fracture;
+      applyPortalLayering(view.burst, xr);
+    }
+    if (this.geoSparkDraw != null) this.geoSparkDraw.mesh.renderOrder = orders.spark;
+  }
+
   private reflowFlatRifts(): void {
     if (this.isImmersive() || this.riftViews.size === 0) return;
     const now = performance.now();
@@ -1139,12 +1246,18 @@ export class RiftLabSystem extends createSystem({
       group.lookAt(lookTarget);
     }
     this.root.add(group);
+    // A rift can spawn mid-session, so apply the current mode's layer
+    // orders at creation; syncPortalLayering only reapplies on mode changes.
+    const portalXr = this.world.renderer.xr.isPresenting === true;
+    quad.renderOrder = portalLayerOrders(portalXr).fracture;
+    applyPortalLayering(burst, portalXr);
     this.riftViews.set(rift.id, {
       rift,
       group,
       position,
       born: performance.now(),
       fracture,
+      quad,
       burst,
       sprayAcc: 0,
     });
@@ -1174,16 +1287,24 @@ export class RiftLabSystem extends createSystem({
     }
     for (const hand of ['right', 'left'] as const) {
       const adapter = this.input.xr.visualAdapters[hand].peek();
-      if (adapter instanceof XRHandVisualAdapter) {
-        const grip = this.player.gripSpaces[hand];
-        grip.updateWorldMatrix(true, false);
-        this.palms[hand] = readPalmPose(
-          adapter.jointTransforms,
-          grip.matrixWorld.elements,
-        );
-      } else {
+      const joints =
+        adapter instanceof XRHandVisualAdapter
+          ? adapter.jointTransforms
+          : null;
+      if (joints == null) {
+        this.poseFreshness.reset(hand);
         this.palms[hand] = null;
+        continue;
       }
+      // Lost tracking freezes the joint buffer instead of clearing it; a
+      // palm read from frozen joints parks hand visuals mid-air.
+      if (!this.poseFreshness.isLive(hand, joints, performance.now())) {
+        this.palms[hand] = null;
+        continue;
+      }
+      const grip = this.player.gripSpaces[hand];
+      grip.updateWorldMatrix(true, false);
+      this.palms[hand] = readPalmPose(joints, grip.matrixWorld.elements);
     }
   }
 
@@ -1465,6 +1586,13 @@ export class RiftLabSystem extends createSystem({
     syncRiftAudioListener(this.world.camera);
     this.game.updateOrbit(delta);
 
+    // Item 118 isolation toggles: read once per frame; all default to shown.
+    const showChargeNotes = riftVisualLayerShown('chargeNotes');
+    const showAura = riftVisualLayerShown('handAura');
+    const showOccluders = riftVisualLayerShown('handOccluders');
+    const showBeam = riftVisualLayerShown('sealBeam');
+    const showSparks = riftVisualLayerShown('sparks');
+
     // XR: keep every charge note on a tracked palm. setStartingEnergy splits
     // notes across both hands, so an untracked left left a dense cloud on the
     // flat start-space anchor while the live right hand looked empty.
@@ -1499,7 +1627,8 @@ export class RiftLabSystem extends createSystem({
         this.root.add(mesh);
       }
       // Immersive + no tracked palms: hide the cloud (no flat-world park).
-      if (this.isImmersive() && this.palms[note.hand] == null) {
+      // The isolation toggle hides it in every mode.
+      if (!showChargeNotes || (this.isImmersive() && this.palms[note.hand] == null)) {
         mesh.visible = false;
         continue;
       }
@@ -1561,7 +1690,7 @@ export class RiftLabSystem extends createSystem({
         this.noteOccNote,
       );
       mat.opacity = 0.2 + 0.8 * front;
-      mesh.visible = front > 0.05 || this.palms[note.hand] == null;
+      mesh.visible = showChargeNotes && (front > 0.05 || this.palms[note.hand] == null);
     }
     for (const [id, mesh] of this.noteMeshes) {
       if (!seen.has(id)) {
@@ -1570,12 +1699,16 @@ export class RiftLabSystem extends createSystem({
       }
     }
 
-    this.handOccluders?.update(this.palms.left, this.palms.right);
+    this.handOccluders?.update(
+      showOccluders ? this.palms.left : null,
+      showOccluders ? this.palms.right : null,
+    );
 
     this.reflowFlatRifts();
     // Animate the fractures and publish target positions for the panel dodge.
     const nowMs = performance.now();
     riftAimRays.length = 0;
+    this.syncPortalLayering();
     for (const hand of ['right', 'left'] as const) {
       const palm = this.palms[hand];
       // Looser than the fire gate: lift the menu as soon as a hand is open
@@ -1612,6 +1745,9 @@ export class RiftLabSystem extends createSystem({
         sealing,
         cameraQuat: this.cameraWorldQuat,
       });
+      // Isolation toggle: hide burst notes/sparks/fragments, keep animating
+      // so re-enabling does not jump.
+      view.burst.root.visible = showSparks;
     }
 
     if (this.running) {
@@ -1707,11 +1843,11 @@ export class RiftLabSystem extends createSystem({
           end: this.beamEnd,
           hitStrength,
           timeSec: this.beamTimeSec,
-          visible: true,
+          visible: showBeam,
         });
         // Notes stream the whole time the beam is on, hand → current end.
-        this.updateSealTorrent(origin, this.beamEnd, true);
-        if (geoHit) this.emitBeamHitSparks(delta);
+        this.updateSealTorrent(origin, this.beamEnd, showBeam);
+        if (geoHit && showSparks) this.emitBeamHitSparks(delta);
       } else {
         stopBeamHum();
         this.sealBeam?.update({
@@ -1732,12 +1868,14 @@ export class RiftLabSystem extends createSystem({
       this.handAura?.update({
         // Untracked XR hands must not fall back to the flat anchors, or a
         // white core sits in mid-air in front of the player.
-        left: immersiveHands
+        left: showAura && immersiveHands
           ? this.palms.left != null ? this.handAnchor('left') : null
           : null,
-        right: immersiveHands
+        right: showAura && immersiveHands
           ? this.palms.right != null ? this.handAnchor('right') : null
-          : this.handAnchor('right'),
+          : showAura
+            ? this.handAnchor('right')
+            : null,
         firing: this.firingHandSide(),
         energy01: Math.min(1, this.game.getEnergy() / MAX_ENERGY),
         timeSec: this.beamTimeSec,
@@ -1812,6 +1950,34 @@ export class RiftLabSystem extends createSystem({
     this.telemetryText?.setProperties({
       text: `Rifts open: ${open}. ${modifier}.`,
     } as never);
+    if (this.chargeDiagOptedIn()) {
+      // Temporary sealing-spark diagnostics: emitted/alive come from the
+      // geometry-particle pool; drawn is the on-screen instanced count.
+      // Emitted > 0 with drawn 0 means the sim runs but nothing renders.
+      const sparkMesh = this.geoSparkDraw?.mesh;
+      const sparkDiag =
+        ` | sparks emitted ${this.geoPool.emitted}, alive ${this.geoPool.alive}` +
+        `, drawn ${sparkMesh != null && sparkMesh.visible ? sparkMesh.count : 0}` +
+        `, hits ${this.geoPool.collisions}`;
+      this.telemetryText?.setProperties({
+        text:
+          'Rifts open: ' + open + '. ' + modifier + '. | ' +
+          formatChargeCloudDiag(this.chargeCloudDiag()) + sparkDiag,
+      } as never);
+    }
+    // Item 118 isolation toggles: visible only under the same ?riftDiag=1
+    // opt-in as the diag line; labels mirror the live flag state.
+    const diagOn = this.chargeDiagOptedIn();
+    (this.diagContainer as { setProperties?: (p: object) => void } | null)
+      ?.setProperties?.({ display: diagOn ? 'flex' : 'none' });
+    if (diagOn) {
+      const layerFlags = riftVisualFlagsSnapshot();
+      for (const layer of RIFT_VISUAL_LAYERS) {
+        this.toggleLabels[layer]?.setProperties({
+          text: `${RIFT_VISUAL_LAYER_LABELS[layer]}: ${layerFlags[layer] ? 'on' : 'off'}`,
+        } as never);
+      }
+    }
   }
 
   private debugSealFirstRift(): void {
@@ -2040,8 +2206,14 @@ export class RiftLabSystem extends createSystem({
     }
     stepGeometryParticles(this.geoPool, delta, this.geoSurfaces);
     if (this.geoSparkDraw != null) {
-      this.world.camera.getWorldQuaternion(this.cameraWorldQuat);
-      syncGeoSparkDraw(this.geoSparkDraw, this.geoPool, this.cameraWorldQuat);
+      if (riftVisualLayerShown('sparks')) {
+        this.world.camera.getWorldQuaternion(this.cameraWorldQuat);
+        syncGeoSparkDraw(this.geoSparkDraw, this.geoPool, this.cameraWorldQuat);
+      } else {
+        // Isolation toggle: hide the shared spark draw; the pool keeps
+        // stepping so re-enabling does not spray a backlog.
+        this.geoSparkDraw.mesh.visible = false;
+      }
     }
   }
 
@@ -2141,6 +2313,8 @@ export class RiftLabSystem extends createSystem({
       beamActive: this.game.isBeamActive(),
       status: this.statusMessage,
       noteOriginNdc: this.handAnchor('right').clone().project(this.world.camera).toArray(),
+      chargeCloud: this.chargeCloudDiag(),
+      layers: riftVisualFlagsSnapshot(),
       noteCloudRadiusPx: Math.min(
         CLOUD_MAX_RADIUS_M * 1.12 * this.fingertipGlowScale(this.handAnchor('right')) *
           this.pxPerMeterAt(this.handAnchor('right')),

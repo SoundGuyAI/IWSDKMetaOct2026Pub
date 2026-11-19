@@ -35,6 +35,7 @@ import {
 } from './rift-energy.js';
 import { noteGlyphTexture } from './rift-note-visuals.js';
 import type { GeometryParticlePool } from './rift-geometry-particles.js';
+import { portalLayerOrders } from './rift-portal-layering.js';
 
 /** Adjustable density / size / depth / glow for the portal cloud. */
 export const PORTAL_BURST_TUNING = {
@@ -539,6 +540,14 @@ export function createPortalBurst(
     sparkMat,
     fragmentMat,
   };
+}
+
+/** Apply the mode-dependent portal/menu layer orders to one burst. */
+export function applyPortalLayering(burst: PortalBurst, xr: boolean): void {
+  const o = portalLayerOrders(xr);
+  for (const note of burst.notes) note.renderOrder = o.note;
+  burst.sparks.renderOrder = o.spark;
+  burst.fragments.renderOrder = o.fragment;
 }
 
 export function updatePortalBurst(
