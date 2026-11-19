@@ -1,0 +1,132 @@
+<!--
+  Voice Yes/No research lab panel. Isolated Cypher dialogue scene: the
+  channel is weak - only single clear words like yes or no come
+  through. Answers by voice (on-device model); buttons/keys are fallback.
+-->
+<style>
+  .voice-lab-root {
+    flex-direction: column;
+    width: 560px;
+  }
+
+  .voice-lab-content {
+    flex-direction: column;
+    gap: 10px;
+    padding: 24px;
+  }
+
+  .voice-lab-eyebrow {
+    color: #6b5a00;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+  }
+
+  .voice-lab-eyebrow:dark {
+    color: #f5d90a;
+  }
+
+  .voice-lab-heading {
+    color: #1c1d20;
+    font-size: 30px;
+    font-weight: 700;
+    line-height: 36px;
+  }
+
+  .voice-lab-heading:dark {
+    color: #fafaf7;
+  }
+
+  .voice-lab-body {
+    color: #3a3b40;
+    font-size: 17px;
+    line-height: 24px;
+  }
+
+  .voice-lab-body:dark {
+    color: #dddfe3;
+  }
+
+  .voice-lab-line {
+    color: #1c1d20;
+    font-size: 19px;
+    font-weight: 700;
+    line-height: 26px;
+    margin-top: 4px;
+    margin-bottom: 4px;
+  }
+
+  .voice-lab-line:dark {
+    color: #fafaf7;
+  }
+
+  .voice-lab-telemetry {
+    color: #6a6c72;
+    font-size: 13px;
+    line-height: 18px;
+  }
+
+  .voice-lab-telemetry:dark {
+    color: #9a9ea6;
+  }
+
+  .voice-lab-button {
+    justify-content: center;
+    height: 56px;
+    margin-left: 24px;
+    margin-right: 24px;
+    margin-bottom: 10px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+
+  .voice-lab-button-label {
+    font-size: 20px;
+    font-weight: 700;
+    transform-translate-y: 1px;
+  }
+
+  .voice-lab-answer-row {
+    flex-direction: row;
+    gap: 12px;
+    margin-left: 24px;
+    margin-right: 24px;
+    margin-bottom: 10px;
+  }
+
+  .voice-lab-answer-button {
+    justify-content: center;
+    flex-grow: 1;
+    height: 56px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+</style>
+<Panel id="voice-lab-root" class="voice-lab-root">
+  <div class="voice-lab-content">
+    <div id="voice-lab-eyebrow" class="voice-lab-eyebrow">RESEARCH LAB</div>
+    <div id="voice-lab-heading" class="voice-lab-heading">Voice Yes / No</div>
+    <div id="voice-lab-intro" class="voice-lab-body">Cypher can barely hear you through the static: only single clear words like yes or no make it across. Say one clear word - anything else is noise at her end. Voice runs on-device; the buttons work everywhere.</div>
+    <div id="voice-lab-status" class="voice-lab-body">...</div>
+    <div id="voice-lab-line" class="voice-lab-line">...</div>
+    <div id="voice-lab-voice" class="voice-lab-telemetry">Cypher voice: checking...</div>
+    <div id="voice-lab-telemetry" class="voice-lab-telemetry">telemetry starts with the link</div>
+  </div>
+  <Button id="voice-lab-start-button" class="voice-lab-button">
+    <ButtonLabel id="voice-lab-start-label" class="voice-lab-button-label">Open the link</ButtonLabel>
+  </Button>
+  <div class="voice-lab-answer-row">
+    <Button id="voice-lab-yes-button" class="voice-lab-answer-button">
+      <ButtonLabel class="voice-lab-button-label">Yes</ButtonLabel>
+    </Button>
+    <Button id="voice-lab-no-button" class="voice-lab-answer-button">
+      <ButtonLabel class="voice-lab-button-label">No</ButtonLabel>
+    </Button>
+  </div>
+  <Button id="voice-lab-repeat-button" class="voice-lab-button">
+    <ButtonLabel class="voice-lab-button-label">Repeat the line</ButtonLabel>
+  </Button>
+  <Button id="voice-lab-back-button" class="voice-lab-button" style="margin-bottom: 24px">
+    <ButtonLabel class="voice-lab-button-label">Back to menu</ButtonLabel>
+  </Button>
+</Panel>
