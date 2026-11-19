@@ -150,7 +150,7 @@ function browserStorage(): Storage | undefined { try { return globalThis.localSt
  * boundary that plays a gate window never reaches this class). Starts once the
  * run streak reaches BACKGROUND_START_STREAK; below BACKGROUND_EVERY_PATTERN_STREAK
  * a line plays every two successful patterns, from that streak on every pattern.
- * Failures do not rewind the counter. Skip resumes an unheard line at the next safe boundary.
+ * Failures do not rewind the counter. Unstarted lines resume at the next safe boundary.
  * Position is browser-local and cleared with Settings stat reset. */
 export const BACKGROUND_START_STREAK = 8;
 export const BACKGROUND_EVERY_PATTERN_STREAK = 10;
@@ -173,8 +173,8 @@ export class BackgroundProgress {
     try { this.storage?.setItem(BACKGROUND_PROGRESS_KEY, JSON.stringify({version: 1, next: this.next, completed: this.completed, pending: this.pending})); } catch { /* in-memory fallback */ }
   }
   /**
-   * Called at each completed-pattern boundary that did not play a gate window. Skip or interrupt does not count as heard:
-   * `next` only moves in lineCompleted(), so while `pending` the same unheard line is returned again at the
+   * Called at each completed-pattern boundary that did not play a gate window. Before playback starts:
+   * `next` only moves in lineCompleted() at playback start, so while `pending` the same unheard line is returned at the
    * very next eligible boundary (every pattern, not every two patterns).
    * Voices off with no subtitles can still resolve the clips immediately and advance progress, same as Act 1.
    */
@@ -186,6 +186,7 @@ export class BackgroundProgress {
     this.save();
     return narratorQuiet && this.pending ? CYPHER_BACKGROUND[this.next] : undefined;
   }
+  /** Consumes the line as soon as its audio/caption starts, including Skip. */
   lineCompleted(): void {
     if (!this.pending) return;
     this.next += 1; this.completed = 0; this.pending = false; this.save();
