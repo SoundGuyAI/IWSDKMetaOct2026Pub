@@ -602,33 +602,14 @@ test('store empty space clears selection without buying or closing; tiles and Bu
   await dbg(page, 'toggleStore');
   const selected = () => page.evaluate(() => (window as any).__wallTonesDebug.storeSelected);
   const targets = () => page.evaluate(() => (window as any).__wallTonesDebug.storePointerTargets);
-  // No fixed wall-clock hold: @pmndrs/pointer-events emits the internal
-  // click only when down/up land within clickThresholdMs = 300ms
-  // (pointer.js:216-218, 323-331), and a fixed hold can stretch past that
-  // under runner load (CI run 44259947366: this case's empty-space click
-  // never cleared the selection on a loaded shard; the store-popup clear
-  // rides the internal click while tile selection rides pointerdown).
-  // Release as soon as the page processed the pointerdown instead; the DOM
-  // tap log records window-level events only and is not proof the internal
-  // handler ran, so outcome assertions below remain the real check.
+  // One native click sends down/up together. A browser round-trip between
+  // them can exceed the pointer library's 300ms click threshold on loaded
+  // CI runners, dropping the popup click even though tile pointerdown works.
+  // Outcome assertions below still verify the actual UIKit handler ran.
   const click = async (x: number, y: number) => {
     await page.mouse.move(x, y, { steps: 8 });
     await page.waitForTimeout(800);
-    const logged = await page.evaluate(
-      () => (window as unknown as { __tapLog: unknown[] }).__tapLog.length,
-    );
-    await page.mouse.down();
-    await page
-      .waitForFunction(
-        (n) =>
-          (window as unknown as { __tapLog: { type: string }[] }).__tapLog
-            .slice(n)
-            .some((e) => e.type === 'pointerdown'),
-        logged,
-        { timeout: 5_000 },
-      )
-      .catch(() => {});
-    await page.mouse.up();
+    await page.mouse.click(x, y);
     await page.waitForTimeout(600); // allow rebuilt UIKit layout/world matrices to settle
   };
   // The store grid mounts tiles incrementally on slow runners and re-centers
@@ -672,26 +653,181 @@ test('store empty space clears selection without buying or closing; tiles and Bu
       }
     }
   };
-  const settledTargets = await settleTargets();
-  const replay = settledTargets['store-tile-replay'];
   await clickTile('store-tile-replay', 'replay');
   await testInfo.attach('selected', { body: await page.screenshot(), contentType: 'image/png' });
   const before = await readState(page);
   // Empty margin beside the centered top row, inside the fixed Store popup.
-  await click(replay.x - 90, replay.y);
-  await expect.poll(selected).toBe(null);
+  // clickTile can re-settle while retrying, and the grid re-centers as tiles
+  // mount, so margin coordinates from an earlier settle can be stale by click
+  // time on loaded CI runners; the click then lands on a non-interactive gap
+  // and selection never clears (CI run 44490190866 shard 10 attempt 0).
+  // Re-settle and retry until the margin click actually clears selection.
+  const clickMarginClear = async () => {
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      const replay = (await settleTargets())['store-tile-replay'];
+      await click(replay.x - 90, replay.y);
+      try {
+        await expect.poll(selected, { timeout: 5_000 }).toBe(null);
+        return;
+      } catch {
+        if (attempt === 4) throw new Error('store empty margin click never cleared selection after 4 attempts');
+      }
+    }
+  };
+  await clickMarginClear();
   expect((await readState(page)).storeOpen).toBe(true);
   expect((await readState(page)).bars).toBe(before.bars);
   expect((await readState(page)).replaysTotal).toBe(before.replaysTotal);
   await testInfo.attach('deselected', { body: await page.screenshot(), contentType: 'image/png' });
-  await click(replay.x, replay.y);
-  await expect.poll(selected).toBe('replay');
+  await clickTile('store-tile-replay', 'replay');
   const buy = (await targets())['store-buy'];
   await click(buy.x, buy.y);
   await expect.poll(async () => (await readState(page)).replaysPaid).toBe(1);
   expect(await selected()).toBe('replay');
   expect((await readState(page)).bars).toBe(before.bars - 20);
   // Existing tap-the-selected-tile toggle remains intact.
-  await click(replay.x, replay.y);
-  await expect.poll(selected).toBe(null);
+  await clickTile('store-tile-replay', null);
 });
+
+  test('Skip pattern: locked without Play, 1000 Bars once Play is owned, button ends the demo and leaves the turn', async ({
+    page,
+  }) => {
+    test.slow();
+    await abortSpeech(page);
+    await bootWallTones(page, true, '?demoBars=0');
+    const owns = () =>
+      page.evaluate(() => (window as any).__wallTonesDebug.ownsSkipPattern);
+    const visible = () =>
+      page.evaluate(() => (window as any).__wallTonesDebug.skipPatternVisible);
+    await grantBars(page, 1500);
+    await dbg(page, 'toggleStore');
+    await dbg(page, 'buySkipPattern');
+    expect(await owns(), 'refused while Play is not owned').toBe(false);
+    expect((await readState(page)).bars).toBe(1500);
+    await grantPlayLevel(page, 1);
+    await dbg(page, 'buySkipPattern');
+    expect(await owns()).toBe(true);
+    expect((await readState(page)).bars).toBe(500);
+    await dbg(page, 'buySkipPattern');
+    expect((await readState(page)).bars, 'one-off').toBe(500);
+    await dbg(page, 'toggleStore');
+
+    await submitPad(page, 0); // start tap
+    await playToStreak(page, 4);
+    // Wait for a demonstration of 5 notes, then press Skip pattern.
+    await expect
+      .poll(
+        async () => {
+          const s = await readState(page);
+          return s.phase === 'playback' && s.sequence.length >= 5;
+        },
+        { timeout: 120_000, intervals: [50] },
+      )
+      .toBe(true);
+    await expect.poll(visible, { timeout: 10_000 }).toBe(true);
+    const t0 = Date.now();
+    await dbg(page, 'pressSkipPattern');
+    await expect
+      .poll(async () => (await readState(page)).phase, { timeout: 5_000 })
+      .toBe('input');
+    // A full 5-note demo takes several seconds; the skip lands well inside it.
+    expect(Date.now() - t0).toBeLessThan(2_500);
+    const snap = await readState(page);
+    expect(snap.inputStep, 'player turn untouched').toBe(0);
+    expect(snap.streak).toBe(4);
+    await expect.poll(visible, { timeout: 5_000 }).toBe(false);
+    // The turn still works note by note.
+    await submitPad(page, snap.sequence[0]!);
+    expect((await readState(page)).inputStep).toBe(1);
+  });
+
+  test('Store layout: Multiplier shares the Speed row; Pad 5, Hack and ????? share the last row; Skip pattern line from Play', async ({
+    page,
+  }) => {
+    test.slow();
+    await abortSpeech(page);
+    await bootWallTones(page, true, '?demoBars=0');
+    await dbg(page, 'toggleStore');
+    const read = () =>
+      page.evaluate(
+        () =>
+          (window as any).__wallTonesDebug.storePointerTargets as Record<
+            string,
+            { x: number; y: number }
+          >,
+      );
+    await expect
+      .poll(
+        async () => {
+          const t = await read();
+          return ['speed', 'multiplier', 'pads56', 'narrator', 'secret', 'skip', 'play'].every(
+            (k) => t['store-tile-' + k] != null,
+          );
+        },
+        { timeout: 30_000 },
+      )
+      .toBe(true);
+    // Let the tree settle before comparing positions.
+    await page.waitForTimeout(1500);
+    const t = await read();
+    const at = (k: string) => t['store-tile-' + k]!;
+    expect(Math.abs(at('speed').y - at('multiplier').y), 'Speed and Multiplier share a row').toBeLessThanOrEqual(2);
+    expect(at('multiplier').x).toBeGreaterThan(at('speed').x + 20);
+    expect(Math.abs(at('pads56').y - at('narrator').y)).toBeLessThanOrEqual(2);
+    expect(Math.abs(at('narrator').y - at('secret').y), 'Pad 5, Hack, Secret share a row').toBeLessThanOrEqual(2);
+    expect(at('pads56').x).toBeLessThan(at('narrator').x);
+    expect(at('narrator').x).toBeLessThan(at('secret').x);
+    expect(at('secret').y, 'Secret row is below Multiplier row').toBeGreaterThan(at('multiplier').y + 40);
+    expect(Math.abs(at('skip').y - at('play').y), 'Skip pattern sits in Play row').toBeLessThanOrEqual(2);
+    expect(at('skip').x).toBeLessThan(at('play').x);
+  });
+
+  test('Play regression: used at a streak in one run, still works at the same streak in the next run', async ({
+    page,
+  }) => {
+    test.slow();
+    await abortSpeech(page);
+    await bootWallTones(page, true);
+    await grantPlayLevel(page, 1);
+    await submitPad(page, 0); // start tap
+    await expect
+      .poll(async () => (await readState(page)).phase, { timeout: 90_000 })
+      .toBe('input');
+    // Run 1, round 1: Play enters the single note (marks Play used at streak 0).
+    await dbg(page, 'pressPlay');
+    await expect
+      .poll(async () => (await readState(page)).streak, { timeout: 90_000 })
+      .toBe(1);
+    // Round 2 begins; fail on purpose and start a new run from Game Over.
+    await expect
+      .poll(
+        async () => {
+          const s = await readState(page);
+          return s.phase === 'input' && s.sequence.length === 2;
+        },
+        { timeout: 90_000 },
+      )
+      .toBe(true);
+    const snap = await readState(page);
+    await submitPad(page, (snap.sequence[0]! + 1) % 4);
+    await expect
+      .poll(() => page.evaluate(() => (window as any).__wallTonesDebug.gameOverOpen), {
+        timeout: 30_000,
+      })
+      .toBe(true);
+    await dbg(page, 'gameOverNewRun');
+    await expect
+      .poll(
+        async () => {
+          const s = await readState(page);
+          return s.phase === 'input' && s.sequence.length === 1 && s.streak === 0;
+        },
+        { timeout: 90_000 },
+      )
+      .toBe(true);
+    // Fresh run, same streak number as when Play was used: it must work.
+    await dbg(page, 'pressPlay');
+    await expect
+      .poll(async () => (await readState(page)).streak, { timeout: 90_000 })
+      .toBe(1);
+  });
