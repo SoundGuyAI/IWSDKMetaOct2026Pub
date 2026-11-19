@@ -102,6 +102,28 @@ async function panelClick(page: Page, x: number, y: number, dwellMs = 800): Prom
 const waitForPhase = (page: Page, phase: string) =>
   expect.poll(async () => (await readDebug(page)).phase, { timeout: 90_000 }).toBe(phase);
 
+/** DOM bounds locate the visible control; input is page.mouse, never DOM click or debug. */
+async function skipVoiceWithMouse(page: Page): Promise<boolean> {
+  const button = page.locator('#wall-tones-skip-voice-flat');
+  if (!await button.isVisible()) return false;
+  const box = await button.boundingBox();
+  if (!box) return false;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.up();
+  return true;
+}
+
+async function waitForPhaseSkippingVoice(page: Page, phase: string): Promise<number> {
+  let clicks = 0;
+  await expect.poll(async () => {
+    if ((await readDebug(page)).phase === phase) return phase;
+    if (await skipVoiceWithMouse(page)) clicks++;
+    return (await readDebug(page)).phase;
+  }, { timeout: 90_000 }).toBe(phase);
+  return clicks;
+}
+
 async function bootStored(page: Page, extra?: () => void): Promise<void> {
   await page.addInitScript(() => {
     window.sessionStorage.setItem('iwsdk-experience-mode', 'walltones');
@@ -124,6 +146,7 @@ test.describe('Wall Tones desktop POINTER path (real mouse)', () => {
   }) => {
     test.setTimeout(300_000);
     await bootStored(page);
+    let skipClicks = 0;
 
     // Start: first real press on any pad. Headless ray hover can miss the
     // first edge-triggered press (also observed on clean main); retry with a
@@ -149,7 +172,7 @@ test.describe('Wall Tones desktop POINTER path (real mouse)', () => {
       .toBe(false);
 
     for (let target = 1; target <= STREAK_TARGET; target += 1) {
-      await waitForPhase(page, 'input');
+      skipClicks += await waitForPhaseSkippingVoice(page, 'input');
       const snap = await readDebug(page);
       expect(snap.sequence).toHaveLength(target);
       for (let step = 0; step < snap.sequence.length; step += 1) {
@@ -174,7 +197,7 @@ test.describe('Wall Tones desktop POINTER path (real mouse)', () => {
     expect((await readDebug(page)).bestStreak).toBe(STREAK_TARGET);
 
     // Deliberate wrong pad on the next input.
-    await waitForPhase(page, 'input');
+    skipClicks += await waitForPhaseSkippingVoice(page, 'input');
     const snap = await readDebug(page);
     const wrong = (snap.sequence[snap.inputStep]! + 1) % 4;
     await pointerClick(page, ...PAD_XY[wrong]!);
@@ -185,15 +208,113 @@ test.describe('Wall Tones desktop POINTER path (real mouse)', () => {
       .poll(() => page.evaluate(() => (window as any).__wallTonesDebug.gameOverOpen), { timeout: 60_000 })
       .toBe(true);
     await page.evaluate(() => (window as any).__wallTonesDebug.gameOverNewRun());
-    await expect
-      .poll(async () => {
-        const s = await readDebug(page);
-        return s.phase === 'input' && s.sequence.length === 1;
-      }, { timeout: 60_000 })
-      .toBe(true);
+    skipClicks += await waitForPhaseSkippingVoice(page, 'input');
+    expect((await readDebug(page)).sequence).toHaveLength(1);
+    expect(skipClicks, 'journey must exercise the visible Skip voice button').toBeGreaterThan(0);
     const after = await readDebug(page);
     expect(after.streak).toBe(0);
     expect(after.bestStreak).toBe(STREAK_TARGET);
+  });
+
+  for (const scenario of [
+    { name: 'Cypher', next: 1, active: { index: 0, offset: 0 }, caption: 'Cypher: Connection', expectedNext: 1 },
+    { name: 'story narrator', next: 5, active: { index: 4, offset: 0 }, caption: 'Narrator: Sorry about that', expectedNext: 5 },
+    { name: 'background', next: 14, active: undefined, caption: 'Cypher: ', expectedNext: 14 },
+  ]) {
+    test(`real mouse Skip voice saves started ${scenario.name} line across reload`, async ({ page }, testInfo) => {
+      // Seed only persisted story position, not gameplay or speech. One real
+      // completed pattern reaches the ordinary between-pattern story path.
+      await page.addInitScript(({ next, active }) => {
+        if (!sessionStorage.getItem('skip-regression-seeded')) {
+          localStorage.setItem('wall-tones-cypher-act1-progress-v1', JSON.stringify({ version: 1, next, active }));
+          localStorage.setItem('wall-tones-cypher-background-progress-v1', JSON.stringify({ version: 1, next: 0, completed: 2, pending: true }));
+          localStorage.setItem('wall-tones-hearing-subtitles', 'true');
+          sessionStorage.setItem('skip-regression-seeded', 'true');
+        }
+      }, { next: scenario.next, active: scenario.active });
+      await bootStored(page);
+      await pointerClick(page, ...PAD_XY[0]!);
+      await waitForPhaseSkippingVoice(page, 'input');
+      const snap = await readDebug(page);
+      await pointerClick(page, ...PAD_XY[snap.sequence[0]!]!);
+      // Do not skip praise or radio effects here: wait for the actual line.
+      const subtitle = page.locator('#wall-tones-flat-subtitles');
+      await expect(subtitle).toContainText(scenario.caption, { timeout: 60_000 });
+      const key = scenario.name === 'background'
+        ? 'wall-tones-cypher-background-progress-v1'
+        : 'wall-tones-cypher-act1-progress-v1';
+      const saved = () => page.evaluate(key => JSON.parse(localStorage.getItem(key)!), key);
+      await expect.poll(async () => {
+        const value = await saved();
+        return scenario.name === 'background' ? value.next === 1 : value.next === scenario.expectedNext && !value.active;
+      }, { timeout: 1_000, intervals: [50, 100] }).toBe(true);
+      // Click while the observed line is still speaking. Screenshot encoding
+      // and attachment I/O can outlast a short line, hiding Skip before input.
+      expect(await skipVoiceWithMouse(page)).toBe(true);
+      await expect.poll(() => page.evaluate(() => (window as any).__wallTonesDebug.speechBusy)).toBe(false);
+      const evidence = await page.screenshot({ path: testInfo.outputPath(`skip-voice-${scenario.name.replaceAll(' ', '-')}.png`) });
+      await testInfo.attach('after-real-mouse-skip', { body: evidence, contentType: 'image/png' });
+      const afterSkip = await saved();
+      await page.reload();
+      await page.waitForFunction(() => Boolean((window as any).__wallTonesDebug));
+      expect(await saved()).toEqual(afterSkip);
+    });
+  }
+
+  test('mouse Skip praise preserves same-boundary story and defers unstarted story lines', async ({ page }, testInfo) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('wall-tones-cypher-act1-progress-v1', JSON.stringify({ version: 1, next: 6, active: { index: 5, offset: 0 } }));
+      localStorage.setItem('wall-tones-hearing-subtitles', 'true');
+    });
+    await bootStored(page);
+    await pointerClick(page, ...PAD_XY[0]!);
+    await waitForPhaseSkippingVoice(page, 'input');
+    // End a preparatory run so each new record uses the ordinary praise path.
+    let snap = await readDebug(page);
+    await pointerClick(page, ...PAD_XY[(snap.sequence[0]! + 1) % 4]!);
+    await expect.poll(() => page.evaluate(() => (window as any).__wallTonesDebug.gameOverOpen)).toBe(true);
+    await page.evaluate(() => (window as any).__wallTonesDebug.gameOverNewRun());
+    await waitForPhaseSkippingVoice(page, 'input');
+    const subtitle = page.locator('#wall-tones-flat-subtitles');
+    const saved = () => page.evaluate(() => JSON.parse(localStorage.getItem('wall-tones-cypher-act1-progress-v1')!));
+    snap = await readDebug(page);
+    await pointerClick(page, ...PAD_XY[snap.sequence[0]!]!);
+    await expect(subtitle).toContainText('Cypher: My codename is Cypher', { timeout: 60_000 });
+    expect(await skipVoiceWithMouse(page)).toBe(true);
+    await waitForPhase(page, 'input');
+    expect((await saved()).active).toEqual({ index: 5, offset: 1 });
+    snap = await readDebug(page);
+    for (const pad of snap.sequence) await pointerClick(page, ...PAD_XY[pad]!);
+    await expect.poll(async () => /best|record/i.test(await subtitle.textContent() ?? '')).toBe(true);
+    expect(await skipVoiceWithMouse(page)).toBe(true);
+    // The pre-repair callback swallowed this whole opportunity after praise Skip.
+    await expect(subtitle).toContainText('Cypher: I need your help.', { timeout: 60_000 });
+    await expect.poll(async () => !(await saved()).active).toBe(true);
+    const image = await page.screenshot({ path: testInfo.outputPath('praise-skip-preserves-story.png') });
+    await testInfo.attach('story-after-praise-mouse-skip', { body: image, contentType: 'image/png' });
+    expect(await skipVoiceWithMouse(page)).toBe(true);
+    await waitForPhase(page, 'input');
+    expect(await saved()).toEqual({ version: 1, next: 6 });
+  });
+
+  test('mouse Skip pre-line radio effect preserves unheard Cypher for next boundary', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('wall-tones-cypher-act1-progress-v1', JSON.stringify({ version: 1, next: 1, active: { index: 0, offset: 0 } }));
+      localStorage.setItem('wall-tones-hearing-subtitles', 'true');
+    });
+    await bootStored(page);
+    await pointerClick(page, ...PAD_XY[0]!);
+    await waitForPhaseSkippingVoice(page, 'input');
+    const subtitle = page.locator('#wall-tones-flat-subtitles');
+    let snap = await readDebug(page);
+    await pointerClick(page, ...PAD_XY[snap.sequence[0]!]!);
+    await expect(subtitle).toContainText('[radio static]', { timeout: 60_000 });
+    expect(await skipVoiceWithMouse(page)).toBe(true);
+    await waitForPhase(page, 'input');
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('wall-tones-cypher-act1-progress-v1')!).active)).toEqual({ index: 0, offset: 0 });
+    snap = await readDebug(page);
+    for (const pad of snap.sequence) await pointerClick(page, ...PAD_XY[pad]!);
+    await expect(subtitle).toContainText('Cypher: Connection', { timeout: 60_000 });
   });
 
   test('static click with no preceding pointer movement does not press a pad (documents live finding)', async ({

@@ -147,7 +147,7 @@ interface Storage { getItem(key: string): string | null; setItem(key: string, va
 function browserStorage(): Storage | undefined { try { return globalThis.localStorage; } catch { return undefined; } }
 
 /** Proposed: starts after Act1, every two successful patterns; failures do not
- * rewind the counter. Skip resumes an unheard line at the next safe boundary.
+ * rewind the counter. Unstarted lines resume at the next safe boundary.
  * Position is browser-local and cleared with Settings stat reset. */
 export class BackgroundProgress {
   private next = 0;
@@ -167,8 +167,8 @@ export class BackgroundProgress {
     try { this.storage?.setItem(BACKGROUND_PROGRESS_KEY, JSON.stringify({version: 1, next: this.next, completed: this.completed, pending: this.pending})); } catch { /* in-memory fallback */ }
   }
   /**
-   * Called at each quiet completed-pattern boundary after Act 1. Skip or interrupt does not count as heard:
-   * `next` only moves in lineCompleted(), so while `pending` the same unheard line is returned again at the
+   * Called at each quiet completed-pattern boundary after Act 1. Before playback starts:
+   * `next` only moves in lineCompleted() at playback start, so while `pending` the same unheard line is returned at the
    * very next eligible boundary (every pattern, not every two patterns).
    * Voices off with no subtitles can still resolve the clips immediately and advance progress, same as Act 1.
    */
@@ -179,6 +179,7 @@ export class BackgroundProgress {
     this.save();
     return narratorQuiet && this.pending ? CYPHER_BACKGROUND[this.next] : undefined;
   }
+  /** Consumes the line as soon as its audio/caption starts, including Skip. */
   lineCompleted(): void {
     if (!this.pending) return;
     this.next += 1; this.completed = 0; this.pending = false; this.save();
