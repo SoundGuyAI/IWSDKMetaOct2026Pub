@@ -135,6 +135,9 @@
       <ButtonLabel class="voice-lab-button-label">No</ButtonLabel>
     </Button>
   </div>
+  <Button id="voice-lab-skip-button" class="voice-lab-button" style="display: none">
+    <ButtonLabel class="voice-lab-button-label">Skip Voice</ButtonLabel>
+  </Button>
   <Button id="voice-lab-repeat-button" class="voice-lab-button">
     <ButtonLabel class="voice-lab-button-label">Repeat the line</ButtonLabel>
   </Button>
