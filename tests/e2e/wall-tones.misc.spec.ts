@@ -381,3 +381,24 @@ for (const skipIntro of [false, true]) {
   await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');
  });
 }
+
+for (const stage of ['fresh','unfinished','introduced'] as const) {
+ test(`first reload greets before Start and gates Cypher on completed introduction (${stage})`,async({page})=>{
+  await page.route('**/audio/**',route=>route.abort());
+  const requests:string[]=[];
+  page.on('request',r=>{if(r.resourceType()==='fetch'&&r.url().includes('/audio/return-reminders/'))requests.push(r.url());});
+  await page.addInitScript(()=>sessionStorage.setItem('iwsdk-experience-mode','walltones'));
+  await page.goto('/');await page.waitForFunction(()=>Boolean(window.__wallTonesDebug?.flatAwaitingStart));
+  await page.evaluate(stage=>{
+   localStorage.setItem('wall-tones-cypher-act1-progress-v1',JSON.stringify(stage==='fresh'?{version:1,next:0}:stage==='unfinished'?{version:1,next:1,active:{index:0,offset:0}}:{version:1,next:1}));
+  },stage);
+  requests.length=0;await page.reload();await page.waitForFunction(()=>Boolean(window.__wallTonesDebug?.flatAwaitingStart));
+  await expect.poll(()=>requests.some(x=>x.endsWith('/n-r01.mp3'))).toBe(true);
+  await page.waitForFunction(()=>!window.__wallTonesDebug!.speechBusy);
+  expect(await page.evaluate(()=>window.__wallTonesDebug!.flatAwaitingStart)).toBe(true);
+  expect(requests.filter(x=>x.endsWith('/n-r01.mp3'))).toHaveLength(1);
+  const cypher=requests.filter(x=>x.includes('/cypher/'));
+  if(stage==='introduced')expect(cypher.some(x=>x.endsWith('/c-r02.mp3'))).toBe(true);
+  else expect(cypher).toHaveLength(0);
+ });
+}
