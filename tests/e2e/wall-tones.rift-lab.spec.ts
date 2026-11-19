@@ -23,8 +23,8 @@ test('Rift Sealing Lab opens from the Lab menu and runs the charge-seal loop', a
 
   // Click the Rift Sealing Lab row (second row on the Lab menu).
   await page.waitForTimeout(2000);
-  await page.mouse.move(640, 457);
-  await page.mouse.click(640, 457);
+  await page.mouse.move(640, 415);
+  await page.mouse.click(640, 415); // Voice row added 2026-11-18: menu shifted up, Rift row recalibrated 457 -> 415 (screenshot-verified).
   await expect.poll(() => mode(page)).toBe('riftlab');
   expect(await page.title()).toBe('Wall Tones 2: Rift Sealing Lab');
 
@@ -114,8 +114,8 @@ test('geometry-collision sparks spray while sealing and hit surfaces (item 93)',
   await expect.poll(() => mode(page)).toBe('lab');
   await page.waitForFunction(() => window.__riftLabDebug != null);
   await page.waitForTimeout(2000);
-  await page.mouse.move(640, 457);
-  await page.mouse.click(640, 457);
+  await page.mouse.move(640, 415);
+  await page.mouse.click(640, 415); // Voice row added 2026-11-18: menu shifted up, Rift row recalibrated 457 -> 415 (screenshot-verified).
   await expect.poll(() => mode(page)).toBe('riftlab');
 
   await page.evaluate(() => window.__riftLabDebug!.start());
@@ -161,8 +161,8 @@ test('Rift Lab Back returns to the Lab menu', async ({ page }) => {
   await page.mouse.click(1100, 320);
   await expect.poll(() => mode(page)).toBe('lab');
   await page.waitForTimeout(2000);
-  await page.mouse.move(640, 457);
-  await page.mouse.click(640, 457);
+  await page.mouse.move(640, 415);
+  await page.mouse.click(640, 415); // Voice row added 2026-11-18: menu shifted up, Rift row recalibrated 457 -> 415 (screenshot-verified).
   await expect.poll(() => mode(page)).toBe('riftlab');
   await page.waitForTimeout(1000);
   // Back is the last button on the Rift Lab panel.

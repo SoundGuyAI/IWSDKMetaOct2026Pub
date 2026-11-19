@@ -58,9 +58,30 @@ workflow (see the story clips). The tar for lab clips must extract into
 | `remind-headset` | Nod your head for yes. Shake it for no. |
 | `remind-tilt` | Tilt your phone forward or back for yes, left or right for no. |
 
+### Voice yes/no lab lines (DRAFT, pending Oded's review)
+
+Voice-lab fiction per Oded (2026-11-18): Cypher can barely hear the player;
+only single clear words like yes or no make it across, anything else is noise
+at her end. These six lines are text-only drafts from that direction, NOT yet
+reviewed or approved, and no clips exist for them. The voice lab runs the
+silent text-preview mode for these ids until Oded reviews the wording.
+
+| id | text |
+| --- | --- |
+| `intro-voice` | Connection check. This channel is almost deaf. I can barely hear you through the static. Only single clear words make it across. Say yes or no, nothing else, or all I get is noise. First question. Can you hear me? |
+| `retry-voice` | Only noise came through. One clear word is all this channel carries. Say yes if you can hear me now. |
+| `noise-1` | Static, nothing else. One clear word. Yes or no. Try again. |
+| `noise-2` | Too much noise at my end. Slowly. One word. Again. |
+| `noise-3` | The link caught no clear word. Widening the band. Once more. |
+| `noise-4` | Still only interference. Yes or no, right into the mic. |
+
 ## Canon constraints (from the reviewed Act 1 draft)
 
 - The game's AI cannot hear or detect Cypher. No lab line may claim the game
   is listening or watching; the one-way link (Cypher sees the player, cannot
   hear them) is the only stated reason for gesture answers.
 - Lines stay inside Cypher's established Act 1 voice and motives.
+- The voice yes/no lab uses a different lab-only diagnostic premise: Cypher
+  can barely hear the player, and only single clear words like yes or no
+  come through (Oded's direction, 2026-11-18). It extends Act 1 just as
+  little as the gesture labs do.

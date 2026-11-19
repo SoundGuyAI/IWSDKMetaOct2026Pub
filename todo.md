@@ -166,3 +166,10 @@ Armband verification update (Nov 13): typecheck/build and 102 unit tests pass. Q
 ## Documentation reconciliation - November 17
 
 PR82's backlog58 status/caveat is preserved above. The authoritative game backlog and later follow-ups are in WALL_TONES_TODO.md; this historical implementation log does not override it. No headset verification is newly claimed.
+
+## Voice yes/no lab (feat/voice-xr-lab, Nov 18) - separate PR in progress
+- [x] In-game Voice Yes/No Lab row in the lab menu (same branching Cypher dialogue as nod/thumbs; answers by voice via the on-device speech-commands model under public/voice-lab/, ported from the standalone voice workbench PR177; buttons/Y-N keys remain the fallback).
+- [x] Fiction per owner direction 2026-11-18: Cypher can barely hear the player; only single clear words like yes/no come through, anything else is noise at her end. Six voice-lab-only lines (intro, retry, noise-1..4) are DRAFTS pending his review; silent text-preview mode until clips exist.
+- [x] 12-second listen windows mirroring the nod lab; rotating noise lines on an expired window; the window clock only runs while the receiver is truly streaming (no-mic desktop never spins the loop).
+- [x] Unit tests (receiver decision helpers, dialogue tree, canon guard, wiring, clip-spec coverage) and e2e spec added to the CI roster.
+- [ ] Full local gates, Codex review, his preview test on Quest (microphone + window feel in XR). No merge without his go-ahead.

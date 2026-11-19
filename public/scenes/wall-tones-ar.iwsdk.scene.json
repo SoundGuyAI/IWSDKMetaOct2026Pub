@@ -70,6 +70,13 @@
       "components": { "RayInteractable": {} }
     },
     {
+      "id": "voice-lab-panel",
+      "name": "Voice Lab Panel",
+      "content": { "type": "asset", "asset": "voice-lab-panel" },
+      "transform": { "position": [0, 1.78, -2.75], "scale": 0.34 },
+      "components": { "RayInteractable": {} }
+    },
+    {
       "id": "wall-tones-panel",
       "name": "Wall Tones Panel",
       "content": {

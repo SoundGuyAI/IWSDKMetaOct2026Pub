@@ -25,6 +25,7 @@ const RAY_TOGGLED_PANEL_IDS: ReadonlySet<string> = new Set([
   'lab-entry-panel',
   'rift-lab-panel',
   'thumbs-lab-panel',
+  'voice-lab-panel',
 ]);
 import {
   LAB_ENTRIES,
@@ -51,7 +52,8 @@ export type ExperienceMode =
   | 'lab'
   | 'nodlab'
   | 'riftlab'
-  | 'thumbslab';
+  | 'thumbslab'
+  | 'voicelab';
 
 const MODE_STORAGE_KEY = 'iwsdk-experience-mode';
 
@@ -97,6 +99,7 @@ function readStoredMode(): ExperienceMode {
     stored === 'nodlab' ||
     stored === 'riftlab' ||
     stored === 'thumbslab' ||
+    stored === 'voicelab' ||
     stored === 'menu'
   ) {
     return stored;
@@ -243,6 +246,7 @@ export class AppModeSystem extends createSystem({}) {
     const showNodLab = mode === 'nodlab';
     const showRiftLab = mode === 'riftlab';
     const showThumbsLab = mode === 'thumbslab';
+    const showVoiceLab = mode === 'voicelab';
 
     this.setNodeVisible('main-menu-panel', showMenu);
     this.setNodeVisible('wall-tones-panel', showWallTones);
@@ -250,6 +254,7 @@ export class AppModeSystem extends createSystem({}) {
     this.setNodeVisible('nod-lab-panel', showNodLab);
     this.setNodeVisible('rift-lab-panel', showRiftLab);
     this.setNodeVisible('thumbs-lab-panel', showThumbsLab);
+    this.setNodeVisible('voice-lab-panel', showVoiceLab);
     // The Lab entry floats beside the menu: visible exactly when the menu is.
     this.setNodeVisible('lab-entry-panel', showMenu);
 
@@ -372,6 +377,7 @@ export class AppModeSystem extends createSystem({}) {
     xrButton?.addEventListener('click', () => this.enterXrIntoWallTones());
     this.bindNodLabBack();
     this.bindThumbsLabBack();
+    this.bindVoiceLabBack();
     this.bindSettingsMenu(panel);
     if (wallTonesButton != null) {
       wallTonesButton.name = 'Btn_ModeWallTones';
@@ -388,6 +394,15 @@ export class AppModeSystem extends createSystem({}) {
     back?.addEventListener('click', () => this.setMode('menu'));
     if (back != null) {
       back.name = 'Btn_NodLabBackToMenu';
+    }
+  }
+
+  private bindVoiceLabBack(): void {
+    const panel = this.world.getSceneObject<UIKitMLAsset>('voice-lab-panel');
+    const back = panel?.getElementById('voice-lab-back-button');
+    back?.addEventListener('click', () => this.setMode('lab'));
+    if (back != null) {
+      back.name = 'Btn_VoiceLabBackToMenu';
     }
   }
 
@@ -626,6 +641,7 @@ export class AppModeSystem extends createSystem({}) {
       nodlab: 'Wall Tones 2: nod yes/no lab',
       riftlab: 'Wall Tones 2: Rift Sealing Lab',
       thumbslab: 'Wall Tones 2: thumbs yes/no lab',
+      voicelab: 'Wall Tones 2: voice yes/no lab',
     };
     document.title = titles[mode];
 

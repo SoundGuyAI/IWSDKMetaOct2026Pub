@@ -82,8 +82,9 @@ async function enterThumbsLab(page: import('@playwright/test').Page): Promise<vo
   // The Lab menu has three rows (Nod, Thumbs, Rift) plus Back; the Thumbs row
   // sits at y~372 on the 1280x800 viewport (verified against the deployed
   // pr-75 preview; the old 416 predates the Rift row and hits it instead).
-  await page.mouse.move(640, 372);
-  await page.mouse.click(640, 372);
+  // Voice row added 2026-11-18: the center-anchored Lab menu shifted up ~40px; Thumbs row recalibrated 372 -> 333 (screenshot-verified).
+  await page.mouse.move(640, 333);
+  await page.mouse.click(640, 333);
 }
 
 test('main menu carries a working Thumbs Yes/No Lab button (real canvas click)', async ({

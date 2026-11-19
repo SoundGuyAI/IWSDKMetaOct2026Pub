@@ -81,6 +81,10 @@
     <ButtonIcon><FlaskConical></FlaskConical></ButtonIcon>
     <ButtonLabel id="lab-row-rift-label" class="button-label">Rift Sealing Lab</ButtonLabel>
   </Button>
+  <Button id="lab-row-voice-button" class="button" style="height: 64px">
+    <ButtonIcon><FlaskConical></FlaskConical></ButtonIcon>
+    <ButtonLabel id="lab-row-voice-label" class="button-label">Voice Yes/No Lab</ButtonLabel>
+  </Button>
   <Button id="lab-menu-back-button" class="button" style="height: 64px; margin-bottom: 24px">
     <ButtonIcon><ArrowLeft></ArrowLeft></ButtonIcon>
     <ButtonLabel id="lab-menu-back-label" class="button-label">Back</ButtonLabel>
