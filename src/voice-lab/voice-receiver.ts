@@ -17,6 +17,18 @@ export type YesNoAnswer = 'yes' | 'no';
 export const ANSWER_WORDS: readonly string[] = ['yes', 'no'];
 
 /**
+ * Accent aliases for the yes/no duel (owner, Nov 20): on his accent the
+ * model hears "no" as "go" and "yes" as "left", so while the dialogue
+ * expects yes/no, a detected "go" adds its score to "no" and "left" adds
+ * to "yes". Aliasing is score-level only: the Heard line still shows the
+ * raw words the model caught. Other classes stay noise.
+ */
+export const ANSWER_ALIASES: Readonly<Record<string, YesNoAnswer>> = {
+  go: 'no',
+  left: 'yes',
+};
+
+/**
  * Every other recognized word is noise for this lab (owner, Nov 18: she can
  * barely hear, only single clear words like yes or no come through; anything
  * else is noise at her end).
@@ -67,16 +79,19 @@ export const PERSIST_MIN_HITS = 2;
 export const VOICE_LISTEN_SEC = 12;
 
 /**
- * Interpret one model result. A top class at or above the threshold
- * counts outright; yes/no answer the prompt, any other accepted word is
- * noise. Below the threshold a yes/no still answers when it clearly beats
- * the other answer word; anything weaker is faint.
+ * Interpret one model result. The alias-folded yes/no duel decides first:
+ * a pair score at or above the threshold answers outright (a clear "go"
+ * answers "no", a clear "left" answers "yes"). Any other class at or
+ * above the threshold is noise. Below the threshold a yes/no still
+ * answers when it clearly beats the other answer word; anything weaker is
+ * faint.
  *
  * A yes/no question accepts yes and no only (owner, Nov 19 iPhone test:
- * the model heard his "no" as "go (0.47) vs no (0.29)"). Non-answer
- * classes - go, up, _unknown_, background noise - can never answer and
- * never veto; they are noise at her end, not rivals. A frame won by
- * another word decides nothing: it is not an attempt and casts no vote.
+ * the model heard his "no" as "go (0.47) vs no (0.29)"). Non-answer,
+ * non-alias classes - up, right, _unknown_, background noise - can never
+ * answer and never veto; they are noise at her end, not rivals. A frame
+ * won by another word decides nothing: it is not an attempt and casts no
+ * vote.
  */
 export function interpretScores(
   labels: readonly string[],
@@ -90,13 +105,16 @@ export function interpretScores(
   ) {
     return { kind: 'faint', word: 'invalid', score: 0 };
   }
+  // The aliased yes/no duel decides first: a clear "go" counts toward
+  // "no" (and "left" toward "yes") before any other class is considered.
+  const pair = strongestAnswer(labels, scores);
+  if (pair != null && pair.score >= threshold) {
+    return { kind: 'answer', answer: pair.answer, score: pair.score };
+  }
   const index = scores.indexOf(Math.max(...scores));
   const word = labels[index];
   const score = scores[index];
   if (score >= threshold) {
-    if (word === 'yes' || word === 'no') {
-      return { kind: 'answer', answer: word, score };
-    }
     return { kind: 'noise', word, score };
   }
   const clearWin = clearWinningAnswer(labels, scores);
@@ -110,9 +128,9 @@ export function interpretScores(
  * The stronger of the two answer words when it clears CLEAR_WIN_FLOOR and
  * beats the other answer word by CLEAR_WIN_RATIO; null otherwise. Only
  * runs on below-threshold results, so it can never override an accepted
- * word. Restricted to the yes/no pair on purpose (owner, Nov 19): other
- * classes neither win nor veto, so a "go" can never be mistaken for a
- * "no" and a real "no" heard partly as "go" still gets through.
+ * word. Restricted to the alias-folded yes/no pair on purpose: "go" and
+ * "left" scores already sit inside the pair, and every other class
+ * neither wins nor vetoes.
  */
 function clearWinningAnswer(
   labels: readonly string[],
@@ -128,7 +146,11 @@ function clearWinningAnswer(
   return { kind: 'answer', answer: answer.answer, score: answer.score };
 }
 
-/** The stronger answer word, its score and the other answer word's score. */
+/**
+ * The stronger answer word, its score and the other answer word's score.
+ * Scores are alias-folded: "go" adds to "no", "left" adds to "yes"
+ * (ANSWER_ALIASES).
+ */
 function strongestAnswer(
   labels: readonly string[],
   scores: readonly number[],
@@ -136,12 +158,24 @@ function strongestAnswer(
   if (labels.length === 0 || labels.length !== scores.length) {
     return null;
   }
-  const yes = labels.indexOf('yes');
-  const no = labels.indexOf('no');
-  const yesScore = yes >= 0 ? scores[yes] : 0;
-  const noScore = no >= 0 ? scores[no] : 0;
-  if (!Number.isFinite(yesScore) || !Number.isFinite(noScore)) {
-    return null;
+  let yesScore = 0;
+  let noScore = 0;
+  for (let i = 0; i < labels.length; i++) {
+    const word = labels[i]!;
+    const score = scores[i]!;
+    const answer =
+      word === 'yes' || word === 'no'
+        ? word
+        : ANSWER_ALIASES[word];
+    if (answer == null) continue;
+    if (!Number.isFinite(score)) {
+      return null;
+    }
+    if (answer === 'yes') {
+      yesScore += score;
+    } else {
+      noScore += score;
+    }
   }
   return yesScore >= noScore
     ? { answer: 'yes', score: yesScore, rival: noScore }
