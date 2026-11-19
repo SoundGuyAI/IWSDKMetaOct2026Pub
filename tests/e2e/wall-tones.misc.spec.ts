@@ -1,3 +1,4 @@
+import { RETURN_DIALOGUE } from '../../src/wall-tones/return-dialogue.js';
 import { readFileSync } from 'node:fs';
 
 import { shouldAnnounceRecord } from '../../src/wall-tones/record-feedback.js';
@@ -177,3 +178,227 @@ test('background review proposal: afterAct1, every second completed pattern, cap
   expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('wall-tones-cypher-background-progress-v1')!).next)).toBe(1);
   await page.screenshot({path:test.info().outputPath('background-female-gameplay.png')});
 });
+
+
+test('returning store reminder uses binary answer once after reopening and retains heard data', async ({page}) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('iwsdk-experience-mode','walltones');
+    if (!localStorage.getItem('reminder-test-seeded')) {
+      localStorage.setItem('wall-tones-return-visit-v1','1');
+      localStorage.setItem('wall-tones-instructions-v1',JSON.stringify({version:1,heard:['storeIntro']}));
+      localStorage.setItem('reminder-test-seeded','1');
+    }
+  });
+  await page.goto('/');
+  await page.waitForFunction(()=>Boolean(window.__wallTonesDebug?.flatAwaitingStart));
+  await page.waitForTimeout(1500);
+  // Skip only pre-existing entry speech, never the reminder under test.
+  await page.evaluate(()=>window.__wallTonesDebug!.skipSpeech());
+  await page.evaluate(()=>window.__wallTonesDebug!.toggleStore());
+  await page.waitForFunction(()=>window.__wallTonesDebug!.reminderListening);
+  expect(await page.evaluate(()=>window.__wallTonesDebug!.reminderQuestion)).toBe('Would you like a reminder of how the store works?');
+  const heard=await page.evaluate(()=>localStorage.getItem('wall-tones-instructions-v1'));
+  await page.screenshot({path:'test-results/return-store-reminder-desktop.png'});
+  // Pixel-inspected rendered Yes button, actual pointer route rather than debug answer.
+  await page.mouse.click(811,437);
+  await expect.poll(()=>page.evaluate(()=>window.__wallTonesDebug!.reminderListening),{timeout:1000}).toBe(false);
+  expect(await page.evaluate(()=>window.__wallTonesDebug!.reminderBusy)).toBe(true);
+  await page.waitForFunction(()=>!window.__wallTonesDebug!.reminderBusy);
+  expect(await page.evaluate(()=>localStorage.getItem('wall-tones-instructions-v1'))).toBe(heard);
+  await page.evaluate(()=>{window.__wallTonesDebug!.toggleStore();window.__wallTonesDebug!.toggleStore();});
+  expect(await page.evaluate(()=>window.__wallTonesDebug!.reminderBusy)).toBe(false);
+  await page.reload();await page.waitForFunction(()=>Boolean(window.__wallTonesDebug?.flatAwaitingStart));
+  await page.waitForTimeout(1500);await page.evaluate(()=>{window.__wallTonesDebug!.skipSpeech();window.__wallTonesDebug!.toggleStore();});
+  await page.waitForFunction(()=>window.__wallTonesDebug!.reminderListening);
+  await page.keyboard.press('n');await page.waitForFunction(()=>!window.__wallTonesDebug!.reminderBusy);
+  expect(await page.evaluate(()=>localStorage.getItem('wall-tones-instructions-v1'))).toBe(heard);
+});
+
+
+test('phone returning reminder is visible, times out safely, and cannot reset progress', async ({page}) => {
+  await page.setViewportSize({width:390,height:844});
+  await page.addInitScript(()=>{
+    sessionStorage.setItem('iwsdk-experience-mode','walltones');
+    localStorage.setItem('wall-tones-return-visit-v1','1');
+    localStorage.setItem('wall-tones-instructions-v1',JSON.stringify({version:1,heard:['storeIntro']}));
+    localStorage.setItem('wall-tones-bars','75');
+  });
+  await page.goto('/');await page.waitForFunction(()=>Boolean(window.__wallTonesDebug?.flatAwaitingStart));
+  await page.waitForTimeout(1500);await page.evaluate(()=>{window.__wallTonesDebug!.skipSpeech();window.__wallTonesDebug!.toggleStore();});
+  await page.waitForFunction(()=>window.__wallTonesDebug!.reminderListening);
+  const before=await page.evaluate(()=>JSON.stringify(Object.fromEntries(Object.entries(localStorage))));
+  await page.screenshot({path:'test-results/return-store-reminder-phone.png'});
+  await page.waitForFunction(()=>!window.__wallTonesDebug!.reminderBusy);
+  expect(await page.evaluate(()=>JSON.stringify(Object.fromEntries(Object.entries(localStorage))))).toBe(before);
+});
+
+
+test('all reviewed return clips and opening transitions in both casts load and decode as real audio',async({page})=>{
+ await page.goto('/');
+ const paths=[...Object.entries(RETURN_DIALOGUE).flatMap(([id,line])=>['male','female'].map(g=>`audio/return-reminders/${line.speaker}/${g}/${id.toLowerCase()}.mp3`)),...['male','female'].map(g=>`audio/speech/${g}/opening-pattern.mp3`)];
+ const decoded=await page.evaluate(async paths=>{
+  const context=new AudioContext();
+  try { return await Promise.all(paths.map(async path=>{
+   const response=await fetch(path);if(!response.ok)throw Error(path+': '+response.status);
+   const buffer=await context.decodeAudioData(await response.arrayBuffer());return {path,duration:buffer.duration,channels:buffer.numberOfChannels};
+  })); }finally{await context.close();}
+ },paths);
+ expect(decoded).toHaveLength(24);for(const clip of decoded){expect(clip.duration).toBeGreaterThan(1);expect(clip.channels).toBe(1);}
+});
+
+
+test('returning round reminder can be skipped without blocking play',async({page})=>{
+ await page.addInitScript(()=>{sessionStorage.setItem('iwsdk-experience-mode','walltones');localStorage.setItem('wall-tones-return-visit-v1','1');localStorage.setItem('wall-tones-instructions-v1',JSON.stringify({version:1,heard:['howToPlay','pointAndPress','howToPlayRest']}));});
+ await page.goto('/');await page.waitForFunction(()=>Boolean(window.__wallTonesDebug?.flatAwaitingStart));
+ await page.evaluate(()=>window.__wallTonesDebug!.submitPad(0));
+ await page.waitForFunction(()=>window.__wallTonesDebug!.reminderListening);
+ expect(await page.evaluate(()=>window.__wallTonesDebug!.reminderQuestion)).toBe('Would you like a reminder of how to play?');
+ await page.evaluate(()=>window.__wallTonesDebug!.skipSpeech());
+ await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');
+ expect(await page.evaluate(()=>window.__wallTonesDebug!.reminderListening)).toBe(false);
+});
+
+for (const gender of ['male','female'] as const) {
+ test(`opening pattern transition completes before existing tutorial, persists on reload (${gender})`,async({page})=>{
+  await page.setViewportSize({width:1280,height:720});
+  const requested:string[]=[];page.on('request',r=>{if(r.url().includes('/audio/speech/'))requested.push(r.url());});
+  await page.addInitScript(gender=>{sessionStorage.setItem('iwsdk-experience-mode','walltones');localStorage.setItem('wall-tones-voice-gender',gender);},gender);
+  await page.goto('/');await page.waitForFunction(()=>Boolean(window.__wallTonesDebug?.flatAwaitingStart));
+  // Normal pointer start on a visible pad. Debug is only a read-only phase observer.
+  await page.waitForFunction(()=>!window.__wallTonesDebug!.speechBusy);
+  await page.mouse.move(315,245,{steps:4});await page.mouse.move(335,251,{steps:4});await page.waitForTimeout(400);
+  await page.mouse.down();await page.mouse.move(338,253,{steps:3});await page.waitForTimeout(150);await page.mouse.up();
+  await page.waitForFunction(()=>JSON.parse(localStorage.getItem('wall-tones-instructions-v1')??'{}').heard?.includes('howToPlayRest'));
+  const opening=requested.findIndex(x=>x.endsWith(`/${gender}/opening-pattern.mp3`));
+  const rest=requested.findIndex(x=>x.endsWith(`/${gender}/how-to-play-rest.mp3`));
+  expect(opening).toBeGreaterThanOrEqual(0);expect(rest).toBeGreaterThan(opening);
+  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('wall-tones-instructions-v1')!).heard)).toContain('openingPattern');
+  await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');
+  await page.screenshot({path:`test-results/opening-pattern-${gender}.png`});
+  requested.length=0;await page.reload();await page.waitForFunction(()=>Boolean(window.__wallTonesDebug?.flatAwaitingStart));
+  await page.waitForFunction(()=>!window.__wallTonesDebug!.speechBusy);
+  await page.mouse.move(315,245,{steps:4});await page.mouse.move(335,251,{steps:4});await page.waitForTimeout(400);await page.mouse.down();await page.mouse.move(338,253,{steps:3});await page.waitForTimeout(150);await page.mouse.up();
+  // Returning offer is dismissed with the real keyboard, not a debug answer.
+  await page.waitForFunction(()=>window.__wallTonesDebug!.reminderListening,{},{timeout:30000});await page.keyboard.press('n');
+  await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');
+  expect(requested.some(x=>x.endsWith('/opening-pattern.mp3'))).toBe(false);
+  expect(requested.some(x=>x.endsWith('/how-to-play-rest.mp3'))).toBe(false);
+ });
+}
+
+for (const gender of ['male','female'] as const) {
+ test(`first-note coaching after two misses, reinforced intro after three, color after four (${gender})`,async({page})=>{
+  // Fixture: returning profile with paid retry inventory. Game flow and counters
+  // are production behavior; assistance audio is never aborted or mocked.
+  await page.addInitScript(gender=>{sessionStorage.setItem('iwsdk-experience-mode','walltones');localStorage.setItem('wall-tones-voice-gender',gender);localStorage.setItem('wall-tones-instructions-v1',JSON.stringify({version:1,heard:['howToPlay','howToPlayMr','howToPlayRest','openingPattern']}));},gender);
+  const help:string[]=[];page.on('request',r=>{if(r.url().includes('/audio/first-note-help/'))help.push(r.url());});
+  await page.goto('/');await page.waitForFunction(()=>Boolean(window.__wallTonesDebug?.flatAwaitingStart));
+  await page.evaluate(()=>{window.__wallTonesDebug!.grantSavers(8);window.__wallTonesDebug!.submitPad(0);});
+  await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');
+  const wrong=async()=>{await page.evaluate(()=>{const d=window.__wallTonesDebug!;d.submitPad((d.sequence[0]!+1)%4);});await page.waitForFunction(()=>window.__wallTonesDebug!.gameOverOpen);};
+  const retry=async()=>{await page.evaluate(()=>window.__wallTonesDebug!.gameOverUseSaver());await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');};
+  for(let miss=1;miss<=4;miss++){
+   await wrong();expect(help.filter(x=>x.endsWith('/guidance.mp3'))).toHaveLength(miss>=2?1:0);
+   if(miss<4){await retry();expect(help.some(x=>/press-/.test(x))).toBe(false);
+    expect(help.filter(x=>x.endsWith('/intro-demo.mp3'))).toHaveLength(miss===3?1:0);
+    expect(help.filter(x=>x.endsWith('/single-note.mp3'))).toHaveLength(miss===3?1:0);
+   }
+  }
+  const first=await page.evaluate(()=>window.__wallTonesDebug!.sequence[0]);const colors=['green','red','blue','yellow'];
+  await page.evaluate(()=>window.__wallTonesDebug!.gameOverUseSaver());
+  await page.waitForRequest(r=>r.url().endsWith(`/first-note-help/${gender}/press-${colors[first!]}.mp3`));
+  expect(await page.evaluate(()=>window.__wallTonesDebug!.phase)).toBe('playback');
+  await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');
+  expect(help.filter(x=>/press-/.test(x))).toEqual([expect.stringContaining(`/${gender}/press-${colors[first!]}.mp3`)]);
+  // A correct first note clears assistance. Subsequent round receives no cue.
+  await page.evaluate(()=>{const d=window.__wallTonesDebug!;d.submitPad(d.sequence[0]!);});
+  await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input'&&window.__wallTonesDebug!.sequence.length===2);
+  expect(help.filter(x=>/press-/.test(x))).toHaveLength(1);
+  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('wall-tones-instructions-v1')!).heard)).not.toContain('guidance');
+ });
+}
+
+test('all fourteen first-note assistance clips fetch and decode with real audio bytes',async({page})=>{
+ await page.goto('/');
+ const result=await page.evaluate(async()=>{const ctx=new AudioContext();const out=[];for(const cast of ['male','female'])for(const clip of ['guidance','intro-demo','single-note','press-green','press-red','press-blue','press-yellow']){const r=await fetch(new URL(`audio/first-note-help/${cast}/${clip}.mp3`,document.baseURI));const b=await r.arrayBuffer();const bytes=b.byteLength;const decoded=await ctx.decodeAudioData(b);out.push({ok:r.ok,bytes,duration:decoded.duration});}await ctx.close();return out;});
+ expect(result).toHaveLength(14);for(const x of result){expect(x.ok).toBe(true);expect(x.bytes).toBeGreaterThan(1000);expect(x.duration).toBeGreaterThan(0.4);}
+});
+
+test('first-note help applies to a longer pattern and Skip releases assisted playback without clearing the struggle',async({page},testInfo)=>{
+ await page.addInitScript(()=>{sessionStorage.setItem('iwsdk-experience-mode','walltones');localStorage.setItem('wall-tones-hearing-subtitles','true');localStorage.setItem('wall-tones-instructions-v1',JSON.stringify({version:1,heard:['howToPlay','howToPlayMr','howToPlayRest','openingPattern','barsFirstEarn']}));});
+ const cues:string[]=[];page.on('request',r=>{if(r.url().includes('/audio/first-note-help/'))cues.push(r.url());});
+ await page.goto('/');await page.waitForFunction(()=>Boolean(window.__wallTonesDebug?.flatAwaitingStart));
+ await page.evaluate(()=>{const d=window.__wallTonesDebug!;d.grantSavers(8);d.submitPad(0);});await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');
+ await page.evaluate(()=>{const d=window.__wallTonesDebug!;d.submitPad(d.sequence[0]!);});await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input'&&window.__wallTonesDebug!.sequence.length===2);
+ const sequence=await page.evaluate(()=>[...window.__wallTonesDebug!.sequence]);
+ for(let miss=1;miss<=4;miss++){
+  await page.evaluate(()=>{const d=window.__wallTonesDebug!;d.submitPad((d.sequence[0]!+1)%4);});await page.waitForFunction(()=>window.__wallTonesDebug!.gameOverOpen);
+  if(miss<4){await page.evaluate(()=>window.__wallTonesDebug!.gameOverUseSaver());await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');}
+ }
+ const color=['green','red','blue','yellow'][sequence[0]!];
+ await page.evaluate(()=>window.__wallTonesDebug!.gameOverUseSaver());await page.waitForRequest(r=>r.url().endsWith(`/press-${color}.mp3`));
+ await page.waitForFunction(()=>window.__wallTonesDebug!.speechBusy);
+ expect(await page.evaluate(()=>window.__wallTonesDebug!.phase)).toBe('playback');
+ await page.screenshot({path:testInfo.outputPath('first-note-assisted-longer.png')});
+ await page.locator('#wall-tones-skip-voice-flat').click();await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');
+ expect(await page.evaluate(()=>window.__wallTonesDebug!.sequence)).toEqual(sequence);
+ // Skip does not fake a correct answer. The following retry remains assisted.
+ await page.evaluate(()=>{const d=window.__wallTonesDebug!;d.submitPad((d.sequence[0]!+1)%4);});await page.waitForFunction(()=>window.__wallTonesDebug!.gameOverOpen);
+ // Cached audio need not issue another request, so observe the spoken caption.
+ await page.evaluate(()=>window.__wallTonesDebug!.gameOverUseSaver());
+ await expect(page.locator('#wall-tones-flat-subtitles')).toContainText(`Press ${color}.`);
+ await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');
+ expect(cues.filter(x=>x.endsWith('/guidance.mp3'))).toHaveLength(1);
+ expect(cues.some(x=>x.endsWith('/intro-demo.mp3')||x.endsWith('/single-note.mp3'))).toBe(false);
+});
+
+for (const skipIntro of [false, true]) {
+ test(`reinforced one-note New Run demonstrates intro before actual note, Skip=${skipIntro}`,async({page},testInfo)=>{
+  await page.addInitScript(()=>{sessionStorage.setItem('iwsdk-experience-mode','walltones');localStorage.setItem('wall-tones-hearing-subtitles','true');localStorage.setItem('wall-tones-instructions-v1',JSON.stringify({version:1,heard:['howToPlay','howToPlayMr','howToPlayRest','openingPattern']}));});
+  const clips:string[]=[];page.on('request',r=>{if(r.url().includes('/audio/first-note-help/'))clips.push(r.url());});
+  await page.goto('/');await page.waitForFunction(()=>Boolean(window.__wallTonesDebug?.flatAwaitingStart));
+  await page.evaluate(()=>{const d=window.__wallTonesDebug!;d.grantSavers(8);d.submitPad(0);});await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');
+  for(let miss=1;miss<=3;miss++){
+   await page.evaluate(()=>{const d=window.__wallTonesDebug!;d.submitPad((d.sequence[0]!+1)%4);});await page.waitForFunction(()=>window.__wallTonesDebug!.gameOverOpen);
+   if(miss<3){await page.evaluate(()=>window.__wallTonesDebug!.gameOverUseSaver());await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');}
+  }
+  await page.evaluate(()=>window.__wallTonesDebug!.gameOverNewRun());
+  await expect(page.locator('#wall-tones-flat-subtitles')).toContainText('This opening pattern is just the intro.');
+  expect(await page.evaluate(()=>window.__wallTonesDebug!.phase)).toBe('playback');
+  if(skipIntro){await page.locator('#wall-tones-skip-voice-flat').click();}else{
+   await page.screenshot({path:testInfo.outputPath('reinforced-intro.png')});
+   await expect(page.locator('#wall-tones-flat-subtitles')).toContainText('And now comes the single note');
+   expect(await page.evaluate(()=>window.__wallTonesDebug!.phase)).toBe('playback');
+   await page.screenshot({path:testInfo.outputPath('reinforced-single-note.png')});
+  }
+  await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');
+  expect(clips.filter(x=>x.endsWith('/intro-demo.mp3'))).toHaveLength(1);
+  expect(clips.filter(x=>x.endsWith('/single-note.mp3'))).toHaveLength(skipIntro?0:1);
+  expect(clips.some(x=>/press-/.test(x))).toBe(false);
+  await page.evaluate(()=>{const d=window.__wallTonesDebug!;d.submitPad((d.sequence[0]!+1)%4);});await page.waitForFunction(()=>window.__wallTonesDebug!.gameOverOpen);
+  await page.evaluate(()=>window.__wallTonesDebug!.gameOverUseSaver());
+  await expect(page.locator('#wall-tones-flat-subtitles')).toContainText('Press ');
+  await page.waitForFunction(()=>window.__wallTonesDebug!.phase==='input');
+ });
+}
+
+for (const stage of ['fresh','unfinished','introduced'] as const) {
+ test(`first reload greets before Start and gates Cypher on completed introduction (${stage})`,async({page})=>{
+  await page.route('**/audio/**',route=>route.abort());
+  const requests:string[]=[];
+  page.on('request',r=>{if(r.resourceType()==='fetch'&&r.url().includes('/audio/return-reminders/'))requests.push(r.url());});
+  await page.addInitScript(()=>sessionStorage.setItem('iwsdk-experience-mode','walltones'));
+  await page.goto('/');await page.waitForFunction(()=>Boolean(window.__wallTonesDebug?.flatAwaitingStart));
+  await page.evaluate(stage=>{
+   localStorage.setItem('wall-tones-cypher-act1-progress-v1',JSON.stringify(stage==='fresh'?{version:1,next:0}:stage==='unfinished'?{version:1,next:1,active:{index:0,offset:0}}:{version:1,next:1}));
+  },stage);
+  requests.length=0;await page.reload();await page.waitForFunction(()=>Boolean(window.__wallTonesDebug?.flatAwaitingStart));
+  await expect.poll(()=>requests.some(x=>x.endsWith('/n-r01.mp3'))).toBe(true);
+  await page.waitForFunction(()=>!window.__wallTonesDebug!.speechBusy);
+  expect(await page.evaluate(()=>window.__wallTonesDebug!.flatAwaitingStart)).toBe(true);
+  expect(requests.filter(x=>x.endsWith('/n-r01.mp3'))).toHaveLength(1);
+  const cypher=requests.filter(x=>x.includes('/cypher/'));
+  if(stage==='introduced')expect(cypher.some(x=>x.endsWith('/c-r02.mp3'))).toBe(true);
+  else expect(cypher).toHaveLength(0);
+ });
+}

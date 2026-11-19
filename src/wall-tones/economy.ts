@@ -314,6 +314,9 @@ MULTIPLIER_DISABLED_KEY,
 ...MOVEMENT_STORAGE_KEYS,
 CYPHER_PROGRESS_KEY,
 BACKGROUND_PROGRESS_KEY,
+'wall-tones-instructions-v1',
+'wall-tones-return-visit-v1',
+'wall-tones-achievements-intro-played',
 ]) {
 try { globalThis.localStorage?.removeItem(key); } catch { /* private mode */ }
 }
