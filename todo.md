@@ -180,3 +180,10 @@ PR82's backlog58 status/caveat is preserved above. The authoritative game backlo
 3. [x] Add desktop real-mouse Skip checks for all three story paths with reload persistence.
 4. [x] Keep ten rounds, every pad press, deliberate wrong pad, reset and best-score assertions in the long pointer journey; click the visible Skip Voice control while waiting.
 5. [ ] Finish full local and GitHub validation, publish separate PR and verify its preview. No merge or production approval.
+
+## PR168 phone-flat keep-out fix - 2026-11-20 (his iPhone report: seam line played, no portals)
+- [x] Root cause: the Nov 19 HUD keep-out rect covers the whole portrait screen (phone HUD sits close and high), so flat spot picking found no legal spawn spot and the encounter retried forever. Regression from the Nov 19 layering fix; desktop unaffected.
+- [x] Fix: the wall-tones-panel HUD keep-out is desktop-only now (skipped on phone-flat viewports); the portrait right-half rule keeps phone rifts clear of the raised HUD.
+- [x] Regression test: tests/e2e/wall-tones.rift-encounter-mobile.spec.ts boots portrait gameplay, starts the encounter, expects a spawned rift; added to the CI roster.
+- [x] Verified: typecheck, rift-encounter-mobile (1), rift-lab-mobile + rift-lab e2e (4), desktop boot smoke, phone probe (rift spawns ~12 s), desktop probe (spawns, keep-out intact). Unit suite 394 pass / 14 fail - all 14 pre-existing on the main-sync merge tip (story-skip-boundary from main, voice-once roster entry), none from this change.
+- [ ] His retest on the Cloudflare preview; merge waits for his go-ahead.
