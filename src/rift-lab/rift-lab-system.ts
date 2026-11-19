@@ -118,6 +118,7 @@ import {
 } from './rift-visual-flags.js';
 import { noteGlyphMaterial } from './rift-note-visuals.js';
 import {
+  applyPortalLayering,
   createGeoSparkDraw,
   createPortalBurst,
   disposePortalBurst,
@@ -125,6 +126,7 @@ import {
   updatePortalBurst,
   type PortalBurst,
 } from './rift-portal-burst.js';
+import { portalLayerOrders } from './rift-portal-layering.js';
 import { RiftSealBeam } from './rift-seal-beam.js';
 
 /** Virtual hand anchors in flat mode (meters, hub scene space). */
@@ -276,6 +278,8 @@ interface RiftView {
   position: Vector3;
   born: number;
   fracture: ShaderMaterial;
+  /** Fracture quad mesh, kept for mode-dependent layer ordering. */
+  quad: Mesh;
   /** Thick neon notes + sharp sparks + luminous shards (replaces glow dots). */
   burst: PortalBurst;
   /** Fractional spark accumulator for the sealing spray (item 93). */
@@ -507,6 +511,8 @@ export class RiftLabSystem extends createSystem({
   private readonly geoPool: GeometryParticlePool =
     createGeometryParticlePool(GEO_POOL_MAX);
   private geoSparkDraw: ReturnType<typeof createGeoSparkDraw> | null = null;
+  /** Last XR-presenting state the portal layer orders were applied for. */
+  private portalLayerXr: boolean | null = null;
   private readonly beamCaster = new Raycaster();
   private readonly beamTargets: Object3D[] = [];
   private readonly meshWalk: Object3D[] = [];
@@ -574,6 +580,9 @@ export class RiftLabSystem extends createSystem({
       this.root.add(this.handAura.root);
       this.root.add(this.handOccluders.root);
       this.geoSparkDraw = createGeoSparkDraw(GEO_POOL_MAX);
+      this.geoSparkDraw.mesh.renderOrder = portalLayerOrders(
+        this.world.renderer.xr.isPresenting === true,
+      ).spark;
       this.root.add(this.geoSparkDraw.mesh);
       for (let i = 0; i < TORRENT_COUNT; i++) {
         const color = PAD_COLOR_NAMES[i % PAD_COLOR_NAMES.length];
@@ -1160,6 +1169,24 @@ export class RiftLabSystem extends createSystem({
 
   /** Flat mode: if a resize or menu move put an open rift over the menu or off
    * screen, move or shrink it; if nothing fits it is discarded (never left clipped). */
+  /**
+   * Re-apply portal/menu layer orders when the XR session state changes.
+   * XR: the portal and its elements draw under the lab menu panel (the panel
+   * is transparent and writes no depth, so render order decides); flat: the
+   * portal draws over the menu.
+   */
+  private syncPortalLayering(): void {
+    const xr = this.world.renderer.xr.isPresenting === true;
+    if (xr === this.portalLayerXr) return;
+    this.portalLayerXr = xr;
+    const orders = portalLayerOrders(xr);
+    for (const view of this.riftViews.values()) {
+      view.quad.renderOrder = orders.fracture;
+      applyPortalLayering(view.burst, xr);
+    }
+    if (this.geoSparkDraw != null) this.geoSparkDraw.mesh.renderOrder = orders.spark;
+  }
+
   private reflowFlatRifts(): void {
     if (this.isImmersive() || this.riftViews.size === 0) return;
     const now = performance.now();
@@ -1219,12 +1246,18 @@ export class RiftLabSystem extends createSystem({
       group.lookAt(lookTarget);
     }
     this.root.add(group);
+    // A rift can spawn mid-session, so apply the current mode's layer
+    // orders at creation; syncPortalLayering only reapplies on mode changes.
+    const portalXr = this.world.renderer.xr.isPresenting === true;
+    quad.renderOrder = portalLayerOrders(portalXr).fracture;
+    applyPortalLayering(burst, portalXr);
     this.riftViews.set(rift.id, {
       rift,
       group,
       position,
       born: performance.now(),
       fracture,
+      quad,
       burst,
       sprayAcc: 0,
     });
@@ -1675,6 +1708,7 @@ export class RiftLabSystem extends createSystem({
     // Animate the fractures and publish target positions for the panel dodge.
     const nowMs = performance.now();
     riftAimRays.length = 0;
+    this.syncPortalLayering();
     for (const hand of ['right', 'left'] as const) {
       const palm = this.palms[hand];
       // Looser than the fire gate: lift the menu as soon as a hand is open
