@@ -33,6 +33,7 @@ const REPLAY_PAID_KEY = 'wall-tones-replays-paid';
 const SAVERS_KEY = 'wall-tones-savers';
 const PLAY_LEVEL_KEY = 'wall-tones-play-level';
 const INDEX_OWNED_KEY = 'wall-tones-index-owned';
+const SKIP_PATTERN_OWNED_KEY = 'wall-tones-skip-pattern-owned';
 const SPEED_LEVEL_KEY = 'wall-tones-speed-level';
 const SPEED_DISABLED_KEY = 'wall-tones-speed-disabled';
 const SPEED_SELECTED_KEY = 'wall-tones-speed-selected';
@@ -144,6 +145,14 @@ export const INDEX_UNLOCK_HINT_LEVEL = 3;
 export const INDEX_PRICING_SET = true;
 export const INDEX_COST = 500;
 
+/** Skip Pattern (owner WhatsApp 2026-11-15 23:48 and 2026-11-18 11:44, 12:58,
+ * 12:59): after the player owns Play, a one-off unlock adds a manual button,
+ * pressed each demonstration, that cuts the tone demonstration short (the
+ * Listen part before the player's turn). It never skips the player's turn.
+ * Initial unlock price 1000 Bars (his 2026-11-18 12:59 "it can cost 1000
+ * initially"); balance later. */
+export const SKIP_PATTERN_COST = 1000;
+
 /** Replay (owner-approved 2026-11-11): a consumable re-hear of the current
  * pattern. Paid Replays cost 20 Bars, no purchase limit for now. Free Replays
  * are earned at every 5-note milestone beyond the current Hint coverage, are
@@ -155,7 +164,7 @@ export const REPLAY_EARN_STEP = 5;
 
 /** One-time Top Secret store item price (user-settled Nov 7): grants the
  * hidden Secret Revealed achievement and nothing else. */
-export const TOP_SECRET_COST = 10000;
+export const TOP_SECRET_COST = 100000;
 
 /** Bars per correct pad press (provisional value, user to calibrate). */
 export const PRESS_BARS = 1;
@@ -305,6 +314,7 @@ REPLAY_PAID_KEY,
 SAVERS_KEY,
 PLAY_LEVEL_KEY,
 INDEX_OWNED_KEY,
+SKIP_PATTERN_OWNED_KEY,
 SPEED_LEVEL_KEY,
 SPEED_DISABLED_KEY,
 SPEED_SELECTED_KEY,
@@ -345,6 +355,7 @@ export class WallTonesEconomy {
   private savers = readNumber(SAVERS_KEY);
   private playLevel = readNumber(PLAY_LEVEL_KEY);
   private indexOwned = readNumber(INDEX_OWNED_KEY) === 1;
+  private skipPatternOwned = readNumber(SKIP_PATTERN_OWNED_KEY) === 1;
   private speedLevel = readNumber(SPEED_LEVEL_KEY);
   private speedSelected = readSpeedSelected();
   private multiplierLevel = readNumber(MULTIPLIER_LEVEL_KEY);
@@ -699,6 +710,12 @@ export class WallTonesEconomy {
     writeNumber(PLAY_LEVEL_KEY, this.playLevel);
   }
 
+  /** Test-only: grant Skip Pattern without a purchase. */
+  debugGrantSkipPattern(): void {
+    this.skipPatternOwned = true;
+    writeNumber(SKIP_PATTERN_OWNED_KEY, 1);
+  }
+
   /** Test-only: grant the Index pointer without a purchase. */
   debugGrantIndex(): void {
     this.indexOwned = true;
@@ -842,6 +859,28 @@ export class WallTonesEconomy {
     if (!this.spend(INDEX_COST)) return false;
     this.indexOwned = true;
     writeNumber(INDEX_OWNED_KEY, 1);
+    this.countPurchase();
+    return true;
+  }
+
+  /** Skip Pattern owned (one-time unlock). */
+  ownsSkipPattern(): boolean {
+    return this.skipPatternOwned;
+  }
+
+  /** Gate: available once the player has Play. */
+  skipPatternUnlocked(): boolean {
+    return this.playLevel >= 1;
+  }
+
+  /** Buy the Skip Pattern unlock: one-off, needs Play owned, 1000 Bars. */
+  buySkipPattern(): boolean {
+    if (!this.skipPatternUnlocked() || this.skipPatternOwned) {
+      return false;
+    }
+    if (!this.spend(SKIP_PATTERN_COST)) return false;
+    this.skipPatternOwned = true;
+    writeNumber(SKIP_PATTERN_OWNED_KEY, 1);
     this.countPurchase();
     return true;
   }
