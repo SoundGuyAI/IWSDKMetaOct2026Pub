@@ -34,8 +34,11 @@ const LABELS = ['yes', 'no', 'up', 'down', 'left', 'right'];
 const MIC_LABELS = [...LABELS, BACKGROUND_NOISE_WORD, '_unknown_'];
 
 test('a clear yes or no above the threshold answers the prompt', () => {
+  // Alias-folded (Nov 20): yes 0.93 + left 0.01 answers at ~0.94.
   const yes = interpretScores(LABELS, [0.93, 0.02, 0.01, 0.01, 0.01, 0.02]);
-  assert.deepEqual(yes, { kind: 'answer', answer: 'yes', score: 0.93 });
+  assert.equal(yes.kind, 'answer');
+  assert.equal(yes.answer, 'yes');
+  assert.ok(Math.abs(yes.score - 0.94) < 1e-9);
   const no = interpretScores(LABELS, [0.05, 0.8, 0.05, 0.03, 0.04, 0.03]);
   assert.deepEqual(no, { kind: 'answer', answer: 'no', score: 0.8 });
 });
@@ -57,8 +60,53 @@ test('an accented yes/no below the threshold answers when it is the clear winner
   // Owner's Nov 19 live test: his "no" reacted but never answered.
   const no = interpretScores(LABELS, [0.05, 0.62, 0.18, 0.05, 0.05, 0.05]);
   assert.deepEqual(no, { kind: 'answer', answer: 'no', score: 0.62 });
+  // Scores are alias-folded: yes 0.55 + left 0.08 = 0.63 (Nov 20 aliases).
   const yes = interpretScores(LABELS, [0.55, 0.02, 0.2, 0.1, 0.08, 0.05]);
-  assert.deepEqual(yes, { kind: 'answer', answer: 'yes', score: 0.55 });
+  assert.deepEqual(yes, { kind: 'answer', answer: 'yes', score: 0.63 });
+});
+
+test('accent aliases: "go" counts toward "no", "left" toward "yes" (owner, Nov 20)', () => {
+  const GO_LABELS = ['yes', 'no', 'go', 'up', 'down', 'left', 'right', BACKGROUND_NOISE_WORD, '_unknown_'];
+  // His Nov 20 frame: Heard "go (0.52) vs no (0.48)" - the folded no is
+  // 1.00, a direct above-threshold answer.
+  assert.deepEqual(
+    interpretScores(GO_LABELS, [0.0, 0.48, 0.52, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+    { kind: 'answer', answer: 'no', score: 1.0 },
+  );
+  // A loud "go" alone answers "no" (aliased), it is no longer noise.
+  const loudGo = interpretScores(GO_LABELS, [0.02, 0.05, 0.9, 0.01, 0.01, 0.01, 0.01, 0.05, 0.02]);
+  assert.equal(loudGo.kind, 'answer');
+  assert.equal(loudGo.answer, 'no');
+  assert.ok(Math.abs(loudGo.score - 0.95) < 1e-9);
+  // "left" folds into "yes" the same way.
+  const loudLeft = interpretScores(GO_LABELS, [0.3, 0.02, 0.02, 0.01, 0.01, 0.6, 0.01, 0.02, 0.01]);
+  assert.equal(loudLeft.kind, 'answer');
+  assert.equal(loudLeft.answer, 'yes');
+  assert.ok(Math.abs(loudLeft.score - 0.9) < 1e-9);
+  // Below the threshold the folded duel still needs the clear-win bars:
+  // go 0.3 + no 0.25 = 0.55 clears the floor with no rival.
+  assert.deepEqual(
+    interpretScores(GO_LABELS, [0.1, 0.25, 0.3, 0.05, 0.05, 0.05, 0.05, 0.1, 0.05]),
+    { kind: 'answer', answer: 'no', score: 0.55 },
+  );
+  // ...but a contested duel (folded no 0.5 vs folded yes 0.3) fails the 2x ratio.
+  assert.equal(
+    interpretScores(GO_LABELS, [0.3, 0.3, 0.2, 0.0, 0.0, 0.0, 0.0, 0.1, 0.0]).kind,
+    'faint',
+  );
+});
+
+test('non-alias words stay noise: only go/left fold into the yes/no duel', () => {
+  const GO_LABELS = ['yes', 'no', 'go', 'up', 'down', 'left', 'right', BACKGROUND_NOISE_WORD, '_unknown_'];
+  // "up" and "right" are not aliases: loud ones are noise, quiet ones faint.
+  assert.deepEqual(
+    interpretScores(GO_LABELS, [0.02, 0.02, 0.02, 0.9, 0.01, 0.01, 0.01, 0.02, 0.02]),
+    { kind: 'noise', word: 'up', score: 0.9 },
+  );
+  assert.equal(
+    interpretScores(GO_LABELS, [0.1, 0.1, 0.05, 0.1, 0.1, 0.05, 0.4, 0.05, 0.05]).kind,
+    'faint',
+  );
 });
 
 test('the clear-winner fallback weighs only the other answer word', () => {
@@ -92,28 +140,29 @@ test('background noise never vetoes a clear winner (iPhone room floor)', () => {
   assert.deepEqual(speech, { kind: 'answer', answer: 'no', score: 0.56 });
 });
 
-test("only yes/no can answer: 'go' never counts and never blocks a real no", () => {
-  // Owner's Nov 19 iPhone frame: Heard "go (0.47) vs no (0.29)". A yes/no
-  // question accepts yes and no only, so this frame answers nothing...
+test('non-answer words still cannot veto the yes/no duel', () => {
+  // Owner's Nov 19 iPhone frame: Heard "go (0.47) vs no (0.29)". Under the
+  // Nov 20 aliases this frame answers "no" (0.29 + 0.47 = 0.76, clear win
+  // over yes 0.05); up/right/_unknown_ still never answer or veto.
   const GO_LABELS = ['yes', 'no', 'go', 'up', 'down', 'left', 'right', BACKGROUND_NOISE_WORD, '_unknown_'];
-  const heard = interpretScores(GO_LABELS, [0.05, 0.29, 0.47, 0.02, 0.02, 0.02, 0.02, 0.1, 0.05]);
-  assert.equal(heard.kind, 'faint');
-  assert.equal(heard.word, 'go');
-  // ...a loud "go" is noise, not an answer...
   assert.deepEqual(
-    interpretScores(GO_LABELS, [0.02, 0.05, 0.9, 0.01, 0.01, 0.01, 0.01, 0.05, 0.02]),
-    { kind: 'noise', word: 'go', score: 0.9 },
+    interpretScores(GO_LABELS, [0.05, 0.29, 0.47, 0.02, 0.02, 0.02, 0.02, 0.1, 0.05]),
+    { kind: 'answer', answer: 'no', score: 0.76 },
   );
-  // ...and "go" scoring through the window does not veto the real "no"
-  // the model caught at moderate strength across two frames.
+  // A loud non-alias word is noise, not an answer...
+  assert.deepEqual(
+    interpretScores(GO_LABELS, [0.02, 0.05, 0.05, 0.9, 0.01, 0.01, 0.01, 0.05, 0.02]),
+    { kind: 'noise', word: 'up', score: 0.9 },
+  );
+  // ...and moderate non-alias scores through the window cast no votes.
   const window = new FrameWindow();
   assert.equal(
-    window.push(GO_LABELS, [0.05, 0.42, 0.3, 0.02, 0.02, 0.02, 0.02, 0.1, 0.05]).kind,
+    window.push(GO_LABELS, [0.05, 0.1, 0.05, 0.3, 0.05, 0.05, 0.2, 0.1, 0.1]).kind,
     'faint',
   );
-  assert.deepEqual(
-    window.push(GO_LABELS, [0.05, 0.4, 0.35, 0.02, 0.02, 0.02, 0.02, 0.1, 0.05]),
-    { kind: 'answer', answer: 'no', score: 0.42 },
+  assert.equal(
+    window.push(GO_LABELS, [0.05, 0.1, 0.05, 0.3, 0.05, 0.05, 0.2, 0.1, 0.1]).kind,
+    'faint',
   );
 });
 
