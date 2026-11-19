@@ -27,6 +27,45 @@ export const HAND_JOINT = {
   pinkyTip: 24,
 } as const;
 
+/**
+ * Frozen-buffer detection for lost hand tracking. The XR input source (and
+ * its joint buffer) stays alive after a hand leaves the cameras: pose fills
+ * start failing and the buffer simply stops changing, so a palm read from it
+ * parks hand visuals (aura, beam origin, charge cloud) mid-air at the last
+ * pose. Treat a hand as untracked once its joints have been bit-identical
+ * for HAND_POSE_STALE_MS; live tracking always jitters the float bits.
+ */
+export const HAND_POSE_STALE_MS = 200;
+
+export class HandPoseFreshness {
+  private keys: Record<'left' | 'right', string> = { left: '', right: '' };
+  private lastChangeMs: Record<'left' | 'right', number> = {
+    left: -1e9,
+    right: -1e9,
+  };
+
+  /** True while the joint buffer keeps changing (live tracking). */
+  isLive(hand: 'left' | 'right', joints: Float32Array, nowMs: number): boolean {
+    // Wrist + two fingertips are enough to spot a frozen buffer.
+    const key =
+      `${joints[12]},${joints[13]},${joints[14]},` +
+      `${joints[9 * 16 + 12]},${joints[9 * 16 + 13]},${joints[9 * 16 + 14]},` +
+      `${joints[24 * 16 + 12]},${joints[24 * 16 + 13]},${joints[24 * 16 + 14]}`;
+    if (key !== this.keys[hand]) {
+      this.keys[hand] = key;
+      this.lastChangeMs[hand] = nowMs;
+      return true;
+    }
+    return nowMs - this.lastChangeMs[hand] < HAND_POSE_STALE_MS;
+  }
+
+  /** Forget a hand so a reconnect starts fresh. */
+  reset(hand: 'left' | 'right'): void {
+    this.keys[hand] = '';
+    this.lastChangeMs[hand] = -1e9;
+  }
+}
+
 /** Fingers checked for the open-palm verdict; the thumb is ignored. */
 const FINGERS = [
   { proximal: HAND_JOINT.indexProximal, tip: HAND_JOINT.indexTip },
@@ -215,4 +254,4 @@ export function pointOnHandShape(
   outDir[1] = dy / len;
   outDir[2] = dz / len;
   return true;
-}
+                    }
