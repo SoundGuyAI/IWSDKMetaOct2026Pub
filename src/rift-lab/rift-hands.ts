@@ -254,4 +254,4 @@ export function pointOnHandShape(
   outDir[1] = dy / len;
   outDir[2] = dz / len;
   return true;
-                    }
+}
