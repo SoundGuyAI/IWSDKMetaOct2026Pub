@@ -18,7 +18,7 @@ test('portrait touch: Start opens a rift and a corner drag seals it', async ({ p
   await page.goto('/');
   await page.locator('#wt-loading').waitFor({ state: 'detached', timeout: 60000 });
   await page.waitForTimeout(1500);
-  await page.touchscreen.tap(195, 51); // floating Lab entry
+  await page.touchscreen.tap(195, 312); // stacked Lab button, pixel-checked at390x664
   await page.waitForTimeout(2500);
   await page.touchscreen.tap(195, 394); // Rift Sealing Lab row
   await page.waitForTimeout(2500);

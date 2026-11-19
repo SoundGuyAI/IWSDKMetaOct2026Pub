@@ -17,7 +17,7 @@ test('Rift Sealing Lab opens from the Lab menu and runs the charge-seal loop', a
   await page.goto('/');
   await page.locator('#wt-loading').waitFor({ state: 'detached', timeout: 60000 });
   // Open the Lab menu from the floating Lab entry.
-  await page.mouse.click(958, 405);
+  await page.mouse.click(744, 482);
   await expect.poll(() => mode(page)).toBe('lab');
   await page.waitForFunction(() => window.__riftLabDebug != null);
 
@@ -110,7 +110,7 @@ test('Rift Sealing Lab opens from the Lab menu and runs the charge-seal loop', a
 test('geometry-collision sparks spray while sealing and hit surfaces (item 93)', async ({ page }) => {
   await page.goto('/');
   await page.locator('#wt-loading').waitFor({ state: 'detached', timeout: 60000 });
-  await page.mouse.click(958, 405);
+  await page.mouse.click(744, 482);
   await expect.poll(() => mode(page)).toBe('lab');
   await page.waitForFunction(() => window.__riftLabDebug != null);
   await page.waitForTimeout(2000);
@@ -158,7 +158,7 @@ test('geometry-collision sparks spray while sealing and hit surfaces (item 93)',
 test('Rift Lab Back returns to the Lab menu', async ({ page }) => {
   await page.goto('/');
   await page.locator('#wt-loading').waitFor({ state: 'detached', timeout: 60000 });
-  await page.mouse.click(958, 405);
+  await page.mouse.click(744, 482);
   await expect.poll(() => mode(page)).toBe('lab');
   await page.waitForTimeout(2000);
   await page.mouse.move(639, 496);

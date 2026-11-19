@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 /**
  * Shared Lab menu foundation. Flat-mode e2e with real canvas clicks: the Lab
- * entry floats right of the main menu (1280x800 viewport), the Lab menu lists
+ * entry is the third button in the horizontal main-menu row (1280x800 viewport), the Lab menu lists
  * the capability demos, and Back returns to the main menu.
  */
 const mode = (page: import('@playwright/test').Page) =>
@@ -11,7 +11,7 @@ const mode = (page: import('@playwright/test').Page) =>
 test('Lab entry opens the Lab menu and Back returns to the main menu', async ({ page }) => {
   await page.goto('/');
   await page.locator('#wt-loading').waitFor({ state: 'detached', timeout: 60000 });
-  await page.mouse.click(958, 405);
+  await page.mouse.click(744, 482);
   await expect.poll(() => mode(page)).toBe('lab');
   expect(await page.title()).toBe('Wall Tones 2: Lab');
   // Let the Lab menu take the flat layout and render before clicking Back
@@ -35,7 +35,7 @@ for (const gender of ['male', 'female'] as const) {
     }, gender);
     await page.goto('/');
     await page.locator('#wt-loading').waitFor({ state: 'detached', timeout: 60000 });
-    await page.mouse.click(958, 405);
+    await page.mouse.click(744, 482);
     await expect.poll(() => mode(page)).toBe('lab');
     await expect.poll(() => page.evaluate(() => (window as any).__labSources.length), {timeout: 45000}).toBe(4);
     const durations = await page.evaluate(() => (window as any).__labSources as number[]);
@@ -63,7 +63,7 @@ test('leaving Lab during narration cancels the pending Cypher window', async ({ 
   });
   await page.goto('/');
   await page.locator('#wt-loading').waitFor({ state: 'detached', timeout: 60000 });
-  await page.mouse.click(958, 405);
+  await page.mouse.click(744, 482);
   await expect.poll(() => page.evaluate(() => (window as any).__labSources.length)).toBe(1);
   await page.waitForTimeout(2000);
   // Back is the bottom row, under the connected Rift Sealing Lab row.

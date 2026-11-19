@@ -77,7 +77,7 @@ test.beforeEach(async ({ page }) => {
 
 /** Lab entry (floating button) -> Capability demos -> Thumbs Yes/No row. */
 async function enterThumbsLab(page: import('@playwright/test').Page): Promise<void> {
-  await page.mouse.click(958, 405);
+  await page.mouse.click(744, 482);
   await page.waitForTimeout(2000);
   // The Lab menu has three rows (Nod, Thumbs, Rift) plus Back; the Thumbs row
   // sits at y~442 on the 1280x800 viewport (measured from the rendered
