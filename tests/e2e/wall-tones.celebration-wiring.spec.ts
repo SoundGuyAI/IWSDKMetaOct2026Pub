@@ -45,7 +45,7 @@ test.describe('Achievement celebration wiring regression (PR95 incident)', () =>
     page,
   }) => {
     await boot(page);
-    await dbg(page, 'grantBars', 10000);
+    await dbg(page, 'grantBars', 100000);
     await dbg(page, 'toggleStore');
     await dbg(page, 'buyTopSecret');
 

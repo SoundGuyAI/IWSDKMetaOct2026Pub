@@ -248,10 +248,12 @@ test.describe('Wall Tones desktop POINTER path (real mouse)', () => {
         const value = await saved();
         return scenario.name === 'background' ? value.next === 1 : value.next === scenario.expectedNext && !value.active;
       }, { timeout: 1_000, intervals: [50, 100] }).toBe(true);
-      const evidence = await page.screenshot({ path: testInfo.outputPath(`skip-voice-${scenario.name.replaceAll(' ', '-')}.png`) });
-      await testInfo.attach('started-line-before-mouse-skip', { body: evidence, contentType: 'image/png' });
+      // Click while the observed line is still speaking. Screenshot encoding
+      // and attachment I/O can outlast a short line, hiding Skip before input.
       expect(await skipVoiceWithMouse(page)).toBe(true);
       await expect.poll(() => page.evaluate(() => (window as any).__wallTonesDebug.speechBusy)).toBe(false);
+      const evidence = await page.screenshot({ path: testInfo.outputPath(`skip-voice-${scenario.name.replaceAll(' ', '-')}.png`) });
+      await testInfo.attach('after-real-mouse-skip', { body: evidence, contentType: 'image/png' });
       const afterSkip = await saved();
       await page.reload();
       await page.waitForFunction(() => Boolean((window as any).__wallTonesDebug));
