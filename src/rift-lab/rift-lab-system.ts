@@ -1951,10 +1951,18 @@ export class RiftLabSystem extends createSystem({
       text: `Rifts open: ${open}. ${modifier}.`,
     } as never);
     if (this.chargeDiagOptedIn()) {
+      // Temporary sealing-spark diagnostics: emitted/alive come from the
+      // geometry-particle pool; drawn is the on-screen instanced count.
+      // Emitted > 0 with drawn 0 means the sim runs but nothing renders.
+      const sparkMesh = this.geoSparkDraw?.mesh;
+      const sparkDiag =
+        ` | sparks emitted ${this.geoPool.emitted}, alive ${this.geoPool.alive}` +
+        `, drawn ${sparkMesh != null && sparkMesh.visible ? sparkMesh.count : 0}` +
+        `, hits ${this.geoPool.collisions}`;
       this.telemetryText?.setProperties({
         text:
           'Rifts open: ' + open + '. ' + modifier + '. | ' +
-          formatChargeCloudDiag(this.chargeCloudDiag()),
+          formatChargeCloudDiag(this.chargeCloudDiag()) + sparkDiag,
       } as never);
     }
     // Item 118 isolation toggles: visible only under the same ?riftDiag=1
