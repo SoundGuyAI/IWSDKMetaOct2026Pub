@@ -12,6 +12,10 @@ export const CYPHER_ENCOURAGEMENT = [
   { id: 'enc2', text: "Keep going. I'm still here." },
   { id: 'enc3', text: "Steady. We're getting closer." },
   { id: 'enc4', text: "That's it. Keep the rhythm." },
+  { id: 'enc5', text: "That's it. They still have no idea." },
+  { id: 'enc6', text: 'Again. Just like that.' },
+  { id: 'enc7', text: 'Beautiful. They suspect nothing.' },
+  { id: 'enc8', text: "Hold the line. I'm watching." },
 ] as const;
 
 export type EncouragementLineId = (typeof CYPHER_ENCOURAGEMENT)[number]['id'];

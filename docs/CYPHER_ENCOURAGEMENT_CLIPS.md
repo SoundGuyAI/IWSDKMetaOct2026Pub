@@ -1,6 +1,6 @@
 # Cypher encouragement lines (voice assets)
 
-Four short Cypher encouragement lines (backlog item 119).
+Eight short Cypher encouragement lines (backlog item 119).
 
 Wired into gameplay in `src/wall-tones/cypher-encourage.ts`: once the player
 has heard Cypher's first contact (the streak-5 window, `CypherProgress.firstContactHeard`)
@@ -14,10 +14,14 @@ line retries at the next quiet boundary; the same line never repeats back to bac
 | `enc2` | Keep going. I'm still here. |
 | `enc3` | Steady. We're getting closer. |
 | `enc4` | That's it. Keep the rhythm. |
+| `enc5` | That's it. They still have no idea. |
+| `enc6` | Again. Just like that. |
+| `enc7` | Beautiful. They suspect nothing. |
+| `enc8` | Hold the line. I'm watching. |
 
 ## Files
 
-`public/audio/speech/cypher-encourage/<set>/enc1.mp3` ... `enc4.mp3`
+`public/audio/speech/cypher-encourage/<set>/enc1.mp3` ... `enc8.mp3`
 
 | Set folder | Cypher voice | Plays when |
 | --- | --- | --- |
@@ -26,7 +30,7 @@ line retries at the next quiet boundary; the same line never repeats back to bac
 
 ## How they were made
 
-Per `docs/CYPHER_VOICE_RECIPE.md`: one continuous read per voice (four lines in
+`enc1` to `enc4` were made per `docs/CYPHER_VOICE_RECIPE.md`: one continuous read per voice (four lines in
 order with long pauses between them), generated with the recipe's direction
 sentence word for word, split at the pauses, then the recipe's radio chain,
 static bed (seed 23), per-clip level repair and a single 80 kbps 24 kHz mono
@@ -42,6 +46,14 @@ on `male/enc2`. The recipe's own true-peak rule wins over its safety value.
 
 Measured after encode: integrated loudness -18.1 to -18.4 LUFS (band -17 to
 -19), true peak -1.8 to -2.6 dBTP, 24 kHz mono, 80 kbps.
+
+`enc5` to `enc8` are a third batch, made the same way: one continuous read per
+voice (four lines, recipe direction word for word), split at the pauses, the
+same radio chain, static bed (seed 23), per-clip level repair and a single
+80 kbps 24 kHz mono MP3 encode. Every clip's transcript was checked against its
+line and matches. Measured after encode: integrated loudness -18.1 to -18.6
+LUFS, true peak -1.9 to -2.1 dBTP; limiter ceiling 0.82 on all eight.
+Brightness was not re-measured for this batch.
 
 Measured brightness (share of energy above 3.4 kHz; recipe fingerprint is about
 0.7%, approved clips measured by the same method):

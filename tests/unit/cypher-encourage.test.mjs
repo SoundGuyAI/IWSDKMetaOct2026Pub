@@ -12,17 +12,21 @@ async function load(name) {
 }
 const { CYPHER_ENCOURAGEMENT, EncouragementCue } = await load('cypher-encourage');
 
-test('four encouragement lines with the approved words and unique ids', () => {
-  assert.equal(CYPHER_ENCOURAGEMENT.length, 4);
-  assert.equal(new Set(CYPHER_ENCOURAGEMENT.map(line => line.id)).size, 4);
+test('eight encouragement lines with the approved words and unique ids', () => {
+  assert.equal(CYPHER_ENCOURAGEMENT.length, 8);
+  assert.equal(new Set(CYPHER_ENCOURAGEMENT.map(line => line.id)).size, 8);
   assert.deepEqual(
     CYPHER_ENCOURAGEMENT.map(line => line.id),
-    ['enc1', 'enc2', 'enc3', 'enc4'],
+    ['enc1', 'enc2', 'enc3', 'enc4', 'enc5', 'enc6', 'enc7', 'enc8'],
   );
   assert.equal(CYPHER_ENCOURAGEMENT[0].text, "Good. They don't suspect anything.");
   assert.equal(CYPHER_ENCOURAGEMENT[1].text, "Keep going. I'm still here.");
   assert.equal(CYPHER_ENCOURAGEMENT[2].text, "Steady. We're getting closer.");
   assert.equal(CYPHER_ENCOURAGEMENT[3].text, "That's it. Keep the rhythm.");
+  assert.equal(CYPHER_ENCOURAGEMENT[4].text, "That's it. They still have no idea.");
+  assert.equal(CYPHER_ENCOURAGEMENT[5].text, 'Again. Just like that.');
+  assert.equal(CYPHER_ENCOURAGEMENT[6].text, 'Beautiful. They suspect nothing.');
+  assert.equal(CYPHER_ENCOURAGEMENT[7].text, "Hold the line. I'm watching.");
 });
 
 test('no line before first Cypher contact or after Act 1 finishes', () => {
