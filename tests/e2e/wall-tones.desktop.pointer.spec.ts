@@ -47,10 +47,10 @@ const PAD_XY: Array<[number, number]> = [
   [548, 464],
 ];
 const MENU = {
-  start: [640, 256],
-  settings: [640, 458],
-  female: [640, 291],
-  back: [640, 461],
+  start: [640, 339],
+  settings: [860, 434],
+  female: [640, 371],
+  back: [640, 500],
 } as const;
 
 const readDebug = (page: Page): Promise<Snap> =>

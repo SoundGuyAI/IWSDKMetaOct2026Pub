@@ -27,6 +27,17 @@ import { riftAimRays, riftTargetPositions } from './rift-lab/rift-targets.js';
 import { riftBlockingLineY, type Ray } from './rift-lab/rift-dodge.js';
 import { horizontalLookAway } from './wall-tones/panel-placement.js';
 import { enterXrButtonVisible } from './enter-xr-visibility.js';
+import {
+  applyMainMenuShape,
+  isMainMenuDialogOpen,
+  mainMenuLayoutRevision,
+  startButtonLabel,
+} from './main-menu-layout.js';
+
+/** ?coverLayout=mr renders the XR-style menu in a flat browser (screenshots only). */
+const PREVIEW_MR =
+  typeof window !== 'undefined' &&
+  window.location.search.includes('coverLayout=mr');
 
 /** Main-menu Enter XR is owned by AppModeSystem (starts Wall Tones + launchXR). */
 const XR_EXIT_PANEL_NODE_IDS = ['main-menu-panel', 'welcome-panel'] as const;
@@ -34,8 +45,16 @@ const XR_LAUNCH_PANEL_NODE_IDS = ['welcome-panel'] as const;
 
 /** Desktop: pull the hub menu closer/larger so Enter XR fills more of the frame. */
 const MAIN_MENU_DESKTOP = {
-  position: [0, 1.42, -1.55] as const,
-  scale: 0.5,
+  // Cover layout (Nov 18): smaller and lower so the full panel fits the
+  // frame without clipping, leaving the upper half for the cover pads.
+  position: [0, 0.64, -1.55] as const,
+  scale: 0.27,
+} as const;
+
+/** Desktop Settings/Accessibility dialogs: the tall framed panel, centered. */
+const MAIN_MENU_DESKTOP_DIALOG = {
+  position: [0, 1.02, -1.55] as const,
+  scale: 0.35,
 } as const;
 
 /**
@@ -49,10 +68,18 @@ const MAIN_MENU_MOBILE = {
 
 /**
  * Phone flat viewports only. Width-led so a short desktop/headless window
- * (e.g. 780×493) keeps the desktop hub placement.
+ * (e.g. 780×493) keeps the desktop hub placement. The Quest flat browser is
+ * desktop-class, not a phone: its window can be small enough to trip the
+ * width/height rules, but it must keep the cover row and Enter XR.
  */
 function isCompactFlatViewport(): boolean {
   if (typeof window === 'undefined') {
+    return false;
+  }
+  if (
+    typeof navigator !== 'undefined' &&
+    /Quest|Oculus/i.test(navigator.userAgent)
+  ) {
     return false;
   }
   const width = window.innerWidth;
@@ -96,6 +123,7 @@ export class PanelSystem extends createSystem({}) {
   private mainMenuLayoutSaved = false;
   /** When true, flat (non-immersive) layout should be applied. */
   private flatLayoutActive = false;
+  private appliedMenuRevision = 0;
   private menuAnchored = false;
   private followedMenuId = 'main-menu-panel';
   private menuSnapping = false;
@@ -131,6 +159,13 @@ export class PanelSystem extends createSystem({}) {
    * points at a rift through it (the ray stays clear for the target).
    */
   update(delta: number): void {
+    const menuRevision = mainMenuLayoutRevision();
+    if (menuRevision !== this.appliedMenuRevision) {
+      this.appliedMenuRevision = menuRevision;
+      if (this.flatLayoutActive) {
+        this.applyMainMenuFlatLayout();
+      }
+    }
     const riftEntity = this.world.getSceneEntity('rift-lab-panel');
     const riftShown =
       riftEntity?.getValue(Visibility, 'isVisible') === true;
@@ -357,7 +392,8 @@ export class PanelSystem extends createSystem({}) {
     }
 
     const syncForVisibility = (visibilityState: VisibilityState) => {
-      const is2D = visibilityState === VisibilityState.NonImmersive;
+      const is2D =
+        visibilityState === VisibilityState.NonImmersive && !PREVIEW_MR;
       this.flatLayoutActive = is2D;
       this.syncMainMenuChrome(is2D);
       this.applyMainMenuFlatLayout();
@@ -416,6 +452,27 @@ export class PanelSystem extends createSystem({}) {
         ?.setProperties({
           display: !is2D && this.world.xrEnabled ? 'flex' : 'none',
         });
+      if (nodeId === 'main-menu-panel' && panel != null) {
+        const compact = isCompactFlatViewport();
+        applyMainMenuShape(panel, is2D && !compact ? 'row' : 'stack');
+        panel.getElementById('mode-walltones-label')?.setProperties({
+          text: startButtonLabel(
+            is2D,
+            typeof navigator === 'undefined' ? '' : navigator.userAgent,
+          ),
+        } as never);
+      }
+      if (nodeId === 'main-menu-panel') {
+        const phoneFlat =
+          is2D && !showEnterXr && isCompactFlatViewport();
+        panel
+          ?.getElementById('main-menu-body')
+          ?.setProperties({
+            text: phoneFlat
+              ? 'Tap Start Wall Tones to play.'
+              : 'Start on desktop, or Enter XR to jump straight into Wall Tones in your room.',
+          } as never);
+      }
     }
   }
 
@@ -484,7 +541,9 @@ export class PanelSystem extends createSystem({}) {
     }
     const layout = isCompactFlatViewport()
       ? MAIN_MENU_MOBILE
-      : MAIN_MENU_DESKTOP;
+      : isMainMenuDialogOpen()
+        ? MAIN_MENU_DESKTOP_DIALOG
+        : MAIN_MENU_DESKTOP;
     position[0] = layout.position[0];
     position[1] = layout.position[1];
     position[2] = layout.position[2];
@@ -509,12 +568,16 @@ export class PanelSystem extends createSystem({}) {
     if (labMenu != null) {
       const lPos = labMenu.getVectorView(Transform, 'position');
       const lScale = labMenu.getVectorView(Transform, 'scale');
-      lPos[0] = layout.position[0];
-      lPos[1] = layout.position[1];
-      lPos[2] = layout.position[2];
-      lScale[0] = flatScale;
-      lScale[1] = flatScale;
-      lScale[2] = flatScale;
+      // Desktop: the Lab list is as tall as a dialog, so it gets the tall
+      // framed placement, not the low button-row spot.
+      const labLayout = isCompactFlatViewport() ? layout : MAIN_MENU_DESKTOP_DIALOG;
+      const labScale = isCompactFlatViewport() ? flatScale : labLayout.scale;
+      lPos[0] = labLayout.position[0];
+      lPos[1] = labLayout.position[1];
+      lPos[2] = labLayout.position[2];
+      lScale[0] = labScale;
+      lScale[1] = labScale;
+      lScale[2] = labScale;
     }
 
     // Lab entry placement per flat layout: desktop has free space to the right
