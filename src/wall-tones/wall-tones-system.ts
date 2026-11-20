@@ -10,6 +10,7 @@ import { DIRECT_PRESS_PUSH_MAX_M, DIRECT_PRESS_REFIRE_MS, directPressNext, direc
 import { BackgroundProgress } from './cypher-background.js';
 import { getVoiceGender } from './speech.js';
 import { CypherProgress, type CypherWindow } from './cypher-progress.js';
+import { EncouragementCue } from './cypher-encourage.js';
 import {
   THUMB_JOINT_NAMES,
   ThumbGestureDetector,
@@ -648,6 +649,7 @@ private pads: PadRuntime[] = [];
 private playbackQueue: Promise<void> = Promise.resolve();
 private readonly cypherProgress = new CypherProgress();
 private readonly backgroundProgress = new BackgroundProgress();
+private readonly encouragement = new EncouragementCue();
 private cypherSeam: Object3D | null = null;
 private cypherSeamEntity: Entity | null = null;
 private cypherFlatSeam: HTMLElement | null = null;
@@ -5148,6 +5150,16 @@ if (storyIntact()) {
 const window = this.cypherProgress.beginWindow(streak);
 if (window) await this.playCypherWindow(window, storyIntact);
 else {
+// Backlog 119 encouragement: after first Cypher contact and until Act 1
+// finishes, a random short line every two quiet successful patterns. The
+// backstory only starts after Act 1, so the two never compete.
+const enc = this.encouragement.successfulPattern(this.cypherProgress.firstContactHeard, this.cypherProgress.finished, !this.speech.isBusy());
+if (enc && storyIntact()) {
+const cast = captureCypherCast(getVoiceGender());
+await this.speech.speakStoryEffect('squawk');
+if (storyIntact()) await this.speech.speakEncouragementLine(enc.id, cast, () => this.encouragement.lineCompleted());
+if (storyIntact()) await this.speech.speakStoryEffect('close');
+} else if (!enc) {
 // Count each story line when playback starts. Skipping the radio effect
 // before a line starts must still leave that line unheard.
 const line = this.backgroundProgress.successfulPattern(this.cypherProgress.finished, !this.speech.isBusy());
@@ -5156,6 +5168,7 @@ const cast = captureCypherCast(getVoiceGender());
 await this.speech.speakBackgroundEffect(this.backgroundProgress.completedLines % 3 === 2 ? 'squawk' : 'open');
 if (storyIntact()) await this.speech.speakBackgroundLine(line.id, cast, () => this.backgroundProgress.lineCompleted());
 if (storyIntact()) await this.speech.speakBackgroundEffect('close');
+}
 }
 }
 }

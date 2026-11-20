@@ -2,8 +2,11 @@
 
 Four short Cypher encouragement lines (backlog item 119).
 
-These are assets only. They are NOT wired into gameplay: when and how often
-Cypher says them ("every two lines") is still undecided, so nothing plays them.
+Wired into gameplay in `src/wall-tones/cypher-encourage.ts`: once the player
+has heard Cypher's first contact (the streak-5 window, `CypherProgress.firstContactHeard`)
+and until Act 1 finishes, one random line plays every two quiet successful
+patterns, in the Cypher voice opposite the selected narrator. An interrupted
+line retries at the next quiet boundary; the same line never repeats back to back.
 
 | id | text |
 | --- | --- |
