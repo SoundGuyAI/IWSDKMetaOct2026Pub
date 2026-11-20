@@ -227,13 +227,24 @@ export class VoiceLabSystem extends createSystem({}) {
 
     const onModeChange = (event: Event) => {
       const mode = (event as CustomEvent<{ mode: string }>).detail.mode;
+      // Ask for the microphone at game start and lab-menu open so the first
+      // question never pops the permission prompt mid-experience.
+      if (mode === 'walltones' || mode === 'lab' || mode === 'voicelab') {
+        void this.receiver.warmMicrophone();
+      }
       this.setActive(mode === 'voicelab');
     };
     window.addEventListener('experience-mode-changed', onModeChange);
-    this.setActive(
-      (window.sessionStorage.getItem('iwsdk-experience-mode') ?? 'menu') ===
-        'voicelab',
-    );
+    const restoredMode =
+      window.sessionStorage.getItem('iwsdk-experience-mode') ?? 'menu';
+    if (
+      restoredMode === 'walltones' ||
+      restoredMode === 'lab' ||
+      restoredMode === 'voicelab'
+    ) {
+      void this.receiver.warmMicrophone();
+    }
+    this.setActive(restoredMode === 'voicelab');
 
     this.cleanupFuncs.push(() => {
       window.removeEventListener('keydown', onKeyDown);
@@ -677,4 +688,4 @@ export class VoiceLabSystem extends createSystem({}) {
       skipVisible: this.phase === 'speaking' || this.phase === 'responding',
     };
   }
-}
+    }
