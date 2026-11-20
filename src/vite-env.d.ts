@@ -4,3 +4,4 @@
 /** Build identity injected by vite.config.ts (shown in the Settings menu). */
 declare const __WALL_TONES_VERSION__: string;
 declare const __WALL_TONES_COMMIT__: string;
+declare const __WALL_TONES_BUILD_DATE__: string;

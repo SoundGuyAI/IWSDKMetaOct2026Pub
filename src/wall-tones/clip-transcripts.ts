@@ -1,6 +1,7 @@
 import type { WallTonesClipId } from './speech.js';
 /** Transcribed from the shipped recordings; shared by both host voices. */
 export const CLIP_TRANSCRIPTS: Record<WallTonesClipId, string> = {
+  openingPattern: "That opening pattern was your signal that the game is about to start. Now it's time to play.",
   welcome: 'Hello and welcome to Wall Tones, a musical memory game.',
   chooseMode: 'Wall Tones can use your real-world environment. Choose a mode to play and set up your play area and buttons.',
   howToPlay: 'Point and press one of those panels to start. Listen to the pattern and repeat it. The longer a pattern you repeat, the higher your score will be. Good luck.',

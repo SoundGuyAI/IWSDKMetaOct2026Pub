@@ -17,14 +17,14 @@ test('Rift Sealing Lab opens from the Lab menu and runs the charge-seal loop', a
   await page.goto('/');
   await page.locator('#wt-loading').waitFor({ state: 'detached', timeout: 60000 });
   // Open the Lab menu from the floating Lab entry.
-  await page.mouse.click(1100, 320);
+  await page.mouse.click(744, 482);
   await expect.poll(() => mode(page)).toBe('lab');
   await page.waitForFunction(() => window.__riftLabDebug != null);
 
   // Click the Rift Sealing Lab row (second row on the Lab menu).
   await page.waitForTimeout(2000);
-  await page.mouse.move(640, 457);
-  await page.mouse.click(640, 457);
+  await page.mouse.move(639, 496);
+  await page.mouse.click(639, 496);
   await expect.poll(() => mode(page)).toBe('riftlab');
   expect(await page.title()).toBe('Wall Tones 2: Rift Sealing Lab');
 
@@ -110,12 +110,12 @@ test('Rift Sealing Lab opens from the Lab menu and runs the charge-seal loop', a
 test('geometry-collision sparks spray while sealing and hit surfaces (item 93)', async ({ page }) => {
   await page.goto('/');
   await page.locator('#wt-loading').waitFor({ state: 'detached', timeout: 60000 });
-  await page.mouse.click(1100, 320);
+  await page.mouse.click(744, 482);
   await expect.poll(() => mode(page)).toBe('lab');
   await page.waitForFunction(() => window.__riftLabDebug != null);
   await page.waitForTimeout(2000);
-  await page.mouse.move(640, 457);
-  await page.mouse.click(640, 457);
+  await page.mouse.move(639, 496);
+  await page.mouse.click(639, 496);
   await expect.poll(() => mode(page)).toBe('riftlab');
 
   await page.evaluate(() => window.__riftLabDebug!.start());
@@ -158,11 +158,11 @@ test('geometry-collision sparks spray while sealing and hit surfaces (item 93)',
 test('Rift Lab Back returns to the Lab menu', async ({ page }) => {
   await page.goto('/');
   await page.locator('#wt-loading').waitFor({ state: 'detached', timeout: 60000 });
-  await page.mouse.click(1100, 320);
+  await page.mouse.click(744, 482);
   await expect.poll(() => mode(page)).toBe('lab');
   await page.waitForTimeout(2000);
-  await page.mouse.move(640, 457);
-  await page.mouse.click(640, 457);
+  await page.mouse.move(639, 496);
+  await page.mouse.click(639, 496);
   await expect.poll(() => mode(page)).toBe('riftlab');
   await page.waitForTimeout(1000);
   // Back is the last button on the Rift Lab panel.

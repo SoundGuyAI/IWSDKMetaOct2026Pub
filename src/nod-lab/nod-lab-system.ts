@@ -30,6 +30,7 @@ import { unlockSpeechFromGesture } from '../wall-tones/speech.js';
 import {
   DEFAULT_HEAD_GESTURE_CONFIG,
   FLAT_HEAD_GESTURE_CONFIG,
+  FLAT_SENSITIVE_GESTURE_CONFIG,
   HeadNodShakeDetector,
   type HeadGestureConfig,
   type YesNoAnswer,
@@ -246,6 +247,14 @@ export class NodLabSystem extends createSystem({}) {
     src: string;
   }> = [];
   private recordLabel: UIKit.Text | null = null;
+  private sensitivityLabel: UIKit.Text | null = null;
+  /**
+   * Owner's Nov 16 iPhone ask: a live sensitivity choice so he can tune
+   * detection on the phone in one session instead of redeploy loops.
+   * 'sensitive' catches gentle nods (peak 8 vs 10 deg, arm 5 vs 6);
+   * persisted so a retest keeps the last choice.
+   */
+  private flatSensitivity: 'standard' | 'sensitive' = 'standard';
   private flashTimeout: ReturnType<typeof setTimeout> | null = null;
   private transientStatus: { text: string; until: number } | null = null;
   // Standalone diagnosis while recording (owner, Nov 16): detection must
@@ -303,6 +312,20 @@ export class NodLabSystem extends createSystem({}) {
     panel
       .getElementById('nod-lab-reset-button')
       ?.addEventListener('click', () => this.recaptureBaseline());
+    this.sensitivityLabel = panel.getElementById<UIKit.Text>(
+      'nod-lab-sensitivity-label',
+    );
+    panel
+      .getElementById('nod-lab-sensitivity-button')
+      ?.addEventListener('click', () => this.toggleSensitivity());
+    try {
+      if (window.localStorage.getItem('nod-lab-flat-sensitivity') === 'sensitive') {
+        this.flatSensitivity = 'sensitive';
+      }
+    } catch {
+      // Storage blocked (private mode): keep the default for this session.
+    }
+    this.applyFlatSensitivity();
     // The Back button is bound by AppModeSystem, which owns the mode flip
     // back to 'menu'; the resulting mode event deactivates this lab.
 
@@ -516,6 +539,7 @@ export class NodLabSystem extends createSystem({}) {
       this.tiltTracker,
       () => this.flatDetector.isEnabled || this.recording,
       (sample, now) => this.handleFlatAngles(sample, now, 'tilt'),
+      () => this.readOrientationAngleDeg(),
     );
     await this.detectTiltSensor();
     this.renderPanel();
@@ -767,9 +791,63 @@ export class NodLabSystem extends createSystem({}) {
   }
 
   private activeGestureConfig(): HeadGestureConfig {
-    return this.isImmersive()
-      ? DEFAULT_HEAD_GESTURE_CONFIG
+    if (this.isImmersive()) {
+      return DEFAULT_HEAD_GESTURE_CONFIG;
+    }
+    return this.flatSensitivity === 'sensitive'
+      ? FLAT_SENSITIVE_GESTURE_CONFIG
       : FLAT_HEAD_GESTURE_CONFIG;
+  }
+
+  /**
+   * Screen orientation angle (0/90/180/270), so tilt gestures map to the
+   * same screen-relative axes in portrait and landscape. iOS Safari
+   * exposes window.orientation; modern browsers screen.orientation.
+   */
+  private readOrientationAngleDeg(): number {
+    const raw =
+      window.screen?.orientation?.angle ??
+      (window as unknown as { orientation?: number }).orientation ??
+      0;
+    return (((Math.round(raw / 90) * 90) % 360) + 360) % 360;
+  }
+
+  /** Swap the flat-mode detector tuning and show it on the panel. */
+  private applyFlatSensitivity(): void {
+    const config =
+      this.flatSensitivity === 'sensitive'
+        ? FLAT_SENSITIVE_GESTURE_CONFIG
+        : FLAT_HEAD_GESTURE_CONFIG;
+    this.flatDetector.setConfig(config);
+    this.recDetectorFlat.setConfig(config);
+    this.recDetectorFlat.setEnabled(true);
+    this.sensitivityLabel?.setProperties({
+      text: `Sensitivity: ${
+        this.flatSensitivity === 'sensitive' ? 'Sensitive' : 'Standard'
+      }`,
+    });
+  }
+
+  private toggleSensitivity(): void {
+    this.flatSensitivity =
+      this.flatSensitivity === 'sensitive' ? 'standard' : 'sensitive';
+    try {
+      window.localStorage.setItem(
+        'nod-lab-flat-sensitivity',
+        this.flatSensitivity,
+      );
+    } catch {
+      // Storage blocked: the choice still holds for this session.
+    }
+    this.applyFlatSensitivity();
+    this.transientStatus = {
+      text:
+        this.flatSensitivity === 'sensitive'
+          ? 'Sensitive: gentler nods count (8 deg).'
+          : 'Standard sensitivity restored.',
+      until: performance.now() + 2500,
+    };
+    this.renderPanel();
   }
 
   private renderPanel(overrideLine?: string): void {
@@ -811,8 +889,8 @@ export class NodLabSystem extends createSystem({}) {
         `pitch ${this.pitchDeg.toFixed(1)} deg | yaw ${this.yawDeg.toFixed(1)} deg | ` +
         `detector ${this.isImmersive() ? (this.detector.isEnabled ? 'armed' : 'off') : this.flatDetector.isEnabled ? 'flat-armed' : 'flat-off'} | ` +
         `last answer ${this.lastAnswer ?? '-'} (${amp}) | ` +
-        `thresholds act ${(this.activeGestureConfig().activationRad * 180 / Math.PI).toFixed(0)} deg ` +
-        `peak ${(this.activeGestureConfig().minPeakRad * 180 / Math.PI).toFixed(0)} deg` +
+        `${this.isImmersive() ? 'headset' : this.flatSensitivity} thresholds act ${(this.activeGestureConfig().activationRad * 180 / Math.PI).toFixed(1)} deg ` +
+        `peak ${(this.activeGestureConfig().minPeakRad * 180 / Math.PI).toFixed(1)} deg` +
         (this.recording
           ? ` | REC ${this.recSamples.length} samples ${this.recEvents.length} answers`
           : ''),
@@ -1011,4 +1089,4 @@ export class NodLabSystem extends createSystem({}) {
       clipPlays: { ...this.clipPlays },
     };
   }
-                        }
+        }

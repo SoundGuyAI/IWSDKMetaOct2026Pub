@@ -157,12 +157,15 @@ async function playToStreak(page: Page, target: number): Promise<void> {
 }
 
 test.describe('Wall Tones economy: Bars, store, hints, achievements', () => {
-  test('completing a pattern awards Bars, persists them and the best streak across reloads, and speaks the first-Bars line once', async ({
+  test('completing a pattern awards Bars, persists them and the best streak across reloads, and remembers the first-Bars line only after real playback completes', async ({
     page,
   }) => {
     test.slow();
     const speechRequests: string[] = [];
     await abortSpeech(page, speechRequests);
+    // This assertion concerns HEARD memory. Keep the real first-Bars audio;
+    // an aborted clip must stay eligible under completion-based memory.
+    await page.route('**/audio/speech/**/bars-first-earn.mp3', route => route.continue());
     await bootWallTones(page, true);
     await submitPad(page, 0); // start tap
     await playToStreak(page, 1);
@@ -193,6 +196,11 @@ test.describe('Wall Tones economy: Bars, store, hints, achievements', () => {
         { timeout: 15_000 },
       )
       .toBeGreaterThan(0); // first-time voice fired
+
+    await page.waitForFunction(() => {
+      const saved = JSON.parse(localStorage.getItem('wall-tones-instructions-v1') ?? 'null');
+      return saved?.heard.includes('barsFirstEarn');
+    });
 
     // Reload WITHOUT clearing storage: balance and best streak survive.
     await bootWallTones(page, false);
@@ -277,17 +285,17 @@ test.describe('Wall Tones economy: Bars, store, hints, achievements', () => {
     await abortSpeech(page, speechRequests);
     await bootWallTones(page, true);
 
-    // Refusal path: 999 Bars is not enough - no charge, no unlock.
-    await grantBars(page, 9999);
+    // Refusal path: 99,999 Bars is not enough - no charge, no unlock.
+    await grantBars(page, 99999);
     await dbg(page, 'toggleStore');
     expect((await readState(page)).storeOpen).toBe(true);
     await dbg(page, 'buyTopSecret');
     let snap = await readState(page);
-    expect(snap.bars).toBe(9999);
+    expect(snap.bars).toBe(99999);
     expect(snap.ownsTopSecret).toBe(false);
     expect(snap.unlockedAchievements).not.toContain('secret-1');
 
-    // 1000 Bars: the purchase lands, the hidden achievement unlocks.
+    // 100,000 Bars: the purchase lands, the hidden achievement unlocks.
     await grantBars(page, 1);
     await dbg(page, 'buyTopSecret');
     snap = await readState(page);

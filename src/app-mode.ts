@@ -1,8 +1,9 @@
+import { applyMainMenuShape, currentMainMenuShape } from './main-menu-layout.js';
 import { armbandHand, setArmbandHand } from './wall-tones/armband.js';
 import { captureCypherCast } from './wall-tones/cypher-voice.js';
 import { hearingSubtitlesEnabled, colorNamesEnabled, setHearingSubtitles, setColorNames, voicesOffEnabled, setVoicesOff, headGazePinchEnabled, setHeadGazePinch, nativeGazePinchEnabled, setNativeGazePinch } from './wall-tones/accessibility.js';
 import { GAZE_SOURCE_EVENT, gazeSourceStatusText, type GazeSourceStatus } from './wall-tones/gaze-source.js';
-import { gazePinchSettingsVisible } from './enter-xr-visibility.js';
+import { enterXrButtonVisible, gazePinchSettingsVisible } from './enter-xr-visibility.js';
 /**
  * Switches between the main menu and experience modes by toggling authored
  * scene node visibility. Mode selection lives on spatial UIKitML panels.
@@ -76,8 +77,6 @@ const DEMO_PROP_NODE_IDS = [
 const HUB_DRESSING_NODE_IDS = [
   'studio-floor',
   'stage',
-  'gallery-set',
-  'sideboard-set',
 ] as const;
 
 const MEDITATION_NODE_IDS = ['welcome-panel', 'gaze-debug-panel'] as const;
@@ -250,8 +249,9 @@ export class AppModeSystem extends createSystem({}) {
     this.setNodeVisible('nod-lab-panel', showNodLab);
     this.setNodeVisible('rift-lab-panel', showRiftLab);
     this.setNodeVisible('thumbs-lab-panel', showThumbsLab);
-    // The Lab entry floats beside the menu: visible exactly when the menu is.
-    this.setNodeVisible('lab-entry-panel', showMenu);
+    // The old side Lab entry panel stays authored but unused: the Lab button
+    // is a row/stack member of the main menu itself.
+    this.setNodeVisible('lab-entry-panel', false);
 
 
     for (const nodeId of DEMO_NODE_IDS) {
@@ -313,7 +313,8 @@ export class AppModeSystem extends createSystem({}) {
 
   /** Lab entry button, Lab menu rows and Back. Rows come from the registry. */
   private bindLabMenu(): void {
-    const entry = this.world.getSceneObject<UIKitMLAsset>('lab-entry-panel');
+    // The Lab button lives in the main menu now (cover landing, Nov 19).
+    const entry = this.world.getSceneObject<UIKitMLAsset>('main-menu-panel');
     const entryButton = entry?.getElementById('lab-entry-button');
     entryButton?.addEventListener('click', () => {
       primeWallTonesAudioFromGesture();
@@ -431,10 +432,12 @@ export class AppModeSystem extends createSystem({}) {
         'xr-button',
         'exit-button',
         'settings-button',
+        'lab-entry-button',
         'main-menu-credit',
       ]) {
         setDisplay(id, 'none');
       }
+      applyMainMenuShape(panel, 'dialog');
       syncVoiceLabels();
       setDisplay('settings-dialog', 'flex');
     };
@@ -445,9 +448,14 @@ export class AppModeSystem extends createSystem({}) {
       setDisplay('main-menu-content', 'flex');
       setDisplay('mode-walltones-button', 'flex');
       setDisplay('settings-button', 'flex');
+      setDisplay('lab-entry-button', 'flex');
       setDisplay('main-menu-credit', 'flex');
+      applyMainMenuShape(panel, currentMainMenuShape());
       // Same rule PanelSystem uses: Enter XR on flat, Exit while immersive.
-      setDisplay('xr-button', flat && this.world.xrEnabled ? 'flex' : 'none');
+      setDisplay('xr-button', enterXrButtonVisible(
+        flat, this.world.xrEnabled, currentMainMenuShape() === 'stack',
+        typeof navigator === 'undefined' ? '' : navigator.userAgent,
+      ) ? 'flex' : 'none');
       setDisplay('exit-button', !flat && this.world.xrEnabled ? 'flex' : 'none');
     };
     const choose = (gender: WallTonesVoiceGender) => {

@@ -53,6 +53,7 @@ import { XRHandVisualAdapter } from '@iwsdk/xr-input';
 import {
   HAND_SEGMENTS,
   pointOnHandShape,
+  HandPoseFreshness,
   readPalmPose,
   type PalmPose,
 } from './rift-hands.js';
@@ -430,6 +431,7 @@ export class RiftLabSystem extends createSystem({
   private energyText: UIKit.Text | null = null;
   private telemetryText: UIKit.Text | null = null;
   private active = false;
+  private readonly poseFreshness = new HandPoseFreshness();
   private running = false;
   private lastSpawnAt = 0;
   /** Debug-bridge opt-in only; always false in normal play. */
@@ -1174,16 +1176,24 @@ export class RiftLabSystem extends createSystem({
     }
     for (const hand of ['right', 'left'] as const) {
       const adapter = this.input.xr.visualAdapters[hand].peek();
-      if (adapter instanceof XRHandVisualAdapter) {
-        const grip = this.player.gripSpaces[hand];
-        grip.updateWorldMatrix(true, false);
-        this.palms[hand] = readPalmPose(
-          adapter.jointTransforms,
-          grip.matrixWorld.elements,
-        );
-      } else {
+      const joints =
+        adapter instanceof XRHandVisualAdapter
+          ? adapter.jointTransforms
+          : null;
+      if (joints == null) {
+        this.poseFreshness.reset(hand);
         this.palms[hand] = null;
+        continue;
       }
+      // Lost tracking freezes the joint buffer instead of clearing it; a
+      // palm read from frozen joints parks hand visuals mid-air.
+      if (!this.poseFreshness.isLive(hand, joints, performance.now())) {
+        this.palms[hand] = null;
+        continue;
+      }
+      const grip = this.player.gripSpaces[hand];
+      grip.updateWorldMatrix(true, false);
+      this.palms[hand] = readPalmPose(joints, grip.matrixWorld.elements);
     }
   }
 

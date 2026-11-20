@@ -1,4 +1,8 @@
-# Rift visuals: Cursor handoff
+# Rift visuals: Cursor handoff (historical)
+
+**Superseded for new agent chats by [`docs/RIFT_VISUALS_HANDOFF.md`](RIFT_VISUALS_HANDOFF.md)**
+(which follows [`docs/AGENT_WORKTREE_PR_HANDOFF.md`](AGENT_WORKTREE_PR_HANDOFF.md)).
+Keep this file as the Nov 17 baseline / analysis archive.
 
 Updated November 17, 2026, 03:30 Asia/Jerusalem. Documentation handoff, not a gameplay change. The 00:28 runtime analysis below remains a dated baseline; recheck current source and runtime before changing anything.
 

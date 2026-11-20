@@ -86,6 +86,24 @@ export const FLAT_HEAD_GESTURE_CONFIG: HeadGestureConfig = {
   returnToBaselineRad: (6 * Math.PI) / 180,
 };
 
+/**
+ * Flat-mode SENSITIVE preset (owner's Nov 16 ask: iPhone nods did not
+ * register 100%). His Nov 15 iPhone dataset shows deliberate nods peaking
+ * 10-22 deg, so the Standard 10 deg peak sits right at the low end: a
+ * gentle nod armed (6 deg) and reversed (4 deg) but never qualified. This
+ * preset lowers the qualification band (arm 5, reverse 3.5, peak 8) and
+ * the return-to-baseline requirement to 5 deg. Dominance stays 2.0: the
+ * Nov 15 trace shows relaxing it is what let yaw wobble misread a nod as
+ * a shake, and no new evidence argues against it.
+ */
+export const FLAT_SENSITIVE_GESTURE_CONFIG: HeadGestureConfig = {
+  ...FLAT_HEAD_GESTURE_CONFIG,
+  activationRad: (5 * Math.PI) / 180,
+  reversalRad: (3.5 * Math.PI) / 180,
+  minPeakRad: (8 * Math.PI) / 180,
+  returnToBaselineRad: (5 * Math.PI) / 180,
+};
+
 interface CommittedExtreme {
   readonly amplitude: number;
   readonly startedAt: number;
@@ -107,7 +125,14 @@ export class AxisOscillationTracker {
   // behind it (the owner's Nov 16 Quest recording).
   private awaitingReturn = false;
 
-  constructor(private readonly config: HeadGestureConfig) {}
+  constructor(private config: HeadGestureConfig) {}
+
+  /** Swap tuning live (owner's iPhone sensitivity selector); the swap
+   * resets stroke state so no half-read gesture mixes two configs. */
+  setConfig(config: HeadGestureConfig): void {
+    this.config = config;
+    this.reset();
+  }
 
   reset(): void {
     this.direction = 0;
@@ -239,10 +264,17 @@ export class HeadNodShakeDetector {
   private enabled = false;
 
   constructor(
-    private readonly config: HeadGestureConfig = DEFAULT_HEAD_GESTURE_CONFIG,
+    private config: HeadGestureConfig = DEFAULT_HEAD_GESTURE_CONFIG,
   ) {
     this.pitch = new AxisOscillationTracker(config);
     this.yaw = new AxisOscillationTracker(config);
+  }
+
+  /** Swap tuning live (iPhone sensitivity selector on the lab panel). */
+  setConfig(config: HeadGestureConfig): void {
+    this.config = config;
+    this.pitch.setConfig(config);
+    this.yaw.setConfig(config);
   }
 
   /** Arming is controlled by the dialogue: detection only runs while a

@@ -14,6 +14,10 @@ const version =
   typeof __WALL_TONES_VERSION__ !== 'undefined' ? __WALL_TONES_VERSION__ : 'dev';
 const commit =
   typeof __WALL_TONES_COMMIT__ !== 'undefined' ? __WALL_TONES_COMMIT__ : 'dev';
+const buildDate =
+  typeof __WALL_TONES_BUILD_DATE__ !== 'undefined'
+    ? __WALL_TONES_BUILD_DATE__
+    : 'unknown';
 
-export const WALL_TONES_BUILD_INFO = { version, commit } as const;
-export const WALL_TONES_BUILD_LABEL = `v${version} - ${commit}`;
+export const WALL_TONES_BUILD_INFO = { version, commit, buildDate } as const;
+export const WALL_TONES_BUILD_LABEL = `v${version} - ${commit} - ${buildDate}`;
