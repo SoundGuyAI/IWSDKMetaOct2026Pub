@@ -226,6 +226,7 @@ jobs:
             tests/e2e/wall-tones.mute.spec.ts \
             tests/e2e/wall-tones.nod-lab.spec.ts \
             tests/e2e/wall-tones.thumbs-lab.spec.ts \
+            tests/e2e/wall-tones.voice-xr-lab.spec.ts \
             tests/e2e/wall-tones.polish.spec.ts \
             tests/e2e/wall-tones.store-drag-click.spec.ts \
             tests/e2e/wall-tones.store-scroll.spec.ts \

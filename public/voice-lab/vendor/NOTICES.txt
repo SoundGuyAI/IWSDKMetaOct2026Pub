@@ -1,0 +1,27 @@
+Vendored third-party files for the Wall Tones Voice Lab
+=========================================================
+
+All files in this folder and in ../model/ are unmodified downloads, pinned so
+the lab page's LOCAL TensorFlow mode runs fully from this site's own origin
+with no third-party requests at test time. (The page's optional browser
+speech-service method may still send audio to the browser vendor; the
+on-device method is feature-detected per browser.)
+
+vendor/tf.min.js
+  TensorFlow.js 4.22.0 (UMD browser build)
+  Source: https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js
+  License: Apache-2.0 (copyright headers are preserved inside the file)
+
+vendor/speech-commands.min.js
+  @tensorflow-models/speech-commands 0.5.4 (UMD browser build)
+  Source: https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands@0.5.4/dist/speech-commands.min.js
+  License: Apache-2.0 (copyright headers are preserved inside the file)
+
+model/model.json, model/group1-shard1of2, model/group1-shard2of2, model/metadata.json
+  Pretrained 18-word speech-commands model, BROWSER_FFT frontend ("18w").
+  These are the exact files the library downloads by default, mirrored from:
+  https://storage.googleapis.com/tfjs-models/tfjs/speech-commands/v0.5/browser_fft/18w/
+  License: Apache-2.0 (TensorFlow.js models project)
+
+Recognized words: zero, one, two, three, four, five, six, seven, eight, nine,
+up, down, left, right, go, stop, yes, no (plus _background_noise_ and _unknown_).

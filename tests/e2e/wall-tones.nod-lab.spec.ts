@@ -50,7 +50,8 @@ async function enterNodLab(page: import('@playwright/test').Page) {
   );
   // Let the Lab menu take the flat layout and render before clicking the row.
   await page.waitForTimeout(2000);
-  await page.mouse.click(640, 290);
+  // Voice row added 2026-11-18: the center-anchored Lab menu shifted up ~45px; Nod row recalibrated 290 -> 245 (screenshot-verified).
+  await page.mouse.click(640, 245);
 }
 
 async function answer(page: import('@playwright/test').Page, value: 'yes' | 'no') {

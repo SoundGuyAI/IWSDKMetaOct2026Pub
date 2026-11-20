@@ -12,8 +12,8 @@ const js = ts.transpileModule(source, {
 }).outputText;
 const lab = await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
 
-test('nod and rift labs are connected through the registry; thumbs ships not connected', () => {
-  assert.deepEqual(lab.LAB_ENTRIES.map((e) => e.id), ['nod', 'rift', 'thumbs']);
+test('nod, rift, thumbs and voice labs are connected through the registry', () => {
+  assert.deepEqual(lab.LAB_ENTRIES.map((e) => e.id), ['nod', 'rift', 'thumbs', 'voice']);
   const nod = lab.LAB_ENTRIES[0];
   assert.equal(lab.labRowTarget(nod), 'nodlab');
   assert.equal(lab.labRowLabel(nod), 'Nod Yes/No Lab');
@@ -22,6 +22,9 @@ test('nod and rift labs are connected through the registry; thumbs ships not con
   const thumbs = lab.LAB_ENTRIES.find((e) => e.id === 'thumbs');
   assert.equal(lab.labRowTarget(thumbs), 'thumbslab');
   assert.doesNotMatch(lab.labRowLabel(thumbs), /not connected/);
+  const voice = lab.LAB_ENTRIES.find((e) => e.id === 'voice');
+  assert.equal(lab.labRowTarget(voice), 'voicelab');
+  assert.equal(lab.labRowLabel(voice), 'Voice Yes/No Lab');
 });
 
 test('a connected entry opens its mode and drops the status suffix', () => {

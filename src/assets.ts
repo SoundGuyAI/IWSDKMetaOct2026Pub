@@ -65,6 +65,7 @@ export default defineAssets({
 
   'rift-lab-panel': uikitml('rift-lab.uikitml', 'Rift Lab Panel'),
   'thumbs-lab-panel': uikitml('thumbs-lab.uikitml', 'Thumbs Lab Panel'),
+  'voice-lab-panel': uikitml('voice-lab.uikitml', 'Voice Lab Panel'),
   'welcome-panel': uikitml('welcome.uikitml', 'Welcome Panel'),
   'gaze-debug-panel': uikitml('gaze-debug.uikitml', 'Gaze Debug Panel'),
   'wall-tones-panel': uikitml(

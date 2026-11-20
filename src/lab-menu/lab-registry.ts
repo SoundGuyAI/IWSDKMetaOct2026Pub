@@ -24,6 +24,7 @@ export const LAB_ENTRIES: readonly LabEntry[] = [
   // Rift Sealing Lab connects itself here (feature-PR one-liner, see header).
   { id: 'rift', label: 'Rift Sealing Lab', mode: 'riftlab', available: true },
   { id: 'thumbs', label: 'Thumbs Yes/No Lab', mode: 'thumbslab', available: true },
+  { id: 'voice', label: 'Voice Yes/No Lab', mode: 'voicelab', available: true },
 ];
 
 export const LAB_STATUS_UNAVAILABLE = 'not connected';

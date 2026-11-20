@@ -20,7 +20,7 @@ test('portrait touch: Start opens a rift and a corner drag seals it', async ({ p
   await page.waitForTimeout(1500);
   await page.touchscreen.tap(195, 51); // floating Lab entry
   await page.waitForTimeout(2500);
-  await page.touchscreen.tap(195, 394); // Rift Sealing Lab row
+  await page.touchscreen.tap(195, 370); // Rift Sealing Lab row (Voice row added 2026-11-18: menu shifted up, recalibrated 394 -> 370, screenshot-verified)
   await page.waitForTimeout(2500);
   await page.waitForFunction(() => window.__riftLabDebug != null);
   await page.touchscreen.tap(195, 264); // Start
