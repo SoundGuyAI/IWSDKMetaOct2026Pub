@@ -425,6 +425,8 @@ export type VoiceReceiverState =
   | 'mic-unavailable'
   | 'error';
 
+export type MicWarmupState = 'unknown' | 'granted' | 'denied' | 'unsupported';
+
 /**
  * Owns the one recognizer instance and the vendored script loading. The
  * system drives it; every failure resolves to a state plus a message, never
@@ -434,9 +436,44 @@ export class VoiceReceiver {
   private recognizer: SpeechCommandsRecognizer | null = null;
   private loadPromise: Promise<void> | null = null;
   private readonly frames = new FrameWindow();
+  private micWarmup: MicWarmupState = 'unknown';
   state: VoiceReceiverState = 'cold';
   detail = '';
   backend: string | null = null;
+
+  /**
+   * Ask for the microphone up front (game start / lab menu open) so the
+   * first question never pops the permission prompt mid-experience. The
+   * stream is opened and closed immediately; the recognizer's own later
+   * getUserMedia then resolves without a prompt. Never throws: denial or a
+   * missing device leaves the button/key fallbacks in place.
+   */
+  async warmMicrophone(): Promise<MicWarmupState> {
+    if (this.micWarmup === 'granted') {
+      return this.micWarmup;
+    }
+    const devices =
+      typeof navigator === 'undefined' ? undefined : navigator.mediaDevices;
+    if (devices?.getUserMedia == null) {
+      this.micWarmup = 'unsupported';
+      return this.micWarmup;
+    }
+    try {
+      const stream = await devices.getUserMedia({ audio: true, video: false });
+      for (const track of stream.getTracks()) {
+        track.stop();
+      }
+      this.micWarmup = 'granted';
+    } catch {
+      this.micWarmup = 'denied';
+    }
+    return this.micWarmup;
+  }
+
+  /** Debug/test readout of the up-front permission warm-up. */
+  micWarmupState(): MicWarmupState {
+    return this.micWarmup;
+  }
 
   /** Load vendored scripts and the model. Idempotent. */
   async prepare(): Promise<void> {
@@ -541,6 +578,6 @@ export class VoiceReceiver {
   /** Debug/test snapshot of the receiver for the panel telemetry. */
   describe(): string {
     const backend = this.backend == null ? '' : ` backend ${this.backend}`;
-    return `${this.state}${backend}${this.detail === '' ? '' : ` - ${this.detail}`}`;
+    return `${this.state}${backend} mic ${this.micWarmup}${this.detail === '' ? '' : ` - ${this.detail}`}`;
   }
 }
