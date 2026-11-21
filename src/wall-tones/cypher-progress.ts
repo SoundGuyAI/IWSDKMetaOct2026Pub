@@ -42,6 +42,30 @@ export function cypherWindowIndex(id: string): number {
   return CYPHER_WINDOWS.findIndex((window) => window.id === id);
 }
 
+/** Window order every version-1 save was written against (Act 1 before the
+ * rift windows). Version-1 saves store numeric positions, so reading them
+ * against the longer rift table points at the wrong windows - a finished
+ * player (next = 14) looked unfinished and background lines never started.
+ * Map each saved position through this list to its window id, then to the
+ * current index. */
+const CYPHER_WINDOWS_V1_IDS = [
+  'connection', 'next-window', 'keep-playing', 'ten', 'first-fault',
+  'codename', 'your-machine', 'hidden-channel', 'next-lock', 'routine-repair',
+  'seam', 'seam-repaired', 'longer-window', 'last-check',
+] as const;
+
+/** Current persisted save shape. */
+const CYPHER_PROGRESS_VERSION = 2;
+
+/** Translate a version-1 table position to the current table, or -1 when the
+ * save is out of bounds for the table it was written against. */
+function migrateV1Index(index: number): number {
+  if (index > CYPHER_WINDOWS_V1_IDS.length) return -1;
+  if (index === CYPHER_WINDOWS_V1_IDS.length) return CYPHER_WINDOWS.length;
+  const migrated = cypherWindowIndex(CYPHER_WINDOWS_V1_IDS[index]!);
+  return migrated >= 0 ? migrated : CYPHER_WINDOWS.length;
+}
+
 export const CYPHER_PROGRESS_KEY = 'wall-tones-cypher-act1-progress-v1';
 interface StoryStorage { getItem(key: string): string | null; setItem(key: string, value: string): void; }
 function browserStorage(): StoryStorage | undefined {
@@ -59,14 +83,28 @@ export class CypherProgress {
   constructor(private readonly storage: StoryStorage | undefined = browserStorage()) {
     try {
       const saved = JSON.parse(storage?.getItem(CYPHER_PROGRESS_KEY) ?? 'null');
-      if (saved?.version === 1 && Number.isInteger(saved.next) && saved.next >= 0 && saved.next <= CYPHER_WINDOWS.length) {
+      if (saved?.version === CYPHER_PROGRESS_VERSION && Number.isInteger(saved.next) && saved.next >= 0 && saved.next <= CYPHER_WINDOWS.length) {
         this.next = saved.next;
         if (Number.isInteger(saved.active?.index) && saved.active.index === saved.next - 1 && saved.active.index >= 0 && Number.isInteger(saved.active.offset) && saved.active.offset >= 0 && saved.active.offset < CYPHER_WINDOWS[saved.active.index]!.lines.length) this.active = saved.active;
+      } else if (saved?.version === 1 && Number.isInteger(saved.next) && saved.next >= 0) {
+        // Version-1 positions belong to the pre-rift table: migrate by window
+        // id so existing players keep their exact story position.
+        const next = migrateV1Index(saved.next);
+        if (next >= 0) {
+          this.next = next;
+          if (Number.isInteger(saved.active?.index) && saved.active.index === saved.next - 1 && saved.active.index >= 0 && Number.isInteger(saved.active.offset)) {
+            const index = migrateV1Index(saved.active.index);
+            if (index >= 0 && index < CYPHER_WINDOWS.length && saved.active.offset >= 0 && saved.active.offset < CYPHER_WINDOWS[index]!.lines.length) {
+              this.active = { index, offset: saved.active.offset };
+            }
+          }
+          this.save();
+        }
       }
     } catch { /* invalid/private storage: start here, never affect scores */ }
   }
   private save(): void {
-    try { this.storage?.setItem(CYPHER_PROGRESS_KEY, JSON.stringify({ version: 1, next: this.next, active: this.active })); }
+    try { this.storage?.setItem(CYPHER_PROGRESS_KEY, JSON.stringify({ version: CYPHER_PROGRESS_VERSION, next: this.next, active: this.active })); }
     catch { /* private mode: retain progress in this instance */ }
   }
   takeWindow(streak: number): CypherWindow | undefined {

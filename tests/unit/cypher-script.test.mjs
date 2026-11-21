@@ -144,9 +144,38 @@ test('story position survives a new run and a reloaded instance without bypassin
   assert.equal(new CypherProgress(storage).completedWindows, 7);
 });
 test('invalid, future-version and out-of-bounds story saves fail safely', () => {
-  for (const value of ['broken', '{}', '{"version":2,"next":3}', '{"version":1,"next":999}', '{"version":1,"next":-1}', '{"version":1,"next":2.5}']) {
+  for (const value of ['broken', '{}', '{"version":3,"next":3}', '{"version":2,"next":999}', '{"version":1,"next":999}', '{"version":1,"next":-1}', '{"version":1,"next":2.5}']) {
     assert.equal(new CypherProgress(storyStorage(value)).takeWindow(5).id, 'connection');
   }
+});
+
+test('version-1 saves migrate by window id into the rift-extended table', () => {
+  // Version 1 was written against the 14-window pre-rift table; positions at
+  // or past longer-window shift by two in the rift table.
+  const finished = new CypherProgress(storyStorage('{"version":1,"next":14}'));
+  assert.equal(finished.finished, true, 'a finished Act 1 stays finished');
+  assert.equal(finished.takeWindow(20), undefined, 'no windows replay after migration');
+
+  const atLonger = new CypherProgress(storyStorage('{"version":1,"next":12}'));
+  assert.equal(atLonger.takeWindow(20).id, 'longer-window');
+  assert.equal(atLonger.takeWindow(20).id, 'last-check');
+  assert.equal(atLonger.finished, true);
+
+  const atLastCheck = new CypherProgress(storyStorage('{"version":1,"next":13}'));
+  assert.equal(atLastCheck.takeWindow(20).id, 'last-check');
+
+  const early = new CypherProgress(storyStorage('{"version":1,"next":5}'));
+  assert.equal(early.takeWindow(10).id, 'codename', 'early positions are unchanged');
+
+  // An interrupted version-1 window resumes at the same line offset.
+  const midSeam = new CypherProgress(storyStorage('{"version":1,"next":11,"active":{"index":10,"offset":1}}'));
+  assert.deepEqual([...midSeam.beginWindow(20).lines], ['C16A', 'C16B', 'C16C']);
+
+  // Migration persists the upgraded shape.
+  const store = storyStorage('{"version":1,"next":12}');
+  new CypherProgress(store);
+  assert.equal(JSON.parse(store.getItem()).version, 2);
+  assert.equal(new CypherProgress(store).takeWindow(20).id, 'longer-window');
 });
 test('unavailable storage does not block session play, and explicit story reset persists', () => {
   const failing = {getItem() { throw new Error('denied'); }, setItem() { throw new Error('denied'); }};

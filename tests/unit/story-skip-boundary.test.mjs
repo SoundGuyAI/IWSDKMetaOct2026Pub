@@ -40,7 +40,7 @@ test('praise Skip cancels remaining praise but starts story at the same boundary
   const h = harness({ hook: (id, c) => { if (id === 'record') c.skip(); } });
   await h.c.round();
   assert.deepEqual(h.events, ['record', 'effect:open', 'C01', 'effect:close', 'pattern']);
-  assert.deepEqual(h.saved(), { version: 1, next: 1 });
+  assert.deepEqual(h.saved(), { version: 2, next: 1 });
 });
 test('story Skip consumes only the started line and defers unstarted lines', async () => {
   const h = harness({ next: 6, active: { index: 5, offset: 0 }, hook: (id, c) => { if (id === 'C05') c.skip(); } });
