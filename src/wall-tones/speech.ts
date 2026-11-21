@@ -3,6 +3,7 @@ import { RETURN_DIALOGUE, type ReturnLineId } from './return-dialogue.js';
 import { InstructionMemory } from './instruction-memory.js';
 import { LAB_INTRO_AUDIO } from '../lab-menu/intro-audio.js';
 import { CYPHER_BACKGROUND, type BackgroundLineId } from './cypher-background.js';
+import { CYPHER_ENCOURAGEMENT, type EncouragementLineId } from './cypher-encourage.js';
 import { captureCypherCast, type CypherCast } from './cypher-voice.js';
 import { findCypherLine, type CypherLineId } from './cypher-script.js';
 import { CLIP_TRANSCRIPTS } from './clip-transcripts.js';
@@ -559,6 +560,13 @@ export class WallTonesSpeech {
     const line = CYPHER_BACKGROUND.find(line => line.id === id);
     if (!line) return Promise.resolve();
     return this.enqueueClip({ onStarted, url: new URL(`audio/story/background/${cast.cypher}/${id.toLowerCase()}.mp3`, document.baseURI).href, text: `Cypher: ${line.text}` });
+  }
+
+  /** Backlog 119 encouragement: Cypher's short early-Act-1 lines, same queue and Skip lifecycle. */
+  speakEncouragementLine(id: EncouragementLineId, cast: Readonly<CypherCast>, onStarted?: () => void): Promise<void> {
+    const line = CYPHER_ENCOURAGEMENT.find(line => line.id === id);
+    if (!line) return Promise.resolve();
+    return this.enqueueClip({ url: new URL(`audio/speech/cypher-encourage/${cast.cypher}/${id}.mp3`, document.baseURI).href, onStarted, text: `Cypher: ${line.text}` });
   }
 
   speakBackgroundEffect(id: 'open' | 'squawk' | 'close'): Promise<void> {

@@ -21,8 +21,8 @@ test('the splash lifts once the menu is usable, and Start Wall Tones enters the 
   await expect(page.locator('#wt-loading-error')).toBeHidden();
   // The menu really works afterwards: a real click on Start Wall Tones enters
   // the game (viewport fixed at 1280x800 by playwright.config; the button is
-  // the top of the three on the centred menu panel).
-  await page.mouse.click(640, 285);
+  // the leftmost button in the frameless horizontal row).
+  await page.mouse.click(420, 482);
   await page.waitForFunction(
     () =>
       (window as unknown as { __wallTonesDebug?: { flatAwaitingStart: boolean } })

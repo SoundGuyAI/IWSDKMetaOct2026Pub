@@ -143,6 +143,8 @@ export class CypherProgress {
   }
   /** Explicit story reset only. Starting a run or leaving the game never calls it. */
   reset(): void { this.next = 0; this.active = undefined; this.save(); }
+  /** True once the first-contact window (C01 at streak 5) has finished playing. */
+  get firstContactHeard(): boolean { return this.next >= 1 && this.active?.index !== 0; }
   get finished(): boolean { return this.next >= CYPHER_WINDOWS.length && !this.active; }
   /** Actual fully spoken/consumed windows, excluding an in-flight window. */
   get completedWindowIds(): readonly string[] {
