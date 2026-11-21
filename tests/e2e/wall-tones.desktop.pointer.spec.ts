@@ -294,7 +294,7 @@ test.describe('Wall Tones desktop POINTER path (real mouse)', () => {
     await testInfo.attach('story-after-praise-mouse-skip', { body: image, contentType: 'image/png' });
     expect(await skipVoiceWithMouse(page)).toBe(true);
     await waitForPhase(page, 'input');
-    expect(await saved()).toEqual({ version: 1, next: 6 });
+    expect(await saved()).toEqual({ version: 2, next: 6 });
   });
 
   test('mouse Skip pre-line radio effect preserves unheard Cypher for next boundary', async ({ page }) => {
