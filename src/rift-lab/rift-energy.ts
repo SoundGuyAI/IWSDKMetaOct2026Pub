@@ -354,6 +354,18 @@ export class RiftLabGame {
     return rift;
   }
 
+  /**
+   * Full run reset for the gameplay encounter (New Run rule, owner-settled
+   * Nov 18): every rift, all stored charge and any live beam are dropped;
+   * the encounter rearms from its streak gate. Misses never call this.
+   */
+  resetRun(): void {
+    this.rifts.length = 0;
+    this.notes.length = 0;
+    this.energy = 0;
+    this.stopBeam();
+  }
+
   /** Remove sealed rifts from the room (the modifier already lifted at seal). */
   clearSealed(): number {
     let cleared = 0;

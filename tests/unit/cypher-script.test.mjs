@@ -27,10 +27,10 @@ test('a communication window captures an immutable cast', () => {
   assert.throws(() => { first.cypher = 'male'; }, TypeError);
 });
 
-test('Act 1 contains precisely 19 Cypher and 7 narrator lines with unique IDs', () => {
-  assert.equal(CYPHER_ACT_ONE.length, 26);
-  assert.equal(new Set(CYPHER_ACT_ONE.map(line => line.id)).size, 26);
-  assert.equal(CYPHER_ACT_ONE.filter(line => line.speaker === 'cypher').length, 19);
+test('Act 1 contains precisely 26 Cypher and 7 narrator lines with unique IDs', () => {
+  assert.equal(CYPHER_ACT_ONE.length, 33);
+  assert.equal(new Set(CYPHER_ACT_ONE.map(line => line.id)).size, 33);
+  assert.equal(CYPHER_ACT_ONE.filter(line => line.speaker === 'cypher').length, 26);
   assert.equal(CYPHER_ACT_ONE.filter(line => line.speaker === 'narrator').length, 7);
   for (const line of CYPHER_ACT_ONE) {
     assert.equal(line.speaker, line.id.startsWith('C') ? 'cypher' : 'narrator');
@@ -70,20 +70,61 @@ test('misses do not rewind dialogue; explicit spoken mission gates still apply',
   assert.equal(progress.takeWindow(14), undefined, 'seam needs the spoken fifteen mission');
   assert.equal(progress.takeWindow(15).id, 'seam');
   assert.equal(progress.takeWindow(16).id, 'seam-repaired');
-  assert.equal(progress.takeWindow(17).id, 'longer-window');
-  assert.equal(progress.takeWindow(18).id, 'last-check');
+  assert.equal(progress.takeWindow(16), undefined, 'the streak-17 reason beat waits for seventeen');
+  assert.equal(progress.takeWindow(17).id, 'rift-reason-17');
+  assert.equal(progress.takeWindow(18).id, 'rift-reason-18');
+  assert.equal(progress.takeWindow(19).id, 'longer-window');
+  assert.equal(progress.takeWindow(20).id, 'last-check');
   assert.equal(progress.takeWindow(1024), undefined, 'Act 2/3 not invented');
   progress.reset();
   assert.equal(progress.takeWindow(4), undefined);
   assert.equal(progress.takeWindow(5).id, 'connection');
 });
 
-test('window sequence preserves every script line and separates narrator from the private channel', () => {
-  assert.deepEqual(CYPHER_WINDOWS.flatMap(window => window.lines), CYPHER_ACT_ONE.map(line => line.id));
+test('window sequence preserves every windowed script line and separates narrator from the private channel', () => {
+  // C24 is the third-seal acknowledgement: the rift encounter plays it, no
+  // window owns it (owner-settled Nov 18).
+  const windowed = CYPHER_ACT_ONE.map(line => line.id).filter(id => id !== 'C24');
+  assert.deepEqual(CYPHER_WINDOWS.flatMap(window => window.lines), windowed);
+  assert.equal(findCypherLine('C24').speaker, 'cypher');
+  assert.ok(CYPHER_WINDOWS.every(window => !window.lines.includes('C24')));
   for (const window of CYPHER_WINDOWS) {
     for (const id of window.lines) assert.equal(findCypherLine(id).speaker, window.speaker);
     if (window.speaker === 'narrator') assert.ok(window.fault || window.seam === 'closed');
   }
+});
+
+test('rift encounter beats keep the owner-approved words and gates', () => {
+  assert.equal(findCypherLine('C16A').text, 'That light is a portal. The link is tearing them open.');
+  assert.equal(findCypherLine('C16B').text, 'Your notes carry energy now. Aim it at a portal and hold to close it.');
+  assert.equal(findCypherLine('C16C').text, "More will follow. Close them all - I'll hold the link.");
+  assert.equal(findCypherLine('N04').text, "I'm sorry. I don't know what those lights were. My checks can't explain them.");
+  assert.equal(findCypherLine('C20').text, "About those portals. That wasn't a glitch - their system is hunting.");
+  assert.equal(findCypherLine('C21').text, "It's scanning for this link. The portals are how it tries to tear in.");
+  assert.equal(findCypherLine('C22').text, 'If it finds this channel, it will destroy the link.');
+  assert.equal(findCypherLine('C23').text, 'Every portal you close keeps us hidden a little longer.');
+  assert.equal(findCypherLine('C24').text, "That's all three. The link is stable again. Thank you.");
+  const byId = Object.fromEntries(CYPHER_WINDOWS.map(window => [window.id, window]));
+  assert.deepEqual(byId['seam'].lines, ['C15', 'C16A', 'C16B', 'C16C']);
+  assert.equal(byId['seam-repaired'].gate, undefined, 'the narrator apology reacts to open portals, ungated');
+  assert.equal(byId['rift-reason-17'].gate, 'rift-sealed');
+  assert.equal(byId['rift-reason-18'].gate, 'rift-sealed');
+  assert.equal(byId['longer-window'].gate, 'rift-sealed');
+  assert.equal(byId['last-check'].gate, 'rift-sealed');
+});
+
+test('peekWindow previews the next fresh window without consuming it', () => {
+  const progress = new CypherProgress();
+  for (let i = 0; i < 10; i++) progress.takeWindow(10);
+  assert.equal(progress.peekWindow(14), undefined, 'mission streak still applies');
+  assert.equal(progress.peekWindow(15)?.id, 'seam');
+  assert.equal(progress.completedWindows, 10, 'peek consumed nothing');
+  assert.equal(progress.takeWindow(15).id, 'seam');
+  assert.equal(progress.peekWindow(15)?.id, 'seam-repaired');
+  const resumed = new CypherProgress();
+  for (let i = 0; i < 5; i++) resumed.takeWindow(10);
+  resumed.beginWindow(10);
+  assert.equal(resumed.peekWindow(20), undefined, 'an interrupted window hides the fresh peek');
 });
 
 
@@ -103,9 +144,38 @@ test('story position survives a new run and a reloaded instance without bypassin
   assert.equal(new CypherProgress(storage).completedWindows, 7);
 });
 test('invalid, future-version and out-of-bounds story saves fail safely', () => {
-  for (const value of ['broken', '{}', '{"version":2,"next":3}', '{"version":1,"next":999}', '{"version":1,"next":-1}', '{"version":1,"next":2.5}']) {
+  for (const value of ['broken', '{}', '{"version":3,"next":3}', '{"version":2,"next":999}', '{"version":1,"next":999}', '{"version":1,"next":-1}', '{"version":1,"next":2.5}']) {
     assert.equal(new CypherProgress(storyStorage(value)).takeWindow(5).id, 'connection');
   }
+});
+
+test('version-1 saves migrate by window id into the rift-extended table', () => {
+  // Version 1 was written against the 14-window pre-rift table; positions at
+  // or past longer-window shift by two in the rift table.
+  const finished = new CypherProgress(storyStorage('{"version":1,"next":14}'));
+  assert.equal(finished.finished, true, 'a finished Act 1 stays finished');
+  assert.equal(finished.takeWindow(20), undefined, 'no windows replay after migration');
+
+  const atLonger = new CypherProgress(storyStorage('{"version":1,"next":12}'));
+  assert.equal(atLonger.takeWindow(20).id, 'longer-window');
+  assert.equal(atLonger.takeWindow(20).id, 'last-check');
+  assert.equal(atLonger.finished, true);
+
+  const atLastCheck = new CypherProgress(storyStorage('{"version":1,"next":13}'));
+  assert.equal(atLastCheck.takeWindow(20).id, 'last-check');
+
+  const early = new CypherProgress(storyStorage('{"version":1,"next":5}'));
+  assert.equal(early.takeWindow(10).id, 'codename', 'early positions are unchanged');
+
+  // An interrupted version-1 window resumes at the same line offset.
+  const midSeam = new CypherProgress(storyStorage('{"version":1,"next":11,"active":{"index":10,"offset":1}}'));
+  assert.deepEqual([...midSeam.beginWindow(20).lines], ['C16A', 'C16B', 'C16C']);
+
+  // Migration persists the upgraded shape.
+  const store = storyStorage('{"version":1,"next":12}');
+  new CypherProgress(store);
+  assert.equal(JSON.parse(store.getItem()).version, 2);
+  assert.equal(new CypherProgress(store).takeWindow(20).id, 'longer-window');
 });
 test('unavailable storage does not block session play, and explicit story reset persists', () => {
   const failing = {getItem() { throw new Error('denied'); }, setItem() { throw new Error('denied'); }};

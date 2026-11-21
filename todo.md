@@ -167,6 +167,12 @@ Armband verification update (Nov 13): typecheck/build and 102 unit tests pass. Q
 
 PR82's backlog58 status/caveat is preserved above. The authoritative game backlog and later follow-ups are in WALL_TONES_TODO.md; this historical implementation log does not override it. No headset verification is newly claimed.
 
+## PR168 rift encounter review fixes - 2026-11-19 (his desktop playtest notes, pushed, awaiting his retest)
+- [x] Slower spawn pacing: first portal 12 s after the seam window opens (lands with C16B's how-to line), later portals 20 s apart (was: 2 s / 10 s).
+- [x] No respawn in this stage: the Lab auto-spawn top-up timer no longer runs during the encounter; three portals total, sealed ones stay sealed ("we will come back to the rifts again before act 2").
+- [x] Layering: charge-note cloud renders under the game HUD (renderOrder), and flat rift placement now avoids the live Wall Tones HUD rect (was avoiding only the hidden Lab panel footprint, so portals could sit behind the HUD).
+- [x] Verified locally: typecheck, 337 unit tests, rift-lab e2e (3), desktop boot smoke (2), headed visual QA script (spawn times ~12.3 s / ~32.1 s, no top-up after a seal, HUD paints over the note cloud, portals clear of the HUD).
+- [ ] His retest on the Cloudflare preview; merge waits for his go-ahead.
 ## Skip Voice story progress and real-mouse journey - November 17
 
 1. [x] Confirm both story queues previously saved only after uninterrupted playback, reproducing repeated lines on Skip.
@@ -174,3 +180,10 @@ PR82's backlog58 status/caveat is preserved above. The authoritative game backlo
 3. [x] Add desktop real-mouse Skip checks for all three story paths with reload persistence.
 4. [x] Keep ten rounds, every pad press, deliberate wrong pad, reset and best-score assertions in the long pointer journey; click the visible Skip Voice control while waiting.
 5. [ ] Finish full local and GitHub validation, publish separate PR and verify its preview. No merge or production approval.
+
+## PR168 phone-flat keep-out fix - 2026-11-20 (his iPhone report: seam line played, no portals)
+- [x] Root cause: the Nov 19 HUD keep-out rect covers the whole portrait screen (phone HUD sits close and high), so flat spot picking found no legal spawn spot and the encounter retried forever. Regression from the Nov 19 layering fix; desktop unaffected.
+- [x] Fix: the wall-tones-panel HUD keep-out is desktop-only now (skipped on phone-flat viewports); the portrait right-half rule keeps phone rifts clear of the raised HUD.
+- [x] Regression test: tests/e2e/wall-tones.rift-encounter-mobile.spec.ts boots portrait gameplay, starts the encounter, expects a spawned rift; added to the CI roster.
+- [x] Verified: typecheck, rift-encounter-mobile (1), rift-lab-mobile + rift-lab e2e (4), desktop boot smoke, phone probe (rift spawns ~12 s), desktop probe (spawns, keep-out intact). Unit suite 394 pass / 14 fail - all 14 pre-existing on the main-sync merge tip (story-skip-boundary from main, voice-once roster entry), none from this change.
+- [ ] His retest on the Cloudflare preview; merge waits for his go-ahead.

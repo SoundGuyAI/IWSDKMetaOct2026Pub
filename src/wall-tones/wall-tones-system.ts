@@ -10,6 +10,15 @@ import { DIRECT_PRESS_PUSH_MAX_M, DIRECT_PRESS_REFIRE_MS, directPressNext, direc
 import { BackgroundProgress } from './cypher-background.js';
 import { getVoiceGender } from './speech.js';
 import { CypherProgress, type CypherWindow } from './cypher-progress.js';
+import { cypherWindowIndex } from './cypher-progress.js';
+import { riftEncounter } from './rift-encounter.js';
+
+/** Open-rift penalty wiring: one shared x0.5 over score/Bars while a portal
+ * is open (owner-settled Nov 18), read live so spawns/seals apply at once. */
+function withRiftScoreFactor(economy: WallTonesEconomy): WallTonesEconomy {
+economy.setScoreFactorProvider(() => riftEncounter.scoreFactor());
+return economy;
+}
 import { EncouragementCue } from './cypher-encourage.js';
 import {
   THUMB_JOINT_NAMES,
@@ -276,6 +285,9 @@ cypherWindowsStarted: number;
 backgroundLinesCompleted: number;
 cypherSeamVisible: boolean;
 previewCypherSeam: (visible: boolean) => void;
+/** Test-only: begins the rift encounter as the seam window would (visual
+ * QA for spawn pacing and layering without reaching streak 15). */
+previewRiftEncounter: () => void;
 phase: string;
 flowPhase: string;
 sequence: readonly number[];
@@ -585,7 +597,7 @@ this.speech.speak('chooseMode');
 }
 
 private readonly game = new WallTonesSequence();
-private readonly economy = withDemoBarsFlag(new WallTonesEconomy());
+private readonly economy = withDemoBarsFlag(withRiftScoreFactor(new WallTonesEconomy()));
 /** Backlog 30 research: MR headset-movement + pad-reach estimates. Session
  * values show on the menu's movement line (MR only); lifetime totals feed
  * the provisional Movement achievement. */
@@ -2567,6 +2579,7 @@ get backgroundLinesCompleted() { return system.backgroundProgress.completedLines
 get cypherWindowsStarted() { return system.cypherProgress.completedWindows; },
 get cypherSeamVisible() { return system.cypherSeam != null; },
 previewCypherSeam: (visible) => { system.setCypherSeam(visible); },
+previewRiftEncounter: () => { riftEncounter.noteSeamWindowStarted(); },
 get phase() {
 return system.game.phase;
 },
@@ -4105,6 +4118,9 @@ if (!this.experienceActive || this.flowPhase !== 'playing') {
 return;
 }
 this.game.startNewRun();
+// New Run resets the rift encounter (energy, portals, seal count); the
+// resolved flag survives so a finished encounter never returns.
+riftEncounter.onNewRun();
 this.renderPanel();
 await this.playSequence();
 });
@@ -4237,6 +4253,7 @@ this.renderPanel();
 // streak counter still advances so run progression is unchanged.
 const previousBest = this.game.bestStreak;
 const completed = this.game.onCorrectInput();
+riftEncounter.noteScored(WALL_TONE_PADS[padId]?.name ?? 'green', 'autoplay');
 if (completed) {
 this.finishCompletedPattern(padId, previousBest, false);
 return;
@@ -5002,6 +5019,7 @@ this.movement.noteCorrectPadPress(this.padWorldPos.x, this.padWorldPos.y, this.p
 }
 const previousBest = this.game.bestStreak;
 const completed = this.game.onCorrectInput();
+riftEncounter.noteScored(WALL_TONE_PADS[padIndex]?.name ?? 'green', 'manual');
 if (this.game.bestStreak > previousBest) {
 this.economy.saveBestStreak(this.game.bestStreak);
 this.recordBeatenThisAttempt = true;
@@ -5050,6 +5068,10 @@ replayNote = this.economy.grantFreeReplay()
 this.statusText = `Nice - streak ${this.game.streak}.${replayNote} Next pattern...`;
 this.renderPanel();
 const streak = this.game.streak;
+// Rift encounter: the streak-15 gate re-arms it once the seam window is
+// already consumed (later runs, reloads); portals prefer the pads' wall.
+riftEncounter.ensureArmedForStreak(streak, this.cypherProgress.completedWindows > cypherWindowIndex('seam'));
+this.updateRiftPreferredWall();
 const increasedRecord = creditHuman && shouldAnnounceRecord(streak, previousBest, this.firstRun);
 // Pattern completion pays its own extra on top of the presses
 // (user-settled: "each pattern completion is also another reward extra",
@@ -5147,7 +5169,20 @@ return;
 const storyMark = this.narrationInterrupt;
 const storyIntact = () => runIntact() && storyMark === this.narrationInterrupt;
 if (storyIntact()) {
-const window = this.cypherProgress.beginWindow(streak);
+// Third-seal acknowledgement plays at the next quiet boundary (voices
+// never speak over notes), then gated story windows resume.
+const riftAck = riftEncounter.takePendingAck();
+if (riftAck) {
+const ackCast = captureCypherCast(getVoiceGender());
+await this.speech.speakStoryEffect('open');
+if (storyIntact()) await this.speech.speakStoryLine(riftAck, ackCast);
+if (storyIntact()) await this.speech.speakStoryEffect('close');
+}
+// Rift gate (owner-settled Nov 18): no gated story window starts while
+// portals remain unsealed; an interrupted window still resumes.
+const peeked = this.cypherProgress.peekWindow(streak);
+const riftBlocked = peeked?.gate === 'rift-sealed' && riftEncounter.storyGateActive();
+const window = riftBlocked ? undefined : this.cypherProgress.beginWindow(streak);
 if (window) await this.playCypherWindow(window, storyIntact);
 else {
 // Backlog 119 encouragement: after first Cypher contact and until Act 1
@@ -5178,6 +5213,26 @@ await this.playSequence();
 }
 }
 
+/** Centroid of the placed pads: the wall in front of the player, so
+ * encounter portals prefer it (his "better in wall on front of you"). */
+private updateRiftPreferredWall(): void {
+if (this.pads.length === 0) return;
+let x = 0;
+let y = 0;
+let z = 0;
+for (const pad of this.pads) {
+pad.root.getWorldPosition(this.padWorldPos);
+x += this.padWorldPos.x;
+y += this.padWorldPos.y;
+z += this.padWorldPos.z;
+}
+riftEncounter.setPreferredWallPosition({
+x: x / this.pads.length,
+y: y / this.pads.length,
+z: z / this.pads.length,
+});
+}
+
 /** Between patterns only: all voices and effects share the existing Skip lifecycle. */
 private async playCypherWindow(window: CypherWindow, intact: () => boolean): Promise<void> {
 // MR + hand tracking: the C02 beat becomes the interactive thumbs connection
@@ -5203,6 +5258,8 @@ await this.speech.speakStoryEffect('shimmer');
 await this.speech.speakStoryEffect(['next-window', 'your-machine', 'next-lock', 'longer-window'].includes(window.id) ? 'squawk' : 'open');
 }
 if (window.seam === 'open' && intact()) this.setCypherSeam(true);
+// The seam window's portal words open the three-portal encounter.
+if (window.id === 'seam') riftEncounter.noteSeamWindowStarted();
 for (const id of window.lines) {
 if (!intact()) break;
 await this.speech.speakStoryLine(id, cast, () => this.cypherProgress.lineCompleted());
@@ -6301,6 +6358,7 @@ this.arrowSeqIndex = this.game.inputStep;
 // is flagged for the owner's balance pass.
 const previousBest = this.game.bestStreak;
 const completed = this.game.onCorrectInput();
+riftEncounter.noteScored(WALL_TONE_PADS[padId]?.name ?? 'green', 'play');
 if (this.game.bestStreak > previousBest) {
 this.economy.saveBestStreak(this.game.bestStreak);
 this.recordBeatenThisAttempt = true;

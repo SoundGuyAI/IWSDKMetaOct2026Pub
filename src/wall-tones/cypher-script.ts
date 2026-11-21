@@ -1,5 +1,9 @@
-/** Act 1 v0.2 words only. No automatic gates, scene progress or rewards. */
-export type CypherLineId = 'C01' | 'C02' | 'C03' | 'C04' | 'N01' | 'C05' | 'C06' | 'C07' | 'C08' | 'C09' | 'C10' | 'C11' | 'C12' | 'C13' | 'C14' | 'N02' | 'N03' | 'C15' | 'C16' | 'N04' | 'N05' | 'C17' | 'C18' | 'C19' | 'N06' | 'N07';
+/** Act 1 v0.2 words only. No automatic gates, scene progress or rewards.
+ * Rift encounter (owner-approved words, Nov 18): the old C16 close instruction
+ * is replaced by the C16A-C portal trio, N04 by the narrator's unexplained
+ * apology, C20-C23 are the streak-17/18 reason beats, and C24 is the
+ * third-seal acknowledgement played by the encounter, not a window. */
+export type CypherLineId = 'C01' | 'C02' | 'C03' | 'C04' | 'N01' | 'C05' | 'C06' | 'C07' | 'C08' | 'C09' | 'C10' | 'C11' | 'C12' | 'C13' | 'C14' | 'N02' | 'N03' | 'C15' | 'C16A' | 'C16B' | 'C16C' | 'N04' | 'N05' | 'C20' | 'C21' | 'C22' | 'C23' | 'C17' | 'C18' | 'C19' | 'N06' | 'N07' | 'C24';
 export type CypherSpeaker = 'cypher' | 'narrator';
 export interface CypherScriptLine { readonly id: CypherLineId; readonly speaker: CypherSpeaker; readonly text: string; }
 export const CYPHER_ACT_ONE: readonly CypherScriptLine[] = [
@@ -94,19 +98,49 @@ export const CYPHER_ACT_ONE: readonly CypherScriptLine[] = [
     "text": "The link is feeding something back. You might see a line of light."
   },
   {
-    "id": "C16",
+    "id": "C16A",
     "speaker": "cypher",
-    "text": "Finish the next pattern. That should close it."
+    "text": "That light is a portal. The link is tearing them open."
+  },
+  {
+    "id": "C16B",
+    "speaker": "cypher",
+    "text": "Your notes carry energy now. Aim it at a portal and hold to close it."
+  },
+  {
+    "id": "C16C",
+    "speaker": "cypher",
+    "text": "More will follow. Close them all - I'll hold the link."
   },
   {
     "id": "N04",
     "speaker": "narrator",
-    "text": "Sorry. That visual error should not have been there. It looks stable again now."
+    "text": "I'm sorry. I don't know what those lights were. My checks can't explain them."
   },
   {
     "id": "N05",
     "speaker": "narrator",
     "text": "Your progress is safe. Let's continue."
+  },
+  {
+    "id": "C20",
+    "speaker": "cypher",
+    "text": "About those portals. That wasn't a glitch - their system is hunting."
+  },
+  {
+    "id": "C21",
+    "speaker": "cypher",
+    "text": "It's scanning for this link. The portals are how it tries to tear in."
+  },
+  {
+    "id": "C22",
+    "speaker": "cypher",
+    "text": "If it finds this channel, it will destroy the link."
+  },
+  {
+    "id": "C23",
+    "speaker": "cypher",
+    "text": "Every portal you close keeps us hidden a little longer."
   },
   {
     "id": "C17",
@@ -132,6 +166,11 @@ export const CYPHER_ACT_ONE: readonly CypherScriptLine[] = [
     "id": "N07",
     "speaker": "narrator",
     "text": "You're doing fine. This is a problem with the game, not with you."
+  },
+  {
+    "id": "C24",
+    "speaker": "cypher",
+    "text": "That's all three. The link is stable again. Thank you."
   }
 ] as const;
 

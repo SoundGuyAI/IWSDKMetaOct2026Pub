@@ -219,6 +219,7 @@ jobs:
             tests/e2e/wall-tones.gaze-pinch-toggle.spec.ts \
             tests/e2e/wall-tones.lab-menu.spec.ts \
             tests/e2e/wall-tones.rift-lab.spec.ts \
+            tests/e2e/wall-tones.rift-encounter-mobile.spec.ts \
             tests/e2e/wall-tones.rift-lab-mobile.spec.ts \
             tests/e2e/wall-tones.loading.spec.ts \
             tests/e2e/wall-tones.misc.spec.ts \
